@@ -88,16 +88,16 @@ pub(super) fn predictive_evidence_records(
             jobs,
             worker_count,
             |job: PredictiveEvidenceJob<'_>, _cancellation_token| {
-                let diagnostics = evaluate_predictive_evidence(
-                    job.grid_evaluation,
-                    job.candidate,
+                let diagnostics = evaluate_predictive_evidence(PredictiveEvidenceEvaluationInput {
+                    grid_evaluation: job.grid_evaluation,
+                    candidate: job.candidate,
                     solver_settings,
                     predictive_evidence_alpha,
                     progress_sender,
-                    job.progress_label.as_str(),
-                    &progress_counter_for_jobs,
+                    progress_label: job.progress_label.as_str(),
+                    progress_counter: &progress_counter_for_jobs,
                     total_progress_units,
-                );
+                });
 
                 diagnostics.map(|diagnostics| PredictiveEvidenceRecord {
                     grid_index: job.grid_index,
@@ -240,25 +240,29 @@ fn minimum_training_observation_count(candidate_family: &str) -> usize {
     }
 }
 
-fn evaluate_predictive_evidence(
-    grid_evaluation: &MeanReversionGridCandidateEvaluation,
-    candidate: &MeanReversionStageCandidateEvaluation,
-    solver_settings: &CalibrationOptimizerSettings,
+struct PredictiveEvidenceEvaluationInput<'a> {
+    grid_evaluation: &'a MeanReversionGridCandidateEvaluation,
+    candidate: &'a MeanReversionStageCandidateEvaluation,
+    solver_settings: &'a CalibrationOptimizerSettings,
     predictive_evidence_alpha: f64,
-    progress_sender: Option<&Sender<MeanReversionStageProgressUpdate>>,
-    progress_label: &str,
-    progress_counter: &AtomicUsize,
+    progress_sender: Option<&'a Sender<MeanReversionStageProgressUpdate>>,
+    progress_label: &'a str,
+    progress_counter: &'a AtomicUsize,
     total_progress_units: usize,
+}
+
+fn evaluate_predictive_evidence(
+    input: PredictiveEvidenceEvaluationInput<'_>,
 ) -> Result<MeanReversionStagePredictiveEvidenceDiagnostics, MeanReversionStageExecutionFailure> {
     let random_walk_residuals =
-        random_walk_residuals(grid_evaluation.observation_levels.as_slice());
+        random_walk_residuals(input.grid_evaluation.observation_levels.as_slice());
 
     let validation_block_length =
         random_walk_innovation_dependence_block_length(random_walk_residuals.as_slice());
 
     let refit_training_observation_counts = rolling_origin_refit_training_observation_counts(
-        grid_evaluation.observation_levels.len(),
-        minimum_training_observation_count(candidate.candidate_family),
+        input.grid_evaluation.observation_levels.len(),
+        minimum_training_observation_count(input.candidate.candidate_family),
     );
 
     let mut validation_accumulator = PredictiveValidationAccumulator::new();
@@ -274,22 +278,22 @@ fn evaluate_predictive_evidence(
             refit_training_observation_counts.as_slice(),
             refit_position,
             training_observation_count,
-            grid_evaluation.observation_levels.len(),
+            input.grid_evaluation.observation_levels.len(),
         ) {
             evaluate_refit_validation_window(
-                grid_evaluation,
-                candidate,
-                solver_settings,
+                input.grid_evaluation,
+                input.candidate,
+                input.solver_settings,
                 &validation_window,
                 &mut validation_accumulator,
             )?;
         }
 
         complete_predictive_evidence_progress_unit(
-            progress_sender,
-            progress_counter,
-            total_progress_units,
-            progress_label,
+            input.progress_sender,
+            input.progress_counter,
+            input.total_progress_units,
+            input.progress_label,
             refit_position.saturating_add(1),
             total_refit_count,
         );
@@ -297,10 +301,10 @@ fn evaluate_predictive_evidence(
 
     if total_refit_count == 0 {
         complete_predictive_evidence_progress_unit(
-            progress_sender,
-            progress_counter,
-            total_progress_units,
-            progress_label,
+            input.progress_sender,
+            input.progress_counter,
+            input.total_progress_units,
+            input.progress_label,
             0,
             0,
         );
@@ -310,7 +314,7 @@ fn evaluate_predictive_evidence(
         validation_accumulator,
         validation_block_length,
         total_refit_count,
-        predictive_evidence_alpha,
+        input.predictive_evidence_alpha,
     )
 }
 

@@ -266,9 +266,8 @@ fn forward_return_components_stage_progress(
     }
 }
 
-fn forward_simple_stage_progress<Phase>(
-    observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
-    run_spec: &CalibrationRunSpec,
+struct SimpleStageProgressForwardInput<'run_spec, Phase> {
+    run_spec: &'run_spec CalibrationRunSpec,
     stage: CalibrationStage,
     stage_index: usize,
     stage_count: usize,
@@ -281,31 +280,36 @@ fn forward_simple_stage_progress<Phase>(
     current_evaluation_count: Option<usize>,
     total_evaluation_budget: Option<usize>,
     evaluation_progress_percent: Option<usize>,
+}
+
+fn forward_simple_stage_progress<Phase>(
+    observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
+    input: SimpleStageProgressForwardInput<'_, Phase>,
 ) where
     Phase: Into<CalibrationStageProgressPhase>,
 {
     if let Some(observer) = observer.as_deref_mut() {
         observer(CalibrationStagedRunObserverEvent::StageProgress(Box::new(
             CalibrationStagedRunStageProgressEvent {
-                run_id: run_spec.run_id.clone(),
-                stage,
-                stage_index,
-                stage_count,
-                progress_phase: progress_phase.into(),
-                completed_units,
-                total_units,
-                stage_progress_percent,
-                aggregate_progress_percent,
-                current_item_label,
+                run_id: input.run_spec.run_id.clone(),
+                stage: input.stage,
+                stage_index: input.stage_index,
+                stage_count: input.stage_count,
+                progress_phase: input.progress_phase.into(),
+                completed_units: input.completed_units,
+                total_units: input.total_units,
+                stage_progress_percent: input.stage_progress_percent,
+                aggregate_progress_percent: input.aggregate_progress_percent,
+                current_item_label: input.current_item_label,
                 current_restart_id: None,
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: None,
                 completed_outer_cycles: None,
                 total_outer_cycles: None,
-                current_evaluation_count,
-                total_evaluation_budget,
-                evaluation_progress_percent,
+                current_evaluation_count: input.current_evaluation_count,
+                total_evaluation_budget: input.total_evaluation_budget,
+                evaluation_progress_percent: input.evaluation_progress_percent,
                 current_pricing_interval_index: None,
                 total_pricing_interval_count: None,
                 completed_pricing_row_count: None,
@@ -367,19 +371,21 @@ fn run_long_variance_staged_execution_stage(
     let mut progress_forwarder = |progress_update: LongVarianceStageProgressUpdate| {
         forward_simple_stage_progress(
             input.observer,
-            input.run_spec,
-            CalibrationStage::LongVariance,
-            input.stage_index,
-            input.stage_count,
-            progress_update.phase,
-            progress_update.completed_units,
-            progress_update.total_units,
-            Some(progress_update.stage_progress_percent()),
-            progress_update.aggregate_progress_percent,
-            progress_update.current_item_label,
-            progress_update.current_evaluation_count,
-            progress_update.total_evaluation_budget,
-            progress_update.evaluation_progress_percent,
+            SimpleStageProgressForwardInput {
+                run_spec: input.run_spec,
+                stage: CalibrationStage::LongVariance,
+                stage_index: input.stage_index,
+                stage_count: input.stage_count,
+                progress_phase: progress_update.phase,
+                completed_units: progress_update.completed_units,
+                total_units: progress_update.total_units,
+                stage_progress_percent: Some(progress_update.stage_progress_percent()),
+                aggregate_progress_percent: progress_update.aggregate_progress_percent,
+                current_item_label: progress_update.current_item_label,
+                current_evaluation_count: progress_update.current_evaluation_count,
+                total_evaluation_budget: progress_update.total_evaluation_budget,
+                evaluation_progress_percent: progress_update.evaluation_progress_percent,
+            },
         );
     };
 
@@ -450,19 +456,21 @@ fn run_mean_reversion_staged_execution_stage(
     let mut progress_forwarder = |progress_update: MeanReversionStageProgressUpdate| {
         forward_simple_stage_progress(
             input.observer,
-            input.run_spec,
-            CalibrationStage::MeanReversion,
-            input.stage_index,
-            input.stage_count,
-            progress_update.phase,
-            progress_update.completed_units,
-            progress_update.total_units,
-            Some(progress_update.stage_progress_percent()),
-            progress_update.aggregate_progress_percent,
-            progress_update.current_item_label,
-            progress_update.current_evaluation_count,
-            progress_update.total_evaluation_budget,
-            progress_update.evaluation_progress_percent,
+            SimpleStageProgressForwardInput {
+                run_spec: input.run_spec,
+                stage: CalibrationStage::MeanReversion,
+                stage_index: input.stage_index,
+                stage_count: input.stage_count,
+                progress_phase: progress_update.phase,
+                completed_units: progress_update.completed_units,
+                total_units: progress_update.total_units,
+                stage_progress_percent: Some(progress_update.stage_progress_percent()),
+                aggregate_progress_percent: progress_update.aggregate_progress_percent,
+                current_item_label: progress_update.current_item_label,
+                current_evaluation_count: progress_update.current_evaluation_count,
+                total_evaluation_budget: progress_update.total_evaluation_budget,
+                evaluation_progress_percent: progress_update.evaluation_progress_percent,
+            },
         );
     };
 
