@@ -288,7 +288,8 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
 
         match progress.progress_phase {
             CalibrationStageProgressPhase::JointRefinement(
-                JointRefinementStageProgressPhase::BaselineLocalEvaluation,
+                JointRefinementStageProgressPhase::BaselineLocalEvaluation
+                | JointRefinementStageProgressPhase::BaselineFinalEvaluation,
             ) => break,
             CalibrationStageProgressPhase::JointRefinement(phase)
                 if progress.completed_units == 0 =>
