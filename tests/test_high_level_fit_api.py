@@ -107,6 +107,7 @@ from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
+    build_empty_mean_reversion_series_summaries_payload,
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_nominal_tick_grid_observation_model_payload,
     build_neutral_long_variance_parameters_payload,
@@ -1122,7 +1123,7 @@ def test_high_level_model_simulate_sends_model_payload_to_native_workflow(
     )
 
     estimator = JaniformEstimator(market_profile="us_equity_cash")
-    model = estimator.fit(tick_data_path=tick_data_path)
+    model: JaniformModel = estimator.fit(tick_data_path=tick_data_path)
 
     captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
@@ -5205,11 +5206,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "least_squares_rank": 0,
                                 "deviation_sample_count": 0,
                                 "regression_pair_count": 0,
-                                "core_expected_increments": [],
-                                "pressure_state_path": [],
-                                "boundary_anchor_values": [],
-                                "deviations": [],
-                                "residuals": [],
+                                "series_summaries": (
+                                    build_empty_mean_reversion_series_summaries_payload()
+                                ),
                                 "predictive_evidence": None,
                                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                             }
@@ -5241,11 +5240,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                         "least_squares_rank": 0,
                                         "deviation_sample_count": 0,
                                         "regression_pair_count": 0,
-                                        "core_expected_increments": [],
-                                        "pressure_state_path": [],
-                                        "boundary_anchor_values": [],
-                                        "deviations": [],
-                                        "residuals": [],
+                                        "series_summaries": (
+                                            build_empty_mean_reversion_series_summaries_payload()
+                                        ),
                                         "predictive_evidence": None,
                                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                                     }

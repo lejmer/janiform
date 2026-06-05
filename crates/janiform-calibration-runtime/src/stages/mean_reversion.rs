@@ -15,8 +15,9 @@ use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     CalibrationStageSelectedCandidateSource, MeanReversionStageCalibrationGrid,
-    MeanReversionStageCandidateDiagnostics, MeanReversionStageDiagnostics,
-    MeanReversionStageGridDiagnostics, MeanReversionStagePredictiveEvidenceDiagnostics,
+    MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
+    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
+    MeanReversionStagePredictiveEvidenceDiagnostics, MeanReversionStageSeriesSummary,
 };
 use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
 use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
@@ -749,11 +750,21 @@ impl MeanReversionStageCandidateEvaluation {
             least_squares_rank: self.least_squares_rank,
             deviation_sample_count: self.deviations.len(),
             regression_pair_count: self.residuals.len(),
-            core_expected_increments: core_expected_increments.to_vec(),
-            pressure_state_path: self.pressure_state_path.clone(),
-            boundary_anchor_values: self.boundary_anchor_values.clone(),
-            deviations: self.deviations.clone(),
-            residuals: self.residuals.clone(),
+            series_summaries: MeanReversionStageCandidateSeriesDiagnostics {
+                core_expected_increments: MeanReversionStageSeriesSummary::from_values(
+                    core_expected_increments,
+                ),
+                pressure_state_path: MeanReversionStageSeriesSummary::from_values(
+                    self.pressure_state_path.as_slice(),
+                ),
+                boundary_anchor_values: MeanReversionStageSeriesSummary::from_values(
+                    self.boundary_anchor_values.as_slice(),
+                ),
+                deviations: MeanReversionStageSeriesSummary::from_values(
+                    self.deviations.as_slice(),
+                ),
+                residuals: MeanReversionStageSeriesSummary::from_values(self.residuals.as_slice()),
+            },
             predictive_evidence: self.predictive_evidence.clone(),
             stage_decision_reason: self.stage_decision_reason.clone(),
         }

@@ -8,9 +8,10 @@ use support::shared::{
     CalibrationStageSolverSettings, MeanReversionAnchorModel, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
-    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
-    MeanReversionStageParameterArtifactInput, build_calibration_stage_parameter_artifact,
-    build_data_inputs, build_endogenous_mean_reversion_parameters, build_solver_settings,
+    MeanReversionStageCandidateSeriesDiagnostics, MeanReversionStageDiagnostics,
+    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
+    MeanReversionStageSeriesSummary, build_calibration_stage_parameter_artifact, build_data_inputs,
+    build_endogenous_mean_reversion_parameters, build_solver_settings,
     load_calibration_stage_parameter_artifact_from_disk,
     persist_calibration_stage_parameter_artifact_to_run_directory,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
@@ -93,10 +94,74 @@ fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
 
     let serialized = serde_json::to_string(&runtime_interval_anchors)
         .expect("runtime interval anchors should serialize");
+
     let parsed: MeanReversionRuntimeIntervalAnchors = serde_json::from_str(serialized.as_str())
         .expect("runtime interval anchors should deserialize");
 
     assert_eq!(parsed, runtime_interval_anchors);
+}
+
+#[test]
+fn mean_reversion_series_summary_compacts_diagnostic_values() {
+    let mixed_summary =
+        MeanReversionStageSeriesSummary::from_values(&[f64::NAN, 2.0, 4.0, f64::INFINITY, 6.0]);
+
+    assert_eq!(
+        mixed_summary,
+        MeanReversionStageSeriesSummary {
+            sample_count: 5,
+            finite_count: 3,
+            first_value: Some(2.0),
+            last_value: Some(6.0),
+            minimum_value: Some(2.0),
+            maximum_value: Some(6.0),
+            mean_value: Some(4.0),
+            constant_value: None,
+        }
+    );
+
+    let constant_summary = MeanReversionStageSeriesSummary::from_values(&[3.5, 3.5, 3.5]);
+
+    assert_eq!(
+        constant_summary,
+        MeanReversionStageSeriesSummary {
+            sample_count: 3,
+            finite_count: 3,
+            first_value: Some(3.5),
+            last_value: Some(3.5),
+            minimum_value: Some(3.5),
+            maximum_value: Some(3.5),
+            mean_value: Some(3.5),
+            constant_value: Some(3.5),
+        }
+    );
+
+    let empty_summary = MeanReversionStageSeriesSummary::from_values(&[]);
+
+    assert_eq!(
+        empty_summary,
+        MeanReversionStageSeriesSummary {
+            sample_count: 0,
+            finite_count: 0,
+            first_value: None,
+            last_value: None,
+            minimum_value: None,
+            maximum_value: None,
+            mean_value: None,
+            constant_value: None,
+        }
+    );
+
+    let serialized_empty_summary =
+        serde_json::to_value(&empty_summary).expect("empty summary should serialize");
+
+    assert_eq!(
+        serialized_empty_summary,
+        serde_json::json!({
+            "sample_count": 0,
+            "finite_count": 0,
+        })
+    );
 }
 
 #[test]
@@ -165,11 +230,19 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
         least_squares_rank: 2,
         deviation_sample_count: 4,
         regression_pair_count: 3,
-        core_expected_increments: vec![0.1, 0.1, 0.1],
-        pressure_state_path: vec![0.0, 0.1, 0.15, 0.175],
-        boundary_anchor_values: vec![4.2, 4.3, 4.4, 4.5],
-        deviations: vec![0.0, -0.1, -0.2, -0.3],
-        residuals: vec![-0.1, -0.115, -0.13],
+        series_summaries: MeanReversionStageCandidateSeriesDiagnostics {
+            core_expected_increments: MeanReversionStageSeriesSummary::from_values(&[
+                0.1, 0.1, 0.1,
+            ]),
+            pressure_state_path: MeanReversionStageSeriesSummary::from_values(&[
+                0.0, 0.1, 0.15, 0.175,
+            ]),
+            boundary_anchor_values: MeanReversionStageSeriesSummary::from_values(&[
+                4.2, 4.3, 4.4, 4.5,
+            ]),
+            deviations: MeanReversionStageSeriesSummary::from_values(&[0.0, -0.1, -0.2, -0.3]),
+            residuals: MeanReversionStageSeriesSummary::from_values(&[-0.1, -0.115, -0.13]),
+        },
         predictive_evidence: None,
         stage_decision_reason: "endogenous_core_pressure_level_stage_contract_roundtrip_fixture.v1"
             .to_string(),

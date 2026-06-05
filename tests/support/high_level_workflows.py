@@ -6,6 +6,7 @@ from janiform.calibration.staged import (
 )
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
+    build_empty_mean_reversion_series_summaries_payload,
     build_nominal_tick_grid_observation_model_payload,
     build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
@@ -199,11 +200,9 @@ def successful_full_model_staged_runner_payload(
                                 "least_squares_rank": 0,
                                 "deviation_sample_count": 0,
                                 "regression_pair_count": 0,
-                                "core_expected_increments": [],
-                                "pressure_state_path": [],
-                                "boundary_anchor_values": [],
-                                "deviations": [],
-                                "residuals": [],
+                                "series_summaries": (
+                                    build_empty_mean_reversion_series_summaries_payload()
+                                ),
                                 "predictive_evidence": None,
                                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                             }
@@ -235,11 +234,9 @@ def successful_full_model_staged_runner_payload(
                                         "least_squares_rank": 0,
                                         "deviation_sample_count": 0,
                                         "regression_pair_count": 0,
-                                        "core_expected_increments": [],
-                                        "pressure_state_path": [],
-                                        "boundary_anchor_values": [],
-                                        "deviations": [],
-                                        "residuals": [],
+                                        "series_summaries": (
+                                            build_empty_mean_reversion_series_summaries_payload()
+                                        ),
                                         "predictive_evidence": None,
                                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                                     }

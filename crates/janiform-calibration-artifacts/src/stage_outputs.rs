@@ -183,14 +183,120 @@ pub struct MeanReversionStageCandidateDiagnostics {
     pub least_squares_rank: usize,
     pub deviation_sample_count: usize,
     pub regression_pair_count: usize,
-    pub core_expected_increments: Vec<f64>,
-    pub pressure_state_path: Vec<f64>,
-    pub boundary_anchor_values: Vec<f64>,
-    pub deviations: Vec<f64>,
-    pub residuals: Vec<f64>,
+    pub series_summaries: MeanReversionStageCandidateSeriesDiagnostics,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub predictive_evidence: Option<MeanReversionStagePredictiveEvidenceDiagnostics>,
     pub stage_decision_reason: String,
+}
+
+/// Compact summaries of the internal series used to fit one mean-reversion candidate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStageCandidateSeriesDiagnostics {
+    /// Expected core-price increments used by the endogenous anchor model.
+    pub core_expected_increments: MeanReversionStageSeriesSummary,
+    /// Endogenous pressure state path used by the anchor model.
+    pub pressure_state_path: MeanReversionStageSeriesSummary,
+    /// Anchor level paired with each retained calibration observation.
+    pub boundary_anchor_values: MeanReversionStageSeriesSummary,
+    /// Observed log-price deviations from the candidate anchor path.
+    pub deviations: MeanReversionStageSeriesSummary,
+    /// One-step regression residuals from the fitted candidate.
+    pub residuals: MeanReversionStageSeriesSummary,
+}
+
+/// Compact report summary for a numeric diagnostic series.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStageSeriesSummary {
+    /// Number of observations in the source series before filtering.
+    pub sample_count: usize,
+    /// Number of finite observations included in the numeric summary.
+    pub finite_count: usize,
+    /// First finite observation, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_value: Option<f64>,
+    /// Last finite observation, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_value: Option<f64>,
+    /// Minimum finite observation, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_value: Option<f64>,
+    /// Maximum finite observation, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum_value: Option<f64>,
+    /// Arithmetic mean of finite observations, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mean_value: Option<f64>,
+    /// Shared value when every source observation is finite and bitwise identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub constant_value: Option<f64>,
+}
+
+impl MeanReversionStageSeriesSummary {
+    /// Build a compact report summary for a diagnostic series.
+    pub fn from_values(values: &[f64]) -> Self {
+        let mut finite_count = 0usize;
+        let mut first_value = None;
+        let mut last_value = None;
+        let mut minimum_value = None;
+        let mut maximum_value = None;
+        let mut running_mean = 0.0;
+        let mut constant_bits = None;
+        let mut all_finite_values_share_constant_bits = true;
+
+        for value in values.iter().copied().filter(|value| value.is_finite()) {
+            finite_count += 1;
+
+            first_value.get_or_insert(value);
+
+            last_value = Some(value);
+
+            minimum_value = Some(
+                minimum_value
+                    .map(|current_minimum: f64| current_minimum.min(value))
+                    .unwrap_or(value),
+            );
+
+            maximum_value = Some(
+                maximum_value
+                    .map(|current_maximum: f64| current_maximum.max(value))
+                    .unwrap_or(value),
+            );
+
+            running_mean += (value - running_mean) / finite_count as f64;
+
+            match constant_bits {
+                Some(existing_bits) if existing_bits != value.to_bits() => {
+                    all_finite_values_share_constant_bits = false;
+                }
+                Some(_) => {}
+                None => constant_bits = Some(value.to_bits()),
+            }
+        }
+
+        let mean_value = if finite_count == 0 || !running_mean.is_finite() {
+            None
+        } else {
+            Some(running_mean)
+        };
+
+        let constant_value =
+            if finite_count == values.len() && all_finite_values_share_constant_bits {
+                constant_bits.map(f64::from_bits)
+            } else {
+                None
+            };
+
+        Self {
+            sample_count: values.len(),
+            finite_count,
+            first_value,
+            last_value,
+            minimum_value,
+            maximum_value,
+            mean_value,
+            constant_value,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

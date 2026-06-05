@@ -12,6 +12,7 @@ from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
 from janiform.mean_reversion import MeanReversionAnchorModel, MeanReversionFittedParameters
+from tests.support.calibration import build_empty_mean_reversion_series_summaries_payload
 from tools.workbench import load_workbench_artifacts
 from tools.workbench import plots as workbench_plots
 from tools.workbench.artifacts import WorkbenchArtifacts
@@ -2866,11 +2867,9 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
                 "least_squares_rank": 0,
                 "deviation_sample_count": 0,
                 "regression_pair_count": 0,
-                "core_expected_increments": [],
-                "pressure_state_path": [],
-                "boundary_anchor_values": [],
-                "deviations": [],
-                "residuals": [],
+                "series_summaries": (
+                    build_empty_mean_reversion_series_summaries_payload()
+                ),
                 "predictive_evidence": None,
                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
             }
@@ -2902,11 +2901,9 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
                         "least_squares_rank": 0,
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
-                        "core_expected_increments": [],
-                        "pressure_state_path": [],
-                        "boundary_anchor_values": [],
-                        "deviations": [],
-                        "residuals": [],
+                        "series_summaries": (
+                            build_empty_mean_reversion_series_summaries_payload()
+                        ),
                         "predictive_evidence": None,
                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                     }

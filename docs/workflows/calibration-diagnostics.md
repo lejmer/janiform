@@ -248,6 +248,8 @@ Janiform evaluates all viable automatic time grids unless the request provides a
 
 For each evaluated time grid, `evaluated_candidates` contains the `random_walk_null` baseline and any supported fitted alternatives with `kappa > 0`. A `kappa > 0` candidate includes a `predictive_evidence` block when Janiform could run the rolling comparison. The most useful fields are:
 
+Each candidate also includes `series_summaries` for the calibration series used internally by the stage: core expected increments, pressure state path, boundary anchor values, deviations from anchor, and residuals. The report keeps counts, endpoints, range, mean, and constant-value detection so users can audit scale and shape.
+
 | Field                                                              | Meaning                                                                                      |
 |--------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
 | `validation_refit_schedule_policy`                                 | Named policy for how rolling validation refits are spaced.                                   |

@@ -34,6 +34,18 @@ def build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload() -> di
     return build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.0)
 
 
+def build_empty_mean_reversion_series_summaries_payload() -> dict[str, dict[str, int]]:
+    empty_summary: dict[str, int] = {"sample_count": 0, "finite_count": 0}
+
+    return {
+        "core_expected_increments": empty_summary.copy(),
+        "pressure_state_path": empty_summary.copy(),
+        "boundary_anchor_values": empty_summary.copy(),
+        "deviations": empty_summary.copy(),
+        "residuals": empty_summary.copy(),
+    }
+
+
 def build_neutral_return_clock_exposure_parameters_payload() -> dict[str, Any]:
     return {
         "buy_excitation_return_clock_scale": 1.0,
