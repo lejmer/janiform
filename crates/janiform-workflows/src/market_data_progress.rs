@@ -79,11 +79,7 @@ pub(crate) fn market_data_loading_run_event(
             )),
             subphase: Some(RunPhaseRef::labeled(
                 format!("{}.{}", event.source.source_id(), event.phase.phase_id()),
-                format!(
-                    "{}: {}",
-                    event.source.source_label(),
-                    event.phase.phase_label()
-                ),
+                event.phase_signal(),
             )),
             measures: vec![market_data_loading_event_measure(event)],
         }),

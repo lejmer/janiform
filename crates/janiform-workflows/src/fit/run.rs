@@ -18,6 +18,7 @@ use crate::market_data_progress::{
 };
 
 use super::execution::{fit_workflow_paths, run_staged_fit_execution_workflow};
+use super::input_paths::fit_preparation_request_input_count;
 use super::labels::{fit_preparation_progress_scope_label, fit_workflow_id, fit_workflow_label};
 use super::output::FitWorkflowOutput;
 use super::output::fit_preparation_start_summary;
@@ -188,7 +189,7 @@ fn observe_preparation_started(
     progress_adapter.observe(ProgressEvent::RunStarted {
         run_id: preparation_progress_run_id(request),
         scope: fit_preparation_progress_scope_label().to_string(),
-        input_count: preparation_input_count(request),
+        input_count: fit_preparation_request_input_count(request),
         output_path: None,
         stage_sequence: Vec::new(),
         completed_stage_count: 0,
@@ -273,10 +274,6 @@ fn preparation_progress_run_id(request: &FitPreparationRequest) -> String {
         .run_id
         .clone()
         .unwrap_or_else(|| "resolving run id".to_string())
-}
-
-fn preparation_input_count(request: &FitPreparationRequest) -> usize {
-    1 + usize::from(request.option_surface_path.is_some())
 }
 
 fn preparation_working_directory(
