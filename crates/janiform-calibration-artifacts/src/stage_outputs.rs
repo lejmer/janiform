@@ -85,6 +85,11 @@ pub struct LongVarianceStageHorizonDiagnostic {
 pub struct LongVarianceStageDiagnostics {
     pub estimation_policy: String,
     pub stationary_normalization_policy: String,
+    pub slow_horizon_source_selection_policy: String,
+    pub slow_horizon_tick_interval_count: usize,
+    pub slow_horizon_coarse_interval_count: usize,
+    pub slow_horizon_selected_interval_count: usize,
+    pub slow_horizon_omitted_overlapping_tick_interval_count: usize,
     pub selected_candidate_id: String,
     pub horizon_diagnostics: Vec<LongVarianceStageHorizonDiagnostic>,
 }
@@ -199,6 +204,8 @@ pub struct MeanReversionStageGridDiagnostics {
 pub struct MeanReversionStagePredictiveEvidenceDiagnostics {
     pub gate_status: String,
     pub significance_level: f64,
+    pub validation_refit_schedule_policy: String,
+    pub validation_refit_count: usize,
     pub validation_transition_count: usize,
     pub validation_block_length: usize,
     pub validation_block_count: usize,

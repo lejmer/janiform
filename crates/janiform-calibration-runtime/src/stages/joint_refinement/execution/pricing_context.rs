@@ -32,12 +32,13 @@ use crate::current_state::{
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageOptionPricingInput,
-    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate, progress_percent,
+    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 use crate::stages::joint_refinement::option_surface_tiering::{
     JointRefinementCanonicalOptionQuote, JointRefinementOptionSurfaceTier,
     JointRefinementOptionSurfaceTierKind, build_option_surface_tiers, clean_option_pricing_input,
 };
+use crate::stages::progress::progress_percent;
 use crate::stages::seasonality::{
     RuntimeHourlySeasonalityFactorsBuildInput,
     build_runtime_hourly_seasonality_factors_from_components,

@@ -1,11 +1,14 @@
 pub(crate) mod estimation;
 pub(crate) mod metrics;
 pub(crate) mod policy;
+mod progress;
+pub(crate) mod source;
 mod stage;
 
+pub use progress::{LongVarianceStageProgressPhase, LongVarianceStageProgressUpdate};
 pub(crate) use stage::{
     LONG_VARIANCE_ACTIVE_PARAMETER_COUNT, LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
-    LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
+    LONG_VARIANCE_OBJECTIVE_TERM_COUNT, run_long_variance_calibration_stage_with_progress_observer,
 };
 pub use stage::{
     LongVarianceStageExecutionFailure, LongVarianceStageExecutionInput,

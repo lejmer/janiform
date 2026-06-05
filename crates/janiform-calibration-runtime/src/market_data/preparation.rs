@@ -99,8 +99,8 @@ const MEAN_REVERSION_OPEN_SESSION_GRID_KIND: &str =
     "market_data_open_session_log_price_interval_grid.v1";
 const MEAN_REVERSION_COARSE_DATA_GRID_KIND: &str =
     "market_data_coarse_data_close_price_interval_grid.v1";
-const MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY: &str =
-    "last_observed_open_session_log_price_per_complete_utc_interval.v1";
+const MEAN_REVERSION_SOURCE_INTERVAL_ALIGNMENT_POLICY: &str =
+    "last_observed_source_log_price_per_complete_utc_interval.v1";
 const MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY: &str =
     "median_boundary_open_spacing_hours_from_retained_observations.v1";
 const MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY: &str =
@@ -939,70 +939,81 @@ fn mean_reversion_stage_input_from_request(
         })
         .unwrap_or_default();
 
-    let primary_price_observations = if coarse_price_observations.is_empty() {
-        open_session_price_observations.as_slice()
-    } else {
-        coarse_price_observations.as_slice()
-    };
-
-    let grid_kind = if coarse_price_observations.is_empty() {
-        MEAN_REVERSION_OPEN_SESSION_GRID_KIND
-    } else {
-        MEAN_REVERSION_COARSE_DATA_GRID_KIND
-    };
-
     let observed_session_duration_hours = loading_output
         .preprocessing_output
         .mean_reversion_observed_session_duration_hours
         .as_deref()
         .unwrap_or(&[]);
 
-    let resolved_grid_observation_candidates = resolve_mean_reversion_grid_observation_candidates(
+    let mut grid_candidates = mean_reversion_grid_candidates_for_source(
         mean_reversion_configuration.calibration_grid_interval_hours,
+        MEAN_REVERSION_OPEN_SESSION_GRID_KIND,
         boundary_open_observations.as_slice(),
-        primary_price_observations,
+        open_session_price_observations.as_slice(),
         observed_session_duration_hours,
-        !coarse_price_observations.is_empty(),
+        false,
     );
 
-    if resolved_grid_observation_candidates.is_empty() {
+    grid_candidates.extend(mean_reversion_grid_candidates_for_source(
+        mean_reversion_configuration.calibration_grid_interval_hours,
+        MEAN_REVERSION_COARSE_DATA_GRID_KIND,
+        boundary_open_observations.as_slice(),
+        coarse_price_observations.as_slice(),
+        observed_session_duration_hours,
+        true,
+    ));
+
+    if grid_candidates.is_empty() {
         return Err(CalibrationMarketDataPreparationError::from(
             "mean-reversion calibration grid interval could not be derived from retained boundary spacing or observed session durations"
                 .to_string(),
         ));
     }
 
-    let grid_candidates = resolved_grid_observation_candidates
-        .into_iter()
-        .map(|resolved_grid_observations| {
-            let observations = if primary_price_observations.is_empty() {
-                Vec::new()
-            } else {
-                resolved_grid_observations.grid_observations.observations
-            };
-
-            CalibrationMeanReversionStageGridCandidate {
-                calibration_grid_kind: format!(
-                    "{}:{}:{}",
-                    grid_kind,
-                    MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY,
-                    resolved_grid_observations.interval_policy
-                ),
-                calibration_grid_interval_hours: resolved_grid_observations
-                    .calibration_grid_interval_hours,
-                source_observation_count: resolved_grid_observations
-                    .grid_observations
-                    .source_observation_count,
-                coverage_ratio: resolved_grid_observations.grid_observations.coverage_ratio,
-                observations,
-            }
-        })
-        .collect::<Vec<_>>();
-
     Ok(Some(CalibrationMeanReversionStageExecutionInput {
         predictive_evidence_alpha,
         grid_candidates,
     }))
+}
+
+fn mean_reversion_grid_candidates_for_source(
+    explicit_calibration_grid_interval_hours: Option<f64>,
+    grid_kind: &'static str,
+    boundary_open_observations: &[CalibrationMeanReversionStageObservation],
+    source_price_observations: &[CalibrationMeanReversionStageObservation],
+    observed_session_duration_hours: &[f64],
+    include_source_cadence_candidate: bool,
+) -> Vec<CalibrationMeanReversionStageGridCandidate> {
+    if source_price_observations.is_empty() {
+        return Vec::new();
+    }
+
+    resolve_mean_reversion_grid_observation_candidates(
+        explicit_calibration_grid_interval_hours,
+        boundary_open_observations,
+        source_price_observations,
+        observed_session_duration_hours,
+        include_source_cadence_candidate,
+    )
+    .into_iter()
+    .map(
+        |resolved_grid_observations| CalibrationMeanReversionStageGridCandidate {
+            calibration_grid_kind: format!(
+                "{}:{}:{}",
+                grid_kind,
+                MEAN_REVERSION_SOURCE_INTERVAL_ALIGNMENT_POLICY,
+                resolved_grid_observations.interval_policy
+            ),
+            calibration_grid_interval_hours: resolved_grid_observations
+                .calibration_grid_interval_hours,
+            source_observation_count: resolved_grid_observations
+                .grid_observations
+                .source_observation_count,
+            coverage_ratio: resolved_grid_observations.grid_observations.coverage_ratio,
+            observations: resolved_grid_observations.grid_observations.observations,
+        },
+    )
+    .collect()
 }
 
 fn joint_refinement_option_pricing_input_from_request(
@@ -1353,8 +1364,8 @@ fn coarse_data_mean_reversion_observations(
         .collect()
 }
 
-fn mean_reversion_grid_observations_from_open_session_prices(
-    open_session_price_observations: &[CalibrationMeanReversionStageObservation],
+fn mean_reversion_grid_observations_from_source_prices(
+    source_price_observations: &[CalibrationMeanReversionStageObservation],
     calibration_grid_interval_hours: f64,
 ) -> MeanReversionGridObservations {
     let Some(interval_nanos) = interval_hours_to_nanos(calibration_grid_interval_hours) else {
@@ -1365,7 +1376,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
         };
     };
 
-    let Some(first_observation) = open_session_price_observations.first() else {
+    let Some(first_observation) = source_price_observations.first() else {
         return MeanReversionGridObservations {
             source_observation_count: 0,
             coverage_ratio: 0.0,
@@ -1373,7 +1384,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
         };
     };
 
-    let Some(last_observation) = open_session_price_observations.last() else {
+    let Some(last_observation) = source_price_observations.last() else {
         return MeanReversionGridObservations {
             source_observation_count: 0,
             coverage_ratio: 0.0,
@@ -1405,8 +1416,8 @@ fn mean_reversion_grid_observations_from_open_session_prices(
 
     let mut observations = Vec::new();
 
-    // Covered intervals require at least one direct source tick. Carry-forward intervals stay on
-    // the grid but do not add observed coverage.
+    // Covered intervals require at least one direct source observation. Carry-forward intervals
+    // stay on the grid but do not add observed coverage.
     let mut covered_interval_count = 0usize;
 
     let mut interval_end_utc_nanos = source_window_start_utc_nanos.saturating_add(interval_nanos);
@@ -1414,7 +1425,7 @@ fn mean_reversion_grid_observations_from_open_session_prices(
 
     let mut interval_has_direct_observation = false;
 
-    for observation in open_session_price_observations {
+    for observation in source_price_observations {
         while observation.observation_timestamp_utc_nanos >= interval_end_utc_nanos {
             if let Some(pending_observation) = pending_observation.as_ref() {
                 let mut snapped_observation = pending_observation.clone();
@@ -1464,15 +1475,15 @@ fn interval_hours_to_nanos(interval_hours: f64) -> Option<i64> {
 fn resolve_mean_reversion_grid_observation_candidates(
     explicit_calibration_grid_interval_hours: Option<f64>,
     boundary_open_observations: &[CalibrationMeanReversionStageObservation],
-    open_session_price_observations: &[CalibrationMeanReversionStageObservation],
+    source_price_observations: &[CalibrationMeanReversionStageObservation],
     observed_session_duration_hours: &[f64],
-    coarse_price_observations_are_primary: bool,
+    include_source_cadence_candidate: bool,
 ) -> Vec<ResolvedMeanReversionGridObservations> {
     if let Some(calibration_grid_interval_hours) = explicit_calibration_grid_interval_hours {
         return vec![build_resolved_mean_reversion_grid_observations(
             calibration_grid_interval_hours,
             MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY,
-            open_session_price_observations,
+            source_price_observations,
         )];
     }
 
@@ -1484,17 +1495,17 @@ fn resolve_mean_reversion_grid_observation_candidates(
             boundary_open_observations,
         ),
         MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY,
-        open_session_price_observations,
+        source_price_observations,
     );
 
-    if coarse_price_observations_are_primary {
+    if include_source_cadence_candidate {
         push_resolved_mean_reversion_grid_observation_candidate(
             &mut candidate_grids,
             derive_mean_reversion_grid_interval_hours_from_boundary_observations(
-                open_session_price_observations,
+                source_price_observations,
             ),
             MEAN_REVERSION_COARSE_OBSERVATION_INTERVAL_DERIVATION_POLICY,
-            open_session_price_observations,
+            source_price_observations,
         );
     }
 
@@ -1504,17 +1515,17 @@ fn resolve_mean_reversion_grid_observation_candidates(
             observed_session_duration_hours,
         ),
         MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY,
-        open_session_price_observations,
+        source_price_observations,
     );
 
     push_resolved_mean_reversion_grid_observation_candidate(
         &mut candidate_grids,
         derive_mean_reversion_grid_interval_hours_from_source_window(
-            open_session_price_observations,
+            source_price_observations,
             mean_reversion_full_model_required_source_observation_count(),
         ),
         MEAN_REVERSION_SOURCE_WINDOW_INTERVAL_DERIVATION_POLICY,
-        open_session_price_observations,
+        source_price_observations,
     );
 
     let identifiable_candidate_grids = candidate_grids
@@ -1539,7 +1550,7 @@ fn push_resolved_mean_reversion_grid_observation_candidate(
     candidate_grids: &mut Vec<ResolvedMeanReversionGridObservations>,
     calibration_grid_interval_hours: Option<f64>,
     interval_policy: &'static str,
-    open_session_price_observations: &[CalibrationMeanReversionStageObservation],
+    source_price_observations: &[CalibrationMeanReversionStageObservation],
 ) {
     let Some(calibration_grid_interval_hours) = calibration_grid_interval_hours else {
         return;
@@ -1559,20 +1570,20 @@ fn push_resolved_mean_reversion_grid_observation_candidate(
     candidate_grids.push(build_resolved_mean_reversion_grid_observations(
         calibration_grid_interval_hours,
         interval_policy,
-        open_session_price_observations,
+        source_price_observations,
     ));
 }
 
 fn build_resolved_mean_reversion_grid_observations(
     calibration_grid_interval_hours: f64,
     interval_policy: &'static str,
-    open_session_price_observations: &[CalibrationMeanReversionStageObservation],
+    source_price_observations: &[CalibrationMeanReversionStageObservation],
 ) -> ResolvedMeanReversionGridObservations {
     ResolvedMeanReversionGridObservations {
         calibration_grid_interval_hours,
         interval_policy,
-        grid_observations: mean_reversion_grid_observations_from_open_session_prices(
-            open_session_price_observations,
+        grid_observations: mean_reversion_grid_observations_from_source_prices(
+            source_price_observations,
             calibration_grid_interval_hours,
         ),
     }
@@ -1637,11 +1648,11 @@ fn derive_mean_reversion_grid_interval_hours_from_session_durations(
 }
 
 fn derive_mean_reversion_grid_interval_hours_from_source_window(
-    open_session_price_observations: &[CalibrationMeanReversionStageObservation],
+    source_price_observations: &[CalibrationMeanReversionStageObservation],
     required_source_observation_count: usize,
 ) -> Option<f64> {
-    let first_observation = open_session_price_observations.first()?;
-    let last_observation = open_session_price_observations.last()?;
+    let first_observation = source_price_observations.first()?;
+    let last_observation = source_price_observations.last()?;
 
     if required_source_observation_count == 0 {
         return None;
@@ -2048,7 +2059,7 @@ mod tests {
         MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY,
         MEAN_REVERSION_SOURCE_WINDOW_INTERVAL_DERIVATION_POLICY,
         mean_reversion_full_model_required_source_observation_count,
-        mean_reversion_grid_observations_from_open_session_prices,
+        mean_reversion_grid_observations_from_source_prices,
         resolve_mean_reversion_grid_observation_candidates,
     };
 
@@ -2056,7 +2067,7 @@ mod tests {
 
     #[test]
     fn mean_reversion_grid_observations_snap_to_interval_boundaries() {
-        let grid_observations = mean_reversion_grid_observations_from_open_session_prices(
+        let grid_observations = mean_reversion_grid_observations_from_source_prices(
             &[
                 CalibrationMeanReversionStageObservation {
                     observation_timestamp_utc_nanos: 1_000,
@@ -2096,7 +2107,7 @@ mod tests {
 
     #[test]
     fn mean_reversion_grid_observations_carry_forward_last_observed_price_across_empty_intervals() {
-        let grid_observations = mean_reversion_grid_observations_from_open_session_prices(
+        let grid_observations = mean_reversion_grid_observations_from_source_prices(
             &[
                 CalibrationMeanReversionStageObservation {
                     observation_timestamp_utc_nanos: 1_000,

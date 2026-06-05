@@ -4,18 +4,21 @@ use janiform_foundations::cancellation::CancellationToken;
 
 use super::super::{
     CalibrationInMemoryStagePayloadState, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStagePayloadSource,
+    CalibrationStageHandoffTransport, CalibrationStagePayloadSource, CalibrationStageProgressPhase,
     CalibrationStageSelectedCandidateSource, CalibrationStagedRunFailure,
     CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
     ExchangeCalendarRegistry, HawkesStageExecutionInput, HawkesStageFittedPayload,
     HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
-    LongVarianceStageExecutionInput, NewsShocksStageExecutionInput,
+    LongVarianceStageExecutionInput, LongVarianceStageProgressUpdate,
+    MeanReversionStageProgressUpdate, NewsShocksStageExecutionInput,
     ReturnBackfitStageExecutionInput, ReturnComponentsStageExecutionInput,
     ReturnComponentsStageProgressUpdate, run_hawkes_calibration_stage,
-    run_long_variance_calibration_stage, run_mean_reversion_calibration_stage,
-    run_news_shocks_calibration_stage, run_return_backfit_calibration_stage,
-    run_return_components_calibration_stage,
+    run_long_variance_calibration_stage,
+    run_long_variance_calibration_stage_with_progress_observer,
+    run_mean_reversion_calibration_stage,
+    run_mean_reversion_calibration_stage_with_progress_observer, run_news_shocks_calibration_stage,
+    run_return_backfit_calibration_stage, run_return_components_calibration_stage,
     run_return_components_calibration_stage_with_progress_observer,
     run_seasonality_calibration_stage,
 };
@@ -263,6 +266,69 @@ fn forward_return_components_stage_progress(
     }
 }
 
+fn forward_simple_stage_progress<Phase>(
+    observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+    stage_index: usize,
+    stage_count: usize,
+    progress_phase: Phase,
+    completed_units: usize,
+    total_units: usize,
+    stage_progress_percent: Option<usize>,
+    aggregate_progress_percent: Option<usize>,
+    current_item_label: Option<String>,
+    current_evaluation_count: Option<usize>,
+    total_evaluation_budget: Option<usize>,
+    evaluation_progress_percent: Option<usize>,
+) where
+    Phase: Into<CalibrationStageProgressPhase>,
+{
+    if let Some(observer) = observer.as_deref_mut() {
+        observer(CalibrationStagedRunObserverEvent::StageProgress(Box::new(
+            CalibrationStagedRunStageProgressEvent {
+                run_id: run_spec.run_id.clone(),
+                stage,
+                stage_index,
+                stage_count,
+                progress_phase: progress_phase.into(),
+                completed_units,
+                total_units,
+                stage_progress_percent,
+                aggregate_progress_percent,
+                current_item_label,
+                current_restart_id: None,
+                current_work_item_status: None,
+                planned_work_item_labels: Vec::new(),
+                active_restart_count: None,
+                completed_outer_cycles: None,
+                total_outer_cycles: None,
+                current_evaluation_count,
+                total_evaluation_budget,
+                evaluation_progress_percent,
+                current_pricing_interval_index: None,
+                total_pricing_interval_count: None,
+                completed_pricing_row_count: None,
+                total_pricing_row_count: None,
+                valid_completed_units: None,
+                cumulative_local_evaluation_count: None,
+                current_global_loss: None,
+                current_restart_best_global_loss: None,
+                current_candidate_assessment: None,
+                best_restart_id: None,
+                best_global_loss: None,
+                current_coarse_consistency_fit: None,
+                best_coarse_consistency_fit: None,
+                exact_closed_form_buy_count: None,
+                exact_closed_form_sell_count: None,
+                exact_tilted_mixed_count: None,
+                restart_evaluation_timing_diagnostic: None,
+                current_convergence_ratio: None,
+            },
+        )));
+    }
+}
+
 fn run_long_variance_staged_execution_stage(
     input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
@@ -288,8 +354,42 @@ fn run_long_variance_staged_execution_stage(
         tick_objective_data_usage_policy: input.staged_run_inputs.tick_objective_data_usage_policy,
     };
 
+    if input.observer.is_none() {
+        return Ok(CalibrationStagedRunStageReport::LongVariance(Box::new(
+            run_long_variance_calibration_stage(
+                input.run_spec,
+                input.calendar_registry,
+                stage_input,
+            ),
+        )));
+    }
+
+    let mut progress_forwarder = |progress_update: LongVarianceStageProgressUpdate| {
+        forward_simple_stage_progress(
+            input.observer,
+            input.run_spec,
+            CalibrationStage::LongVariance,
+            input.stage_index,
+            input.stage_count,
+            progress_update.phase,
+            progress_update.completed_units,
+            progress_update.total_units,
+            Some(progress_update.stage_progress_percent()),
+            progress_update.aggregate_progress_percent,
+            progress_update.current_item_label,
+            progress_update.current_evaluation_count,
+            progress_update.total_evaluation_budget,
+            progress_update.evaluation_progress_percent,
+        );
+    };
+
     Ok(CalibrationStagedRunStageReport::LongVariance(Box::new(
-        run_long_variance_calibration_stage(input.run_spec, input.calendar_registry, stage_input),
+        run_long_variance_calibration_stage_with_progress_observer(
+            input.run_spec,
+            input.calendar_registry,
+            stage_input,
+            Some(&mut progress_forwarder),
+        ),
     )))
 }
 
@@ -337,8 +437,42 @@ fn run_mean_reversion_staged_execution_stage(
     stage_input.return_components_stage_payload =
         input.payload_state.return_components_stage_payload.clone();
 
+    if input.observer.is_none() {
+        return Ok(CalibrationStagedRunStageReport::MeanReversion(Box::new(
+            run_mean_reversion_calibration_stage(
+                input.run_spec,
+                input.calendar_registry,
+                stage_input,
+            ),
+        )));
+    }
+
+    let mut progress_forwarder = |progress_update: MeanReversionStageProgressUpdate| {
+        forward_simple_stage_progress(
+            input.observer,
+            input.run_spec,
+            CalibrationStage::MeanReversion,
+            input.stage_index,
+            input.stage_count,
+            progress_update.phase,
+            progress_update.completed_units,
+            progress_update.total_units,
+            Some(progress_update.stage_progress_percent()),
+            progress_update.aggregate_progress_percent,
+            progress_update.current_item_label,
+            progress_update.current_evaluation_count,
+            progress_update.total_evaluation_budget,
+            progress_update.evaluation_progress_percent,
+        );
+    };
+
     Ok(CalibrationStagedRunStageReport::MeanReversion(Box::new(
-        run_mean_reversion_calibration_stage(input.run_spec, input.calendar_registry, stage_input),
+        run_mean_reversion_calibration_stage_with_progress_observer(
+            input.run_spec,
+            input.calendar_registry,
+            stage_input,
+            Some(&mut progress_forwarder),
+        ),
     )))
 }
 

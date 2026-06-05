@@ -179,11 +179,6 @@ impl CalibrationOptimizerSettings {
                 value: self.max_iterations,
             });
         }
-        if self.cpu_count == 0 {
-            return Err(CalibrationOptimizerSettingsError::InvalidCpuCount {
-                value: self.cpu_count,
-            });
-        }
         if !self.absolute_tolerance.is_finite() || self.absolute_tolerance <= 0.0 {
             return Err(
                 CalibrationOptimizerSettingsError::InvalidAbsoluteTolerance {
@@ -214,7 +209,6 @@ impl CalibrationOptimizerSettings {
 pub enum CalibrationOptimizerSettingsError {
     MissingSolverName,
     InvalidMaxIterations { value: usize },
-    InvalidCpuCount { value: usize },
     InvalidAbsoluteTolerance { value: f64 },
     InvalidRelativeTolerance { value: f64 },
     InvalidConstraintPenaltyWeight { value: f64 },
@@ -230,12 +224,6 @@ impl Display for CalibrationOptimizerSettingsError {
                 formatter,
                 "max_iterations must be strictly positive, found {value}"
             ),
-            Self::InvalidCpuCount { value } => {
-                write!(
-                    formatter,
-                    "cpu_count must be strictly positive, found {value}"
-                )
-            }
             Self::InvalidAbsoluteTolerance { value } => write!(
                 formatter,
                 "absolute_tolerance must be finite and strictly positive, found {value}"
@@ -258,4 +246,18 @@ impl Error for CalibrationOptimizerSettingsError {}
 pub struct CalibrationStageSolverSettings {
     pub stage: CalibrationStage,
     pub optimizer_settings: CalibrationOptimizerSettings,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CalibrationOptimizerSettings;
+
+    #[test]
+    fn optimizer_settings_accept_zero_cpu_count_as_auto_budget() {
+        let optimizer_settings =
+            CalibrationOptimizerSettings::try_new("lbfgs", 10, 0, 1.0e-6, 1.0e-6, 1.0)
+                .expect("zero cpu_count is an automatic CPU-budget request");
+
+        assert_eq!(optimizer_settings.cpu_count, 0);
+    }
 }

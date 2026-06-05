@@ -236,6 +236,11 @@ fn regression_long_variance_stage_parameter_input(
         diagnostics: LongVarianceStageDiagnostics {
             estimation_policy: "artifact_regression_fixture.v1".to_string(),
             stationary_normalization_policy: "artifact_regression_fixture.v1".to_string(),
+            slow_horizon_source_selection_policy: "artifact_regression_fixture.v1".to_string(),
+            slow_horizon_tick_interval_count: 0,
+            slow_horizon_coarse_interval_count: 0,
+            slow_horizon_selected_interval_count: 0,
+            slow_horizon_omitted_overlapping_tick_interval_count: 0,
             selected_candidate_id: "artifact_regression_return_components".to_string(),
             horizon_diagnostics: Vec::new(),
         },

@@ -1,6 +1,8 @@
+mod activity;
 mod contracts;
 mod execution;
 
+pub(crate) use activity::short_gap_ratio_from_threshold;
 pub use contracts::{
     HawkesStageCandidateDiagnostic, HawkesStageCandidateInput, HawkesStageCandidateInputError,
     HawkesStageDirectionalLabelDiagnostics, HawkesStageDirectionalLabelDiagnosticsError,

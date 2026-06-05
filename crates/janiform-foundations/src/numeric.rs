@@ -30,10 +30,10 @@ pub use ordering::{
     sorted_finite_values, unique_sorted_values,
 };
 pub use samples::{
-    MeanEstimate, arithmetic_mean, arithmetic_mean_or_zero, central_skewness_or_zero,
-    coefficient_of_variation, finite_arithmetic_mean_or_zero, jackknife_standard_error,
-    mean_estimate_from_standard_errors, pearson_correlation, relative_rmse, rolling_sum,
-    root_mean_square_or_infinity, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
-    sample_standard_deviation, sample_variance, standardized_path_distance,
-    winsorized_sample_standard_deviation_from_sorted, z_score,
+    AdjustedShapeJackknifeStandardErrors, MeanEstimate, adjusted_shape_jackknife_standard_errors,
+    arithmetic_mean, arithmetic_mean_or_zero, central_skewness_or_zero, coefficient_of_variation,
+    finite_arithmetic_mean_or_zero, mean_estimate_from_standard_errors, pearson_correlation,
+    relative_rmse, rolling_sum, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
+    sample_adjusted_skewness, sample_standard_deviation, sample_variance,
+    standardized_path_distance, winsorized_sample_standard_deviation_from_sorted, z_score,
 };

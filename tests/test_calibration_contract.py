@@ -666,6 +666,19 @@ def test_staged_calibration_response_accepts_diagnostic_artifact_bundle() -> Non
     )
 
 
+def test_calibration_optimizer_settings_accepts_zero_cpu_count_as_auto_budget() -> None:
+    settings = CalibrationOptimizerSettings(
+        solver_name="lbfgs",
+        max_iterations=10,
+        cpu_count=0,
+        absolute_tolerance=1.0e-6,
+        relative_tolerance=1.0e-6,
+        constraint_penalty_weight=1.0,
+    )
+
+    assert settings.cpu_count == 0
+
+
 def _valid_request_model() -> StagedCalibrationRequest:
     return StagedCalibrationRequest(
         run_id="run-001",

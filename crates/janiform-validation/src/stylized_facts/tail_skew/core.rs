@@ -430,12 +430,6 @@ fn validate_request(request: &TailSkewDiagnosticsRequest) -> Result<(), TailSkew
         return Err(TailSkewDiagnosticsError::EmptyHorizonBucketSet);
     }
 
-    if request.cpu_count == Some(0) {
-        return Err(TailSkewDiagnosticsError::InvalidParallelismConfiguration {
-            details: "cpu_count must be greater than 0 when provided".to_string(),
-        });
-    }
-
     let mut observed_horizon_labels: BTreeSet<&str> = BTreeSet::new();
 
     for (horizon_position, horizon_bucket) in request.horizon_buckets.iter().enumerate() {

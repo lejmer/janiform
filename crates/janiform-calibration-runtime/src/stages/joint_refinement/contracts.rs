@@ -9,6 +9,7 @@ use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
+use crate::stages::progress::progress_percent;
 use crate::stages::return_components::{
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageFittedPayload,
 };
@@ -330,19 +331,6 @@ fn joint_refinement_stage_progress_percent(
     }
 
     0
-}
-
-pub(crate) fn progress_percent(completed_units: usize, total_units: usize) -> usize {
-    if total_units == 0 {
-        return 0;
-    }
-
-    completed_units
-        .min(total_units)
-        .saturating_mul(100)
-        .checked_div(total_units)
-        .unwrap_or(0)
-        .min(100)
 }
 
 #[cfg(test)]

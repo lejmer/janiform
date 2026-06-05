@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero, jackknife_standard_error, pearson_correlation,
+    adjusted_shape_jackknife_standard_errors, arithmetic_mean_or_zero, pearson_correlation,
     sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
     sample_variance,
 };
@@ -50,6 +50,13 @@ pub(crate) struct LongVarianceHorizonMomentSummary {
     pub(crate) activity_variance_correlation: Option<f64>,
     pub(crate) signed_activity_future_variance_relation: Option<f64>,
     pub(crate) standard_errors: LongVarianceHorizonMomentStandardErrors,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LongVarianceHorizonSummaryComputation {
+    pub(crate) horizon_position: usize,
+    pub(crate) intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) block_duration_nanos: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -261,25 +268,70 @@ pub(crate) fn long_variance_horizon_summaries(
     five_minute_intervals: &[JointRefinementAggregatedIntervalObservation],
     hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> Vec<LongVarianceHorizonMomentSummary> {
+    let computations =
+        long_variance_horizon_summary_computations(five_minute_intervals, hourly_intervals);
+
+    ordered_long_variance_horizon_summaries_from_outputs(
+        computations
+            .into_iter()
+            .map(compute_long_variance_horizon_summary)
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub(crate) fn long_variance_horizon_summary_computations(
+    five_minute_intervals: &[JointRefinementAggregatedIntervalObservation],
+    hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Vec<LongVarianceHorizonSummaryComputation> {
     let daily_intervals = aggregate_intervals_to_fixed_duration(hourly_intervals, NANOS_PER_DAY);
     let weekly_intervals = aggregate_intervals_to_fixed_duration(hourly_intervals, NANOS_PER_WEEK);
 
-    [
-        long_variance_horizon_moment_summary_with_block_standard_errors(
-            five_minute_intervals,
-            NANOS_PER_HOUR,
-        ),
-        long_variance_horizon_moment_summary_with_block_standard_errors(
-            hourly_intervals,
-            NANOS_PER_DAY,
-        ),
-        long_variance_horizon_moment_summary_with_block_standard_errors(
-            daily_intervals.as_slice(),
-            NANOS_PER_WEEK,
-        ),
-        long_variance_horizon_moment_summary(weekly_intervals.as_slice()),
+    vec![
+        LongVarianceHorizonSummaryComputation {
+            horizon_position: 0,
+            intervals: five_minute_intervals.to_vec(),
+            block_duration_nanos: Some(NANOS_PER_HOUR),
+        },
+        LongVarianceHorizonSummaryComputation {
+            horizon_position: 1,
+            intervals: hourly_intervals.to_vec(),
+            block_duration_nanos: Some(NANOS_PER_DAY),
+        },
+        LongVarianceHorizonSummaryComputation {
+            horizon_position: 2,
+            intervals: daily_intervals,
+            block_duration_nanos: Some(NANOS_PER_WEEK),
+        },
+        LongVarianceHorizonSummaryComputation {
+            horizon_position: 3,
+            intervals: weekly_intervals,
+            block_duration_nanos: None,
+        },
     ]
-    .to_vec()
+}
+
+pub(crate) fn compute_long_variance_horizon_summary(
+    computation: LongVarianceHorizonSummaryComputation,
+) -> (usize, LongVarianceHorizonMomentSummary) {
+    let summary = match computation.block_duration_nanos {
+        Some(block_duration_nanos) => {
+            long_variance_horizon_moment_summary_with_block_standard_errors(
+                computation.intervals.as_slice(),
+                block_duration_nanos,
+            )
+        }
+        None => long_variance_horizon_moment_summary(computation.intervals.as_slice()),
+    };
+
+    (computation.horizon_position, summary)
+}
+
+pub(crate) fn ordered_long_variance_horizon_summaries_from_outputs(
+    mut outputs: Vec<(usize, LongVarianceHorizonMomentSummary)>,
+) -> Vec<LongVarianceHorizonMomentSummary> {
+    outputs.sort_by_key(|(horizon_position, _)| *horizon_position);
+
+    outputs.into_iter().map(|(_, summary)| summary).collect()
 }
 
 fn long_variance_horizon_moment_summary_with_block_standard_errors(
@@ -412,15 +464,13 @@ fn long_variance_horizon_jackknife_standard_errors(
     intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> LongVarianceHorizonMomentStandardErrors {
     let returns = finite_long_variance_log_returns(intervals);
+    let shape_standard_errors = adjusted_shape_jackknife_standard_errors(returns.as_slice());
 
     LongVarianceHorizonMomentStandardErrors {
         realized_variance: None,
         variance_of_variance: None,
-        return_skewness: jackknife_standard_error(returns.as_slice(), sample_adjusted_skewness),
-        return_excess_kurtosis: jackknife_standard_error(
-            returns.as_slice(),
-            sample_adjusted_excess_kurtosis,
-        ),
+        return_skewness: shape_standard_errors.skewness,
+        return_excess_kurtosis: shape_standard_errors.excess_kurtosis,
         activity_variance_correlation: None,
         signed_activity_future_variance_relation: None,
     }

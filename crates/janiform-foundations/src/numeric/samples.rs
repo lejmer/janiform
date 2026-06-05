@@ -168,6 +168,7 @@ pub fn sample_variance(values: &[f64]) -> Option<f64> {
         .sum::<f64>();
 
     let variance = sum_squared_deviation / (finite_values.len() - 1) as f64;
+
     variance.is_finite().then_some(variance)
 }
 
@@ -215,27 +216,96 @@ pub fn mean_estimate_from_standard_errors(
     })
 }
 
-/// Estimate a metric's standard error with delete-one jackknife resampling.
-pub fn jackknife_standard_error(
+/// Delete-one jackknife standard errors for adjusted skewness and excess kurtosis.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct AdjustedShapeJackknifeStandardErrors {
+    /// Delete-one jackknife standard error for adjusted sample skewness.
+    pub skewness: Option<f64>,
+    /// Delete-one jackknife standard error for adjusted sample excess kurtosis.
+    pub excess_kurtosis: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct RawMomentSums {
+    count: usize,
+    sum1: f64,
+    sum2: f64,
+    sum3: f64,
+    sum4: f64,
+}
+
+impl RawMomentSums {
+    fn from_finite_values(values: &[f64]) -> Self {
+        values
+            .iter()
+            .copied()
+            .filter(|value| value.is_finite())
+            .fold(Self::default(), |mut sums, value| {
+                let value2 = value * value;
+
+                sums.count = sums.count.saturating_add(1);
+
+                sums.sum1 += value;
+                sums.sum2 += value2;
+                sums.sum3 += value2 * value;
+                sums.sum4 += value2 * value2;
+
+                sums
+            })
+    }
+
+    fn delete_value(self, value: f64) -> Self {
+        let value2 = value * value;
+
+        Self {
+            count: self.count.saturating_sub(1),
+            sum1: self.sum1 - value,
+            sum2: self.sum2 - value2,
+            sum3: self.sum3 - value2 * value,
+            sum4: self.sum4 - value2 * value2,
+        }
+    }
+}
+
+/// Estimate adjusted shape standard errors with exact delete-one jackknife moments.
+pub fn adjusted_shape_jackknife_standard_errors(
     values: &[f64],
-    compute_metric: fn(&[f64]) -> Option<f64>,
+) -> AdjustedShapeJackknifeStandardErrors {
+    let finite_values = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+
+    let full_sums = RawMomentSums::from_finite_values(finite_values.as_slice());
+
+    AdjustedShapeJackknifeStandardErrors {
+        skewness: adjusted_shape_jackknife_standard_error(
+            finite_values.as_slice(),
+            full_sums,
+            adjusted_skewness_from_raw_moments,
+        ),
+        excess_kurtosis: adjusted_shape_jackknife_standard_error(
+            finite_values.as_slice(),
+            full_sums,
+            adjusted_excess_kurtosis_from_raw_moments,
+        ),
+    }
+}
+
+fn adjusted_shape_jackknife_standard_error(
+    finite_values: &[f64],
+    full_sums: RawMomentSums,
+    compute_metric: fn(RawMomentSums) -> Option<f64>,
 ) -> Option<f64> {
-    if values.len() < 2 {
+    if finite_values.len() < 2 {
         return None;
     }
 
-    let mut leave_one_out_values = Vec::with_capacity(values.len());
+    let mut leave_one_out_values = Vec::with_capacity(finite_values.len());
 
-    for omitted_position in 0..values.len() {
-        let sample = values
-            .iter()
-            .enumerate()
-            .filter_map(|(value_position, value)| {
-                (value_position != omitted_position).then_some(*value)
-            })
-            .collect::<Vec<_>>();
-
-        let metric_value = compute_metric(sample.as_slice())?;
+    for value in finite_values {
+        let metric_value = compute_metric(full_sums.delete_value(*value))?;
         if !metric_value.is_finite() {
             return None;
         }
@@ -243,9 +313,17 @@ pub fn jackknife_standard_error(
         leave_one_out_values.push(metric_value);
     }
 
-    let jackknife_mean = arithmetic_mean_or_zero(leave_one_out_values.as_slice());
+    jackknife_standard_error_from_leave_one_out_values(leave_one_out_values.as_slice())
+}
 
-    let squared_deviation_sum = leave_one_out_values
+fn jackknife_standard_error_from_leave_one_out_values(values: &[f64]) -> Option<f64> {
+    if values.len() < 2 {
+        return None;
+    }
+
+    let jackknife_mean = arithmetic_mean_or_zero(values);
+
+    let squared_deviation_sum = values
         .iter()
         .map(|value| {
             let deviation = value - jackknife_mean;
@@ -303,26 +381,26 @@ pub fn sample_adjusted_skewness(values: &[f64]) -> Option<f64> {
         .filter(|value| value.is_finite())
         .collect();
 
-    let sample_count = finite_values.len();
+    adjusted_skewness_from_raw_moments(RawMomentSums::from_finite_values(finite_values.as_slice()))
+}
+
+fn adjusted_skewness_from_raw_moments(sums: RawMomentSums) -> Option<f64> {
+    let sample_count = sums.count;
     if sample_count < 3 {
         return None;
     }
 
-    let sample_mean = finite_arithmetic_mean_or_zero(finite_values.as_slice());
+    let sample_mean = sums.sum1 / sample_count as f64;
 
-    let (sum_squared_deviation, sum_cubed_deviation) =
-        finite_values
-            .iter()
-            .fold((0.0, 0.0), |(running_sum2, running_sum3), value| {
-                let centered_value = *value - sample_mean;
-                (
-                    running_sum2 + centered_value * centered_value,
-                    running_sum3 + centered_value * centered_value * centered_value,
-                )
-            });
+    let sum_squared_deviation =
+        sums.sum2 - 2.0 * sample_mean * sums.sum1 + sample_count as f64 * sample_mean * sample_mean;
+
+    let sum_cubed_deviation = sums.sum3 - 3.0 * sample_mean * sums.sum2
+        + 3.0 * sample_mean * sample_mean * sums.sum1
+        - sample_count as f64 * sample_mean.powi(3);
 
     let variance_population = sum_squared_deviation / sample_count as f64;
-    if !variance_population.is_finite() || variance_population <= 1.0e-12 {
+    if !variance_population.is_finite() || variance_population <= 0.0 {
         return Some(0.0);
     }
 
@@ -346,27 +424,32 @@ pub fn sample_adjusted_excess_kurtosis(values: &[f64]) -> Option<f64> {
         .filter(|value| value.is_finite())
         .collect();
 
-    let sample_count = finite_values.len();
+    adjusted_excess_kurtosis_from_raw_moments(RawMomentSums::from_finite_values(
+        finite_values.as_slice(),
+    ))
+}
+
+fn adjusted_excess_kurtosis_from_raw_moments(sums: RawMomentSums) -> Option<f64> {
+    let sample_count = sums.count;
     if sample_count < 4 {
         return None;
     }
 
-    let sample_mean = finite_arithmetic_mean_or_zero(finite_values.as_slice());
+    let sample_mean = sums.sum1 / sample_count as f64;
+    let sample_mean2 = sample_mean * sample_mean;
+    let sample_mean3 = sample_mean2 * sample_mean;
+    let sample_mean4 = sample_mean2 * sample_mean2;
 
-    let (sum_squared_deviation, sum_fourth_deviation) =
-        finite_values
-            .iter()
-            .fold((0.0, 0.0), |(running_sum2, running_sum4), value| {
-                let centered_value = *value - sample_mean;
-                let centered_square = centered_value * centered_value;
-                (
-                    running_sum2 + centered_square,
-                    running_sum4 + centered_square * centered_square,
-                )
-            });
+    let sum_squared_deviation =
+        sums.sum2 - 2.0 * sample_mean * sums.sum1 + sample_count as f64 * sample_mean2;
+
+    let sum_fourth_deviation = sums.sum4 - 4.0 * sample_mean * sums.sum3
+        + 6.0 * sample_mean2 * sums.sum2
+        - 4.0 * sample_mean3 * sums.sum1
+        + sample_count as f64 * sample_mean4;
 
     let variance_population = sum_squared_deviation / sample_count as f64;
-    if !variance_population.is_finite() || variance_population <= 1.0e-12 {
+    if !variance_population.is_finite() || variance_population <= 0.0 {
         return Some(0.0);
     }
 
@@ -476,8 +559,8 @@ pub fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        arithmetic_mean, arithmetic_mean_or_zero, central_skewness_or_zero,
-        coefficient_of_variation, finite_arithmetic_mean_or_zero, jackknife_standard_error,
+        adjusted_shape_jackknife_standard_errors, arithmetic_mean, arithmetic_mean_or_zero,
+        central_skewness_or_zero, coefficient_of_variation, finite_arithmetic_mean_or_zero,
         mean_estimate_from_standard_errors, pearson_correlation, relative_rmse, rolling_sum,
         root_mean_square_or_infinity, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
         sample_standard_deviation, sample_variance, standardized_path_distance,
@@ -524,10 +607,20 @@ mod tests {
     }
 
     #[test]
-    fn jackknife_standard_error_resamples_delete_one_metric() {
-        let standard_error = jackknife_standard_error(&[1.0, 2.0, 4.0], arithmetic_mean)
-            .expect("finite delete-one estimates should produce a standard error");
+    fn adjusted_shape_jackknife_standard_errors_are_finite_for_identifiable_shape_sample() {
+        let values = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
 
-        assert!((standard_error - (7.0 / 9.0_f64).sqrt()).abs() <= 1.0e-12);
+        let standard_errors = adjusted_shape_jackknife_standard_errors(&values);
+
+        assert!(
+            standard_errors
+                .skewness
+                .is_some_and(|standard_error| standard_error.is_finite())
+        );
+        assert!(
+            standard_errors
+                .excess_kurtosis
+                .is_some_and(|standard_error| standard_error.is_finite())
+        );
     }
 }

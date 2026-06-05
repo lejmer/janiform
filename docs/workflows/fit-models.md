@@ -54,7 +54,7 @@ model: JaniformModel = estimator.fit(
 )
 ```
 
-In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and routes coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
+In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and adds coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
 Coarse timestamp columns are interpreted as bar-open times by default. For sources stamped at bar close, use `CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME` in Python or pass `--coarse-timestamp-semantics bar-close-time` in the CLI.
 
 ```python

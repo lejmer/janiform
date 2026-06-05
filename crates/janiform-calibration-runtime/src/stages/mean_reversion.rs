@@ -1,3 +1,6 @@
+use std::sync::mpsc;
+use std::sync::mpsc::Sender;
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -31,6 +34,7 @@ use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
+use crate::stages::progress::{StageProgressUpdate, emit_stage_progress};
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
@@ -40,6 +44,9 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 mod evidence;
 mod evidence_statistics;
+mod progress;
+
+pub use progress::{MeanReversionStageProgressPhase, MeanReversionStageProgressUpdate};
 
 const FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT: usize = 2;
 const PRESSURE_GAIN_REGRESSION_COLUMN_COUNT: usize = 1;
@@ -201,6 +208,72 @@ pub fn run_mean_reversion_calibration_stage(
     calendar_registry: &ExchangeCalendarRegistry,
     execution_input: MeanReversionStageExecutionInput,
 ) -> MeanReversionStageExecutionReport {
+    run_mean_reversion_calibration_stage_internal(
+        run_spec,
+        calendar_registry,
+        execution_input,
+        None,
+    )
+}
+
+pub(crate) fn run_mean_reversion_calibration_stage_with_progress_observer(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    execution_input: MeanReversionStageExecutionInput,
+    progress_observer: Option<&mut dyn FnMut(MeanReversionStageProgressUpdate)>,
+) -> MeanReversionStageExecutionReport {
+    let Some(progress_observer) = progress_observer else {
+        return run_mean_reversion_calibration_stage_internal(
+            run_spec,
+            calendar_registry,
+            execution_input,
+            None,
+        );
+    };
+
+    let (progress_sender, progress_receiver) = mpsc::channel::<MeanReversionStageProgressUpdate>();
+
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            run_mean_reversion_calibration_stage_internal(
+                run_spec,
+                calendar_registry,
+                execution_input,
+                Some(progress_sender),
+            )
+        });
+
+        for progress_update in progress_receiver {
+            progress_observer(progress_update);
+        }
+
+        match worker.join() {
+            Ok(report) => report,
+            Err(_) => failure_report(
+                run_spec,
+                MeanReversionStageExecutionFailure::InvalidRunSpec {
+                    error_message: "mean reversion progress worker terminated unexpectedly"
+                        .to_string(),
+                },
+            ),
+        }
+    })
+}
+
+fn run_mean_reversion_calibration_stage_internal(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    execution_input: MeanReversionStageExecutionInput,
+    progress_sender: Option<Sender<MeanReversionStageProgressUpdate>>,
+) -> MeanReversionStageExecutionReport {
+    emit_mean_reversion_progress(
+        progress_sender.as_ref(),
+        MeanReversionStageProgressPhase::InputPreflight,
+        0,
+        4,
+        Some("validate run spec"),
+    );
+
     if let Err(error_message) = run_spec.validate() {
         return failure_report(
             run_spec,
@@ -209,6 +282,14 @@ pub fn run_mean_reversion_calibration_stage(
             },
         );
     }
+
+    emit_mean_reversion_progress(
+        progress_sender.as_ref(),
+        MeanReversionStageProgressPhase::InputPreflight,
+        1,
+        4,
+        Some("validate selected stages"),
+    );
 
     if !run_spec
         .selected_stages
@@ -220,6 +301,14 @@ pub fn run_mean_reversion_calibration_stage(
         );
     }
 
+    emit_mean_reversion_progress(
+        progress_sender.as_ref(),
+        MeanReversionStageProgressPhase::InputPreflight,
+        2,
+        4,
+        Some("resolve solver settings"),
+    );
+
     let Some(solver_settings) = janiform_calibration_artifacts::stage_solver_settings_for_stage(
         run_spec,
         CalibrationStage::MeanReversion,
@@ -229,6 +318,14 @@ pub fn run_mean_reversion_calibration_stage(
             MeanReversionStageExecutionFailure::MissingStageSolverSettings,
         );
     };
+
+    emit_mean_reversion_progress(
+        progress_sender.as_ref(),
+        MeanReversionStageProgressPhase::InputPreflight,
+        3,
+        4,
+        Some("resolve return components input"),
+    );
 
     let seed_metadata = janiform_calibration_artifacts::resolve_calibration_stage_seed_metadata(
         run_spec,
@@ -242,10 +339,19 @@ pub fn run_mean_reversion_calibration_stage(
         );
     };
 
+    emit_mean_reversion_progress(
+        progress_sender.as_ref(),
+        MeanReversionStageProgressPhase::InputPreflight,
+        4,
+        4,
+        Some("ready"),
+    );
+
     let (fitted_parameters, diagnostics) = match estimate_mean_reversion_fitted_parameters(
         calendar_registry,
         &execution_input,
         &solver_settings,
+        progress_sender.as_ref(),
     ) {
         Ok(result) => result,
         Err(failure) => return failure_report(run_spec, failure),
@@ -313,6 +419,7 @@ fn estimate_mean_reversion_fitted_parameters(
     calendar_registry: &ExchangeCalendarRegistry,
     execution_input: &MeanReversionStageExecutionInput,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<MeanReversionStageProgressUpdate>>,
 ) -> Result<
     (MeanReversionFittedParameters, MeanReversionStageDiagnostics),
     MeanReversionStageExecutionFailure,
@@ -335,20 +442,46 @@ fn estimate_mean_reversion_fitted_parameters(
     }
 
     let mut grid_evaluations = Vec::with_capacity(execution_input.grid_candidates.len());
+    let grid_candidate_count = execution_input.grid_candidates.len();
 
-    for grid_candidate in &execution_input.grid_candidates {
+    emit_mean_reversion_progress(
+        progress_sender,
+        MeanReversionStageProgressPhase::GridEvaluation,
+        0,
+        grid_candidate_count,
+        Some("start grid evaluation"),
+    );
+
+    for (grid_position, grid_candidate) in execution_input.grid_candidates.iter().enumerate() {
         grid_evaluations.push(evaluate_mean_reversion_grid_candidate(
             calendar_registry,
             execution_input,
             solver_settings,
             grid_candidate,
         )?);
+
+        emit_mean_reversion_progress(
+            progress_sender,
+            MeanReversionStageProgressPhase::GridEvaluation,
+            grid_position.saturating_add(1),
+            grid_candidate_count,
+            Some(grid_candidate.calibration_grid_kind.as_str()),
+        );
     }
+
+    emit_mean_reversion_progress(
+        progress_sender,
+        MeanReversionStageProgressPhase::CandidateSelection,
+        0,
+        2,
+        Some("evaluate predictive evidence"),
+    );
 
     let Some(selection) = evidence::select_mean_reversion_candidate(
         grid_evaluations.as_mut_slice(),
         solver_settings,
         execution_input.predictive_evidence_alpha,
+        progress_sender,
     )?
     else {
         return zero_kappa_endogenous_fit_with_grid_evaluations(
@@ -356,6 +489,14 @@ fn estimate_mean_reversion_fitted_parameters(
             NO_MEAN_REVERSION_GRID_CANDIDATE_REASON,
         );
     };
+
+    emit_mean_reversion_progress(
+        progress_sender,
+        MeanReversionStageProgressPhase::CandidateSelection,
+        1,
+        2,
+        Some("assemble selected candidate"),
+    );
 
     let Some(selected_grid) = grid_evaluations.get(selection.grid_index) else {
         return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
@@ -389,39 +530,62 @@ fn estimate_mean_reversion_fitted_parameters(
         .map(|context| context.core_expected_increments.as_slice())
         .unwrap_or(&[]);
 
-    Ok((
-        fitted_parameters,
-        MeanReversionStageDiagnostics {
-            selected_candidate_family: selected_candidate.candidate_family.to_string(),
-            calibration_grid: selected_grid.calibration_grid.clone(),
-            anchor_parameter_estimates: selected_candidate.anchor_model.clone(),
-            anchor_origin_level: selected_candidate.anchor_origin_level,
-            phi_reference: selected_candidate.phi_reference,
-            kappa: selected_candidate.kappa,
-            residual_sum_of_squares: selected_candidate.residual_sum_of_squares,
-            quasi_log_likelihood: finite_metric_or_none(selected_candidate.quasi_log_likelihood),
-            information_criterion_bic: finite_metric_or_none(
-                selected_candidate.information_criterion_bic,
-            ),
-            model_selection_policy: selection.model_selection_policy.to_string(),
-            deviation_sample_count: selected_candidate.deviations.len(),
-            regression_pair_count: selected_candidate.residuals.len(),
-            least_squares_rank: selected_candidate.least_squares_rank,
-            evaluated_candidates: selected_grid
-                .evaluated_candidates
-                .iter()
-                .map(|candidate| candidate.to_diagnostics(selected_core_expected_increments))
-                .collect(),
-            evaluated_grids: grid_evaluations
-                .iter()
-                .map(MeanReversionGridCandidateEvaluation::to_diagnostics)
-                .collect(),
-            stage_decision_reason: selected_mean_reversion_stage_decision_reason(
-                selected_candidate,
-                &selection,
-            ),
-        },
-    ))
+    emit_mean_reversion_progress(
+        progress_sender,
+        MeanReversionStageProgressPhase::ReportAssembly,
+        0,
+        2,
+        Some("build diagnostics"),
+    );
+
+    let diagnostics = MeanReversionStageDiagnostics {
+        selected_candidate_family: selected_candidate.candidate_family.to_string(),
+        calibration_grid: selected_grid.calibration_grid.clone(),
+        anchor_parameter_estimates: selected_candidate.anchor_model.clone(),
+        anchor_origin_level: selected_candidate.anchor_origin_level,
+        phi_reference: selected_candidate.phi_reference,
+        kappa: selected_candidate.kappa,
+        residual_sum_of_squares: selected_candidate.residual_sum_of_squares,
+        quasi_log_likelihood: finite_metric_or_none(selected_candidate.quasi_log_likelihood),
+        information_criterion_bic: finite_metric_or_none(
+            selected_candidate.information_criterion_bic,
+        ),
+        model_selection_policy: selection.model_selection_policy.to_string(),
+        deviation_sample_count: selected_candidate.deviations.len(),
+        regression_pair_count: selected_candidate.residuals.len(),
+        least_squares_rank: selected_candidate.least_squares_rank,
+        evaluated_candidates: selected_grid
+            .evaluated_candidates
+            .iter()
+            .map(|candidate| candidate.to_diagnostics(selected_core_expected_increments))
+            .collect(),
+        evaluated_grids: grid_evaluations
+            .iter()
+            .map(MeanReversionGridCandidateEvaluation::to_diagnostics)
+            .collect(),
+        stage_decision_reason: selected_mean_reversion_stage_decision_reason(
+            selected_candidate,
+            &selection,
+        ),
+    };
+
+    emit_mean_reversion_progress(
+        progress_sender,
+        MeanReversionStageProgressPhase::ReportAssembly,
+        1,
+        2,
+        Some("diagnostics built"),
+    );
+
+    emit_mean_reversion_progress(
+        progress_sender,
+        MeanReversionStageProgressPhase::ReportAssembly,
+        2,
+        2,
+        Some("report ready"),
+    );
+
+    Ok((fitted_parameters, diagnostics))
 }
 
 fn selected_mean_reversion_stage_decision_reason(
@@ -1898,6 +2062,22 @@ fn bic(regression_pair_count: usize, parameter_count: usize, quasi_log_likelihoo
 
 fn finite_metric_or_none(value: f64) -> Option<f64> {
     if value.is_finite() { Some(value) } else { None }
+}
+
+fn emit_mean_reversion_progress(
+    progress_sender: Option<&Sender<MeanReversionStageProgressUpdate>>,
+    phase: MeanReversionStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: Option<&str>,
+) {
+    emit_stage_progress(
+        progress_sender,
+        StageProgressUpdate {
+            current_item_label: current_item_label.map(str::to_string),
+            ..StageProgressUpdate::new(phase, completed_units, total_units)
+        },
+    );
 }
 
 fn stage_decision_reason_with_boundary_flags(

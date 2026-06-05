@@ -327,7 +327,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(6.5)
     assert mean_reversion_grid_candidate["calibration_grid_kind"] == (
         "market_data_open_session_log_price_interval_grid.v1:"
-        "last_observed_open_session_log_price_per_complete_utc_interval.v1:"
+        "last_observed_source_log_price_per_complete_utc_interval.v1:"
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
     )
     assert tuple(

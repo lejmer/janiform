@@ -219,16 +219,6 @@ impl VanillaOptionGridBatchPricingExecutionInput {
             );
         }
 
-        if let Some(cpu_count) = self.cpu_count
-            && cpu_count == 0
-        {
-            return Err(
-                VanillaOptionGridBatchPricingExecutionInputError::InvalidCpuCount {
-                    value: cpu_count,
-                },
-            );
-        }
-
         if let Some(collocation_node_count) = self.spectral_collocation_node_count_override
             && collocation_node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT
         {
@@ -281,9 +271,6 @@ pub enum VanillaOptionGridBatchPricingExecutionInputError {
         expected_interval_factor_count: usize,
         found_interval_factor_count: usize,
     },
-    InvalidCpuCount {
-        value: usize,
-    },
     InvalidCollocationNodeCount {
         value: usize,
     },
@@ -328,10 +315,6 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             } => write!(
                 formatter,
                 "grid batch pricing interval_factors must contain exactly {expected_interval_factor_count} entries implied by the runtime schedule, found {found_interval_factor_count}"
-            ),
-            Self::InvalidCpuCount { value } => write!(
-                formatter,
-                "grid batch pricing cpu_count must be strictly positive when provided, found {value}"
             ),
             Self::InvalidCollocationNodeCount { value } => write!(
                 formatter,

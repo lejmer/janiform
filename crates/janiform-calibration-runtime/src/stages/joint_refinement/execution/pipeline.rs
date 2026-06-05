@@ -29,6 +29,7 @@ use crate::stages::joint_refinement::contracts::{
 };
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
+use crate::stages::parallelism::{build_stage_thread_pool, resolved_stage_cpu_count};
 use crate::stages::return_components::{
     ReturnComponentsStageFittedPayload,
     ReturnComponentsStageJointRefinementObservedSignalPreparation,
@@ -1230,25 +1231,18 @@ fn freeze_physical_parameter_bounds_for_option_pricing(
     }
 }
 
-fn build_stage_thread_pool(cpu_count: usize) -> Option<Arc<rayon::ThreadPool>> {
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(cpu_count.max(1))
-        .build()
-        .ok()
-        .map(Arc::new)
-}
-
 fn build_summary_simulation_scheduler(
     cpu_count: usize,
     summary_simulation_session_context: &super::super::summary_simulation::JointRefinementSummarySimulationSessionContext,
 ) -> Result<Arc<JointRefinementSummarySimulationScheduler>, JointRefinementStageExecutionFailure> {
-    JointRefinementSummarySimulationScheduler::new(cpu_count, summary_simulation_session_context)
-        .map(Arc::new)
-        .map_err(|error_message| {
-            JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
-                error_message,
-            }
-        })
+    JointRefinementSummarySimulationScheduler::new(
+        resolved_stage_cpu_count(cpu_count),
+        summary_simulation_session_context,
+    )
+    .map(Arc::new)
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable { error_message }
+    })
 }
 
 fn establish_baseline_evaluation(

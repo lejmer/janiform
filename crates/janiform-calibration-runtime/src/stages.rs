@@ -7,6 +7,8 @@ pub(crate) mod long_variance;
 pub(crate) mod mean_reversion;
 pub(crate) mod news_shocks;
 pub(crate) mod optimization;
+pub(crate) mod parallelism;
+pub(crate) mod progress;
 pub(crate) mod return_backfit;
 pub(crate) mod return_components;
 pub(crate) mod seasonality;

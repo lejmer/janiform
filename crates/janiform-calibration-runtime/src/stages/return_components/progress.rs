@@ -13,14 +13,14 @@ pub(crate) struct ReturnComponentsConvergenceProgress<'a> {
     pub(crate) current_convergence_ratio: Option<f64>,
 }
 
-pub(crate) fn send_return_components_progress(
+pub(crate) fn emit_return_components_progress(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
     phase: ReturnComponentsStageProgressPhase,
     completed_units: usize,
     total_units: usize,
     current_item_label: Option<&str>,
 ) {
-    send_return_components_progress_update(
+    emit_return_components_progress_update(
         progress_sender,
         ReturnComponentsStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),
@@ -29,7 +29,7 @@ pub(crate) fn send_return_components_progress(
     );
 }
 
-pub(crate) fn send_return_components_evaluation_progress(
+pub(crate) fn emit_return_components_evaluation_progress(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
     phase: ReturnComponentsStageProgressPhase,
     completed_units: usize,
@@ -42,7 +42,7 @@ pub(crate) fn send_return_components_evaluation_progress(
         .saturating_mul(100)
         .checked_div(total_evaluation_budget);
 
-    send_return_components_progress_update(
+    emit_return_components_progress_update(
         progress_sender,
         ReturnComponentsStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),
@@ -54,11 +54,11 @@ pub(crate) fn send_return_components_evaluation_progress(
     );
 }
 
-pub(crate) fn send_return_components_convergence_progress(
+pub(crate) fn emit_return_components_convergence_progress(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
     progress: ReturnComponentsConvergenceProgress<'_>,
 ) {
-    send_return_components_progress_update(
+    emit_return_components_progress_update(
         progress_sender,
         ReturnComponentsStageProgressUpdate {
             current_item_label: progress.current_item_label.map(str::to_string),
@@ -75,7 +75,7 @@ pub(crate) fn send_return_components_convergence_progress(
     );
 }
 
-fn send_return_components_progress_update(
+fn emit_return_components_progress_update(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
     progress_update: ReturnComponentsStageProgressUpdate,
 ) {

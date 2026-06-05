@@ -7,7 +7,6 @@ use janiform_foundations::time::{
 
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
-use crate::stages::coarse_data::coarse_data_interval_observations;
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketThresholds, build_observed_open_session_interval_observations,
     business_time_bucket_thresholds, mean_absolute_observed_return_by_utc_hour,
@@ -17,6 +16,7 @@ use crate::stages::joint_metrics::{
     zeroed_interval_observation_template,
 };
 use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
+use crate::stages::long_variance::source::select_long_variance_slow_horizon_intervals;
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -98,19 +98,14 @@ pub(crate) fn build_observed_data(
         NANOS_PER_HOUR,
     );
 
-    let coarse_intervals = coarse_data_records
-        .map(coarse_data_interval_observations)
-        .unwrap_or_default();
-
-    let observed_slow_horizon_intervals = if coarse_intervals.is_empty() {
-        tick_hourly_intervals.as_slice()
-    } else {
-        coarse_intervals.as_slice()
-    };
+    let observed_slow_horizon_selection = select_long_variance_slow_horizon_intervals(
+        tick_hourly_intervals.as_slice(),
+        coarse_data_records,
+    );
 
     let observed_long_variance_horizon_summaries = long_variance_horizon_summaries(
         observed_5m_intervals.as_slice(),
-        observed_slow_horizon_intervals,
+        observed_slow_horizon_selection.intervals.as_slice(),
     );
 
     let hourly_simulation_start_utc_nanos =
