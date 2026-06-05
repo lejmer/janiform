@@ -32,6 +32,7 @@ use super::option_surface::{
 use super::progress::{
     MarketDataLoadingProgressContext, MarketDataLoadingProgressEvent,
     MarketDataLoadingProgressObserver, MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+    market_data_loading_source_sequence, optional_market_data_loading_source_sequence,
 };
 use super::rows::{
     column_index, load_rows_with_progress, load_source_columns,
@@ -69,6 +70,8 @@ fn load_and_preprocess_market_data_translation_request_with_context(
     request: MarketDataLoadingRequest,
     progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    progress.set_source_sequence_if_empty(market_data_loading_source_sequence(&request));
+
     let normalized_tick_output = normalize_market_data_source_with_context(
         &request.tick_data_source,
         &request.tick_data_column_mapping,
@@ -326,6 +329,8 @@ fn prepare_market_data_loading_from_phases_with_context(
     session_resolution: MarketDataSessionResolutionPayload,
     progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    progress.set_source_sequence_if_empty(optional_market_data_loading_source_sequence(&request));
+
     let calendar_registry = ExchangeCalendarRegistryLoader::load_from_json(
         session_resolution.resolved_session_definition_json.as_str(),
     )

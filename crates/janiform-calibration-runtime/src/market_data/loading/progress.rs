@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use super::contracts::MarketDataLoadingError;
+use super::contracts::{MarketDataLoadingError, MarketDataLoadingRequest};
 
 /// Market-data source currently being loaded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,6 +69,15 @@ impl MarketDataLoadingProgressPhase {
     }
 }
 
+/// One-based loading position for a source within a multi-source dataset sequence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MarketDataLoadingDatasetPosition {
+    /// One-based dataset position.
+    pub dataset_index: usize,
+    /// Total number of datasets in the loading sequence.
+    pub dataset_count: usize,
+}
+
 /// Progress emitted while market-data sources are loaded from disk.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MarketDataLoadingProgressEvent {
@@ -80,6 +89,8 @@ pub struct MarketDataLoadingProgressEvent {
     pub completed_records: usize,
     /// Total source-record count when the source format makes it available.
     pub total_records: Option<usize>,
+    /// One-based dataset sequence position when more than one dataset is being loaded.
+    pub dataset_position: Option<MarketDataLoadingDatasetPosition>,
 }
 
 impl MarketDataLoadingProgressEvent {
@@ -95,11 +106,35 @@ impl MarketDataLoadingProgressEvent {
             phase,
             completed_records,
             total_records,
+            dataset_position: None,
         }
+    }
+
+    /// Return this event with multi-source dataset position metadata attached.
+    pub const fn with_dataset_position(
+        mut self,
+        dataset_position: MarketDataLoadingDatasetPosition,
+    ) -> Self {
+        self.dataset_position = Some(dataset_position);
+
+        self
     }
 
     /// Human-readable latest signal for terminal progress displays.
     pub fn latest_signal(self) -> String {
+        self.with_dataset_prefix(self.source_record_signal())
+    }
+
+    /// Human-readable source and phase signal for progress event metadata.
+    pub fn phase_signal(self) -> String {
+        self.with_dataset_prefix(format!(
+            "{}: {}",
+            self.source.source_label(),
+            self.phase.phase_label()
+        ))
+    }
+
+    fn source_record_signal(self) -> String {
         match self.total_records {
             Some(total_records) if total_records > 0 => format!(
                 "{}: {} {}/{} records",
@@ -119,6 +154,16 @@ impl MarketDataLoadingProgressEvent {
                 self.phase.phase_label(),
                 self.completed_records
             ),
+        }
+    }
+
+    fn with_dataset_prefix(self, source_signal: String) -> String {
+        match self.dataset_position {
+            Some(position) => format!(
+                "dataset {}/{}: {}",
+                position.dataset_index, position.dataset_count, source_signal
+            ),
+            None => source_signal,
         }
     }
 }
@@ -152,16 +197,30 @@ pub type MarketDataLoadingProgressObserver<'a> =
 
 pub(crate) struct MarketDataLoadingProgressContext<'a> {
     observer: Option<MarketDataLoadingProgressObserver<'a>>,
+    source_sequence: Vec<MarketDataLoadingSource>,
 }
 
 impl<'a> MarketDataLoadingProgressContext<'a> {
-    pub(crate) const fn disabled() -> Self {
-        Self { observer: None }
+    pub(crate) fn disabled() -> Self {
+        Self {
+            observer: None,
+            source_sequence: Vec::new(),
+        }
     }
 
     pub(crate) fn observed(observer: MarketDataLoadingProgressObserver<'a>) -> Self {
         Self {
             observer: Some(observer),
+            source_sequence: Vec::new(),
+        }
+    }
+
+    pub(crate) fn set_source_sequence_if_empty(
+        &mut self,
+        source_sequence: Vec<MarketDataLoadingSource>,
+    ) {
+        if self.source_sequence.is_empty() {
+            self.source_sequence = source_sequence;
         }
     }
 
@@ -173,6 +232,155 @@ impl<'a> MarketDataLoadingProgressContext<'a> {
             return Ok(());
         };
 
+        let event = attach_dataset_position(event, self.source_sequence.as_slice());
+
         observer(event).map_err(MarketDataLoadingError::Progress)
+    }
+}
+
+pub(crate) fn market_data_loading_source_sequence(
+    request: &MarketDataLoadingRequest,
+) -> Vec<MarketDataLoadingSource> {
+    let mut source_sequence = vec![MarketDataLoadingSource::TickData];
+    push_optional_loading_sources(request, &mut source_sequence);
+
+    source_sequence
+}
+
+pub(crate) fn optional_market_data_loading_source_sequence(
+    request: &MarketDataLoadingRequest,
+) -> Vec<MarketDataLoadingSource> {
+    let mut source_sequence = Vec::new();
+    push_optional_loading_sources(request, &mut source_sequence);
+
+    source_sequence
+}
+
+fn push_optional_loading_sources(
+    request: &MarketDataLoadingRequest,
+    source_sequence: &mut Vec<MarketDataLoadingSource>,
+) {
+    if request.known_news_input.is_some() {
+        source_sequence.push(MarketDataLoadingSource::KnownNews);
+    }
+
+    if request.coarse_data_input.is_some() {
+        source_sequence.push(MarketDataLoadingSource::CoarseData);
+    }
+
+    if request.option_surface_input.is_some() {
+        source_sequence.push(MarketDataLoadingSource::OptionSurface);
+    }
+}
+
+fn attach_dataset_position(
+    event: MarketDataLoadingProgressEvent,
+    source_sequence: &[MarketDataLoadingSource],
+) -> MarketDataLoadingProgressEvent {
+    if event.dataset_position.is_some() || source_sequence.len() <= 1 {
+        return event;
+    }
+
+    source_sequence
+        .iter()
+        .position(|source| *source == event.source)
+        .map(|source_position| {
+            event.with_dataset_position(MarketDataLoadingDatasetPosition {
+                dataset_index: source_position + 1,
+                dataset_count: source_sequence.len(),
+            })
+        })
+        .unwrap_or(event)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        MarketDataLoadingDatasetPosition, MarketDataLoadingProgressContext,
+        MarketDataLoadingProgressEvent, MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+    };
+
+    #[test]
+    fn progress_context_attaches_dataset_position_for_multi_source_sequence() {
+        let mut observed_events = Vec::new();
+        let mut observer = |event| {
+            observed_events.push(event);
+            Ok(())
+        };
+
+        {
+            let mut progress = MarketDataLoadingProgressContext::observed(&mut observer);
+            progress.set_source_sequence_if_empty(vec![
+                MarketDataLoadingSource::TickData,
+                MarketDataLoadingSource::CoarseData,
+                MarketDataLoadingSource::OptionSurface,
+            ]);
+
+            progress
+                .emit(MarketDataLoadingProgressEvent::new(
+                    MarketDataLoadingSource::CoarseData,
+                    MarketDataLoadingProgressPhase::ReadingRecords,
+                    4,
+                    Some(10),
+                ))
+                .expect("observer should accept progress event");
+        }
+
+        assert_eq!(
+            observed_events,
+            vec![
+                MarketDataLoadingProgressEvent::new(
+                    MarketDataLoadingSource::CoarseData,
+                    MarketDataLoadingProgressPhase::ReadingRecords,
+                    4,
+                    Some(10),
+                )
+                .with_dataset_position(MarketDataLoadingDatasetPosition {
+                    dataset_index: 2,
+                    dataset_count: 3,
+                }),
+            ]
+        );
+        assert_eq!(
+            observed_events[0].latest_signal(),
+            "dataset 2/3: coarse data: reading records 4/10 records"
+        );
+        assert_eq!(
+            observed_events[0].phase_signal(),
+            "dataset 2/3: coarse data: reading records"
+        );
+    }
+
+    #[test]
+    fn progress_context_omits_dataset_position_for_single_source_sequence() {
+        let mut observed_events = Vec::new();
+        let mut observer = |event| {
+            observed_events.push(event);
+            Ok(())
+        };
+
+        {
+            let mut progress = MarketDataLoadingProgressContext::observed(&mut observer);
+            progress.set_source_sequence_if_empty(vec![MarketDataLoadingSource::TickData]);
+
+            progress
+                .emit(MarketDataLoadingProgressEvent::new(
+                    MarketDataLoadingSource::TickData,
+                    MarketDataLoadingProgressPhase::ReadingRecords,
+                    4,
+                    Some(10),
+                ))
+                .expect("observer should accept progress event");
+        }
+
+        assert_eq!(observed_events[0].dataset_position, None);
+        assert_eq!(
+            observed_events[0].latest_signal(),
+            "tick data: reading records 4/10 records"
+        );
+        assert_eq!(
+            observed_events[0].phase_signal(),
+            "tick data: reading records"
+        );
     }
 }

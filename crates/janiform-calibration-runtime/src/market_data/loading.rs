@@ -50,7 +50,8 @@ pub use price_coordinates::{
     PriceCoordinateResolutionInput, PriceCoordinateResolutionOutput, resolve_price_coordinates,
 };
 pub use progress::{
-    MarketDataLoadingProgressError, MarketDataLoadingProgressEvent,
-    MarketDataLoadingProgressObserver, MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+    MarketDataLoadingDatasetPosition, MarketDataLoadingProgressError,
+    MarketDataLoadingProgressEvent, MarketDataLoadingProgressObserver,
+    MarketDataLoadingProgressPhase, MarketDataLoadingSource,
 };
 pub use shared::CalibrationDirectionalLabelDiagnosticsPayload;
