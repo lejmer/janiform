@@ -28,6 +28,7 @@ You are operating in a sandbox in a virtual machine where `home` is read-only. T
 - You verify that the code is DRY (remember to look for other functions and classes that do the same thing).
 - All code compiles.
 - All tests succeed.
+- Clippy doesn't complain when running: `cargo clippy --locked -- -D warnings`
 
 ## Contract Evolution Policy
 
