@@ -171,8 +171,8 @@ class JaniformEstimator:
                 "must be a non-empty string when provided",
             )
 
-        if cpu_count is not None and cpu_count <= 0:
-            raise calibration_error("cpu_count", "must be strictly positive when provided")
+        if cpu_count is not None and cpu_count < 0:
+            raise calibration_error("cpu_count", "must be non-negative when provided")
 
         if (
             preprocessing_settings is not None

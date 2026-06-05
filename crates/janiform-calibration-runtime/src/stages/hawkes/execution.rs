@@ -6,6 +6,7 @@ use super::contracts::{
     HawkesStageFittedPayload, HawkesStageHandoffOutput, HawkesStageImpliedMetricsDiagnostic,
     HawkesStageObjectiveTermDiagnostic, HawkesStageObservedSourceRegime,
 };
+use super::short_gap_ratio_from_threshold;
 use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
 use crate::objective::CalibrationObjectiveTermInput;
 use crate::optimizer_adapter::{
@@ -14,6 +15,7 @@ use crate::optimizer_adapter::{
     CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
     run_constrained_optimizer_adapter,
 };
+use crate::stages::parallelism::run_in_stage_thread_pool;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
     maximum_runtime_hourly_seasonality_factor_from_payload,
@@ -21,8 +23,8 @@ use crate::stages::seasonality::{
 use janiform_calibration_artifacts::{
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY, CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode, CalibrationRunSpec,
-    CalibrationStage, CalibrationStageHandoffTransport, HawkesStageFittedParameters,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageHandoffTransport, HawkesStageFittedParameters,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_foundations::numeric::{
@@ -153,18 +155,12 @@ pub fn run_hawkes_calibration_stage(
         );
     }
 
-    let expected_seasonality_handoff = run_spec.stage_handoffs.iter().find(|stage_handoff| {
-        stage_handoff.from_stage == CalibrationStage::Seasonality
-            && stage_handoff.to_stage == CalibrationStage::Hawkes
-    });
-    let expected_transport = expected_seasonality_handoff
-        .map(|stage_handoff| stage_handoff.transport())
-        .unwrap_or(match run_spec.execution_mode {
-            CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
-            CalibrationExecutionMode::Disk => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        });
+    let expected_seasonality_handoff =
+        run_spec.stage_handoff(CalibrationStage::Seasonality, CalibrationStage::Hawkes);
+    let expected_transport = run_spec.stage_handoff_transport_or_default(
+        CalibrationStage::Seasonality,
+        CalibrationStage::Hawkes,
+    );
     let provided_transport = stage_input.seasonality_input.transport();
 
     if provided_transport != expected_transport {
@@ -214,6 +210,7 @@ pub fn run_hawkes_calibration_stage(
 
     let resolved_stage_seed =
         resolve_calibration_stage_seed_metadata(run_spec, CalibrationStage::Hawkes);
+
     let optimizer_adapter_configuration = match CalibrationOptimizerAdapterConfiguration::try_new(
         "candidate_enumeration.v1",
         resolved_stage_seed.stage_seed,
@@ -233,6 +230,7 @@ pub fn run_hawkes_calibration_stage(
     };
 
     let seasonality_payload = stage_input.seasonality_input.payload();
+
     let max_runtime_hourly_seasonality_factor =
         match maximum_runtime_hourly_seasonality_factor_from_payload(
             calendar_registry,
@@ -336,6 +334,7 @@ pub fn run_hawkes_calibration_stage(
 
     let selected_candidate_input =
         &all_prepared_candidates[selected_candidate_position].adjusted_candidate_input;
+
     let selected_candidate_diagnostic = &candidate_diagnostics[selected_candidate_position];
 
     let Some(derived_alpha) = selected_candidate_diagnostic
@@ -391,6 +390,7 @@ pub fn run_hawkes_calibration_stage(
         .count();
 
     let selected_candidate_raw_objective = selected_candidate_diagnostic.raw_objective_value;
+
     let selected_candidate_penalized_objective =
         selected_candidate_diagnostic.penalized_objective_value;
 
@@ -461,6 +461,7 @@ fn build_candidate_objective_terms(
             "candidate did not derive alpha",
         );
     };
+
     let Some(derived_rho) = derived_rho else {
         return invalid_candidate_objective_bundle(candidate_input, "candidate did not derive rho");
     };
@@ -473,6 +474,7 @@ fn build_candidate_objective_terms(
         derived_alpha,
         derived_rho,
     );
+
     let mut warnings = Vec::new();
 
     if implied_metrics.event_volume_ratio_vs_total_observed > 1.5 {
@@ -503,6 +505,7 @@ fn build_candidate_objective_terms(
         &mut objective_terms,
         &mut term_diagnostics,
     );
+
     push_objective_term(
         "directional_imbalance_magnitude",
         1.5,
@@ -512,6 +515,7 @@ fn build_candidate_objective_terms(
         &mut objective_terms,
         &mut term_diagnostics,
     );
+
     push_objective_term(
         "interarrival_coefficient_of_variation",
         1.25,
@@ -523,6 +527,7 @@ fn build_candidate_objective_terms(
         &mut objective_terms,
         &mut term_diagnostics,
     );
+
     push_objective_term(
         "short_gap_ratio",
         1.0,
@@ -534,6 +539,7 @@ fn build_candidate_objective_terms(
         &mut objective_terms,
         &mut term_diagnostics,
     );
+
     push_objective_term(
         "observation_window_event_count",
         2.0,
@@ -576,6 +582,7 @@ fn prepare_hawkes_candidates(
     >,
 ) -> HawkesStageReportResult<Vec<HawkesPreparedCandidate>> {
     let validated_candidate_inputs = validate_hawkes_candidate_inputs(run_spec, candidate_inputs)?;
+
     populate_observed_activity_targets_cache(
         validated_candidate_inputs.as_slice(),
         seasonality_payload,
@@ -653,7 +660,7 @@ fn prepare_hawkes_candidates_from_validated_inputs(
     max_runtime_hourly_seasonality_factor: f64,
     cpu_count: usize,
 ) -> Vec<HawkesPreparedCandidate> {
-    with_hawkes_stage_thread_pool(cpu_count, || {
+    run_with_hawkes_stage_thread_pool(cpu_count, || {
         validated_candidate_inputs
             .par_iter()
             .map(|candidate_input| {
@@ -729,22 +736,12 @@ fn prepare_hawkes_candidate(
     }
 }
 
-fn with_hawkes_stage_thread_pool<T, F>(cpu_count: usize, operation: F) -> T
+fn run_with_hawkes_stage_thread_pool<T, F>(cpu_count: usize, operation: F) -> T
 where
     T: Send,
     F: FnOnce() -> T + Send,
 {
-    if cpu_count <= 1 {
-        return operation();
-    }
-
-    match rayon::ThreadPoolBuilder::new()
-        .num_threads(cpu_count)
-        .build()
-    {
-        Ok(thread_pool) => thread_pool.install(operation),
-        Err(_) => operation(),
-    }
+    run_in_stage_thread_pool(cpu_count, operation)
 }
 
 fn evaluate_prepared_hawkes_candidates(
@@ -1185,6 +1182,7 @@ fn derive_observed_activity_targets(
 
     let open_factor_exposure_hours =
         (source_regime.open_session_duration_hours * mean_open_factor).max(1.0e-9);
+
     let deseasonalized_open_event_rate_per_hour =
         source_regime.open_session_tick_count as f64 / open_factor_exposure_hours;
 
@@ -1199,15 +1197,10 @@ fn derive_observed_activity_targets(
     let deseasonalized_short_gap_threshold_seconds =
         (deseasonalized_mean_interarrival_seconds * 0.5).clamp(1.0, 300.0);
 
-    let deseasonalized_short_gap_ratio = if transformed_open_gaps_seconds.is_empty() {
-        0.0
-    } else {
-        transformed_open_gaps_seconds
-            .iter()
-            .filter(|gap_seconds| **gap_seconds <= deseasonalized_short_gap_threshold_seconds)
-            .count() as f64
-            / transformed_open_gaps_seconds.len() as f64
-    };
+    let deseasonalized_short_gap_ratio = short_gap_ratio_from_threshold(
+        transformed_open_gaps_seconds.as_slice(),
+        deseasonalized_short_gap_threshold_seconds,
+    );
 
     let deseasonalized_known_news_rate_per_hour =
         source_regime.known_news_open_event_count as f64 / open_factor_exposure_hours.max(1.0e-9);
@@ -1262,8 +1255,10 @@ fn derive_candidate_implied_metrics(
 
     let stationary_buy_intensity =
         candidate_input.lambda_bar * stationary_multipliers.buy_intensity_multiplier.max(0.0);
+
     let stationary_sell_intensity =
         candidate_input.lambda_bar * stationary_multipliers.sell_intensity_multiplier.max(0.0);
+
     let stationary_total_intensity = stationary_buy_intensity + stationary_sell_intensity;
 
     let model_implied_open_sell_share = if stationary_total_intensity > 0.0 {
@@ -1282,10 +1277,13 @@ fn derive_candidate_implied_metrics(
 
     let self_excitation_ratio =
         (derived_alpha.plus_plus + derived_alpha.minus_minus) / (2.0 * candidate_input.beta);
+
     let cross_excitation_ratio =
         (derived_alpha.plus_minus + derived_alpha.minus_plus) / (2.0 * candidate_input.beta);
+
     let exogenous_self_loading_ratio =
         (derived_rho.plus_plus + derived_rho.minus_minus) / (2.0 * candidate_input.beta);
+
     let exogenous_cross_loading_ratio =
         (derived_rho.plus_minus + derived_rho.minus_plus) / (2.0 * candidate_input.beta);
 
@@ -1373,7 +1371,6 @@ fn push_objective_term(
 ) {
     let absolute_error = (model_implied_value - observed_value).abs();
     let normalized_error = absolute_error / scale.max(1e-9);
-
     let weighted_contribution = weight * normalized_error;
 
     objective_terms.push(CalibrationObjectiveTermInput {
@@ -1416,6 +1413,7 @@ pub(crate) fn stationary_open_event_rate_per_hour(
 ) -> Option<f64> {
     let derived_alpha =
         HawkesKernelLoadings::try_from_structured_alpha(fitted_parameters.structured_alpha).ok()?;
+
     let stationary_multipliers =
         stationary_intensity_multipliers(derived_alpha, fitted_parameters.kernel_parameters.beta)?;
 
@@ -1528,6 +1526,7 @@ mod tests {
             test_candidate_diagnostic("candidate_b", 1, 2.0, 2.0),
             test_candidate_diagnostic("candidate_c", 1, 0.5, 0.5),
         ];
+
         let prepared_candidates = vec![
             test_prepared_candidate("candidate_a"),
             test_prepared_candidate("candidate_b"),
@@ -1556,7 +1555,9 @@ mod tests {
     fn repeated_source_regimes_prepare_in_original_candidate_order() {
         let candidate_a = test_candidate_input("candidate_a");
         let candidate_b = test_candidate_input("candidate_b");
+
         let validated_candidate_inputs = vec![&candidate_a, &candidate_b];
+
         let mut observed_activity_targets_by_regime = BTreeMap::new();
 
         populate_observed_activity_targets_cache(
@@ -1589,6 +1590,7 @@ mod tests {
     fn prepared_candidates_are_identical_across_cpu_counts() {
         let candidate_a = test_candidate_input("candidate_a");
         let candidate_b = test_candidate_input("candidate_b");
+
         let candidate_c = HawkesStageCandidateInput {
             candidate_id: "candidate_c".to_string(),
             source_regime: HawkesStageObservedSourceRegime {
@@ -1597,7 +1599,9 @@ mod tests {
             },
             ..test_candidate_input("candidate_c")
         };
+
         let validated_candidate_inputs = vec![&candidate_a, &candidate_b, &candidate_c];
+
         let mut observed_activity_targets_by_regime = BTreeMap::new();
 
         populate_observed_activity_targets_cache(
@@ -1612,6 +1616,7 @@ mod tests {
             1.0,
             1,
         );
+
         let multi_thread_candidates = prepare_hawkes_candidates_from_validated_inputs(
             validated_candidate_inputs.as_slice(),
             &observed_activity_targets_by_regime,

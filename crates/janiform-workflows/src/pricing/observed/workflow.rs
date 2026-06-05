@@ -336,15 +336,6 @@ fn validate_request(request: &ObservedOptionsPricingRequest) -> Result<(), Workf
         ));
     }
 
-    if let Some(cpu_count) = request.cpu_count
-        && cpu_count == 0
-    {
-        return Err(pricing_validation_error(
-            "cpu_count",
-            "must be strictly positive when provided",
-        ));
-    }
-
     request
         .option_forward_parity_warning_policy
         .validate()

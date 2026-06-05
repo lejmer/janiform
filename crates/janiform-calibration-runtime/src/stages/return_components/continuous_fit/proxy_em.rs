@@ -10,8 +10,8 @@ use super::super::contracts::{
     ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
 };
 use super::super::progress::{
-    ReturnComponentsConvergenceProgress, send_return_components_convergence_progress,
-    send_return_components_progress,
+    ReturnComponentsConvergenceProgress, emit_return_components_convergence_progress,
+    emit_return_components_progress,
 };
 use super::bessel::{log_modified_bessel_k1, modified_bessel_k0_to_k1_ratio};
 use super::bounds::nig_search_point_from_configuration;
@@ -94,7 +94,7 @@ pub(super) fn build_effective_nig_em_search_points(
                 .fetch_add(1, Ordering::Relaxed)
                 + 1;
 
-            send_return_components_progress(
+            emit_return_components_progress(
                 progress_sender,
                 ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
                 completed_count,
@@ -315,7 +315,7 @@ fn fit_effective_zero_drift_nig_via_em(
                 current_convergence_ratio,
             );
 
-            send_return_components_convergence_progress(
+            emit_return_components_convergence_progress(
                 progress_context.progress_sender,
                 ReturnComponentsConvergenceProgress {
                     phase: ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,

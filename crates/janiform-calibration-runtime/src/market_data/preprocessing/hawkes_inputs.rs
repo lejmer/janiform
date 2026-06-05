@@ -11,6 +11,7 @@ use super::shared::{
     observation_window_hours, round_positive_to_domain, round_to, smallest_positive_value,
     strictly_positive_machine_value, unique_sorted_values,
 };
+use crate::stages::hawkes::short_gap_ratio_from_threshold;
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, baseline_intensity_for_stationary_total_intensity,
@@ -51,6 +52,7 @@ pub(super) fn build_hawkes_candidate_inputs(
         resolved_ticks.first().map(|tick| tick.timestamp_utc_nanos),
         resolved_ticks.last().map(|tick| tick.timestamp_utc_nanos),
     );
+
     let source_window = resolved_ticks
         .first()
         .zip(resolved_ticks.last())
@@ -61,6 +63,7 @@ pub(super) fn build_hawkes_candidate_inputs(
             )
         })
         .unwrap_or((0, 0));
+
     let (open_session_duration_hours, open_interarrival_seconds) =
         open_session_transition_metrics(open_price_ticks, source_window);
 
@@ -78,25 +81,22 @@ pub(super) fn build_hawkes_candidate_inputs(
             .unwrap_or(strictly_positive_machine_value()),
     );
 
-    let short_gap_ratio = if open_interarrival_seconds.is_empty() {
-        0.0
-    } else {
-        open_interarrival_seconds
-            .iter()
-            .filter(|duration_seconds| **duration_seconds <= short_gap_threshold_seconds)
-            .count() as f64
-            / open_interarrival_seconds.len() as f64
-    };
+    let short_gap_ratio = short_gap_ratio_from_threshold(
+        open_interarrival_seconds.as_slice(),
+        short_gap_threshold_seconds,
+    );
 
     let open_known_news_timestamps: Vec<i64> = retained_known_news
         .iter()
         .filter(|record| record.market_state == MarketState::Open)
         .map(|record| record.event_timestamp_utc_nanos)
         .collect();
+
     let open_price_tick_timestamps = open_price_ticks
         .iter()
         .map(|tick| tick.timestamp_utc_nanos)
         .collect::<Vec<_>>();
+
     let known_news_attributed_open_return_timestamps = attributed_open_return_timestamps(
         retained_known_news,
         open_price_ticks,
@@ -132,6 +132,7 @@ pub(super) fn build_hawkes_candidate_inputs(
 
     let open_session_rate_per_hour = session_open_tick_count as f64
         / open_session_duration_hours.max(strictly_positive_machine_value());
+
     let open_session_rate_per_second = open_session_rate_per_hour / 3600.0;
 
     let poisson_short_gap_ratio =
@@ -174,6 +175,7 @@ pub(super) fn build_hawkes_candidate_inputs(
                     cross_share,
                     asymmetry_fraction,
                 );
+
                 let matched_lambda_bar = matched_lambda_bar_for_observed_open_rate(
                     open_session_rate_per_hour,
                     beta,
@@ -304,6 +306,7 @@ pub(super) fn open_session_transition_metrics(
 
         open_session_exposure_nanos =
             open_session_exposure_nanos.saturating_add(session_window.1 - session_window.0);
+
         previous_session_window = Some(session_window);
     }
 

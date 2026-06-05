@@ -70,6 +70,16 @@ For other settings:
 - `--events` overrides `output.events`
 - `--trace-events` is enabled if either the flag is passed or `output.trace_events = true`
 
+## Runtime options
+
+Some options are available on several workflows rather than in the global TOML configuration file. `cpu_count` is one of these shared runtime options.
+
+Across calibration, pricing, and validation workflows:
+
+- omitting `cpu_count` uses the default CPU budget
+- passing `cpu_count=0` in Python or `--cpu-count 0` in the CLI means all CPUs available to the process
+- passing a positive value sets an explicit worker budget
+
 ## TOML table: `[output]`
 
 ### TOML field: `color`

@@ -416,13 +416,6 @@ fn validate_request(request: &StylizedFactsValidationWorkflowRequest) -> Result<
         });
     }
 
-    if request.cpu_count == Some(0) {
-        return Err(WorkflowError::ValidationInputFailed {
-            field: "--cpu-count",
-            message: "must be greater than 0".to_string(),
-        });
-    }
-
     if request.threshold_policy.is_some() && request.significance_level.is_some() {
         return Err(WorkflowError::ValidationInputFailed {
             field: "--significance-level",

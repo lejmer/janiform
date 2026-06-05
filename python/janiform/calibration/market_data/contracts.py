@@ -122,13 +122,33 @@ class CalibrationFlatCarryInput(ContractModel):
 @dataclass(frozen=True, slots=True)
 class CalibrationMeanReversionConfiguration(ContractModel):
     calibration_grid_interval_hours: Optional[float] = None
+    predictive_evidence_alpha: Optional[float] = None
 
     def __post_init__(self) -> None:
-        if self.calibration_grid_interval_hours is not None and self.calibration_grid_interval_hours <= 0.0:
+        if (
+            self.calibration_grid_interval_hours is not None
+            and self.calibration_grid_interval_hours <= 0.0
+        ):
             raise calibration_error(
                 "calibration_grid_interval_hours",
                 "must be strictly positive when provided",
             )
+
+        if self.predictive_evidence_alpha is not None:
+            if not isfinite(self.predictive_evidence_alpha):
+                raise calibration_error(
+                    "predictive_evidence_alpha",
+                    "must be finite when provided",
+                )
+
+            if (
+                self.predictive_evidence_alpha <= 0.0
+                or self.predictive_evidence_alpha > 1.0
+            ):
+                raise calibration_error(
+                    "predictive_evidence_alpha",
+                    "must be in (0, 1] when provided",
+                )
 
     @property
     def enabled(self) -> bool:
@@ -145,7 +165,7 @@ class CalibrationMeanReversionConfiguration(ContractModel):
 
         require_only_supported_fields(
             raw_payload,
-            supported_fields=("calibration_grid_interval_hours",),
+            supported_fields=("calibration_grid_interval_hours", "predictive_evidence_alpha"),
             field_path=field_path,
             error_factory=calibration_error,
         )
@@ -162,8 +182,21 @@ class CalibrationMeanReversionConfiguration(ContractModel):
             else None
         )
 
+        predictive_evidence_alpha = (
+            require_positive_finite_number(
+                raw_payload,
+                "predictive_evidence_alpha",
+                f"{field_path}.predictive_evidence_alpha",
+                calibration_error,
+            )
+            if "predictive_evidence_alpha" in raw_payload
+            and raw_payload["predictive_evidence_alpha"] is not None
+            else None
+        )
+
         return CalibrationMeanReversionConfiguration(
             calibration_grid_interval_hours=calibration_grid_interval_hours,
+            predictive_evidence_alpha=predictive_evidence_alpha,
         )
 
 

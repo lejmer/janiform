@@ -16,7 +16,7 @@ use super::super::contracts::{
 };
 use super::super::execution::arithmetic_mean_signed;
 use super::super::progress::{
-    send_return_components_evaluation_progress, send_return_components_progress,
+    emit_return_components_evaluation_progress, emit_return_components_progress,
 };
 use super::basin_optimization::optimize_seed_candidates;
 use super::bounds::{
@@ -39,6 +39,7 @@ use super::types::{
     NigShapeSearchPoint, OptimizedNigCandidate, OptimizedNigSearchCandidate,
     ReturnComponentsStageContinuousReturnCalibrationSample, ScoredNigCandidate, SeededNigCandidate,
 };
+use crate::stages::parallelism::run_in_stage_thread_pool;
 
 #[cfg(test)]
 pub(crate) fn build_nig_search_candidates(
@@ -66,7 +67,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
         let theoretical_search_bounds =
             theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
             0,
@@ -83,7 +84,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             progress_sender,
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
             moment_candidate_count,
@@ -91,7 +92,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             Some("moment seed candidates ready"),
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
             0,
@@ -110,7 +111,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
         let proxy_em_diagnostic = proxy_em_output.diagnostic;
         let em_search_points = proxy_em_output.search_points;
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
             1,
@@ -118,7 +119,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             Some("proxy EM search points ready"),
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
             0,
@@ -137,7 +138,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
         let seed_frontier_candidates =
             merge_seed_frontier_candidates(moment_seed_candidates, em_scored_candidates);
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigSearchRegimeGeneration,
             0,
@@ -153,7 +154,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
 
         let search_bounds = search_bounds_from_regimes(broad_search_regimes.as_slice());
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigSearchRegimeGeneration,
             1,
@@ -161,7 +162,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             Some("search regimes ready"),
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinSeedGeneration,
             0,
@@ -175,7 +176,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             fit_budgets.basin_seed_candidate_count,
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinSeedGeneration,
             1,
@@ -183,7 +184,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             Some("basin seed candidates ready"),
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
             0,
@@ -199,7 +200,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             progress_sender,
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
             seed_candidates.len(),
@@ -213,7 +214,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             fit_budgets.basin_seed_candidate_count,
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinDiagnostics,
             0,
@@ -227,7 +228,7 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             stage_seed,
         );
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinDiagnostics,
             1,
@@ -469,7 +470,7 @@ pub(super) fn score_search_points(
 
                 let search_point_label = format!("search_point_{completed_count:03}");
 
-                send_return_components_evaluation_progress(
+                emit_return_components_evaluation_progress(
                     progress_sender,
                     progress_phase,
                     completed_count,
@@ -1004,15 +1005,5 @@ fn with_continuous_fit_thread_pool<T: Send>(
     cpu_count: usize,
     body: impl FnOnce() -> T + Send,
 ) -> T {
-    if cpu_count <= 1 {
-        return body();
-    }
-
-    match rayon::ThreadPoolBuilder::new()
-        .num_threads(cpu_count)
-        .build()
-    {
-        Ok(thread_pool) => thread_pool.install(body),
-        Err(_) => body(),
-    }
+    run_in_stage_thread_pool(cpu_count, body)
 }

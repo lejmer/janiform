@@ -16,7 +16,7 @@ use super::contracts::{
     ReturnComponentsStageProgressUpdate,
 };
 use super::progress::{
-    send_return_components_evaluation_progress, send_return_components_progress,
+    emit_return_components_evaluation_progress, emit_return_components_progress,
 };
 
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ pub(crate) fn fit_continuous_return_layer(
 
     let total_optimized_candidate_count = optimized_candidates.len();
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ContinuousNigFinalEvaluation,
         0,
@@ -142,7 +142,7 @@ pub(crate) fn fit_continuous_return_layer(
 
                 let candidate_label = format!("nig_candidate_{:03}", optimized_candidate_index + 1);
 
-                send_return_components_evaluation_progress(
+                emit_return_components_evaluation_progress(
                     progress_sender,
                     ReturnComponentsStageProgressPhase::ContinuousNigFinalEvaluation,
                     optimized_candidate_index + 1,

@@ -43,7 +43,8 @@ pub use execution_bridge::{
     CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
     CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
-    CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
+    CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsActivityContextCandidateDiagnostic,
     CalibrationReturnComponentsActivityContextImpliedMetrics,
     CalibrationReturnComponentsActivityContextPayload,
@@ -189,13 +190,16 @@ pub use stages::joint_refinement::{
 pub use stages::long_variance::{
     LongVarianceStageExecutionFailure, LongVarianceStageExecutionInput,
     LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
-    LongVarianceStageFittedPayload, run_long_variance_calibration_stage,
+    LongVarianceStageFittedPayload, LongVarianceStageProgressPhase,
+    LongVarianceStageProgressUpdate, run_long_variance_calibration_stage,
 };
 pub use stages::mean_reversion::{
     MeanReversionStageExecutionFailure, MeanReversionStageExecutionInput,
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
-    MeanReversionStageFittedPayload, MeanReversionStageObservation,
-    MeanReversionStageSeasonalityInput, run_mean_reversion_calibration_stage,
+    MeanReversionStageFittedPayload, MeanReversionStageGridCandidate,
+    MeanReversionStageObservation, MeanReversionStageProgressPhase,
+    MeanReversionStageProgressUpdate, MeanReversionStageSeasonalityInput,
+    run_mean_reversion_calibration_stage,
 };
 pub use stages::news_shocks::{
     NewsShocksStageExecutionFailure, NewsShocksStageExecutionInput,

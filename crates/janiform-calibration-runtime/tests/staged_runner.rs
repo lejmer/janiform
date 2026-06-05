@@ -20,7 +20,8 @@ use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    HawkesStageExecutionFailure, JointRefinementStageProgressPhase,
+    HawkesStageExecutionFailure, JointRefinementStageProgressPhase, LongVarianceStageProgressPhase,
+    MeanReversionStageProgressPhase,
     run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
     run_staged_calibration_with_checkpointing_and_observer as run_staged_calibration_with_checkpointing_and_observer_core,
 };
@@ -328,6 +329,84 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
             ),
         ],
         "expected finalization to expose setup progress before baseline deterministic evaluation"
+    );
+}
+
+#[test]
+fn staged_runner_emits_long_variance_and_mean_reversion_progress() {
+    let run_contract = build_through_mean_reversion_run_contract_with_mode_and_resume(
+        "run-stage-progress-long-variance-mean-reversion",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+    let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+    let mut observed_events = Vec::<CalibrationStagedRunObserverEvent>::new();
+
+    let report = run_staged_calibration_with_checkpointing_and_observer(
+        &run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        Some(&mut checkpoint_store),
+        None,
+        Some(&mut |event| observed_events.push(event)),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    assert!(
+        observed_events.iter().any(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::LongVariance
+                        && matches!(
+                            progress.progress_phase,
+                            CalibrationStageProgressPhase::LongVariance(
+                                LongVarianceStageProgressPhase::HorizonDiagnostics
+                            )
+                        )
+                        && progress.completed_units > 0
+                        && progress.completed_units < progress.total_units
+            )
+        }),
+        "expected staged runner to forward continuous long-variance horizon progress"
+    );
+
+    assert!(
+        observed_events.iter().any(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::MeanReversion
+                        && matches!(
+                            progress.progress_phase,
+                            CalibrationStageProgressPhase::MeanReversion(
+                                MeanReversionStageProgressPhase::GridEvaluation
+                            )
+                        )
+                        && progress.completed_units > 0
+            )
+        }),
+        "expected staged runner to forward mean-reversion grid progress"
+    );
+
+    assert!(
+        observed_events.iter().any(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::MeanReversion
+                        && matches!(
+                            progress.progress_phase,
+                            CalibrationStageProgressPhase::MeanReversion(
+                                MeanReversionStageProgressPhase::PredictiveEvidence
+                            )
+                        )
+            )
+        }),
+        "expected staged runner to forward mean-reversion predictive evidence progress"
     );
 }
 

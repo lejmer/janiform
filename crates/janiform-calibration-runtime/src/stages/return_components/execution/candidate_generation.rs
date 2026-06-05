@@ -46,7 +46,7 @@ use super::signals::{
     ReturnComponentsStageActivityCalibrationContext, sort_candidate_generation_signals,
     summarize_candidate_generation_signals,
 };
-use crate::stages::return_components::progress::send_return_components_progress;
+use crate::stages::return_components::progress::emit_return_components_progress;
 
 pub(super) struct ReturnComponentsStageCandidateGenerationOutput {
     pub(super) candidate_inputs: Vec<ReturnComponentsStageCandidateInput>,
@@ -90,7 +90,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     let stage_seed = request.stage_seed;
     let stage_solver_settings = request.stage_solver_settings;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalPartitionFit,
         0,
@@ -110,7 +110,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             .as_slice(),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalPartitionFit,
         1,
@@ -118,7 +118,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("signal partition fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SurpriseEpisodeSelectionFit,
         0,
@@ -134,7 +134,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             fitted_signal_partition_layer.continuous_return_filter_threshold,
         );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SurpriseEpisodeSelectionFit,
         1,
@@ -142,7 +142,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("surprise episode selection fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateInputValidation,
         0,
@@ -152,7 +152,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
 
     candidate_generation_input.validate()?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateInputValidation,
         1,
@@ -160,7 +160,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("candidate generation input valid"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalSorting,
         0,
@@ -175,7 +175,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         &fitted_surprise_episode_selection_layer,
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalSorting,
         1,
@@ -183,7 +183,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("observed signals sorted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalSummary,
         0,
@@ -198,7 +198,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             request.activity_calibration_context,
         );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SignalSummary,
         1,
@@ -206,7 +206,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("observed signals summarized"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::QuantileBinningPolicyFit,
         0,
@@ -219,7 +219,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         sorted_signals.combined_gap_magnitudes.as_slice(),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::QuantileBinningPolicyFit,
         1,
@@ -227,7 +227,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("quantile binning policy fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SurpriseArrivalFit,
         0,
@@ -248,7 +248,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         request.source_window_closed_exposure_hours,
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::SurpriseArrivalFit,
         1,
@@ -256,7 +256,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("surprise arrival layer fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ReturnJumpMarkFit,
         0,
@@ -269,7 +269,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         summary_statistics,
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ReturnJumpMarkFit,
         1,
@@ -277,7 +277,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("return jump mark layer fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ActivityCouplingFit,
         0,
@@ -288,7 +288,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     let fitted_activity_coupling_layer =
         activity_coupling_fit::fit_activity_coupling_layer(summary_statistics);
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ActivityCouplingFit,
         1,
@@ -296,7 +296,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("activity coupling layer fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ContinuousReturnLayerFit,
         0,
@@ -312,7 +312,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         progress_sender,
     )?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ContinuousReturnLayerFit,
         1,
@@ -320,7 +320,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         Some("continuous return layer fitted"),
     );
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
         0,
@@ -330,7 +330,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
 
     let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy();
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
         1,
@@ -341,7 +341,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     let fitted_objective_scoring_policy =
         objective_scoring_policy_fit::fit_objective_scoring_policy(summary_statistics);
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
         2,
@@ -352,7 +352,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     let fitted_price_range_sanity_policy =
         price_range_policy_fit::fit_price_range_sanity_policy(summary_statistics);
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
         3,
@@ -637,7 +637,7 @@ fn enumerate_candidate_inputs(
         .candidates
         .len();
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateEnumeration,
         0,
@@ -737,7 +737,7 @@ fn enumerate_candidate_inputs(
                         .clone(),
                 };
 
-                send_return_components_progress(
+                emit_return_components_progress(
                     progress_sender,
                     ReturnComponentsStageProgressPhase::CandidateEnumeration,
                     nig_candidate_index + 1,

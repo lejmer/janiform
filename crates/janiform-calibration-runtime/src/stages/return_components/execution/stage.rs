@@ -8,8 +8,8 @@ use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_COMPONENTS_STAGE_HANDOFF_POLICY,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode, CalibrationRunSpec,
-    CalibrationStage, CalibrationStageHandoffTransport, ReturnComponentsStageFittedParameters,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageHandoffTransport, ReturnComponentsStageFittedParameters,
     SurpriseNewsDeterministicIntensityProfile, resolve_calibration_stage_seed_metadata,
     stage_solver_settings_for_stage,
 };
@@ -41,7 +41,7 @@ use crate::optimizer_adapter::{
     CalibrationOptimizerAdapterRunOutput, CalibrationOptimizerCandidateParameterValue,
     CalibrationOptimizerParameterBound, run_constrained_optimizer_adapter,
 };
-use crate::stages::return_components::progress::send_return_components_progress;
+use crate::stages::return_components::progress::emit_return_components_progress;
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -178,7 +178,7 @@ fn prepare_return_components_stage_execution(
     stage_input: &ReturnComponentsStageExecutionInput,
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Result<ReturnComponentsStagePreflight, ReturnComponentsStageExecutionFailure> {
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::InputPreflight,
         0,
@@ -188,7 +188,7 @@ fn prepare_return_components_stage_execution(
 
     validate_stage_run_spec(run_spec)?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::InputPreflight,
         1,
@@ -200,7 +200,7 @@ fn prepare_return_components_stage_execution(
         stage_solver_settings_for_stage(run_spec, CalibrationStage::ReturnComponents)
             .ok_or(ReturnComponentsStageExecutionFailure::MissingStageSolverSettings)?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::InputPreflight,
         2,
@@ -230,7 +230,7 @@ fn prepare_return_components_stage_execution(
 
     validate_activity_input_transport(run_spec, stage_input)?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::InputPreflight,
         3,
@@ -269,19 +269,12 @@ fn validate_activity_input_transport(
     run_spec: &CalibrationRunSpec,
     stage_input: &ReturnComponentsStageExecutionInput,
 ) -> Result<(), ReturnComponentsStageExecutionFailure> {
-    let expected_activity_handoff = run_spec.stage_handoffs.iter().find(|stage_handoff| {
-        stage_handoff.from_stage == CalibrationStage::Hawkes
-            && stage_handoff.to_stage == CalibrationStage::ReturnComponents
-    });
-
-    let expected_transport = expected_activity_handoff
-        .map(|stage_handoff| stage_handoff.transport())
-        .unwrap_or(match run_spec.execution_mode {
-            CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
-            CalibrationExecutionMode::Disk => {
-                CalibrationStageHandoffTransport::PersistedArtifactReference
-            }
-        });
+    let expected_activity_handoff =
+        run_spec.stage_handoff(CalibrationStage::Hawkes, CalibrationStage::ReturnComponents);
+    let expected_transport = run_spec.stage_handoff_transport_or_default(
+        CalibrationStage::Hawkes,
+        CalibrationStage::ReturnComponents,
+    );
 
     let provided_transport = stage_input.activity_input.transport();
 
@@ -338,7 +331,7 @@ fn generate_stage_candidates(
     super::candidate_generation::ReturnComponentsStageCandidateGenerationOutput,
     ReturnComponentsStageExecutionFailure,
 > {
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CloseOpenGapPreparation,
         1,
@@ -396,7 +389,7 @@ fn select_generated_candidate(
     stage_seed: u64,
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Result<ReturnComponentsStageSelectionArtifacts, ReturnComponentsStageExecutionFailure> {
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateSelection,
         0,
@@ -417,7 +410,7 @@ fn select_generated_candidate(
         },
     )?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateConstraintEvaluation,
         0,
@@ -428,7 +421,7 @@ fn select_generated_candidate(
     let (adapter_candidate_inputs, external_constraint_diagnostics) =
         build_optimizer_candidate_inputs(generated_candidates, progress_sender)?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateSelection,
         1,
@@ -442,7 +435,7 @@ fn select_generated_candidate(
     )
     .map_err(map_optimizer_adapter_error)?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateSelection,
         2,
@@ -456,7 +449,7 @@ fn select_generated_candidate(
         optimizer_adapter_output,
     )?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::CandidateSelection,
         3,
@@ -525,7 +518,7 @@ fn build_optimizer_candidate_inputs(
             external_constraint_violation_count,
         });
 
-        send_return_components_progress(
+        emit_return_components_progress(
             progress_sender,
             ReturnComponentsStageProgressPhase::CandidateConstraintEvaluation,
             candidate_position + 1,
@@ -688,7 +681,7 @@ fn build_return_components_stage_success_report(
     resolved_stage_seed: CalibrationResolvedStageSeed,
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Result<ReturnComponentsStageExecutionReport, ReturnComponentsStageExecutionFailure> {
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ReportAssembly,
         0,
@@ -706,7 +699,7 @@ fn build_return_components_stage_success_report(
     let news_process_configuration =
         validated_selected_news_process_configuration(selected_candidate_input)?;
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ReportAssembly,
         1,
@@ -802,7 +795,7 @@ fn build_return_components_stage_success_report(
         failure: None,
     };
 
-    send_return_components_progress(
+    emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ReportAssembly,
         2,

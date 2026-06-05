@@ -6,6 +6,7 @@ from janiform.calibration.staged import (
 )
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
+    build_empty_mean_reversion_series_summaries_payload,
     build_nominal_tick_grid_observation_model_payload,
     build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
@@ -177,7 +178,7 @@ def successful_full_model_staged_runner_payload(
                         "residual_sum_of_squares": 0.0,
                         "quasi_log_likelihood": None,
                         "information_criterion_bic": None,
-                        "model_selection_policy": "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1",
+                        "model_selection_policy": "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1",
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
                         "least_squares_rank": 0,
@@ -199,11 +200,47 @@ def successful_full_model_staged_runner_payload(
                                 "least_squares_rank": 0,
                                 "deviation_sample_count": 0,
                                 "regression_pair_count": 0,
-                                "core_expected_increments": [],
-                                "pressure_state_path": [],
-                                "boundary_anchor_values": [],
-                                "deviations": [],
-                                "residuals": [],
+                                "series_summaries": (
+                                    build_empty_mean_reversion_series_summaries_payload()
+                                ),
+                                "predictive_evidence": None,
+                                "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                            }
+                        ],
+                        "evaluated_grids": [
+                            {
+                                "calibration_grid": {
+                                    "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+                                    "calibration_grid_interval_hours": 24.0,
+                                    "source_observation_count": 4,
+                                    "retained_observation_count": 0,
+                                    "coverage_ratio": 0.0,
+                                },
+                                "evaluated_candidates": [
+                                    {
+                                        "candidate_family": "random_walk_null",
+                                        "anchor_model": {
+                                            "reference_interval_hours": 24.0,
+                                            "pressure_persistence_per_reference_interval": 0.0,
+                                            "pressure_level_gain": 0.0,
+                                        },
+                                        "anchor_origin_level": None,
+                                        "phi_reference": 1.0,
+                                        "kappa": 0.0,
+                                        "residual_sum_of_squares": 0.0,
+                                        "quasi_log_likelihood": None,
+                                        "information_criterion_bic": None,
+                                        "parameter_count": 0,
+                                        "least_squares_rank": 0,
+                                        "deviation_sample_count": 0,
+                                        "regression_pair_count": 0,
+                                        "series_summaries": (
+                                            build_empty_mean_reversion_series_summaries_payload()
+                                        ),
+                                        "predictive_evidence": None,
+                                        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                                    }
+                                ],
                                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                             }
                         ],

@@ -11,7 +11,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use super::super::contracts::{
     ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
 };
-use super::super::progress::send_return_components_evaluation_progress;
+use super::super::progress::emit_return_components_evaluation_progress;
 use super::optimization::evaluate_cached_search_point;
 use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousReturnOptimizerContext,
@@ -47,7 +47,7 @@ pub(super) fn optimize_seed_candidates(
                 + 1;
             let seed_label = format!("basin_seed_{completed_count:03}");
 
-            send_return_components_evaluation_progress(
+            emit_return_components_evaluation_progress(
                 progress_sender,
                 ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
                 completed_count,

@@ -48,6 +48,7 @@ const FIT_PREPARATION_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.re
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FitPreparationOverrides {
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
+    pub(crate) mean_reversion_predictive_evidence_alpha: Option<f64>,
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
     pub(crate) option_refinement_candidate_count: Option<usize>,
     pub(crate) diagnostics: Vec<CalibrationDiagnosticOption>,
@@ -239,12 +240,7 @@ pub(crate) fn prepare_fit_preview(
             .overrides
             .stylized_fact_admissibility_z_threshold,
         known_news_inputs: prepared_inputs.known_news_inputs,
-        mean_reversion: preview_options
-            .overrides
-            .mean_reversion_grid_interval_hours
-            .map(|hours| CalibrationMarketDataMeanReversionConfiguration {
-                calibration_grid_interval_hours: Some(hours),
-            }),
+        mean_reversion: mean_reversion_configuration_from_overrides(&preview_options.overrides),
     };
 
     let start_summary_emitted = emit_start_summary_before_loading(context, &request, &paths)?;
@@ -402,6 +398,21 @@ pub(crate) fn prepare_fit_preview(
         preset_defaults,
         recommended_defaults,
         derived_values,
+    })
+}
+
+fn mean_reversion_configuration_from_overrides(
+    overrides: &FitPreparationOverrides,
+) -> Option<CalibrationMarketDataMeanReversionConfiguration> {
+    if overrides.mean_reversion_grid_interval_hours.is_none()
+        && overrides.mean_reversion_predictive_evidence_alpha.is_none()
+    {
+        return None;
+    }
+
+    Some(CalibrationMarketDataMeanReversionConfiguration {
+        calibration_grid_interval_hours: overrides.mean_reversion_grid_interval_hours,
+        predictive_evidence_alpha: overrides.mean_reversion_predictive_evidence_alpha,
     })
 }
 

@@ -10,8 +10,9 @@ use super::{
     HawkesStageExecutionReport, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageProgressPhase,
     LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
-    MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
-    MeanReversionStageExecutionReport, NewsShocksStageExecutionMetadata,
+    LongVarianceStageProgressPhase, MeanReversionStageExecutionInput,
+    MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
+    MeanReversionStageProgressPhase, NewsShocksStageExecutionMetadata,
     NewsShocksStageExecutionReport, ReturnBackfitStageExecutionMetadata,
     ReturnBackfitStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
@@ -461,12 +462,26 @@ pub struct CalibrationStagedRunReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalibrationStageProgressPhase {
     ReturnComponents(ReturnComponentsStageProgressPhase),
+    LongVariance(LongVarianceStageProgressPhase),
+    MeanReversion(MeanReversionStageProgressPhase),
     JointRefinement(JointRefinementStageProgressPhase),
 }
 
 impl From<ReturnComponentsStageProgressPhase> for CalibrationStageProgressPhase {
     fn from(phase: ReturnComponentsStageProgressPhase) -> Self {
         Self::ReturnComponents(phase)
+    }
+}
+
+impl From<LongVarianceStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: LongVarianceStageProgressPhase) -> Self {
+        Self::LongVariance(phase)
+    }
+}
+
+impl From<MeanReversionStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: MeanReversionStageProgressPhase) -> Self {
+        Self::MeanReversion(phase)
     }
 }
 
@@ -483,6 +498,8 @@ impl Serialize for CalibrationStageProgressPhase {
     {
         match self {
             Self::ReturnComponents(phase) => phase.serialize(serializer),
+            Self::LongVariance(phase) => phase.serialize(serializer),
+            Self::MeanReversion(phase) => phase.serialize(serializer),
             Self::JointRefinement(phase) => phase.serialize(serializer),
         }
     }

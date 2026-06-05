@@ -107,6 +107,7 @@ from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
+    build_empty_mean_reversion_series_summaries_payload,
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_nominal_tick_grid_observation_model_payload,
     build_neutral_long_variance_parameters_payload,
@@ -367,6 +368,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparat
         market_profile="us_equity_cash",
         mean_reversion=CalibrationMeanReversionConfiguration(
             calibration_grid_interval_hours=36.0,
+            predictive_evidence_alpha=0.025,
         ),
     )
     prepared_workflow = estimator._prepare_fit_workflow(
@@ -385,6 +387,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparat
 
     assert request.mean_reversion is not None
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
+    assert request.mean_reversion.predictive_evidence_alpha == pytest.approx(0.025)
 
 
 def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_preparation(
@@ -1120,7 +1123,7 @@ def test_high_level_model_simulate_sends_model_payload_to_native_workflow(
     )
 
     estimator = JaniformEstimator(market_profile="us_equity_cash")
-    model = estimator.fit(tick_data_path=tick_data_path)
+    model: JaniformModel = estimator.fit(tick_data_path=tick_data_path)
 
     captured_requests = _capture_native_model_artifact_simulation_requests(monkeypatch)
 
@@ -5181,7 +5184,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "residual_sum_of_squares": 0.0,
                         "quasi_log_likelihood": None,
                         "information_criterion_bic": None,
-                        "model_selection_policy": "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1",
+                        "model_selection_policy": "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1",
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
                         "least_squares_rank": 0,
@@ -5203,11 +5206,47 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "least_squares_rank": 0,
                                 "deviation_sample_count": 0,
                                 "regression_pair_count": 0,
-                                "core_expected_increments": [],
-                                "pressure_state_path": [],
-                                "boundary_anchor_values": [],
-                                "deviations": [],
-                                "residuals": [],
+                                "series_summaries": (
+                                    build_empty_mean_reversion_series_summaries_payload()
+                                ),
+                                "predictive_evidence": None,
+                                "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                            }
+                        ],
+                        "evaluated_grids": [
+                            {
+                                "calibration_grid": {
+                                    "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+                                    "calibration_grid_interval_hours": 24.0,
+                                    "source_observation_count": 4,
+                                    "retained_observation_count": 0,
+                                    "coverage_ratio": 0.0,
+                                },
+                                "evaluated_candidates": [
+                                    {
+                                        "candidate_family": "random_walk_null",
+                                        "anchor_model": {
+                                            "reference_interval_hours": 24.0,
+                                            "pressure_persistence_per_reference_interval": 0.0,
+                                            "pressure_level_gain": 0.0,
+                                        },
+                                        "anchor_origin_level": None,
+                                        "phi_reference": 1.0,
+                                        "kappa": 0.0,
+                                        "residual_sum_of_squares": 0.0,
+                                        "quasi_log_likelihood": None,
+                                        "information_criterion_bic": None,
+                                        "parameter_count": 0,
+                                        "least_squares_rank": 0,
+                                        "deviation_sample_count": 0,
+                                        "regression_pair_count": 0,
+                                        "series_summaries": (
+                                            build_empty_mean_reversion_series_summaries_payload()
+                                        ),
+                                        "predictive_evidence": None,
+                                        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                                    }
+                                ],
                                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                             }
                         ],

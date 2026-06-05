@@ -1949,6 +1949,8 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
             "full-without-option-surface",
             "--tick-size",
             "0.00001",
+            "--mean-reversion-predictive-evidence-alpha",
+            "0.025",
             "--run-id",
             "staged-plan-tick-size-test",
         ])
@@ -1964,6 +1966,14 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
     assert_eq!(
         payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
         serde_json::json!(0.00001)
+    );
+    assert_eq!(
+        payload["preparation_request"]["mean_reversion"]["predictive_evidence_alpha"],
+        serde_json::json!(0.025)
+    );
+    assert_eq!(
+        payload["staged_execution_input"]["mean_reversion_stage_input"]["predictive_evidence_alpha"],
+        serde_json::json!(0.025)
     );
     assert_eq!(
         payload["staged_execution_input"]["request"]["selected_stages"],

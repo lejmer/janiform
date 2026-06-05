@@ -333,6 +333,7 @@ By default, Janiform writes a run directory under .janiform/runs/ with the fitte
    By default, janiform fit writes a durable run directory for downstream CLI commands. Use --no-persist for dry runs and one-off checks where the fitted model does not need to be reused.
 * `--cpu-count <COUNT>` — CPU count available to calibration preparation.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
+* `--mean-reversion-predictive-evidence-alpha <ALPHA>` — Advanced mean-reversion predictive evidence significance level.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
 * `--option-refinement-candidate-count <COUNT>` — Option-refinement candidate count for search and selection tiers.
 * `--diagnostic <KIND>` — Enable an opt-in calibration diagnostic.
@@ -721,6 +722,7 @@ This command prepares the same calibration plan used by the default fit command,
 * `--staged-execution-input-output-path <PATH>` — Write the prepared calibration input file.
 * `--cpu-count <COUNT>` — CPU count available to calibration planning.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
+* `--mean-reversion-predictive-evidence-alpha <ALPHA>` — Advanced mean-reversion predictive evidence significance level.
 * `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
 * `--option-refinement-candidate-count <COUNT>` — Option-refinement candidate count for search and selection tiers.
 * `--diagnostic <KIND>` — Enable an opt-in calibration diagnostic in the prepared plan.
@@ -957,6 +959,8 @@ This command validates fit inputs and writes the prepared input file consumed by
    For fit runs this is the run directory. Disk execution writes the fitted model, fit report, progress log, latest status snapshot, and checkpoints under this directory.
 * `--execution-input-output-path <PATH>` — Path for the prepared calibration input file.
 * `--cpu-count <COUNT>` — CPU count available to staged-input preparation.
+* `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
+* `--mean-reversion-predictive-evidence-alpha <ALPHA>` — Advanced mean-reversion predictive evidence significance level.
 * `--workflow-scope <WORKFLOW_SCOPE>` — Select which calibration workflow to encode.
 
   Possible values:

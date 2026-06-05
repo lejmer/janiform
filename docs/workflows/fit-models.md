@@ -54,7 +54,7 @@ model: JaniformModel = estimator.fit(
 )
 ```
 
-In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and routes coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
+In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and adds coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
 Coarse timestamp columns are interpreted as bar-open times by default. For sources stamped at bar close, use `CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME` in Python or pass `--coarse-timestamp-semantics bar-close-time` in the CLI.
 
 ```python
@@ -238,6 +238,33 @@ janiform fit \
 ```
 
 The same idea applies in Python through `JaniformEstimator(...)` arguments such as `market_profile`, `session`, `known_news`, `exchange_code`, and `session_timezone`.
+
+### Mean-reversion expert controls
+
+Janiform chooses the mean-reversion calibration grid from the data by default. Here, "grid" means the time spacing used by the mean-reversion calibration stage. Use the explicit interval only when you deliberately want to audit or reproduce a specific time spacing:
+
+```python
+from janiform.calibration import JaniformEstimator
+from janiform.calibration.market_data import CalibrationMeanReversionConfiguration
+
+estimator = JaniformEstimator(
+    market_profile="eurusd_spot",
+    mean_reversion=CalibrationMeanReversionConfiguration(
+        calibration_grid_interval_hours=24.0,
+    ),
+)
+```
+
+The CLI equivalents are available on `fit`, `fit plan`, and `fit staged plan`:
+
+```bash
+janiform fit staged plan \
+  --tick-data-path data/eurusd_ticks.parquet \
+  --mean-reversion-grid-interval-hours 24 \
+  --run-id eurusd-fit
+```
+
+Advanced users can override the predictive evidence level with `predictive_evidence_alpha` in Python or `--mean-reversion-predictive-evidence-alpha` in the CLI. This changes the documented statistical gate for selecting a model with `kappa > 0`, so keep the default unless the run policy requires a different level.
 
 ### Prepared staged runs
 

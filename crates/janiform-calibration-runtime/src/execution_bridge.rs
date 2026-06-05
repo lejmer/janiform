@@ -41,7 +41,8 @@ use super::staged_runner::{
 };
 use super::stages::hawkes::{HawkesStageCandidateInput, HawkesStageObservedSourceRegime};
 use super::stages::mean_reversion::{
-    MeanReversionStageExecutionInput, MeanReversionStageObservation,
+    MeanReversionStageExecutionInput, MeanReversionStageGridCandidate,
+    MeanReversionStageObservation, default_mean_reversion_predictive_evidence_alpha,
 };
 use super::stages::return_components::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -413,13 +414,22 @@ pub struct CalibrationMeanReversionStageObservation {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationMeanReversionStageExecutionInput {
+pub struct CalibrationMeanReversionStageGridCandidate {
     pub calibration_grid_kind: String,
     pub calibration_grid_interval_hours: f64,
     pub source_observation_count: usize,
     pub coverage_ratio: f64,
     #[serde(default)]
     pub observations: Vec<CalibrationMeanReversionStageObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationMeanReversionStageExecutionInput {
+    #[serde(default = "default_mean_reversion_predictive_evidence_alpha")]
+    pub predictive_evidence_alpha: f64,
+    #[serde(default)]
+    pub grid_candidates: Vec<CalibrationMeanReversionStageGridCandidate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1159,6 +1169,19 @@ impl CalibrationMeanReversionStageExecutionInput {
             seasonality_stage_input: None,
             hawkes_stage_payload: None,
             return_components_stage_payload: None,
+            predictive_evidence_alpha: self.predictive_evidence_alpha,
+            grid_candidates: self
+                .grid_candidates
+                .into_iter()
+                .map(CalibrationMeanReversionStageGridCandidate::into_core)
+                .collect(),
+        }
+    }
+}
+
+impl CalibrationMeanReversionStageGridCandidate {
+    fn into_core(self) -> MeanReversionStageGridCandidate {
+        MeanReversionStageGridCandidate {
             calibration_grid_kind: self.calibration_grid_kind,
             calibration_grid_interval_hours: self.calibration_grid_interval_hours,
             source_observation_count: self.source_observation_count,
@@ -1272,7 +1295,8 @@ mod tests {
         CalibrationJointRefinementCarryInput,
         CalibrationJointRefinementCurrentStateEstimationInput,
         CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
-        CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
+        CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
+        CalibrationMeanReversionStageObservation,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsDetectedIntradayJumpCandidate,
         CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -1300,6 +1324,8 @@ mod tests {
         HawkesStructuredRhoSelfDominancePolicy,
     };
     use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+
+    use crate::stages::mean_reversion::default_mean_reversion_predictive_evidence_alpha;
 
     fn valid_request(execution_mode: CalibrationExecutionMode) -> CalibrationRunSpec {
         CalibrationRunSpec::try_new(
@@ -1490,28 +1516,31 @@ mod tests {
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {
-                calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
-                calibration_grid_interval_hours: 24.0,
-                source_observation_count: 4,
-                coverage_ratio: 1.0,
-                observations: vec![
-                    CalibrationMeanReversionStageObservation {
-                        observation_timestamp_utc_nanos: 1_770_042_600_000_000_000,
-                        observed_log_price: 4.60,
-                    },
-                    CalibrationMeanReversionStageObservation {
-                        observation_timestamp_utc_nanos: 1_770_129_000_000_000_000,
-                        observed_log_price: 4.58,
-                    },
-                    CalibrationMeanReversionStageObservation {
-                        observation_timestamp_utc_nanos: 1_770_215_400_000_000_000,
-                        observed_log_price: 4.57,
-                    },
-                    CalibrationMeanReversionStageObservation {
-                        observation_timestamp_utc_nanos: 1_770_301_800_000_000_000,
-                        observed_log_price: 4.59,
-                    },
-                ],
+                predictive_evidence_alpha: default_mean_reversion_predictive_evidence_alpha(),
+                grid_candidates: vec![CalibrationMeanReversionStageGridCandidate {
+                    calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+                    calibration_grid_interval_hours: 24.0,
+                    source_observation_count: 4,
+                    coverage_ratio: 1.0,
+                    observations: vec![
+                        CalibrationMeanReversionStageObservation {
+                            observation_timestamp_utc_nanos: 1_770_042_600_000_000_000,
+                            observed_log_price: 4.60,
+                        },
+                        CalibrationMeanReversionStageObservation {
+                            observation_timestamp_utc_nanos: 1_770_129_000_000_000_000,
+                            observed_log_price: 4.58,
+                        },
+                        CalibrationMeanReversionStageObservation {
+                            observation_timestamp_utc_nanos: 1_770_215_400_000_000_000,
+                            observed_log_price: 4.57,
+                        },
+                        CalibrationMeanReversionStageObservation {
+                            observation_timestamp_utc_nanos: 1_770_301_800_000_000_000,
+                            observed_log_price: 4.59,
+                        },
+                    ],
+                }],
             }),
             joint_refinement_restart_candidate_budget_override: None,
             joint_refinement_calibration_effort: None,

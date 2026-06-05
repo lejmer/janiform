@@ -469,8 +469,9 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
         if self.cpu_count is not None:
             if isinstance(self.cpu_count, bool) or not isinstance(self.cpu_count, int):
                 raise _pricing_error("cpu_count", "must be an integer or null")
-            if self.cpu_count <= 0:
-                raise _pricing_error("cpu_count", "must be strictly positive")
+
+            if self.cpu_count < 0:
+                raise _pricing_error("cpu_count", "must be non-negative")
 
         if self.hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR:
             raise _pricing_error(
@@ -533,12 +534,14 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", PRICING_ERROR_FACTORY)
+
         require_finite_number(
             {"risk_free_rate": self.risk_free_rate},
             "risk_free_rate",
             "risk_free_rate",
             PRICING_ERROR_FACTORY,
         )
+
         require_finite_number(
             {"dividend_yield": self.dividend_yield},
             "dividend_yield",
@@ -573,42 +576,49 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             field_path="implied_volatility_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.implied_volatility_inversion_status_grid,
             grid_shape_value=expected_shape,
             field_path="implied_volatility_inversion_status_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.pricing_status_grid,
             grid_shape_value=expected_shape,
             field_path="pricing_status_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.pricing_failure_stage_grid,
             grid_shape_value=expected_shape,
             field_path="pricing_failure_stage_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.pricing_failure_reason_grid,
             grid_shape_value=expected_shape,
             field_path="pricing_failure_reason_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.forward_price_grid,
             grid_shape_value=expected_shape,
             field_path="forward_price_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.discount_factor_grid,
             grid_shape_value=expected_shape,
             field_path="discount_factor_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         validate_matching_grid_shape(
             self.boundary_state_norm_grid,
             grid_shape_value=expected_shape,
@@ -671,12 +681,14 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             field_path=f"{field_path}.strikes",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         maturity_intervals = tuple_of_positive_floats(
             raw_payload,
             field_name="maturity_intervals",
             field_path=f"{field_path}.maturity_intervals",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         payoff_type = require_str_enum_value(
             raw_payload.get("payoff_type"),
             f"{field_path}.payoff_type",
@@ -684,18 +696,21 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             enum_type=VanillaOptionPayoffType,
             allowed_values_message="must be one of: call, put",
         )
+
         price_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="price_grid",
             field_path=f"{field_path}.price_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         implied_volatility_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="implied_volatility_grid",
             field_path=f"{field_path}.implied_volatility_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         implied_volatility_inversion_status_grid = grid_of_scalars(
             raw_payload,
             field_name="implied_volatility_inversion_status_grid",
@@ -706,6 +721,7 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
                 field_path=location,
             ),
         )
+
         pricing_status_grid = grid_of_scalars(
             raw_payload,
             field_name="pricing_status_grid",
@@ -716,6 +732,7 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
                 field_path=location,
             ),
         )
+
         pricing_failure_stage_grid = grid_of_scalars(
             raw_payload,
             field_name="pricing_failure_stage_grid",
@@ -726,6 +743,7 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
                 field_path=location,
             ),
         )
+
         pricing_failure_reason_grid = grid_of_scalars(
             raw_payload,
             field_name="pricing_failure_reason_grid",
@@ -737,18 +755,21 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
                 PRICING_ERROR_FACTORY,
             ),
         )
+
         forward_price_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="forward_price_grid",
             field_path=f"{field_path}.forward_price_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         discount_factor_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="discount_factor_grid",
             field_path=f"{field_path}.discount_factor_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
+
         boundary_state_norm_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="boundary_state_norm_grid",
@@ -867,6 +888,7 @@ class VanillaOptionSurfacePricingRunResult(ContractModel):
             f"{field_path}.maturity_summaries",
             PRICING_ERROR_FACTORY,
         )
+
         raw_maturity_terminal_interval_indices = require_sequence(
             raw_payload,
             "maturity_terminal_interval_indices",

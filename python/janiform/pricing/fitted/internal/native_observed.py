@@ -82,10 +82,13 @@ def run_native_observed_options_pricing(
 ) -> dict[str, Any]:
     if valuation_time_utc is not None and valuation_time_utc.tzinfo is None:
         raise _pricing_error("valuation_time_utc", "must be timezone-aware when provided")
+
     if valuation_count is not None and valuation_count <= 0:
         raise _pricing_error("valuation_count", "must be strictly positive when provided")
-    if cpu_count is not None and cpu_count <= 0:
-        raise _pricing_error("cpu_count", "must be strictly positive when provided")
+
+    if cpu_count is not None and cpu_count < 0:
+        raise _pricing_error("cpu_count", "must be non-negative when provided")
+
     if use_all_valuation_times and valuation_count is not None:
         raise _pricing_error("valuation_count", "cannot be combined with use_all_valuation_times")
 
@@ -219,6 +222,7 @@ def observed_snapshot_result_from_native_payload(
         raw_snapshot_results[0],
         field_path="observed_options_pricing_result.snapshot_results[0]",
     )
+
     physical_distribution = (
         ObservedOptionsPhysicalDistributionDiagnosticsOutput.from_native_mapping(
             raw_result.get("physical_distribution"),
@@ -328,8 +332,10 @@ def _temporary_parquet_source(
 
 def _input_file_format(path: Path, *, field_path: str) -> CalibrationInputFileFormat:
     suffix = path.suffix.lower()
+
     if suffix == ".csv":
         return CalibrationInputFileFormat.CSV
+
     if suffix in (".parquet", ".pq"):
         return CalibrationInputFileFormat.PARQUET
 
@@ -341,12 +347,15 @@ def _native_option_type(
 ) -> Optional[str]:
     if option_type is None:
         return None
+
     if isinstance(option_type, VanillaOptionPayoffType):
         return option_type.value
 
     normalized = option_type.strip().lower()
+
     if normalized in ("call", "c"):
         return "call"
+
     if normalized in ("put", "p"):
         return "put"
 

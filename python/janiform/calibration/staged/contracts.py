@@ -201,14 +201,19 @@ class CalibrationOptimizerSettings(ContractModel):
     def __post_init__(self) -> None:
         if not self.solver_name.strip():
             raise calibration_error("solver_name", "must be a non-empty string")
+
         if self.max_iterations <= 0:
             raise calibration_error("max_iterations", "must be strictly positive")
-        if self.cpu_count <= 0:
-            raise calibration_error("cpu_count", "must be strictly positive")
+
+        if self.cpu_count < 0:
+            raise calibration_error("cpu_count", "must be non-negative")
+
         if self.absolute_tolerance <= 0.0:
             raise calibration_error("absolute_tolerance", "must be strictly positive")
+
         if self.relative_tolerance <= 0.0:
             raise calibration_error("relative_tolerance", "must be strictly positive")
+
         if self.constraint_penalty_weight < 0.0:
             raise calibration_error("constraint_penalty_weight", "must be non-negative")
 
@@ -230,7 +235,7 @@ class CalibrationOptimizerSettings(ContractModel):
                 f"{field_path}.max_iterations",
                 calibration_error,
             ),
-            cpu_count=require_positive_integer(
+            cpu_count=require_non_negative_integer(
                 raw_payload,
                 "cpu_count",
                 f"{field_path}.cpu_count",
@@ -300,6 +305,7 @@ class CalibrationStageHandoff(ContractModel):
     def __post_init__(self) -> None:
         if self.from_stage == self.to_stage:
             raise calibration_error("stage_handoff", "must not target the same stage")
+
         if self.transport == CalibrationHandoffTransport.PERSISTED_ARTIFACT_REFERENCE:
             if self.artifact_reference is None or not self.artifact_reference.strip():
                 raise calibration_error("artifact_reference", "must be non-empty for persisted handoffs")
@@ -338,12 +344,14 @@ class CalibrationResumeSettings(ContractModel):
     checkpoint_reference: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.source == CalibrationResumeSource.PERSISTED_CHECKPOINT_REFERENCE:
-            if self.checkpoint_reference is None or not self.checkpoint_reference.strip():
-                raise calibration_error(
-                    "checkpoint_reference",
-                    "must be non-empty when source=persisted_checkpoint_reference",
-                )
+        if (
+            self.source == CalibrationResumeSource.PERSISTED_CHECKPOINT_REFERENCE
+            and self.checkpoint_reference is None or not self.checkpoint_reference.strip()
+        ):
+            raise calibration_error(
+                "checkpoint_reference",
+                "must be non-empty when source=persisted_checkpoint_reference",
+            )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationResumeSettings:

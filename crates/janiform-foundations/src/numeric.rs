@@ -4,6 +4,7 @@ mod bounds;
 mod constants;
 mod domain;
 mod l_moments;
+mod logarithms;
 mod ordering;
 mod samples;
 
@@ -21,6 +22,7 @@ pub use l_moments::{
     bowley_skewness_from_sorted, compute_probability_weighted_moment, l_moment_lambda2_from_sorted,
     l_moment_tau3_from_sorted,
 };
+pub use logarithms::{log_sum_exp, log_sum_exp_pair};
 pub use ordering::{
     compute_finite_median_or_zero, compute_finite_quantile_or_zero, compute_median_f64_or_zero,
     compute_median_i64_or_zero, compute_sorted_median, compute_sorted_quantile,
@@ -28,10 +30,10 @@ pub use ordering::{
     sorted_finite_values, unique_sorted_values,
 };
 pub use samples::{
-    MeanEstimate, arithmetic_mean, arithmetic_mean_or_zero, central_skewness_or_zero,
-    coefficient_of_variation, finite_arithmetic_mean_or_zero, jackknife_standard_error,
-    mean_estimate_from_standard_errors, pearson_correlation, relative_rmse, rolling_sum,
-    root_mean_square_or_infinity, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
-    sample_standard_deviation, sample_variance, standardized_path_distance,
-    winsorized_sample_standard_deviation_from_sorted, z_score,
+    AdjustedShapeJackknifeStandardErrors, MeanEstimate, adjusted_shape_jackknife_standard_errors,
+    arithmetic_mean, arithmetic_mean_or_zero, central_skewness_or_zero, coefficient_of_variation,
+    finite_arithmetic_mean_or_zero, mean_estimate_from_standard_errors, pearson_correlation,
+    relative_rmse, rolling_sum, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
+    sample_adjusted_skewness, sample_standard_deviation, sample_variance,
+    standardized_path_distance, winsorized_sample_standard_deviation_from_sorted, z_score,
 };

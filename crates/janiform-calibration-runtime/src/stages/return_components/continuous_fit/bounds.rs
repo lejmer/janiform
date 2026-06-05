@@ -12,7 +12,7 @@ use super::super::contracts::{
 };
 use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::execution::theoretical_net_process_moments;
-use super::super::progress::send_return_components_evaluation_progress;
+use super::super::progress::emit_return_components_evaluation_progress;
 use super::budget::ContinuousNigFitBudgets;
 use super::constants::RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE;
 use super::likelihood::maximum_profiled_open_beta_ratio;
@@ -162,7 +162,7 @@ pub(super) fn build_moment_seed_candidates(
             let completed_count = completed_candidate_count.fetch_add(1, Ordering::Relaxed) + 1;
             let candidate_label = format!("moment_seed_{:03}", candidate_index + 1);
 
-            send_return_components_evaluation_progress(
+            emit_return_components_evaluation_progress(
                 progress_sender,
                 ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
                 completed_count,

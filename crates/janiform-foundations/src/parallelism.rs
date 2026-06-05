@@ -6,8 +6,13 @@ pub fn available_cpu_count() -> usize {
 }
 
 /// Resolve an optional user CPU budget to a strictly positive CPU count.
+///
+/// `None` and `Some(0)` both mean all CPUs available to this process.
 pub fn resolved_cpu_count(cpu_count: Option<usize>) -> usize {
-    cpu_count.unwrap_or_else(available_cpu_count).max(1)
+    match cpu_count {
+        Some(cpu_count) if cpu_count > 0 => cpu_count,
+        Some(_) | None => available_cpu_count(),
+    }
 }
 
 /// Split a strictly positive CPU budget across active workers.
@@ -27,7 +32,12 @@ pub fn distribute_cpu_count_across_workers(
 
 #[cfg(test)]
 mod tests {
-    use super::distribute_cpu_count_across_workers;
+    use super::{available_cpu_count, distribute_cpu_count_across_workers, resolved_cpu_count};
+
+    #[test]
+    fn resolved_cpu_count_treats_zero_as_available_cpu_count() {
+        assert_eq!(resolved_cpu_count(Some(0)), available_cpu_count());
+    }
 
     #[test]
     fn distribute_cpu_count_across_workers_keeps_budget_for_single_worker() {

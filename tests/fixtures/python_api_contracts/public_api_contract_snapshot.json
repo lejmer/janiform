@@ -637,13 +637,14 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "calibration_grid_interval_hours"
+            "calibration_grid_interval_hours",
+            "predictive_evidence_alpha"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMeanReversionConfiguration'"
           },
-          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None, predictive_evidence_alpha: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -1291,13 +1292,14 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "calibration_grid_interval_hours"
+            "calibration_grid_interval_hours",
+            "predictive_evidence_alpha"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMeanReversionConfiguration'"
           },
-          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None, predictive_evidence_alpha: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "f4848abf781d16ba0270dbb0bba874db83cd73a5f40dbd12aae10d3cfbc8417e",
+  "approved_snapshot_sha256": "94b60a47f03474487a51c7bc04b38b2d42936d76cebdb523d9db3df0ac5243a3",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1618,6 +1618,22 @@
       "updated_surfaces": [
         "janiform.calibration.presets",
         "janiform.calibration.presets.references"
+      ]
+    },
+    {
+      "approved_on": "2026-06-04",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/calibration-diagnostics.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Mean-reversion calibration now exposes an advanced predictive evidence alpha override while Rust owns automatic grid evaluation and the asset-agnostic predictive evidence gate.",
+      "snapshot_sha256": "94b60a47f03474487a51c7bc04b38b2d42936d76cebdb523d9db3df0ac5243a3",
+      "summary": "Expose mean-reversion predictive evidence alpha in the Python calibration boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
       ]
     }
   ],

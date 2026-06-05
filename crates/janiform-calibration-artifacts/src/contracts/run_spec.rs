@@ -9,7 +9,8 @@ use super::{
     CalibrationObjectivePolicyError, CalibrationOptimizerSettingsError, CalibrationResumeSettings,
     CalibrationResumeSettingsError, CalibrationRunDataInputs, CalibrationRunDataInputsError,
     CalibrationRunSeedSettings, CalibrationRunSeedSettingsError, CalibrationStage,
-    CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageSolverSettings,
+    CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffTransport,
+    CalibrationStageSolverSettings,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -115,6 +116,39 @@ impl CalibrationRunSpec {
             stage_handoffs: Vec::new(),
             resume_settings: None,
         }
+    }
+
+    /// Find the configured handoff from one selected stage to another.
+    pub fn stage_handoff(
+        &self,
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    ) -> Option<&CalibrationStageHandoff> {
+        self.stage_handoffs.iter().find(|stage_handoff| {
+            stage_handoff.from_stage == from_stage && stage_handoff.to_stage == to_stage
+        })
+    }
+
+    /// Resolve the handoff transport for a stage edge.
+    ///
+    /// If the run spec does not contain an explicit handoff for the edge, the
+    /// default follows the execution mode: memory runs pass in-memory payloads,
+    /// while disk runs pass persisted artifact references.
+    pub fn stage_handoff_transport_or_default(
+        &self,
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    ) -> CalibrationStageHandoffTransport {
+        self.stage_handoff(from_stage, to_stage)
+            .map(CalibrationStageHandoff::transport)
+            .unwrap_or(match self.execution_mode {
+                CalibrationExecutionMode::Memory => {
+                    CalibrationStageHandoffTransport::InMemoryOutput
+                }
+                CalibrationExecutionMode::Disk => {
+                    CalibrationStageHandoffTransport::PersistedArtifactReference
+                }
+            })
     }
 
     pub fn validate(&self) -> Result<(), CalibrationRunSpecError> {

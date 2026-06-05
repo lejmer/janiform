@@ -60,6 +60,31 @@ FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
 )
 
 
+def _mean_reversion_grid_candidates(
+    mean_reversion_stage_input: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    assert set(mean_reversion_stage_input) == {
+        "predictive_evidence_alpha",
+        "grid_candidates",
+    }
+    assert mean_reversion_stage_input["predictive_evidence_alpha"] == pytest.approx(0.05)
+
+    return tuple(mean_reversion_stage_input["grid_candidates"])
+
+
+def _mean_reversion_grid_candidate(
+    mean_reversion_stage_input: dict[str, Any],
+    calibration_grid_kind_fragment: str,
+) -> dict[str, Any]:
+    for candidate in _mean_reversion_grid_candidates(mean_reversion_stage_input):
+        if calibration_grid_kind_fragment in candidate["calibration_grid_kind"]:
+            return candidate
+
+    raise AssertionError(
+        f"missing mean-reversion grid candidate containing `{calibration_grid_kind_fragment}`"
+    )
+
+
 def test_coarse_data_timestamp_semantics_default_to_bar_open_time() -> None:
     assert (
         CalibrationCoarseDataColumnMapping().timestamp_semantics
@@ -277,8 +302,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
             sort_records_by_timestamp=True,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
-        mean_reversion=CalibrationMeanReversionConfiguration(
-        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(),
     )
 
     translation = translate_market_data_request_to_prepared_calibration(request)
@@ -287,24 +311,28 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     assert translation.staged_request.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert set(mean_reversion_stage_input) == {
+    mean_reversion_grid_candidate = _mean_reversion_grid_candidate(
+        mean_reversion_stage_input,
+        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1",
+    )
+    assert set(mean_reversion_grid_candidate) == {
         "calibration_grid_kind",
         "calibration_grid_interval_hours",
         "source_observation_count",
         "coverage_ratio",
         "observations",
     }
-    assert mean_reversion_stage_input["source_observation_count"] == 3
-    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(0.25)
-    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(6.5)
-    assert mean_reversion_stage_input["calibration_grid_kind"] == (
+    assert mean_reversion_grid_candidate["source_observation_count"] == 3
+    assert mean_reversion_grid_candidate["coverage_ratio"] == pytest.approx(0.25)
+    assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(6.5)
+    assert mean_reversion_grid_candidate["calibration_grid_kind"] == (
         "market_data_open_session_log_price_interval_grid.v1:"
-        "last_observed_open_session_log_price_per_complete_utc_interval.v1:"
+        "last_observed_source_log_price_per_complete_utc_interval.v1:"
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
     )
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
-        for observation in mean_reversion_stage_input["observations"]
+        for observation in mean_reversion_grid_candidate["observations"]
     ) == (
         _utc_nanos("2026-02-02T21:00:00Z"),
         _utc_nanos("2026-02-03T03:30:00Z"),
@@ -321,7 +349,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     )
     assert tuple(
         observation["observed_log_price"]
-        for observation in mean_reversion_stage_input["observations"]
+        for observation in mean_reversion_grid_candidate["observations"]
     ) == pytest.approx(
         (
             math.log(101.0 / 107.0),
@@ -383,13 +411,17 @@ def test_translate_market_data_request_reports_direct_mean_reversion_coverage_on
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
+    mean_reversion_grid_candidates = _mean_reversion_grid_candidates(mean_reversion_stage_input)
+    assert len(mean_reversion_grid_candidates) == 1
 
-    assert mean_reversion_stage_input["source_observation_count"] == 1
-    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0 / 3.0)
-    assert len(mean_reversion_stage_input["observations"]) == 3
+    mean_reversion_grid_candidate = mean_reversion_grid_candidates[0]
+
+    assert mean_reversion_grid_candidate["source_observation_count"] == 1
+    assert mean_reversion_grid_candidate["coverage_ratio"] == pytest.approx(1.0 / 3.0)
+    assert len(mean_reversion_grid_candidate["observations"]) == 3
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
-        for observation in mean_reversion_stage_input["observations"]
+        for observation in mean_reversion_grid_candidate["observations"]
     ) == (
         _utc_nanos("2026-02-03T14:30:00Z"),
         _utc_nanos("2026-02-04T14:30:00Z"),
@@ -590,17 +622,22 @@ def test_translate_market_data_request_honors_explicit_mean_reversion_grid_inter
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert set(mean_reversion_stage_input) == {
+    mean_reversion_grid_candidates = _mean_reversion_grid_candidates(mean_reversion_stage_input)
+    assert len(mean_reversion_grid_candidates) == 1
+
+    mean_reversion_grid_candidate = mean_reversion_grid_candidates[0]
+
+    assert set(mean_reversion_grid_candidate) == {
         "calibration_grid_kind",
         "calibration_grid_interval_hours",
         "source_observation_count",
         "coverage_ratio",
         "observations",
     }
-    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
+    assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(36.0)
     assert (
         "explicit_mean_reversion_grid_interval_hours.v1"
-        in mean_reversion_stage_input["calibration_grid_kind"]
+        in mean_reversion_grid_candidate["calibration_grid_kind"]
     )
 
 
@@ -644,8 +681,7 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
             sort_records_by_timestamp=True,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
-        mean_reversion=CalibrationMeanReversionConfiguration(
-        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(),
         exchange_code="FXSPOT",
         session_timezone="America/New_York",
     )
@@ -654,23 +690,27 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert set(mean_reversion_stage_input) == {
+    mean_reversion_grid_candidate = _mean_reversion_grid_candidate(
+        mean_reversion_stage_input,
+        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1",
+    )
+    assert set(mean_reversion_grid_candidate) == {
         "calibration_grid_kind",
         "calibration_grid_interval_hours",
         "source_observation_count",
         "coverage_ratio",
         "observations",
     }
-    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
+    assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(24.0)
     assert (
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
-        in mean_reversion_stage_input["calibration_grid_kind"]
+        in mean_reversion_grid_candidate["calibration_grid_kind"]
     )
-    assert mean_reversion_stage_input["source_observation_count"] == 6
-    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(6.0 / 7.0)
+    assert mean_reversion_grid_candidate["source_observation_count"] == 6
+    assert mean_reversion_grid_candidate["coverage_ratio"] == pytest.approx(6.0 / 7.0)
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
-        for observation in mean_reversion_stage_input["observations"]
+        for observation in mean_reversion_grid_candidate["observations"]
     ) == (
         _utc_nanos("2026-02-03T00:00:00Z"),
         _utc_nanos("2026-02-04T00:00:00Z"),

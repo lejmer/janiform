@@ -212,9 +212,71 @@ Long variance is the persistent stochastic volatility state used by return clock
 
 The neutral long-variance level is `1.0`. Long-variance parameters control persistence, volatility of volatility, and buy/sell event feedback into future variance. Return-clock exposure parameters control how strongly Hawkes excitation contributes to buy-side and sell-side return clocks.
 
-The `Fit long variance` stage estimates an initial persistent variance state from observed squared-return persistence, side activity relation to squared returns, and normalized squared-return dispersion. The dispersion initializer is projected into the standard unit-stationary CIR variance boundary before restart optimization so the handoff point is inside the same parameter domain that restart search uses. Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`: realized variance, variance-of-variance, return skewness, return excess kurtosis, activity/variance correlation, signed-activity relation to next-interval variance, temporal block standard errors where a coarser configured horizon is available, and delete-one jackknife standard errors for skewness and excess kurtosis. Joint refinement scores the horizon diagnostics with available sampling uncertainty under the `long_variance` objective family so restart optimization can move the long-variance parameters when those persistent variance targets support it.
+The `Fit long variance` stage estimates an initial persistent variance state from observed squared-return persistence, side activity relation to squared returns, and normalized squared-return dispersion. The dispersion initializer is projected into the standard unit-stationary CIR variance boundary before restart optimization so the handoff point is inside the same parameter domain that restart search uses.
+
+Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`: realized variance, variance-of-variance, return skewness, return excess kurtosis, activity/variance correlation, signed-activity relation to next-interval variance, temporal block standard errors where a coarser configured horizon is available, and delete-one jackknife standard errors for skewness and excess kurtosis. Joint refinement scores the horizon diagnostics with available sampling uncertainty under the `long_variance` objective family so restart optimization can move the long-variance parameters when those persistent variance targets support it.
+
+When coarse data is present, the slow-horizon long-variance diagnostics use coarse intervals where coarse and tick-derived hourly intervals cover the same time span, then keep tick-derived hourly intervals for gaps. This avoids counting the same period twice while preserving tick-only coverage. The fields `slow_horizon_source_selection_policy`, `slow_horizon_tick_interval_count`, `slow_horizon_coarse_interval_count`, `slow_horizon_selected_interval_count`, and `slow_horizon_omitted_overlapping_tick_interval_count` summarize that source-selection step.
 
 The `Backfit return distribution` stage is a variance-budget backfit. It keeps the fitted activity, long-variance, seasonality, and news/gap components fixed, then makes the return-distribution handoff represent the residual physical return layer that downstream mean-reversion, joint-refinement, simulation, and pricing workflows should consume. The report includes the selected backfit candidate, whether a no-op candidate was selected, and the variance-budget diagnostic fields used to compare the initial NIG contribution, fixed slow/news contribution, backfitted NIG contribution, modeled scale, and observed target scale when those measurements are available.
+
+### Mean reversion
+
+The `Fit mean reversion` stage decides whether the retained observations support a mean-reverting price component. In this context, mean reversion means that the fitted log price has a tendency to move back toward a learned anchor level after moving away from it.
+
+The fitted mean-reversion speed is called `kappa`:
+
+| Value       | Practical meaning                                                                                                                                    |
+|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `kappa > 0` | Janiform selected a model with a nonzero pull back toward the learned anchor.                                                                        |
+| `kappa = 0` | Janiform selected the random-walk interpretation because the retained observations did not provide supported predictive evidence for a nonzero pull. |
+
+The stage is asset-agnostic. It does not assume that FX, equities, futures, or crypto should behave differently. It compares each fitted `kappa > 0` candidate with `random_walk_null`, which predicts the next retained log price as the current retained log price.
+
+The diagnostics use the word "grid" for the time spacing used by mean-reversion calibration. This is not the tick grid. The tick grid is the set of prices the instrument can display, such as increments of `0.25` or `0.00001`. The mean-reversion calibration grid is a time spacing, such as one hour, one session, or one day, used to line up retained price observations for this stage.
+
+Users normally do not set a mean-reversion source. Janiform chooses from the retained data:
+
+| Data available in the fit  | Mean-reversion evidence source                                                                                       |
+|----------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Tick data only             | Retained open-session tick prices.                                                                                   |
+| Tick data plus coarse data | Retained open-session tick prices and retained coarse price observations, evaluated as separate source-backed grids. |
+
+There is no separate primary or secondary mean-reversion source setting. If slower price history is available, provide it as coarse data. Coarse history can start before the tick data, overlap it, or extend after it. Janiform evaluates whatever retained source-backed grids are viable under the same predictive evidence rule.
+
+Janiform evaluates all viable automatic time grids unless the request provides an explicit `mean_reversion.calibration_grid_interval_hours`. Automatic grids are derived from the retained data. They can include the typical time between retained boundaries, the typical observed session length, a spacing derived from the full retained history length, and the coarse-bar cadence when coarse data is available. The selected grid summary is in `diagnostics.calibration_grid`, and all evaluated grids are listed in `diagnostics.evaluated_grids`.
+
+For each evaluated time grid, `evaluated_candidates` contains the `random_walk_null` baseline and any supported fitted alternatives with `kappa > 0`. A `kappa > 0` candidate includes a `predictive_evidence` block when Janiform could run the rolling comparison. The most useful fields are:
+
+Each candidate also includes `series_summaries` for the calibration series used internally by the stage: core expected increments, pressure state path, boundary anchor values, deviations from anchor, and residuals. The report keeps counts, endpoints, range, mean, and constant-value detection so users can audit scale and shape.
+
+| Field                                                              | Meaning                                                                                      |
+|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `validation_refit_schedule_policy`                                 | Named policy for how rolling validation refits are spaced.                                   |
+| `validation_refit_count`                                           | Number of model refits used for this rolling comparison.                                     |
+| `validation_transition_count`                                      | Number of held-out one-step transitions used in the rolling comparison.                      |
+| `validation_block_length`                                          | Data-derived contiguous block length from random-walk innovation sign dependence.            |
+| `validation_block_count`                                           | Number of validation blocks after aggregation.                                               |
+| `positive_block_count`, `negative_block_count`, `tied_block_count` | Block-level counts where the candidate beat, lost to, or tied the random walk.               |
+| `random_walk_validation_loss`                                      | Held-out squared log-price prediction loss for `random_walk_null`.                           |
+| `candidate_validation_loss`                                        | Held-out squared log-price prediction loss for the `kappa > 0` candidate.                    |
+| `relative_loss_reduction`                                          | Fractional loss improvement versus `random_walk_null` when the random-walk loss is positive. |
+| `raw_sign_test_p_value`                                            | One-sided exact sign-test p-value before multiple-test correction.                           |
+| `holm_adjusted_p_value`                                            | Holm-adjusted p-value across all tested `kappa > 0` grid/candidate comparisons.              |
+| `gate_status`                                                      | Whether the candidate passed, failed, or had too little validation support.                  |
+| `significance_level`                                               | The predictive evidence alpha used by the request. The default is `0.05`.                    |
+
+A model with `kappa > 0` is selected only when it passes the predictive evidence gate and has a positive total validation loss improvement. Passing candidates are ranked by adjusted p-value, then relative validation loss reduction, then BIC. In this stage, BIC is a secondary model-complexity score: it breaks ties between supported predictive candidates and provides the fallback ranking when `kappa > 0` candidates exist but the retained validation support is too small for the predictive gate to run.
+
+To diagnose a zero or positive `kappa`, read the mean-reversion diagnostics in this order:
+
+1. Start with `diagnostics.stage_decision_reason`. It distinguishes positive predictive evidence, no positive predictive evidence, thin-sample BIC fallback, and runtime-projection fallback.
+2. Check `diagnostics.calibration_grid` to see the selected grid, then inspect `diagnostics.evaluated_grids` to see whether another automatic grid was considered.
+3. On each evaluated time grid, compare `random_walk_null` with the `kappa > 0` candidates.
+4. For `kappa > 0` candidates, read `predictive_evidence.gate_status`, `relative_loss_reduction`, and `holm_adjusted_p_value`.
+5. Use BIC only after the predictive evidence fields. BIC explains tie-breaking and thin-sample fallback, not the primary evidence rule for selecting `kappa > 0`.
+
+When `kappa = 0`, the practical reading is: Janiform did not find supported predictive evidence that a mean-reverting model improved one-step held-out log-price prediction over `random_walk_null` in the retained calibration observations. That can be the right answer for any asset when the retained window does not show reliable mean reversion.
 
 ### Business time for returns
 
