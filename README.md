@@ -1,3 +1,7 @@
+<h1 align="center">
+<img src="branding/logo/primary/janiform_primary_512_bronze.svg" width="800">
+</h1><br>
+
 # Janiform
 
 [![CI](https://github.com/lejmer/janiform/actions/workflows/ci-fast-regression.yml/badge.svg?branch=develop)](https://github.com/lejmer/janiform/actions/workflows/ci-fast-regression.yml)
