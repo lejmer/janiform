@@ -3,7 +3,7 @@
   <desc id="desc">Monochrome Janiform logo mark, a two-sided face with transparent exterior and preserved bronze interior fill.</desc>
 
   <!-- Symmetric centered 512x512 base silhouette. The visible profile feature levels are mirrored left/right. -->
-  <path id="black-silhouette" fill="#3B2D1D" d="
+  <path id="black-silhouette" fill="#4F3C27" d="
     M 256 28
     C 366 28 421 65 442 177
     C 443 185 443 191 447 198
@@ -42,7 +42,7 @@
     Z"/>
 
   <!-- Right-side interior fill, deliberately inset from the outer profile so the black border remains even. -->
-  <path id="dark-interior" fill="#6B543A" d="
+  <path id="dark-interior" fill="#73604A" d="
     M 256 40
     C 365 40 406 79 428 177
     C 429 187 430 193 435 201
@@ -63,6 +63,6 @@
     L 256 40
     Z"/>
 
-  <circle id="left-eye" cx="137" cy="201" r="18" fill="#6B543A"/>
-  <circle id="right-eye" cx="375" cy="201" r="19" fill="#3B2D1D"/>
+  <circle id="left-eye" cx="137" cy="201" r="18" fill="#73604A"/>
+  <circle id="right-eye" cx="375" cy="201" r="19" fill="#4F3C27"/>
 </svg>
