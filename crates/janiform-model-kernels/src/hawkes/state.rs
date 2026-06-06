@@ -30,15 +30,6 @@ pub struct HawkesSideIntensities {
     pub lambda_minus: f64,
 }
 
-impl HawkesSideIntensities {
-    pub const fn scale(self, seasonality_factor: f64) -> Self {
-        Self {
-            lambda_plus: self.lambda_plus * seasonality_factor,
-            lambda_minus: self.lambda_minus * seasonality_factor,
-        }
-    }
-}
-
 /// Full state-to-intensity projection output.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HawkesIntensityProjection {
@@ -281,20 +272,25 @@ impl HawkesExcitationState {
         }
     }
 
-    /// Project both de-seasonalized and seasonality-scaled intensities.
+    /// Project both de-seasonalized and seasonality-applied model intensities.
     ///
-    /// Scaling equations:
-    /// - `lambda_plus = s(t) * tilde_lambda_plus`
-    /// - `lambda_minus = s(t) * tilde_lambda_minus`
+    /// Model equations:
+    /// - `lambda_plus = s(t) * lambda_bar + Y++ + Y+-`
+    /// - `lambda_minus = s(t) * lambda_bar + Y-+ + Y--`
     pub const fn project_intensities(
         self,
         lambda_bar: f64,
         seasonality_factor: f64,
     ) -> HawkesIntensityProjection {
         let deseasonalized = self.project_deseasonalized_intensities(lambda_bar);
+        let seasonal_baseline = seasonality_factor * lambda_bar;
+
         HawkesIntensityProjection {
             deseasonalized,
-            seasonality_scaled: deseasonalized.scale(seasonality_factor),
+            seasonality_scaled: HawkesSideIntensities {
+                lambda_plus: seasonal_baseline + self.target_plus_sum(),
+                lambda_minus: seasonal_baseline + self.target_minus_sum(),
+            },
         }
     }
 

@@ -1710,7 +1710,7 @@ fn integrate_side_intensity(
     }
 
     let integrated_decay_weight = (1.0 - (-beta * elapsed_hours).exp()) / beta;
-    let deseasonalized_baseline = lambda_bar * elapsed_hours;
+    let seasonal_baseline = seasonality_factor * lambda_bar * elapsed_hours;
 
     let endogenous_component = if plus_side {
         state.target_plus_sum() * integrated_decay_weight
@@ -1718,7 +1718,7 @@ fn integrate_side_intensity(
         state.target_minus_sum() * integrated_decay_weight
     };
 
-    seasonality_factor * (deseasonalized_baseline + endogenous_component)
+    seasonal_baseline + endogenous_component
 }
 
 fn snapshot_to_excitation_state(

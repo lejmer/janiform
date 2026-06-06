@@ -98,6 +98,7 @@ fn long_variance_maximum_calibration_mean_reversion_rate(
 ) -> Result<f64, String> {
     let multiplicative_upper_bound = baseline_long_variance_parameters.mean_reversion_rate
         * JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND.exp();
+
     let calibration_upper_bound = long_variance_mean_reversion_rate_calibration_upper_bound();
     let maximum_mean_reversion_rate = multiplicative_upper_bound.min(calibration_upper_bound);
 
@@ -376,6 +377,7 @@ mod tests {
     fn long_variance_bounds_keep_symmetric_event_loading_corner_stationary() {
         let active_parameter_layout = test_active_parameter_layout();
         let baseline_long_variance_parameters = LongVarianceParameters::neutral();
+
         let mut lower_bounds = vec![0.0; active_parameter_layout.vector_length()];
         let mut upper_bounds = vec![0.0; active_parameter_layout.vector_length()];
 
@@ -392,6 +394,7 @@ mod tests {
             * upper_bounds
                 [active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index]
                 .exp();
+
         let corner_parameters = LongVarianceParameters::try_new(
             mean_reversion_rate_upper_bound,
             0.0,
@@ -399,8 +402,12 @@ mod tests {
             upper_bounds[active_parameter_layout.long_variance_sell_event_loading_index],
         )
         .expect("upper event-loading corner should satisfy primitive parameter constraints");
+
         let stationary_level = corner_parameters
-            .stationary_mean_reversion_level_for_hawkes_kernel(test_hawkes_kernel_parameters())
+            .stationary_mean_reversion_level_for_hawkes_kernel(
+                test_hawkes_kernel_parameters(),
+                janiform_model_kernels::hawkes::HawkesStationaryTargetSourceRates::zero(),
+            )
             .expect("upper event-loading corner should keep positive stationary level");
 
         assert!(stationary_level > 0.0);
@@ -410,6 +417,7 @@ mod tests {
     fn long_variance_restart_seeds_move_each_active_coordinate() {
         let active_parameter_layout = test_active_parameter_layout();
         let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
         let lower_bounds = vec![-1.0; active_parameter_layout.vector_length()];
         let upper_bounds = vec![2.0; active_parameter_layout.vector_length()];
 
@@ -424,6 +432,7 @@ mod tests {
             .iter()
             .map(|(restart_id, _)| restart_id.as_str())
             .collect::<Vec<_>>();
+
         assert_eq!(
             restart_seed_ids,
             vec![

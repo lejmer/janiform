@@ -14,9 +14,14 @@ use crate::sufficient_statistics::{
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
 };
 use janiform_foundations::linear_algebra::solve_two_by_two_linear_source_system;
-use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, target_source_rates_from_shared_activity_loading,
+};
 use janiform_model_kernels::mean_reversion::MeanReversionRuntimeIntervalAnchors;
-use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
+use janiform_model_kernels::news::{
+    NewsActivityLoadingRateError, NewsProcessConfiguration, NewsProcessConfigurationError,
+    expected_news_activity_loading_rate,
+};
 use janiform_model_kernels::nig::{
     NigIncrementSamplingError, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError,
@@ -137,6 +142,11 @@ pub enum EndogenousAnchorMaterializationError {
     InvalidNewsProcessConfiguration {
         source: NewsProcessConfigurationError,
     },
+    InvalidNewsActivityLoadingRate {
+        interval_index: usize,
+        source: NewsActivityLoadingRateError,
+    },
+    InvalidNewsTargetSourceRates,
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
     },
@@ -200,6 +210,17 @@ impl Display for EndogenousAnchorMaterializationError {
             Self::InvalidNewsProcessConfiguration { source } => write!(
                 formatter,
                 "endogenous-anchor news process configuration is invalid: {source}"
+            ),
+            Self::InvalidNewsActivityLoadingRate {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "endogenous-anchor news activity-loading rate is invalid at interval {interval_index}: {source}"
+            ),
+            Self::InvalidNewsTargetSourceRates => write!(
+                formatter,
+                "endogenous-anchor news activity-loading rate produces invalid Hawkes target source rates"
             ),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
                 formatter,
@@ -269,6 +290,7 @@ impl Error for EndogenousAnchorMaterializationError {
             Self::InvalidNewsIntensity { source } => Some(source),
             Self::InvalidEquationSpecification { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
+            Self::InvalidNewsActivityLoadingRate { source, .. } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidExpectedIntervalStatistics { source, .. } => Some(source),
             Self::TransformSliceSolveFailure { source, .. } => Some(source),
@@ -312,18 +334,6 @@ pub fn materialize_endogenous_anchor_path(
             EndogenousAnchorMaterializationError::InvalidNigSharedPlusShiftConfiguration { source }
         })?;
 
-    let expected_severity_mark = news_process_configuration
-        .shared_mark_law
-        .gamma_severity_marks
-        .expected_severity_mark()
-        .map_err(|source| {
-            EndogenousAnchorMaterializationError::InvalidNewsProcessConfiguration {
-                source: NewsProcessConfigurationError::InvalidGammaSeverityMarkConfiguration {
-                    source,
-                },
-            }
-        })?;
-
     let mut expected_hawkes_state_path = Vec::with_capacity(interval_factors.len() + 1);
 
     expected_hawkes_state_path.push(initial_excitation_state);
@@ -341,16 +351,21 @@ pub fn materialize_endogenous_anchor_path(
             .last()
             .unwrap_or(&initial_excitation_state);
 
-        let expected_activity_loading_rate = expected_scaled_news_loading_rate(
-            factors,
+        let expected_activity_loading_rate = expected_news_activity_loading_rate(
+            factors.known_nu_h,
+            factors.surprise_nu_h,
+            news_process_configuration.known_component_mark_scales,
+            news_process_configuration.surprise_component_mark_scales,
             news_process_configuration
-                .known_component_mark_scales
-                .activity_coupling_scale,
-            news_process_configuration
-                .surprise_component_mark_scales
-                .activity_coupling_scale,
-            expected_severity_mark,
-        );
+                .shared_mark_law
+                .gamma_severity_marks,
+        )
+        .map_err(|source| {
+            EndogenousAnchorMaterializationError::InvalidNewsActivityLoadingRate {
+                interval_index,
+                source,
+            }
+        })?;
 
         let first_moment_projection = expected_interval_projection_from_first_moment_dynamics(
             interval_index,
@@ -459,10 +474,7 @@ pub fn derive_expected_interval_statistics_from_first_moment_dynamics(
     expected_severity_mark: f64,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
-) -> Result<
-    SufficientStatisticsExpectedIntervalStatistics,
-    SufficientStatisticsIntervalStatisticsError,
-> {
+) -> Result<SufficientStatisticsExpectedIntervalStatistics, EndogenousAnchorMaterializationError> {
     expected_interval_statistics_from_first_moment_dynamics(
         equation_specification,
         expected_severity_mark,
@@ -503,7 +515,7 @@ fn expected_interval_projection_from_first_moment_dynamics(
         factors,
         structural_state_before,
         expected_activity_loading_rate,
-    );
+    )?;
 
     let expected_statistics = expected_interval_statistics_from_target_sum_first_moment(
         equation_specification,
@@ -537,22 +549,25 @@ fn expected_interval_statistics_from_first_moment_dynamics(
     expected_severity_mark: f64,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
-) -> Result<
-    SufficientStatisticsExpectedIntervalStatistics,
-    SufficientStatisticsIntervalStatisticsError,
-> {
+) -> Result<SufficientStatisticsExpectedIntervalStatistics, EndogenousAnchorMaterializationError> {
     let target_sum_first_moment = integrate_expected_target_sums(
         equation_specification,
         factors,
         structural_state_before,
         (factors.known_nu_h + factors.surprise_nu_h) * expected_severity_mark,
-    );
+    )?;
 
     expected_interval_statistics_from_target_sum_first_moment(
         equation_specification,
         factors,
         target_sum_first_moment,
     )
+    .map_err(|source| {
+        EndogenousAnchorMaterializationError::InvalidExpectedIntervalStatistics {
+            interval_index: 0,
+            source,
+        }
+    })
 }
 
 fn expected_interval_statistics_from_target_sum_first_moment(
@@ -581,11 +596,15 @@ fn integrate_expected_target_sums(
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
     expected_activity_loading_rate: f64,
-) -> HawkesTargetSumFirstMoment {
+) -> Result<HawkesTargetSumFirstMoment, EndogenousAnchorMaterializationError> {
     let kernel_parameters = equation_specification.hawkes_kernel_parameters;
-
     let alpha = kernel_parameters.alpha;
-    let rho = kernel_parameters.rho;
+
+    let news_source_rates = target_source_rates_from_shared_activity_loading(
+        kernel_parameters.rho,
+        expected_activity_loading_rate,
+    )
+    .ok_or(EndogenousAnchorMaterializationError::InvalidNewsTargetSourceRates)?;
 
     let target_plus_before = structural_state_before.target_plus_sum();
     let target_minus_before = structural_state_before.target_minus_sum();
@@ -596,14 +615,16 @@ fn integrate_expected_target_sums(
         alpha.minus_plus,
         -kernel_parameters.beta + alpha.minus_minus,
     );
+
     let initial_state = Vector2::new(target_plus_before, target_minus_before);
 
     let source_plus =
         factors.s_h * kernel_parameters.lambda_bar * (alpha.plus_plus + alpha.plus_minus)
-            + expected_activity_loading_rate * (rho.plus_plus + rho.plus_minus);
+            + news_source_rates.target_plus_source_rate;
+
     let source_minus =
         factors.s_h * kernel_parameters.lambda_bar * (alpha.minus_plus + alpha.minus_minus)
-            + expected_activity_loading_rate * (rho.minus_plus + rho.minus_minus);
+            + news_source_rates.target_minus_source_rate;
 
     let (target_after, integrated_target) = solve_two_by_two_linear_source_system(
         system_matrix,
@@ -612,12 +633,12 @@ fn integrate_expected_target_sums(
         factors.delta,
     );
 
-    HawkesTargetSumFirstMoment {
+    Ok(HawkesTargetSumFirstMoment {
         target_plus_after: target_after[0],
         target_minus_after: target_after[1],
         integrated_target_plus: integrated_target[0],
         integrated_target_minus: integrated_target[1],
-    }
+    })
 }
 
 fn expected_hawkes_state_after_first_moment_interval(
@@ -639,20 +660,6 @@ fn expected_hawkes_state_after_first_moment_interval(
         target_plus_after,
         target_minus_after,
     ))
-}
-
-fn expected_scaled_news_loading_rate(
-    factors: EndogenousAnchorIntervalFactors,
-    known_component_scale: f64,
-    surprise_component_scale: f64,
-    expected_mark: f64,
-) -> f64 {
-    let expected_known_loading_rate = factors.known_nu_h * known_component_scale * expected_mark;
-
-    let expected_surprise_loading_rate =
-        factors.surprise_nu_h * surprise_component_scale * expected_mark;
-
-    expected_known_loading_rate + expected_surprise_loading_rate
 }
 
 fn expected_scaled_news_arrival_contribution(

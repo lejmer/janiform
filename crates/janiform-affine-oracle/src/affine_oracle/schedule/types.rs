@@ -6,6 +6,7 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::{
     LongVarianceState, LongVarianceStateError, LongVarianceStationaryLevelError,
 };
+use janiform_model_kernels::news::NewsActivityLoadingRateError;
 
 use super::super::contracts::{
     ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformActivityLoadingsError,
@@ -201,6 +202,9 @@ pub enum ExponentialAffineScheduleCumulantError {
     InvalidLongVarianceStationaryLevel {
         source: LongVarianceStationaryLevelError,
     },
+    InvalidNewsActivityLoadingRate {
+        source: NewsActivityLoadingRateError,
+    },
     InvalidInput {
         source: ExponentialAffineTransformInputError,
     },
@@ -247,6 +251,10 @@ impl Display for ExponentialAffineScheduleCumulantError {
                 formatter,
                 "schedule long-variance stationary level is invalid: {source}"
             ),
+            Self::InvalidNewsActivityLoadingRate { source } => write!(
+                formatter,
+                "schedule news activity-loading rate is invalid: {source}"
+            ),
             Self::InvalidInput { source } => {
                 write!(formatter, "schedule interval input is invalid: {source}")
             }
@@ -290,6 +298,7 @@ impl Error for ExponentialAffineScheduleCumulantError {
             Self::InvalidInput { source } => Some(source),
             Self::InvalidInitialLongVarianceState { source } => Some(source),
             Self::InvalidLongVarianceStationaryLevel { source } => Some(source),
+            Self::InvalidNewsActivityLoadingRate { source } => Some(source),
             Self::InvalidInputTangent { source, .. } => Some(source),
             Self::InvalidSolverSettings { source } => Some(source),
             Self::InvalidTerminalLoading { source } => Some(source),

@@ -774,6 +774,12 @@ struct ExponentialAffineTransformGuardCheckpointEvaluation {
     d_dot_r_upper_bound: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ExponentialAffineTransformGuardDomainMetrics {
+    pub(super) d_dot_r: ComplexScalar,
+    pub(super) d_dot_r_upper_bound: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ExponentialAffineTransformTerminationContext {
     solver_settings: ExponentialAffineTransformSolverSettings,
@@ -910,11 +916,9 @@ fn evaluate_integration_guard_checkpoint(
     completed_step_count: usize,
     step_size: f64,
 ) -> ExponentialAffineTransformGuardCheckpointEvaluation {
-    let d_dot_r_upper_bound = 1.0
-        / transform_input
-            .equation_specification
-            .gamma_severity_mark_configuration
-            .derived_unit_mean_scale();
+    let guard_domain_metrics =
+        evaluate_transform_guard_domain_metrics(transform_input, integration_state.d_vector);
+
     let checkpoint_time = completed_step_count as f64 * step_size;
 
     if !integration_state.c_value.is_finite() || integration_state.d_vector.validate().is_err() {
@@ -924,13 +928,52 @@ fn evaluate_integration_guard_checkpoint(
                 completed_step_count,
                 checkpoint_time,
                 ComplexScalar::new(f64::NAN, f64::NAN),
-                d_dot_r_upper_bound,
+                guard_domain_metrics.d_dot_r_upper_bound,
             )),
             d_dot_r: ComplexScalar::new(f64::NAN, f64::NAN),
-            d_dot_r_upper_bound,
+            d_dot_r_upper_bound: guard_domain_metrics.d_dot_r_upper_bound,
         };
     }
 
+    if !guard_domain_metrics.d_dot_r.is_finite() {
+        return ExponentialAffineTransformGuardCheckpointEvaluation {
+            guard_failure: Some(build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
+                completed_step_count,
+                checkpoint_time,
+                guard_domain_metrics.d_dot_r,
+                guard_domain_metrics.d_dot_r_upper_bound,
+            )),
+            d_dot_r: guard_domain_metrics.d_dot_r,
+            d_dot_r_upper_bound: guard_domain_metrics.d_dot_r_upper_bound,
+        };
+    }
+
+    if guard_domain_metrics.d_dot_r.real >= guard_domain_metrics.d_dot_r_upper_bound {
+        return ExponentialAffineTransformGuardCheckpointEvaluation {
+            guard_failure: Some(build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
+                completed_step_count,
+                checkpoint_time,
+                guard_domain_metrics.d_dot_r,
+                guard_domain_metrics.d_dot_r_upper_bound,
+            )),
+            d_dot_r: guard_domain_metrics.d_dot_r,
+            d_dot_r_upper_bound: guard_domain_metrics.d_dot_r_upper_bound,
+        };
+    }
+
+    ExponentialAffineTransformGuardCheckpointEvaluation {
+        guard_failure: None,
+        d_dot_r: guard_domain_metrics.d_dot_r,
+        d_dot_r_upper_bound: guard_domain_metrics.d_dot_r_upper_bound,
+    }
+}
+
+pub(super) fn evaluate_transform_guard_domain_metrics(
+    transform_input: ExponentialAffineTransformInput,
+    d_vector: ExponentialAffineTransformDVector,
+) -> ExponentialAffineTransformGuardDomainMetrics {
     let d_dot_r = gamma_normal_news_domain_metric(GammaNormalNewsTransformComponents {
         gamma_severity_mark_configuration: transform_input
             .equation_specification
@@ -938,48 +981,23 @@ fn evaluate_integration_guard_checkpoint(
         news_intensity: transform_input.news_intensity,
         known_component_mark_scales: transform_input.known_news_component_mark_scales,
         surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
-        activity_loading: integration_state
-            .d_vector
-            .dot_loadings(transform_input.equation_specification.r()),
+        activity_loading: d_vector.dot_loadings(transform_input.equation_specification.r()),
         return_loading: transform_input.news_return_loading,
     });
 
-    if !d_dot_r.is_finite() {
-        return ExponentialAffineTransformGuardCheckpointEvaluation {
-            guard_failure: Some(build_guard_failure(
-                ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
-                completed_step_count,
-                checkpoint_time,
-                d_dot_r,
-                d_dot_r_upper_bound,
-            )),
-            d_dot_r,
-            d_dot_r_upper_bound,
-        };
-    }
+    let d_dot_r_upper_bound = 1.0
+        / transform_input
+            .equation_specification
+            .gamma_severity_mark_configuration
+            .derived_unit_mean_scale();
 
-    if d_dot_r.real >= d_dot_r_upper_bound {
-        return ExponentialAffineTransformGuardCheckpointEvaluation {
-            guard_failure: Some(build_guard_failure(
-                ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
-                completed_step_count,
-                checkpoint_time,
-                d_dot_r,
-                d_dot_r_upper_bound,
-            )),
-            d_dot_r,
-            d_dot_r_upper_bound,
-        };
-    }
-
-    ExponentialAffineTransformGuardCheckpointEvaluation {
-        guard_failure: None,
+    ExponentialAffineTransformGuardDomainMetrics {
         d_dot_r,
         d_dot_r_upper_bound,
     }
 }
 
-fn build_guard_failure(
+pub(super) fn build_guard_failure(
     code: ExponentialAffineTransformGuardFailureCode,
     step_index: usize,
     time: f64,

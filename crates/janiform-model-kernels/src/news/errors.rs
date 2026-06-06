@@ -211,6 +211,62 @@ impl Display for NewsMarkConfigurationError {
 impl Error for NewsMarkConfigurationError {}
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum NewsActivityLoadingRateError {
+    InvalidKnownIntensity {
+        value: f64,
+    },
+    InvalidSurpriseIntensity {
+        value: f64,
+    },
+    InvalidKnownComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidSurpriseComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidGammaSeverityMarkConfiguration {
+        source: NewsMarkConfigurationError,
+    },
+    InvalidDerivedRate {
+        value: f64,
+    },
+}
+
+impl Display for NewsActivityLoadingRateError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidKnownIntensity { value } => write!(
+                formatter,
+                "known news intensity must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSurpriseIntensity { value } => write!(
+                formatter,
+                "surprise news intensity must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidKnownComponentMarkScales { source } => write!(formatter, "{source}"),
+            Self::InvalidSurpriseComponentMarkScales { source } => write!(formatter, "{source}"),
+            Self::InvalidGammaSeverityMarkConfiguration { source } => write!(formatter, "{source}"),
+            Self::InvalidDerivedRate { value } => write!(
+                formatter,
+                "expected news activity-loading rate must be finite and non-negative, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for NewsActivityLoadingRateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidKnownComponentMarkScales { source } => Some(source),
+            Self::InvalidSurpriseComponentMarkScales { source } => Some(source),
+            Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
+            Self::InvalidKnownIntensity { .. } | Self::InvalidSurpriseIntensity { .. } => None,
+            Self::InvalidDerivedRate { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum NewsProcessConfigurationError {
     UnsupportedSchemaVersion {
         value: String,

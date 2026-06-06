@@ -466,14 +466,19 @@ fn build_candidate_objective_terms(
         return invalid_candidate_objective_bundle(candidate_input, "candidate did not derive rho");
     };
 
-    let implied_metrics = derive_candidate_implied_metrics(
+    let Some(implied_metrics) = derive_candidate_implied_metrics(
         candidate_input,
         observed_activity_targets,
         lambda_bar_scaling_ratio_applied,
         max_runtime_hourly_seasonality_factor,
         derived_alpha,
         derived_rho,
-    );
+    ) else {
+        return invalid_candidate_objective_bundle(
+            candidate_input,
+            "candidate does not admit stationary Hawkes intensity multipliers",
+        );
+    };
 
     let mut warnings = Vec::new();
 
@@ -1247,11 +1252,9 @@ fn derive_candidate_implied_metrics(
     max_runtime_hourly_seasonality_factor: f64,
     derived_alpha: HawkesKernelLoadings,
     derived_rho: HawkesKernelLoadings,
-) -> HawkesStageImpliedMetricsDiagnostic {
+) -> Option<HawkesStageImpliedMetricsDiagnostic> {
     let stationary_multipliers =
-        stationary_intensity_multipliers(derived_alpha, candidate_input.beta).unwrap_or_else(
-            || unreachable!("validated Hawkes candidate must admit stationary multipliers"),
-        );
+        stationary_intensity_multipliers(derived_alpha, candidate_input.beta)?;
 
     let stationary_buy_intensity =
         candidate_input.lambda_bar * stationary_multipliers.buy_intensity_multiplier.max(0.0);
@@ -1331,7 +1334,7 @@ fn derive_candidate_implied_metrics(
             .open_session_duration_hours
             .max(1.0e-9);
 
-    HawkesStageImpliedMetricsDiagnostic {
+    Some(HawkesStageImpliedMetricsDiagnostic {
         baseline_buy_intensity_per_hour: candidate_input.lambda_bar,
         baseline_sell_intensity_per_hour: candidate_input.lambda_bar,
         observed_open_event_rate_per_hour,
@@ -1357,7 +1360,7 @@ fn derive_candidate_implied_metrics(
         stability_margin: (1.0 - endogenous_branching_ratio).max(0.0),
         event_volume_ratio_vs_total_observed: expected_event_count_over_observation_window
             / (candidate_input.source_regime.open_session_tick_count as f64).max(1.0),
-    }
+    })
 }
 
 fn push_objective_term(

@@ -16,7 +16,7 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryStateValidationError, MeanReversionFittedParametersValidationError,
     MeanReversionRuntimeIntervalAnchorsValidationError,
 };
-use janiform_model_kernels::news::NewsProcessConfigurationError;
+use janiform_model_kernels::news::{NewsActivityLoadingRateError, NewsProcessConfigurationError};
 use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 use janiform_model_kernels::return_clock::{
@@ -85,6 +85,13 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidLongVarianceStationaryLevel {
         source: Box<LongVarianceStationaryLevelForHawkesKernelError>,
+    },
+    InvalidNewsActivityLoadingRate {
+        interval_index: usize,
+        source: Box<NewsActivityLoadingRateError>,
+    },
+    InvalidNewsTargetSourceRates {
+        interval_index: usize,
     },
     InvalidObservedPriceTickSize {
         value: f64,
@@ -292,6 +299,17 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "long_variance_parameters imply an invalid stationary mean-reversion level: {source}"
             ),
+            Self::InvalidNewsActivityLoadingRate {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} news activity-loading rate is invalid: {source}"
+            ),
+            Self::InvalidNewsTargetSourceRates { interval_index } => write!(
+                formatter,
+                "interval {interval_index} news activity-loading rate produces invalid Hawkes target source rates"
+            ),
             Self::InvalidObservedPriceTickSize { value } => write!(
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
@@ -478,6 +496,7 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidLongVarianceParameters { source } => Some(source.as_ref()),
             Self::InvalidInitialLongVarianceState { source } => Some(source.as_ref()),
             Self::InvalidLongVarianceStationaryLevel { source } => Some(source.as_ref()),
+            Self::InvalidNewsActivityLoadingRate { source, .. } => Some(source.as_ref()),
             Self::NewsMarkSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::SharedNewsDispatchFailure { source, .. } => Some(source.as_ref()),
             Self::NewsMarketStateResolutionFailed { source, .. } => Some(source.as_ref()),

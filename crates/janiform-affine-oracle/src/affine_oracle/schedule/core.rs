@@ -1,22 +1,25 @@
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
-use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, target_source_rates_from_shared_activity_loading,
+};
 use janiform_model_kernels::long_variance::{
     LongVarianceState, LongVarianceStationaryLevelForHawkesKernelError,
 };
+use janiform_model_kernels::news::expected_news_activity_loading_rate;
 
-use super::super::EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION;
 use super::super::contracts::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformInput,
     ExponentialAffineTransformOutputError,
 };
 use super::super::news_transform::{
     GammaNormalNewsTransformComponents, evaluate_gamma_normal_news_transform,
-    evaluate_gamma_normal_news_transform_tangent, gamma_normal_news_domain_metric,
+    evaluate_gamma_normal_news_transform_tangent,
 };
 use super::super::runge_kutta::{combine_complex_runge_kutta, combine_d_vector_runge_kutta};
 use super::super::solver::{
     ExponentialAffineTransformGuardFailure, ExponentialAffineTransformGuardFailureCode,
-    ExponentialAffineTransformIntegratorMethod, internally_selected_default_solver_settings,
+    ExponentialAffineTransformIntegratorMethod, build_guard_failure,
+    evaluate_transform_guard_domain_metrics, internally_selected_default_solver_settings,
 };
 use super::types::{
     ExponentialAffineScheduleCumulantError, ExponentialAffineScheduleCumulantOutput,
@@ -740,10 +743,28 @@ fn stationary_long_variance_level(
 ) -> Result<f64, ExponentialAffineScheduleCumulantError> {
     let equation_specification = transform_input.equation_specification;
 
+    let news_activity_loading_rate = expected_news_activity_loading_rate(
+        transform_input.news_intensity.known_nu_h,
+        transform_input.news_intensity.surprise_nu_h,
+        transform_input.known_news_component_mark_scales,
+        transform_input.surprise_news_component_mark_scales,
+        equation_specification.gamma_severity_mark_configuration,
+    )
+    .map_err(|source| {
+        ExponentialAffineScheduleCumulantError::InvalidNewsActivityLoadingRate { source }
+    })?;
+
+    let exogenous_source_rates = target_source_rates_from_shared_activity_loading(
+        equation_specification.hawkes_kernel_parameters.rho,
+        news_activity_loading_rate,
+    )
+    .ok_or(ExponentialAffineScheduleCumulantError::InvalidStationaryIntensityMultipliers)?;
+
     equation_specification
         .long_variance_parameters
         .stationary_mean_reversion_level_for_hawkes_kernel(
             equation_specification.hawkes_kernel_parameters,
+            exogenous_source_rates,
         )
         .map_err(|source| match source {
             LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryIntensityMultipliers => {
@@ -803,77 +824,45 @@ fn evaluate_schedule_guard_checkpoint(
     step_size: f64,
 ) -> Option<ExponentialAffineTransformGuardFailure> {
     let checkpoint_time = completed_step_count as f64 * step_size;
-
-    let d_dot_r = gamma_normal_news_domain_metric(GammaNormalNewsTransformComponents {
-        gamma_severity_mark_configuration: transform_input
-            .equation_specification
-            .gamma_severity_mark_configuration,
-        news_intensity: transform_input.news_intensity,
-        known_component_mark_scales: transform_input.known_news_component_mark_scales,
-        surprise_component_mark_scales: transform_input.surprise_news_component_mark_scales,
-        activity_loading: state
-            .d_vector
-            .dot_loadings(transform_input.equation_specification.r()),
-        return_loading: transform_input.news_return_loading,
-    });
-
-    let d_dot_r_upper_bound = 1.0
-        / transform_input
-            .equation_specification
-            .gamma_severity_mark_configuration
-            .derived_unit_mean_scale();
+    let guard_domain_metrics =
+        evaluate_transform_guard_domain_metrics(transform_input, state.d_vector);
 
     if !state.c_value.is_finite()
         || !state.long_variance_loading.is_finite()
         || !d_vector_is_finite(state.d_vector)
     {
-        return Some(build_schedule_guard_failure(
+        return Some(build_guard_failure(
             ExponentialAffineTransformGuardFailureCode::NonFiniteState,
             completed_step_count,
             checkpoint_time,
-            d_dot_r,
-            d_dot_r_upper_bound,
+            guard_domain_metrics.d_dot_r,
+            guard_domain_metrics.d_dot_r_upper_bound,
         ));
     }
 
-    if !d_dot_r.is_finite() || !d_dot_r_upper_bound.is_finite() {
-        return Some(build_schedule_guard_failure(
+    if !guard_domain_metrics.d_dot_r.is_finite()
+        || !guard_domain_metrics.d_dot_r_upper_bound.is_finite()
+    {
+        return Some(build_guard_failure(
             ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
             completed_step_count,
             checkpoint_time,
-            d_dot_r,
-            d_dot_r_upper_bound,
+            guard_domain_metrics.d_dot_r,
+            guard_domain_metrics.d_dot_r_upper_bound,
         ));
     }
 
-    if d_dot_r.real >= d_dot_r_upper_bound {
-        return Some(build_schedule_guard_failure(
+    if guard_domain_metrics.d_dot_r.real >= guard_domain_metrics.d_dot_r_upper_bound {
+        return Some(build_guard_failure(
             ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
             completed_step_count,
             checkpoint_time,
-            d_dot_r,
-            d_dot_r_upper_bound,
+            guard_domain_metrics.d_dot_r,
+            guard_domain_metrics.d_dot_r_upper_bound,
         ));
     }
 
     None
-}
-
-fn build_schedule_guard_failure(
-    code: ExponentialAffineTransformGuardFailureCode,
-    step_index: usize,
-    time: f64,
-    d_dot_r: ComplexScalar,
-    d_dot_r_upper_bound: f64,
-) -> ExponentialAffineTransformGuardFailure {
-    ExponentialAffineTransformGuardFailure {
-        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
-        code,
-        step_index,
-        time,
-        d_dot_r,
-        d_dot_r_upper_bound,
-    }
 }
 
 fn d_vector_is_finite(value: ExponentialAffineTransformDVector) -> bool {
