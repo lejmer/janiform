@@ -120,11 +120,7 @@ pub(super) fn diagnostic_runtime_profile_entry_for_stage_report(
             CalibrationDiagnosticRuntimeProfileEntry {
                 component_id: "stage.return_backfit".to_string(),
                 elapsed_seconds,
-                evaluation_count: report
-                    .metadata
-                    .as_ref()
-                    .map(|metadata| metadata.candidate_count)
-                    .unwrap_or(0),
+                evaluation_count: usize::from(report.metadata.is_some()),
             }
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {

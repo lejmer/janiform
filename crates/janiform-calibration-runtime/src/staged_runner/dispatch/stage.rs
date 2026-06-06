@@ -494,6 +494,11 @@ fn run_return_backfit_staged_execution_stage(
             CalibrationStage::ReturnBackfit,
             input.payload_state,
         )?),
+        hawkes_stage_payload: input.payload_state.hawkes_stage_payload.clone(),
+        candidate_generation_input: input
+            .staged_run_inputs
+            .return_components_candidate_generation_input
+            .clone(),
         return_components_stage_payload: input
             .payload_state
             .return_components_stage_payload

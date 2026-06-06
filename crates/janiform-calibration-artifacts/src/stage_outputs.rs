@@ -131,8 +131,6 @@ pub struct ReturnBackfitStageObjectiveBlockDiagnostic {
 pub struct ReturnBackfitStageDiagnostics {
     pub estimation_policy: String,
     pub selected_candidate_id: String,
-    pub no_op_selected: bool,
-    pub candidate_count: usize,
     pub variance_budget: ReturnBackfitStageVarianceBudgetDiagnostic,
     pub objective_blocks: Vec<ReturnBackfitStageObjectiveBlockDiagnostic>,
     pub warnings: Vec<String>,

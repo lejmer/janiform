@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_BACKFIT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_HANDOFF_POLICY,
@@ -7,21 +8,37 @@ use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     CalibrationStageSelectedCandidateSource, ReturnBackfitStageDiagnostics,
-    ReturnBackfitStageVarianceBudgetDiagnostic, stage_solver_settings_for_stage,
+    ReturnBackfitStageVarianceBudgetDiagnostic, SurpriseNewsDeterministicIntensityProfile,
+    stage_solver_settings_for_stage,
 };
+use janiform_foundations::numeric::strictly_positive_machine_value;
+use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_model_kernels::hawkes::target_source_rates_from_shared_activity_loading;
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::news::{
+    NewsArrivalIntensityEvaluationInput, NewsProcessConfiguration,
+    expected_news_activity_loading_rate,
+};
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
+use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::long_variance::LongVarianceStageFittedPayload;
 use crate::stages::news_shocks::NewsShocksStageFittedPayload;
-use crate::stages::return_components::ReturnComponentsStageFittedPayload;
+use crate::stages::return_components::{
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateDiagnostic,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageFittedPayload,
+};
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 
 const RETURN_BACKFIT_ESTIMATION_POLICY: &str =
-    "variance_budget_backfit_no_op_candidate_baseline.v1";
-const RETURN_BACKFIT_NO_OP_CANDIDATE_ID: &str = "no_op";
+    "deterministic_long_variance_clock_residual_nig_scale_backfit.v1";
+const RETURN_BACKFIT_TRANSFORMATION_ID: &str = "long_variance_clock_residual_nig_scale";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReturnBackfitStageExecutionInput {
     pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
+    pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
+    pub candidate_generation_input: Option<ReturnComponentsStageCandidateGenerationInput>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
     pub long_variance_stage_payload: Option<LongVarianceStageFittedPayload>,
     pub news_shocks_stage_payload: Option<NewsShocksStageFittedPayload>,
@@ -48,7 +65,6 @@ pub struct ReturnBackfitStageExecutionMetadata {
     pub stage_seed_source: CalibrationStageSeedSource,
     pub stage_seed_derivation_policy: &'static str,
     pub solver_settings: CalibrationOptimizerSettings,
-    pub candidate_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -58,9 +74,12 @@ pub enum ReturnBackfitStageExecutionFailure {
     StageIsNotSelectedInRunSpec,
     MissingStageSolverSettings,
     MissingReturnComponentsInput,
+    MissingHawkesStagePayload,
+    MissingCandidateGenerationInput,
     MissingReturnComponentsStagePayload,
     MissingLongVarianceStagePayload,
     MissingNewsShocksStagePayload,
+    InvalidBackfitInput { error_message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -118,6 +137,20 @@ pub fn run_return_backfit_calibration_stage(
         );
     };
 
+    let Some(hawkes_stage_payload) = execution_input.hawkes_stage_payload else {
+        return failure_report(
+            run_spec,
+            ReturnBackfitStageExecutionFailure::MissingHawkesStagePayload,
+        );
+    };
+
+    let Some(candidate_generation_input) = execution_input.candidate_generation_input else {
+        return failure_report(
+            run_spec,
+            ReturnBackfitStageExecutionFailure::MissingCandidateGenerationInput,
+        );
+    };
+
     let Some(return_components_stage_payload) = execution_input.return_components_stage_payload
     else {
         return failure_report(
@@ -140,12 +173,22 @@ pub fn run_return_backfit_calibration_stage(
         );
     };
 
-    let fitted_stage_payload = build_return_backfit_fitted_stage_payload(
+    let fitted_stage_payload = match build_return_backfit_fitted_stage_payload(
+        &hawkes_stage_payload,
+        &candidate_generation_input,
         return_components_input,
         return_components_stage_payload,
         long_variance_stage_payload,
         news_shocks_stage_payload,
-    );
+    ) {
+        Ok(payload) => payload,
+        Err(error_message) => {
+            return failure_report(
+                run_spec,
+                ReturnBackfitStageExecutionFailure::InvalidBackfitInput { error_message },
+            );
+        }
+    };
 
     let seed_metadata = janiform_calibration_artifacts::resolve_calibration_stage_seed_metadata(
         run_spec,
@@ -168,18 +211,51 @@ pub fn run_return_backfit_calibration_stage(
             stage_seed_derivation_policy:
                 janiform_calibration_artifacts::CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
             solver_settings,
-            candidate_count: 1,
         }),
         failure: None,
     }
 }
 
 fn build_return_backfit_fitted_stage_payload(
+    hawkes_stage_payload: &HawkesStageFittedPayload,
+    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     return_components_input: CalibrationStageSelectedCandidateSource,
     mut effective_return_components_payload: ReturnComponentsStageFittedPayload,
     long_variance_stage_payload: LongVarianceStageFittedPayload,
     news_shocks_stage_payload: NewsShocksStageFittedPayload,
-) -> ReturnBackfitStageFittedPayload {
+) -> Result<ReturnBackfitStageFittedPayload, String> {
+    let selected_candidate =
+        selected_return_components_candidate(&effective_return_components_payload)?;
+
+    let backfit_budget = return_backfit_variance_budget(
+        hawkes_stage_payload,
+        candidate_generation_input,
+        selected_candidate,
+        effective_return_components_payload
+            .fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        long_variance_stage_payload.fitted_parameters,
+        &news_shocks_stage_payload.news_process_configuration,
+        &news_shocks_stage_payload.surprise_deterministic_intensity_profile,
+    )?;
+
+    let original_nig_configuration = effective_return_components_payload
+        .fitted_parameters
+        .nig_shared_plus_shift_configuration;
+
+    let backfitted_nig_configuration = NigSharedPlusShiftConfiguration::try_new(
+        original_nig_configuration.alpha,
+        original_nig_configuration.beta_0,
+        original_nig_configuration.delta / backfit_budget.long_variance_clock_scale_multiplier,
+        original_nig_configuration.mu,
+        original_nig_configuration.delta_beta,
+    )
+    .map_err(|source| format!("backfitted NIG configuration is invalid: {source}"))?;
+
+    effective_return_components_payload
+        .fitted_parameters
+        .nig_shared_plus_shift_configuration = backfitted_nig_configuration;
+
     effective_return_components_payload
         .fitted_parameters
         .long_variance_parameters = long_variance_stage_payload.fitted_parameters;
@@ -205,21 +281,23 @@ fn build_return_backfit_fitted_stage_payload(
             } => (None, Some(artifact_reference)),
         };
 
-    ReturnBackfitStageFittedPayload {
+    Ok(ReturnBackfitStageFittedPayload {
         schema_version: CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
-        selected_candidate_id: RETURN_BACKFIT_NO_OP_CANDIDATE_ID.to_string(),
+        selected_candidate_id: RETURN_BACKFIT_TRANSFORMATION_ID.to_string(),
         effective_return_components_payload,
         diagnostics: ReturnBackfitStageDiagnostics {
             estimation_policy: RETURN_BACKFIT_ESTIMATION_POLICY.to_string(),
-            selected_candidate_id: RETURN_BACKFIT_NO_OP_CANDIDATE_ID.to_string(),
-            no_op_selected: true,
-            candidate_count: 1,
+            selected_candidate_id: RETURN_BACKFIT_TRANSFORMATION_ID.to_string(),
             variance_budget: ReturnBackfitStageVarianceBudgetDiagnostic {
-                initial_nig_contribution: None,
-                fixed_long_variance_news_contribution: None,
-                backfitted_nig_contribution: None,
-                final_total_modeled_return_scale: None,
-                observed_target_scale: None,
+                initial_nig_contribution: Some(backfit_budget.initial_nig_contribution),
+                fixed_long_variance_news_contribution: Some(
+                    backfit_budget.fixed_long_variance_news_contribution,
+                ),
+                backfitted_nig_contribution: Some(backfit_budget.backfitted_nig_contribution),
+                final_total_modeled_return_scale: Some(
+                    backfit_budget.final_total_modeled_return_scale,
+                ),
+                observed_target_scale: Some(backfit_budget.observed_target_scale),
             },
             objective_blocks: Vec::new(),
             warnings: Vec::new(),
@@ -227,7 +305,320 @@ fn build_return_backfit_fitted_stage_payload(
         return_components_input_transport,
         return_components_selected_candidate_id,
         return_components_artifact_reference,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ReturnBackfitVarianceBudget {
+    long_variance_clock_scale_multiplier: f64,
+    initial_nig_contribution: f64,
+    fixed_long_variance_news_contribution: f64,
+    backfitted_nig_contribution: f64,
+    final_total_modeled_return_scale: f64,
+    observed_target_scale: f64,
+}
+
+fn selected_return_components_candidate(
+    payload: &ReturnComponentsStageFittedPayload,
+) -> Result<&ReturnComponentsStageCandidateDiagnostic, String> {
+    payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == payload.selected_candidate_id)
+        .ok_or_else(|| {
+            format!(
+                "return-backfit requires selected return-components candidate diagnostics for {}",
+                payload.selected_candidate_id
+            )
+        })
+}
+
+fn return_backfit_variance_budget(
+    hawkes_stage_payload: &HawkesStageFittedPayload,
+    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    selected_candidate: &ReturnComponentsStageCandidateDiagnostic,
+    nig_configuration: NigSharedPlusShiftConfiguration,
+    long_variance_parameters: LongVarianceParameters,
+    news_process_configuration: &NewsProcessConfiguration,
+    surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
+) -> Result<ReturnBackfitVarianceBudget, String> {
+    let observed_open_session_returns =
+        sorted_observed_open_session_returns_for_backfit(candidate_generation_input)?;
+
+    let long_variance_clock_scale_multiplier = long_variance_clock_scale_multiplier(
+        hawkes_stage_payload,
+        candidate_generation_input,
+        news_process_configuration,
+        surprise_deterministic_intensity_profile,
+        long_variance_parameters,
+        observed_open_session_returns.as_slice(),
+    )?;
+
+    let observed_target_scale = selected_candidate
+        .return_distribution_diagnostic
+        .observed_return_volatility
+        .powi(2);
+
+    let initial_nig_contribution = selected_candidate
+        .return_distribution_diagnostic
+        .fitted_return_volatility
+        .powi(2);
+
+    validate_nig_configuration_for_backfit(nig_configuration)?;
+
+    let backfitted_nig_contribution =
+        initial_nig_contribution / long_variance_clock_scale_multiplier;
+
+    let final_total_modeled_return_scale =
+        backfitted_nig_contribution * long_variance_clock_scale_multiplier;
+
+    Ok(ReturnBackfitVarianceBudget {
+        long_variance_clock_scale_multiplier,
+        initial_nig_contribution,
+        fixed_long_variance_news_contribution: initial_nig_contribution
+            * (long_variance_clock_scale_multiplier - 1.0),
+        backfitted_nig_contribution,
+        final_total_modeled_return_scale,
+        observed_target_scale,
+    })
+}
+
+fn sorted_observed_open_session_returns_for_backfit(
+    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+) -> Result<Vec<ReturnComponentsObservedOpenSessionReturn>, String> {
+    let mut sorted_observations = candidate_generation_input
+        .observed_open_session_returns
+        .clone();
+
+    sorted_observations.sort_by_key(|observation| observation.return_timestamp_utc_nanos);
+
+    if sorted_observations.is_empty() {
+        return Err("return-backfit requires observed open-session returns".to_string());
     }
+
+    Ok(sorted_observations)
+}
+
+fn long_variance_clock_scale_multiplier(
+    hawkes_stage_payload: &HawkesStageFittedPayload,
+    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    news_process_configuration: &NewsProcessConfiguration,
+    surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
+    long_variance_parameters: LongVarianceParameters,
+    aligned_returns: &[ReturnComponentsObservedOpenSessionReturn],
+) -> Result<f64, String> {
+    let stationary_mean_reversion_level = stationary_mean_reversion_level_for_backfit(
+        hawkes_stage_payload,
+        candidate_generation_input,
+        news_process_configuration,
+        surprise_deterministic_intensity_profile,
+        long_variance_parameters,
+    )?;
+
+    let mut state = LongVarianceState::unit();
+    let mut original_return_count_scale = 0.0;
+    let mut long_variance_return_count_scale = 0.0;
+
+    for observation in aligned_returns {
+        let clock_scale = state
+            .baseline_clock_scale(
+                long_variance_parameters,
+                stationary_mean_reversion_level,
+                observation.elapsed_same_session_hours,
+            )
+            .map_err(|source| {
+                format!("return-backfit long-variance clock replay failed: {source}")
+            })?;
+
+        original_return_count_scale += 1.0;
+        long_variance_return_count_scale += clock_scale;
+
+        state = state
+            .apply_mean_reversion_drift(
+                long_variance_parameters,
+                stationary_mean_reversion_level,
+                observation.elapsed_same_session_hours,
+            )
+            .map_err(|source| {
+                format!("return-backfit long-variance state replay failed: {source}")
+            })?;
+
+        let sell_share = observation.sell_share_proxy.clamp(0.0, 1.0);
+        let event_loading = long_variance_parameters.buy_event_loading * (1.0 - sell_share)
+            + long_variance_parameters.sell_event_loading * sell_share;
+
+        state = LongVarianceState::try_new(state.level + event_loading).map_err(|source| {
+            format!("return-backfit long-variance event jump replay failed: {source}")
+        })?;
+    }
+
+    if original_return_count_scale <= 0.0 {
+        return Err("return-backfit requires positive total return count scale".to_string());
+    }
+
+    let scale_multiplier: f64 = long_variance_return_count_scale / original_return_count_scale;
+
+    if !scale_multiplier.is_finite() || scale_multiplier <= 0.0 {
+        return Err(format!(
+            "return-backfit produced invalid long-variance scale multiplier {scale_multiplier}"
+        ));
+    }
+
+    Ok(scale_multiplier.max(strictly_positive_machine_value()))
+}
+
+fn validate_nig_configuration_for_backfit(
+    nig_configuration: NigSharedPlusShiftConfiguration,
+) -> Result<(), String> {
+    nig_configuration
+        .derive_driver_parameters()
+        .map(|_| ())
+        .map_err(|source| format!("selected NIG configuration is invalid: {source}"))
+}
+
+fn stationary_mean_reversion_level_for_backfit(
+    hawkes_stage_payload: &HawkesStageFittedPayload,
+    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    news_process_configuration: &NewsProcessConfiguration,
+    surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
+    long_variance_parameters: LongVarianceParameters,
+) -> Result<f64, String> {
+    let source_window = candidate_generation_input.known_news_calendar.source_window;
+    let source_window_duration_hours = duration_nanos_to_hours(
+        source_window
+            .window_end_utc_nanos
+            .saturating_sub(source_window.window_start_utc_nanos),
+    );
+
+    if !source_window_duration_hours.is_finite() || source_window_duration_hours <= 0.0 {
+        return Err("return-backfit requires a positive source-window duration".to_string());
+    }
+
+    let surprise_time_multiplier = surprise_profile_source_window_mean_multiplier(
+        source_window.window_start_utc_nanos,
+        source_window.window_end_utc_nanos,
+        surprise_deterministic_intensity_profile
+            .weekly_hour_utc_multipliers
+            .as_slice(),
+    )?;
+
+    let news_intensities = news_process_configuration
+        .arrivals
+        .evaluate_with_deterministic_time_multiplier(NewsArrivalIntensityEvaluationInput {
+            interval_start_utc_nanos: source_window.window_start_utc_nanos,
+            interval_end_utc_nanos: source_window.window_end_utc_nanos,
+            surprise_deterministic_time_multiplier: surprise_time_multiplier,
+            surprise_open_window_share: 1.0,
+            surprise_closed_window_share: 0.0,
+        })
+        .map_err(|source| format!("return-backfit news intensity evaluation failed: {source}"))?;
+
+    let news_activity_loading_rate = expected_news_activity_loading_rate(
+        news_intensities.known_component_intensity,
+        news_intensities.surprise_component_intensity,
+        news_process_configuration.known_component_mark_scales,
+        news_process_configuration.surprise_component_mark_scales,
+        news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks,
+    )
+    .map_err(|source| {
+        format!("return-backfit news activity-loading rate evaluation failed: {source}")
+    })?;
+
+    let exogenous_source_rates = target_source_rates_from_shared_activity_loading(
+        hawkes_stage_payload.fitted_parameters.kernel_parameters.rho,
+        news_activity_loading_rate,
+    )
+    .ok_or_else(|| "return-backfit news target source-rate evaluation failed".to_string())?;
+
+    long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(
+            hawkes_stage_payload.fitted_parameters.kernel_parameters,
+            exogenous_source_rates,
+        )
+        .map_err(|source| {
+            format!("return-backfit long-variance stationary level evaluation failed: {source}")
+        })
+}
+
+fn surprise_profile_source_window_mean_multiplier(
+    window_start_utc_nanos: i64,
+    window_end_utc_nanos: i64,
+    weekly_hour_utc_multipliers: &[f64],
+) -> Result<f64, String> {
+    if weekly_hour_utc_multipliers.len() != 7 * 24 {
+        return Err(format!(
+            "return-backfit requires 168 surprise intensity multipliers, found {}",
+            weekly_hour_utc_multipliers.len()
+        ));
+    }
+
+    if window_end_utc_nanos <= window_start_utc_nanos {
+        return Err("return-backfit requires an increasing source window".to_string());
+    }
+
+    let mut current = DateTime::<Utc>::from_timestamp_nanos(window_start_utc_nanos);
+
+    let window_end = DateTime::<Utc>::from_timestamp_nanos(window_end_utc_nanos);
+
+    let mut weighted_multiplier_sum = 0.0;
+    let mut weighted_duration_nanos = 0.0;
+
+    while current < window_end {
+        let hour_start = current
+            .date_naive()
+            .and_hms_opt(current.hour(), 0, 0)
+            .ok_or_else(|| {
+                "return-backfit could not construct source-window hour boundary".to_string()
+            })?
+            .and_utc();
+
+        let next_hour = if current == hour_start {
+            current + Duration::hours(1)
+        } else {
+            hour_start + Duration::hours(1)
+        };
+
+        let segment_end = next_hour.min(window_end);
+
+        let Some(segment_duration_nanos) = (segment_end - current).num_nanoseconds() else {
+            return Err(
+                "return-backfit source-window segment duration overflowed nanoseconds".to_string(),
+            );
+        };
+
+        if segment_duration_nanos <= 0 {
+            return Err(
+                "return-backfit source-window segment duration must be positive".to_string(),
+            );
+        }
+
+        let multiplier = weekly_hour_utc_multipliers[weekly_hour_bucket_index(current)];
+        if !multiplier.is_finite() || multiplier < 0.0 {
+            return Err(format!(
+                "return-backfit surprise intensity multiplier is invalid: {multiplier}"
+            ));
+        }
+
+        weighted_multiplier_sum += multiplier * segment_duration_nanos as f64;
+        weighted_duration_nanos += segment_duration_nanos as f64;
+
+        current = segment_end;
+    }
+
+    let mean = weighted_multiplier_sum / weighted_duration_nanos;
+    if !mean.is_finite() || mean < 0.0 {
+        return Err(format!(
+            "return-backfit surprise intensity multiplier mean is invalid: {mean}"
+        ));
+    }
+
+    Ok(mean)
+}
+
+fn weekly_hour_bucket_index(timestamp_utc: DateTime<Utc>) -> usize {
+    timestamp_utc.weekday().num_days_from_monday() as usize * 24 + timestamp_utc.hour() as usize
 }
 
 fn failure_report(
