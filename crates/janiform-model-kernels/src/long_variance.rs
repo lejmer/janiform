@@ -289,6 +289,56 @@ impl LongVarianceState {
             .map_err(|source| LongVarianceStateTransitionError::InvalidTransitionState { source })
     }
 
+    /// Return the average conditional-mean long-variance level over elapsed open-market time.
+    pub fn baseline_clock_scale(
+        self,
+        parameters: LongVarianceParameters,
+        stationary_mean_reversion_level: f64,
+        delta_hours: f64,
+    ) -> Result<f64, LongVarianceStateTransitionError> {
+        self.validate()
+            .map_err(|source| LongVarianceStateTransitionError::InvalidInitialState { source })?;
+
+        parameters.validate().map_err(|source| {
+            LongVarianceStateTransitionError::InvalidLongVarianceParameters { source }
+        })?;
+
+        validate_positive_number(
+            stationary_mean_reversion_level,
+            "stationary_mean_reversion_level",
+        )
+        .map_err(|source| {
+            LongVarianceStateTransitionError::InvalidStationaryMeanReversionLevel { source }
+        })?;
+
+        validate_finite_number(delta_hours, "delta_hours")
+            .map_err(|source| LongVarianceStateTransitionError::InvalidElapsedHours { source })?;
+
+        if delta_hours < 0.0 {
+            return Err(LongVarianceStateTransitionError::NegativeElapsedHours {
+                value: delta_hours,
+            });
+        }
+
+        if delta_hours == 0.0 {
+            return Ok(self.level);
+        }
+
+        let decay = (-parameters.mean_reversion_rate * delta_hours).exp();
+
+        let integrated_conditional_mean = stationary_mean_reversion_level * delta_hours
+            + (self.level - stationary_mean_reversion_level) * (1.0 - decay)
+                / parameters.mean_reversion_rate;
+
+        let clock_scale = integrated_conditional_mean / delta_hours;
+
+        validate_positive_number(clock_scale, "baseline_clock_scale").map_err(|source| {
+            LongVarianceStateTransitionError::InvalidBaselineClockScale { source }
+        })?;
+
+        Ok(clock_scale)
+    }
+
     /// Apply the uncompensated long-variance jump from one observed event.
     pub fn apply_event_jump(
         self,
@@ -386,6 +436,9 @@ pub enum LongVarianceStateTransitionError {
     NegativeElapsedHours {
         value: f64,
     },
+    InvalidBaselineClockScale {
+        source: janiform_foundations::numeric::PositiveNumberValidationError,
+    },
     InvalidTransitionState {
         source: LongVarianceStateError,
     },
@@ -413,6 +466,9 @@ impl Display for LongVarianceStateTransitionError {
             Self::NegativeElapsedHours { value } => {
                 write!(formatter, "delta_hours must be non-negative, found {value}")
             }
+            Self::InvalidBaselineClockScale { source } => {
+                write!(formatter, "baseline_clock_scale is invalid: {source}")
+            }
             Self::InvalidTransitionState { source } => {
                 write!(
                     formatter,
@@ -430,6 +486,7 @@ impl Error for LongVarianceStateTransitionError {
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidStationaryMeanReversionLevel { source } => Some(source),
             Self::InvalidElapsedHours { source } => Some(source),
+            Self::InvalidBaselineClockScale { source } => Some(source),
             Self::InvalidTransitionState { source } => Some(source),
             Self::NegativeElapsedHours { .. } => None,
         }

@@ -632,6 +632,10 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                     .metadata
                     .as_ref()
                     .expect("return-backfit stage metadata should be present");
+                let payload = return_backfit_report
+                    .fitted_stage_payload
+                    .as_ref()
+                    .expect("return-backfit stage payload should be present");
                 assert_eq!(metadata.run_global_seed, 17);
                 assert_eq!(
                     metadata.stage_seed,
@@ -647,6 +651,24 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                 assert_eq!(
                     metadata.stage_seed_derivation_policy,
                     CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+                assert_eq!(
+                    payload.selected_candidate_id,
+                    "long_variance_clock_residual_nig_scale"
+                );
+                assert!(
+                    payload
+                        .diagnostics
+                        .variance_budget
+                        .observed_target_scale
+                        .is_some()
+                );
+                assert!(
+                    payload
+                        .diagnostics
+                        .variance_budget
+                        .backfitted_nig_contribution
+                        .is_some()
                 );
             }
             CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report) => {

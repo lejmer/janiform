@@ -52,12 +52,9 @@ where
         });
     }
 
-    let baseline_clock_scale = baseline_long_variance_clock_scale(
-        state,
-        parameters,
-        stationary_mean_reversion_level,
-        elapsed_hours,
-    )?;
+    let baseline_clock_scale = state
+        .baseline_clock_scale(parameters, stationary_mean_reversion_level, elapsed_hours)
+        .map_err(|source| LongVarianceTransitionSamplingError::StateTransitionFailure { source })?;
 
     let terminal_state = sample_cir_terminal_state(
         state,
@@ -103,32 +100,6 @@ pub(crate) fn apply_long_variance_event_count_jumps(
 
     LongVarianceState::try_new(terminal_level)
         .map_err(|source| LongVarianceTransitionSamplingError::InvalidTerminalState { source })
-}
-
-fn baseline_long_variance_clock_scale(
-    state: LongVarianceState,
-    parameters: LongVarianceParameters,
-    stationary_mean_reversion_level: f64,
-    elapsed_hours: f64,
-) -> Result<f64, LongVarianceTransitionSamplingError> {
-    if elapsed_hours == 0.0 {
-        return Ok(state.level);
-    }
-
-    let decay = (-parameters.mean_reversion_rate * elapsed_hours).exp();
-
-    let integrated_conditional_mean = stationary_mean_reversion_level * elapsed_hours
-        + (state.level - stationary_mean_reversion_level) * (1.0 - decay)
-            / parameters.mean_reversion_rate;
-
-    let clock_scale = integrated_conditional_mean / elapsed_hours;
-
-    janiform_foundations::numeric::validate_positive_number(clock_scale, "baseline_clock_scale")
-        .map_err(
-            |source| LongVarianceTransitionSamplingError::InvalidBaselineClockScale { source },
-        )?;
-
-    Ok(clock_scale)
 }
 
 fn sample_cir_terminal_state<R>(
@@ -241,9 +212,6 @@ pub enum LongVarianceTransitionSamplingError {
     NegativeElapsedHours {
         value: f64,
     },
-    InvalidBaselineClockScale {
-        source: PositiveNumberValidationError,
-    },
     DistributionBuildFailure {
         distribution_name: &'static str,
         source: String,
@@ -285,9 +253,6 @@ impl Display for LongVarianceTransitionSamplingError {
                     "elapsed_hours must be non-negative, found {value}"
                 )
             }
-            Self::InvalidBaselineClockScale { source } => {
-                write!(formatter, "baseline_clock_scale is invalid: {source}")
-            }
             Self::DistributionBuildFailure {
                 distribution_name,
                 source,
@@ -322,7 +287,6 @@ impl Error for LongVarianceTransitionSamplingError {
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidStationaryMeanReversionLevel { source } => Some(source),
             Self::InvalidElapsedHours { source } => Some(source),
-            Self::InvalidBaselineClockScale { source } => Some(source),
             Self::InvalidTerminalState { source } => Some(source),
             Self::StateTransitionFailure { source } => Some(source),
             Self::NegativeElapsedHours { .. }
