@@ -78,10 +78,15 @@
     \]
 
     \section*{3. Trade Intensities and Hawkes State}
+    The executable event generator uses a de-seasonalized Hawkes reaction
+    state with deterministic seasonality applied to the shared immigrant
+    baseline:
     \[
-        \lambda_t^+ = s(t)\bar{\lambda} + Y_t^{++} + Y_t^{+-},
+        \lambda_t^+ = \mathbf{1}_{\mathrm{open}}(t)
+        \left(s(t)\bar{\lambda} + Y_t^{++} + Y_t^{+-}\right),
         \qquad
-        \lambda_t^- = s(t)\bar{\lambda} + Y_t^{-+} + Y_t^{--}.
+        \lambda_t^- = \mathbf{1}_{\mathrm{open}}(t)
+        \left(s(t)\bar{\lambda} + Y_t^{-+} + Y_t^{--}\right).
     \]
     For \(i,j\in\{+,-\}\):
     \begin{gather*}
@@ -91,6 +96,8 @@
     \(N_t^\pm\) are counting processes with intensities \(\lambda_t^\pm\).
     Seasonality modulates only the immigrant baseline \( \bar{\lambda} \), while
     self- and cross-excitation remain in the common reaction state \(Y_t\).
+    The state decays over elapsed clock time, but endogenous trade events are
+    only scheduled in open-market windows.
     The long-variance state in Section 6 scales baseline return clocks, not
     baseline event-arrival intensities.
 
@@ -172,8 +179,8 @@
     for component \(c\).
     Then
     \begin{gather*}
-        J_m^{c}=a_cU_m^{c},\qquad
-        \zeta_m^{c}=m_cU_m^{c}+\sigma_c\sqrt{U_m^{c}}\,Z_m^{N,c},\\
+        J_m^{c}=a_{cU}_m^{c},\qquad
+        \zeta_m^{c}=m_{cU}_m^{c}+\sigma_c\sqrt{U_m^{c}}\,Z_m^{N,c},\\
         J_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t} a_{\mathrm{known}}U_m^{\mathrm{known}},
         \qquad
         J_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t} a_{\mathrm{surprise}}U_m^{\mathrm{surprise}},
@@ -251,22 +258,38 @@
         \bar z>0,
     \]
     where \(\lambda_{\mathrm{stat}}^\pm\) are the stationary side intensities under
-    mean-normalized seasonal baseline exposure.
-    They are computed from the full
-    mean stationary Hawkes system, including endogenous descendants and
-    exogenous news excitation:
+    mean-normalized seasonal baseline exposure and the interval's expected news
+    activity loading.
+    They are computed from the stationary Hawkes system induced by the shared
+    de-seasonalized baseline, endogenous descendants, and exogenous news target
+    source rates:
     \[
         \boldsymbol{\lambda}_{\mathrm{stat}}
         =
         \left(I-\mathbf{A}_{\alpha}/\beta\right)^{-1}
         \left(
-            \boldsymbol{\lambda}_0+\boldsymbol{\lambda}_{\mathrm{news}}
+            \boldsymbol{\lambda}_0+\frac{\boldsymbol b_{\mathrm{news}}}{\beta}
         \right),
     \]
     where \(\boldsymbol{\lambda}_0=(\bar{\lambda},\bar{\lambda})^\top\) for the
-    shared-baseline model and \(\boldsymbol{\lambda}_{\mathrm{news}}\) is the
-    mean direct excitation rate induced by coupled news marks. The first-moment
-    long-variance guard requires
+    shared-baseline model and
+    \[
+        \boldsymbol b_{\mathrm{news}}
+        =
+        \bar{\jmath}_{\mathrm{news}}
+        \begin{pmatrix}
+            \rho_{++}+\rho_{+-}\\
+            \rho_{-+}+\rho_{--}
+        \end{pmatrix},
+        \qquad
+        \bar{\jmath}_{\mathrm{news}}
+        =
+        \nu_h^{\mathrm{known}}a_{\mathrm{known}}\mathbb E[U]
+        +
+        \nu_h^{\mathrm{surprise}}a_{\mathrm{surprise}}\mathbb E[U].
+    \]
+    The first-moment long-variance guard
+    requires
     \[
         \kappa_z>
         \chi_+\lambda_{\mathrm{stat}}^+
@@ -274,7 +297,7 @@
         \chi_-\lambda_{\mathrm{stat}}^-.
     \]
 
-    Baseline return clocks use long-variance exposure:
+    Baseline return clocks use long-variance exposure in the affine schedule:
     \[
         B_{Z,h}^+
         =
@@ -284,6 +307,23 @@
         =
         \int_{t_h}^{t_{h+1}}s(u)\bar{\lambda}Z_u\,du.
     \]
+    Seeded and coarse simulation use the corresponding conditional-mean
+    baseline clock scale over the open-market elapsed time \(\Delta_h^{\mathrm{open}}\):
+    \[
+        \overline{Z}_h
+        =
+        \begin{cases}
+            Z_{t_h}, & \Delta_h^{\mathrm{open}}=0,\\[4pt]
+            \displaystyle
+            \bar z+
+            (Z_{t_h}-\bar z)
+            \frac{1-e^{-\kappa_z\Delta_h^{\mathrm{open}}}}
+                 {\kappa_z\Delta_h^{\mathrm{open}}},
+            & \Delta_h^{\mathrm{open}}>0,
+        \end{cases}
+    \]
+    and multiply baseline activity by \(\overline{Z}_h\) before applying the
+    return-clock exposure map.
     The NIG return clocks are
     \[
         A_{\mathrm{return},h}^+
@@ -379,8 +419,16 @@
     \(dJ_t\) in \(dY_t^{ij}\), \(dN_t^\pm\) in \(dZ_t\), and \(Z_t\) in the
     baseline return clocks.
 
-    \section*{9. Affine One-Interval Transform}
-    For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), with \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\), define
+    \section*{9. Affine Schedule Transform}
+    The single-interval affine solver evolves only the Hawkes loading
+    \(\mathbf{D}\) and scalar cumulant \(C\). The schedule-level cumulant
+    solver composes intervals backward and additionally carries the
+    long-variance loading \(V\), so the schedule exponent is evaluated at both
+    the initial Hawkes state and the initial long-variance state. For
+    piecewise-constant \(s_h,\nu_h\) on one schedule interval \([0,\Delta]\),
+    with \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\), define the
+    interval recursion with terminal loading \(V(0)=\xi\), where \(\xi=0\) for
+    the last interval and is inherited from later intervals otherwise:
     \[
         F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q\mid \mathbf{Y}_0,Z_0)
         =
@@ -393,7 +441,9 @@
         =
         \exp\!\big(C(\Delta)+\mathbf{D}(\Delta)\cdot\mathbf{y}_0+V(\Delta)Z_0\big),
     \]
-    with \(C(0)=0,\ \mathbf{D}(0)=\mathbf{0},\ V(0)=\xi\), and
+    with \(C(0)=0,\ \mathbf{D}(0)\) equal to the inherited terminal Hawkes
+    loading, and \(V(0)=\xi\). For a standalone terminal interval,
+    \(\mathbf{D}(0)=\mathbf{0}\) and \(V(0)=0\). Let
     \begin{gather*}
         \mathbf{y}_t=(Y_t^{++},Y_t^{+-},Y_t^{-+},Y_t^{--}),
         \quad
@@ -422,7 +472,7 @@
         V'(\tau)
         =
         -\kappa_z V(\tau)
-        +\frac{1}{2}\sigma_z^2V(\tau)^2
+        +\frac{1}{2}\sigma_z^{2V}(\tau)^2
         -s_h\bar{\lambda}\big(u_+^B+u_-^B\big),\\
         C'(\tau)
         =
@@ -434,9 +484,9 @@
         +\nu_h^{\mathrm{known}}\ell_{\mathrm{known}}(q,\mathbf{D}(\tau)\cdot\mathbf{r})
         +\nu_h^{\mathrm{surprise}}\Big(M_{\mathrm{surprise}}(q,\mathbf{D}(\tau)\cdot\mathbf{r})-1\Big),\\
     \end{gather*}
-    where \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\). The
-    known-news term is deterministic-arrival random-mark. Scheduled timestamps
-    are applied at their persisted event times, and \(\nu_h^{\mathrm{known}}\)
+    where \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\).
+    The known-news term is deterministic-arrival random-mark.
+    Scheduled timestamps are applied at their persisted event times, and \(\nu_h^{\mathrm{known}}\)
     is only the equivalent interval-rate representation used by piecewise-constant
     transform storage.
     The surprise-news term remains compound Poisson.
@@ -460,14 +510,15 @@
         \qquad
         a_-(v)=\log\mathbb E[e^{-v(L_1^--m_-)}].
     \]
-    With return-clock exposures \(\eta_+,\eta_-\), the affine query receives
+    With return-clock exposures \(\eta_+,\eta_-\) and strictly positive
+    activity-premium multipliers \(\pi_+,\pi_-\), the affine query receives
     \[
         u_+^B=-a_+(v),\qquad
         u_+^E=-\eta_+a_+(v),\qquad
         u_-^B=-a_-(v),\qquad
         u_-^E=-\eta_-a_-(v),\qquad
-        z_+=e^{\gamma_+},\qquad
-        z_-=e^{\gamma_-},\qquad
+        z_+=\pi_+,\qquad
+        z_-=\pi_-,\qquad
         q=v.
     \]
 
@@ -476,6 +527,10 @@
     \[
         R_{t,T}=d_{t,T}+X_{t,T}.
     \]
+    Let the public pricing-kernel coordinates be the strictly positive
+    activity-premium multipliers \(\pi_+,\pi_->0\), and write
+    \(\gamma_\pm=\log \pi_\pm\) when expressing the normalized density in
+    exponential-count form.
     Let the terminal physical cumulant be
     \[
         K_{t,T}(v,\gamma_+,\gamma_-)
@@ -492,20 +547,20 @@
     evaluated by the affine schedule oracle over the full Hawkes, long-variance, and coupled news state.
     The pricing-measure density is
     \[
-        M_T(\theta,\gamma_+,\gamma_-)
+        M_T(\theta,\pi_+,\pi_-)
         =
         \exp\!\left(
             \theta X_{t,T}
-            +\gamma_+N_{t,T}^+
-            +\gamma_-N_{t,T}^-
-            -K_{t,T}(\theta,\gamma_+,\gamma_-)
+            +\log(\pi_+)N_{t,T}^+
+            +\log(\pi_-)N_{t,T}^-
+            -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
         \right).
     \]
     The scalar \(\theta\) is solved per valuation state and expiry from
     \[
         d_{t,T}
-        +K_{t,T}(\theta+1,\gamma_+,\gamma_-)
-        -K_{t,T}(\theta,\gamma_+,\gamma_-)
+        +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
         =
         (r-q)\tau.
     \]
@@ -515,12 +570,12 @@
         =
         \exp\!\left(
             iu\,d_{t,T}
-            +K_{t,T}(\theta+iu,\gamma_+,\gamma_-)
-            -K_{t,T}(\theta,\gamma_+,\gamma_-)
+            +K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
+            -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
         \right).
     \]
     The option-refinement coordinates are the activity-risk premiums
-    \(\gamma_+\) and \(\gamma_-\).
+    \(\pi_+\) and \(\pi_-\).
     The martingale tilt \(\theta\) is derived,
     not fitted.
 

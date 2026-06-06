@@ -69,7 +69,10 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
     );
 
     let stationary_level = long_variance_parameters
-        .stationary_mean_reversion_level_for_hawkes_kernel(kernel_parameters)
+        .stationary_mean_reversion_level_for_hawkes_kernel(
+            kernel_parameters,
+            janiform_model_kernels::hawkes::HawkesStationaryTargetSourceRates::zero(),
+        )
         .expect("stationary level should build");
     let expected_long_variance_state = LongVarianceState::unit()
         .apply_event_jump(long_variance_parameters, HawkesEventSide::Buy)

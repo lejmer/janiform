@@ -4,10 +4,13 @@ use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
 use janiform_foundations::time::{duration_nanos_to_hours, elapsed_utc_nanos_to_hours};
+use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameters, evolve_hawkes_state,
+    target_source_rates_from_shared_activity_loading,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::news::expected_news_activity_loading_rate;
 use janiform_model_kernels::nig::NigBuySellDriverParameters;
 use tracing::debug;
 
@@ -44,9 +47,10 @@ use super::metadata::{
 };
 use super::news::{
     ExogenousIntervalNewsSchedulingInput, accumulate_news_routing_totals,
-    derive_known_news_interval_slice_bounds, schedule_exogenous_interval_news_updates,
+    derive_interval_news_arrival_decomposition, derive_known_news_interval_slice_bounds,
+    schedule_exogenous_interval_news_updates,
 };
-use super::observed_state::SeededObservedState;
+use super::observed_state::{SeededObservedState, SeededProjectedCoreIncrement};
 use super::results::estimate_seeded_result_capacities;
 use super::trading_time::{
     TransitionTradingTimeReturnInput, build_interval_open_market_segments,
@@ -83,18 +87,6 @@ where
         .derive_driver_parameters()
         .map_err(
             |source| SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration {
-                source: Box::new(source),
-            },
-        )?;
-
-    let long_variance_stationary_mean_reversion_level = run_config
-        .model_inputs
-        .long_variance_parameters
-        .stationary_mean_reversion_level_for_hawkes_kernel(
-            run_config.model_inputs.kernel_parameters,
-        )
-        .map_err(
-            |source| SeededTickSimulationRunError::InvalidLongVarianceStationaryLevel {
                 source: Box::new(source),
             },
         )?;
@@ -161,7 +153,6 @@ where
             .kappa,
         driver_parameters,
         long_variance_parameters: run_config.model_inputs.long_variance_parameters,
-        long_variance_stationary_mean_reversion_level,
         state_snapshot_capture,
         fine_path_metadata,
         event_tape_metadata,
@@ -228,7 +219,6 @@ struct SeededTickSimulationStaticState {
     mean_reversion_kappa: f64,
     driver_parameters: NigBuySellDriverParameters,
     long_variance_parameters: LongVarianceParameters,
-    long_variance_stationary_mean_reversion_level: f64,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture,
     fine_path_metadata: SeededFinePathMetadata,
     event_tape_metadata: SeededTickEventTapeMetadata,
@@ -255,6 +245,8 @@ struct IntervalSimulationInputs<'a> {
     interval_duration_in_hours: f64,
     interval_seasonality_factor: f64,
     interval_news_intensity: f64,
+    interval_known_news_intensity: f64,
+    interval_surprise_news_intensity: f64,
     interval_end_anchor_value: f64,
     interval_end_pressure_state: f64,
     interval_known_news_event_timestamps_utc_nanos: &'a [i64],
@@ -331,18 +323,37 @@ fn build_interval_simulation_inputs<'a>(
     *next_known_scheduled_news_timestamp_position = next_interval_known_news_timestamp_position;
 
     let interval_duration_nanos = interval_end_utc_nanos - interval_start_utc_nanos;
+    let interval_duration_in_hours = duration_nanos_to_hours(interval_duration_nanos);
+
+    let interval_known_news_event_count =
+        u64::try_from(interval_known_news_end_position - interval_known_news_start_position)
+            .map_err(
+                |_| SeededTickSimulationRunError::InternalInvariantViolation {
+                    message: "known news slice length overflowed u64 conversion",
+                },
+            )?;
+
+    let interval_news_arrival_decomposition = derive_interval_news_arrival_decomposition(
+        run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0),
+        interval_duration_in_hours,
+        interval_known_news_event_count,
+    );
 
     Ok(IntervalSimulationInputs {
         interval_index,
         interval_start_utc_nanos,
         interval_end_utc_nanos,
         interval_duration_nanos,
-        interval_duration_in_hours: duration_nanos_to_hours(interval_duration_nanos),
+        interval_duration_in_hours,
         interval_seasonality_factor: run_config.model_inputs.hourly_factor_contract.s_h
             [interval_index],
         interval_news_intensity: run_config.model_inputs.hourly_factor_contract.nu_h
             [interval_index]
             .max(0.0),
+        interval_known_news_intensity: interval_news_arrival_decomposition
+            .known_component_intensity,
+        interval_surprise_news_intensity: interval_news_arrival_decomposition
+            .surprise_component_intensity,
         interval_end_anchor_value: run_config
             .model_inputs
             .mean_reversion_runtime_interval_anchors
@@ -484,16 +495,19 @@ fn sample_seeded_transition_long_variance<F>(
     randomness_factory: &F,
     fine_path_state: &SeededTickSimulationStaticState,
     runtime_state: &SeededTickSimulationRuntimeState,
-    interval_index: usize,
+    interval_inputs: &IntervalSimulationInputs<'_>,
     elapsed_open_hours: f64,
 ) -> Result<LongVarianceTransitionSample, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
 {
+    let long_variance_stationary_mean_reversion_level =
+        interval_long_variance_stationary_mean_reversion_level(run_config, interval_inputs)?;
+
     sample_long_variance_transition(
         runtime_state.long_variance_state,
         fine_path_state.long_variance_parameters,
-        fine_path_state.long_variance_stationary_mean_reversion_level,
+        long_variance_stationary_mean_reversion_level,
         elapsed_open_hours,
         &mut randomness_factory.create_substream(
             run_config.seed,
@@ -503,58 +517,114 @@ where
     )
     .map_err(
         |source| SeededTickSimulationRunError::LongVarianceTransitionFailure {
-            interval_index,
+            interval_index: interval_inputs.interval_index,
             source: Box::new(source),
         },
     )
 }
 
-struct IntervalUpdateProcessingInput<'a, 'registry, 'interval, F, C> {
+fn interval_long_variance_stationary_mean_reversion_level(
+    run_config: &SeededTickSimulationRunConfig,
+    interval_inputs: &IntervalSimulationInputs<'_>,
+) -> Result<f64, SeededTickSimulationRunError> {
+    let news_activity_loading_rate = expected_news_activity_loading_rate(
+        interval_inputs.interval_known_news_intensity,
+        interval_inputs.interval_surprise_news_intensity,
+        run_config
+            .model_inputs
+            .news_process_configuration
+            .known_component_mark_scales,
+        run_config
+            .model_inputs
+            .news_process_configuration
+            .surprise_component_mark_scales,
+        run_config
+            .model_inputs
+            .news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks,
+    )
+    .map_err(
+        |source| SeededTickSimulationRunError::InvalidNewsActivityLoadingRate {
+            interval_index: interval_inputs.interval_index,
+            source: Box::new(source),
+        },
+    )?;
+
+    let exogenous_source_rates = target_source_rates_from_shared_activity_loading(
+        run_config.model_inputs.kernel_parameters.rho,
+        news_activity_loading_rate,
+    )
+    .ok_or(SeededTickSimulationRunError::InvalidNewsTargetSourceRates {
+        interval_index: interval_inputs.interval_index,
+    })?;
+
+    run_config
+        .model_inputs
+        .long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(
+            run_config.model_inputs.kernel_parameters,
+            exogenous_source_rates,
+        )
+        .map_err(
+            |source| SeededTickSimulationRunError::InvalidLongVarianceStationaryLevel {
+                source: Box::new(source),
+            },
+        )
+}
+
+struct SeededTransitionReturnPreparationInput<'a, 'registry, 'interval, F> {
     run_config: &'a SeededTickSimulationRunConfig,
     randomness_factory: &'a F,
-    consumer: &'a mut C,
     market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
     fine_path_state: &'a SeededTickSimulationStaticState,
     runtime_state: &'a mut SeededTickSimulationRuntimeState,
     interval_inputs: &'a IntervalSimulationInputs<'interval>,
     previous_timestamp_utc_nanos: i64,
-    interval_update: IntervalStochasticUpdate,
+    timestamp_utc_nanos: i64,
+    transition_state: HawkesExcitationState,
 }
 
-fn process_interval_update<F, C>(
-    input: IntervalUpdateProcessingInput<'_, '_, '_, F, C>,
-) -> Result<i64, SeededTickSimulationRunError>
+struct SeededTransitionReturnPreparation {
+    elapsed_hours_since_previous_update: f64,
+    elapsed_open_hours_since_previous_update: f64,
+    market_state: MarketState,
+    long_variance_transition: LongVarianceTransitionSample,
+    projected_core_increment: SeededProjectedCoreIncrement,
+    total_return: f64,
+    return_components: SufficientStatisticsReturnComponents,
+}
+
+fn prepare_seeded_transition_return<F>(
+    input: SeededTransitionReturnPreparationInput<'_, '_, '_, F>,
+) -> Result<SeededTransitionReturnPreparation, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
-    C: SeededTickSimulationTransitionConsumer,
 {
-    let IntervalUpdateProcessingInput {
+    let SeededTransitionReturnPreparationInput {
         run_config,
         randomness_factory,
-        consumer,
         market_state_resolver,
         fine_path_state,
         runtime_state,
         interval_inputs,
         previous_timestamp_utc_nanos,
-        interval_update,
+        timestamp_utc_nanos,
+        transition_state,
     } = input;
 
-    let elapsed_hours_since_previous_update = elapsed_utc_nanos_to_hours(
-        previous_timestamp_utc_nanos,
-        interval_update.timestamp_utc_nanos(),
-    );
+    let elapsed_hours_since_previous_update =
+        elapsed_utc_nanos_to_hours(previous_timestamp_utc_nanos, timestamp_utc_nanos);
 
-    let current_market_state = market_state_resolver
-        .resolve_market_state_at_nanos(interval_update.timestamp_utc_nanos())?;
+    let market_state = market_state_resolver.resolve_market_state_at_nanos(timestamp_utc_nanos)?;
 
     let (open_jump_return, closed_gap_return) =
-        realize_pending_jump_returns(runtime_state, current_market_state);
+        realize_pending_jump_returns(runtime_state, market_state);
 
     let elapsed_open_hours_since_previous_update = integrate_open_market_elapsed_hours(
         interval_inputs.interval_open_market_segments,
         previous_timestamp_utc_nanos,
-        interval_update.timestamp_utc_nanos(),
+        timestamp_utc_nanos,
     );
 
     let long_variance_transition = sample_seeded_transition_long_variance(
@@ -562,14 +632,14 @@ where
         randomness_factory,
         fine_path_state,
         runtime_state,
-        interval_inputs.interval_index,
+        interval_inputs,
         elapsed_open_hours_since_previous_update,
     )?;
 
     let trading_time_return =
         sample_transition_trading_time_return(TransitionTradingTimeReturnInput {
             driver_parameters: fine_path_state.driver_parameters,
-            state: runtime_state.next_state,
+            state: transition_state,
             lambda_bar: fine_path_state.lambda_bar,
             beta: run_config.model_inputs.kernel_parameters.beta,
             seasonality_factor: interval_inputs.interval_seasonality_factor,
@@ -579,7 +649,7 @@ where
             baseline_long_variance_clock_scale: long_variance_transition.baseline_clock_scale,
             interval_open_market_segments: interval_inputs.interval_open_market_segments,
             previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+            timestamp_utc_nanos,
             interval_index: interval_inputs.interval_index,
             randomness_stream: randomness_factory.create_substream(
                 run_config.seed,
@@ -616,20 +686,76 @@ where
         },
     )?;
 
+    Ok(SeededTransitionReturnPreparation {
+        elapsed_hours_since_previous_update,
+        elapsed_open_hours_since_previous_update,
+        market_state,
+        long_variance_transition,
+        projected_core_increment,
+        total_return,
+        return_components,
+    })
+}
+
+struct IntervalUpdateProcessingInput<'a, 'registry, 'interval, F, C> {
+    run_config: &'a SeededTickSimulationRunConfig,
+    randomness_factory: &'a F,
+    consumer: &'a mut C,
+    market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
+    fine_path_state: &'a SeededTickSimulationStaticState,
+    runtime_state: &'a mut SeededTickSimulationRuntimeState,
+    interval_inputs: &'a IntervalSimulationInputs<'interval>,
+    previous_timestamp_utc_nanos: i64,
+    interval_update: IntervalStochasticUpdate,
+}
+
+fn process_interval_update<F, C>(
+    input: IntervalUpdateProcessingInput<'_, '_, '_, F, C>,
+) -> Result<i64, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+    C: SeededTickSimulationTransitionConsumer,
+{
+    let IntervalUpdateProcessingInput {
+        run_config,
+        randomness_factory,
+        consumer,
+        market_state_resolver,
+        fine_path_state,
+        runtime_state,
+        interval_inputs,
+        previous_timestamp_utc_nanos,
+        interval_update,
+    } = input;
+
+    let previous_state = runtime_state.next_state;
+
+    let transition_return =
+        prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
+            run_config,
+            randomness_factory,
+            market_state_resolver,
+            fine_path_state,
+            runtime_state,
+            interval_inputs,
+            previous_timestamp_utc_nanos,
+            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+            transition_state: previous_state,
+        })?;
+
     runtime_state.observed_state = runtime_state.observed_state.apply_projected_core_increment(
         fine_path_state.mean_reversion_kappa,
-        elapsed_open_hours_since_previous_update,
-        projected_core_increment,
+        transition_return.elapsed_open_hours_since_previous_update,
+        transition_return.projected_core_increment,
     );
 
-    let transition_step = interval_update.transition_step(elapsed_hours_since_previous_update);
+    let transition_step =
+        interval_update.transition_step(transition_return.elapsed_hours_since_previous_update);
 
     let event_index_for_update = match interval_update {
         IntervalStochasticUpdate::EndogenousEvent { .. } => Some(runtime_state.next_event_index),
         IntervalStochasticUpdate::ExogenousNews { .. } => None,
     };
-
-    let previous_state = runtime_state.next_state;
 
     runtime_state.next_state = evolve_hawkes_state(
         runtime_state.next_state,
@@ -638,7 +764,7 @@ where
     )
     .map_err(map_transition_error_to_seeded_simulation_run_error)?;
 
-    runtime_state.long_variance_state = long_variance_transition.terminal_state;
+    runtime_state.long_variance_state = transition_return.long_variance_transition.terminal_state;
 
     if let IntervalStochasticUpdate::EndogenousEvent { side, .. } = interval_update {
         runtime_state.long_variance_state = apply_long_variance_event_jump(
@@ -666,7 +792,8 @@ where
             interval_index: interval_inputs.interval_index,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
-            elapsed_hours_since_previous_update,
+            elapsed_hours_since_previous_update: transition_return
+                .elapsed_hours_since_previous_update,
             transition_kind: interval_update.transition_kind(),
             generation_order: Some(interval_update.generation_order()),
             event_index: event_index_for_update,
@@ -699,10 +826,10 @@ where
         side,
         news_arrival_component,
         market_state: SeededTickSimulationNewsEventMarketState::from_market_state(
-            current_market_state,
+            transition_return.market_state,
         ),
-        return_components,
-        core_total_return_increment: total_return,
+        return_components: transition_return.return_components,
+        core_total_return_increment: transition_return.total_return,
         observed_log_price: runtime_state.observed_state.observed_log_price,
         anchor_value: runtime_state.observed_state.anchor_value,
         pressure_state: runtime_state.observed_state.pressure_state,
@@ -753,90 +880,27 @@ where
         previous_timestamp_utc_nanos,
     } = input;
 
-    let elapsed_hours_to_interval_end = elapsed_utc_nanos_to_hours(
-        previous_timestamp_utc_nanos,
-        interval_inputs.interval_end_utc_nanos,
-    );
-
     let previous_state = runtime_state.next_state;
 
-    let boundary_market_state = market_state_resolver
-        .resolve_market_state_at_nanos(interval_inputs.interval_end_utc_nanos)?;
-
-    let (open_jump_return, closed_gap_return) =
-        realize_pending_jump_returns(runtime_state, boundary_market_state);
-
-    let elapsed_open_hours_to_interval_end = integrate_open_market_elapsed_hours(
-        interval_inputs.interval_open_market_segments,
-        previous_timestamp_utc_nanos,
-        interval_inputs.interval_end_utc_nanos,
-    );
-
-    let long_variance_transition = sample_seeded_transition_long_variance(
-        run_config,
-        randomness_factory,
-        fine_path_state,
-        runtime_state,
-        interval_inputs.interval_index,
-        elapsed_open_hours_to_interval_end,
-    )?;
-
-    let trading_time_return =
-        sample_transition_trading_time_return(TransitionTradingTimeReturnInput {
-            driver_parameters: fine_path_state.driver_parameters,
-            state: previous_state,
-            lambda_bar: fine_path_state.lambda_bar,
-            beta: run_config.model_inputs.kernel_parameters.beta,
-            seasonality_factor: interval_inputs.interval_seasonality_factor,
-            return_clock_exposure_parameters: run_config
-                .model_inputs
-                .return_clock_exposure_parameters,
-            baseline_long_variance_clock_scale: long_variance_transition.baseline_clock_scale,
-            interval_open_market_segments: interval_inputs.interval_open_market_segments,
+    let transition_return =
+        prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
+            run_config,
+            randomness_factory,
+            market_state_resolver,
+            fine_path_state,
+            runtime_state,
+            interval_inputs,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
-            interval_index: interval_inputs.interval_index,
-            randomness_stream: randomness_factory.create_substream(
-                run_config.seed,
-                SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
-                runtime_state.next_transition_index,
-            ),
+            transition_state: previous_state,
         })?;
-
-    let raw_total_return =
-        trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
-
-    let projected_core_increment = runtime_state.observed_state.project_core_increment(
-        fine_path_state.mean_reversion_kappa,
-        elapsed_open_hours_to_interval_end,
-        raw_total_return,
-        run_config.model_inputs.observed_price_tick_size,
-        interval_inputs.interval_index,
-    )?;
-
-    let total_return = projected_core_increment.observed_core_increment;
-
-    let return_components = SufficientStatisticsReturnComponents::try_new(
-        trading_time_return.buy_side_return,
-        trading_time_return.sell_side_return,
-        trading_time_return.trading_time_return + total_return - raw_total_return,
-        open_jump_return,
-        closed_gap_return,
-        total_return,
-    )
-    .map_err(
-        |source| SeededTickSimulationRunError::InvalidReturnComponents {
-            interval_index: interval_inputs.interval_index,
-            source: Box::new(source),
-        },
-    )?;
 
     runtime_state.observed_state = runtime_state
         .observed_state
         .apply_projected_core_increment(
             fine_path_state.mean_reversion_kappa,
-            elapsed_open_hours_to_interval_end,
-            projected_core_increment,
+            transition_return.elapsed_open_hours_since_previous_update,
+            transition_return.projected_core_increment,
         )
         .apply_anchor_reset(
             interval_inputs.interval_end_anchor_value,
@@ -847,14 +911,14 @@ where
         runtime_state.next_state,
         run_config.model_inputs.kernel_parameters,
         janiform_model_kernels::hawkes::HawkesTransitionStep::new(
-            elapsed_hours_to_interval_end,
+            transition_return.elapsed_hours_since_previous_update,
             None,
             None,
         ),
     )
     .map_err(map_transition_error_to_seeded_simulation_run_error)?;
 
-    runtime_state.long_variance_state = long_variance_transition.terminal_state;
+    runtime_state.long_variance_state = transition_return.long_variance_transition.terminal_state;
 
     capture_debug_transition(
         runtime_state.debug_trace_collector.as_mut(),
@@ -863,7 +927,8 @@ where
             interval_index: interval_inputs.interval_index,
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
-            elapsed_hours_since_previous_update: elapsed_hours_to_interval_end,
+            elapsed_hours_since_previous_update: transition_return
+                .elapsed_hours_since_previous_update,
             transition_kind: SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift,
             generation_order: None,
             event_index: None,
@@ -883,10 +948,10 @@ where
         side: None,
         news_arrival_component: None,
         market_state: SeededTickSimulationNewsEventMarketState::from_market_state(
-            boundary_market_state,
+            transition_return.market_state,
         ),
-        return_components,
-        core_total_return_increment: total_return,
+        return_components: transition_return.return_components,
+        core_total_return_increment: transition_return.total_return,
         observed_log_price: runtime_state.observed_state.observed_log_price,
         anchor_value: runtime_state.observed_state.anchor_value,
         pressure_state: runtime_state.observed_state.pressure_state,

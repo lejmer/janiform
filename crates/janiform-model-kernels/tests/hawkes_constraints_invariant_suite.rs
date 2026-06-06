@@ -101,8 +101,12 @@ fn constraint_projection_sanity_preserves_positive_intensity_domains() {
         let expected_deseasonalized_minus =
             scenario.lambda_bar + scenario.state.y_minus_plus + scenario.state.y_minus_minus;
 
-        let expected_scaled_plus = expected_deseasonalized_plus * scenario.seasonality_factor;
-        let expected_scaled_minus = expected_deseasonalized_minus * scenario.seasonality_factor;
+        let expected_scaled_plus = scenario.lambda_bar * scenario.seasonality_factor
+            + scenario.state.y_plus_plus
+            + scenario.state.y_plus_minus;
+        let expected_scaled_minus = scenario.lambda_bar * scenario.seasonality_factor
+            + scenario.state.y_minus_plus
+            + scenario.state.y_minus_minus;
 
         push_if_difference_exceeds_tolerance(
             &mut violations,

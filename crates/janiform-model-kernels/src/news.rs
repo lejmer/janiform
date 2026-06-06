@@ -14,6 +14,7 @@ pub use configuration::{
     GammaNormalNewsMarkConstruction, GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, SharedNewsMarkLawConfiguration,
     StandardNormalNewsReturnShockSampler, SurpriseNewsArrivalConfiguration,
+    expected_news_activity_loading_rate,
 };
 pub use dispatch::{
     SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventDispatchInput,
@@ -25,9 +26,9 @@ pub use dispatch::{
 };
 pub use errors::{
     GammaNormalNewsMarkConstructionError, GammaSeverityMarkSamplingError,
-    NewsArrivalConfigurationError, NewsComponentIntensityEvaluationError,
-    NewsComponentMarkScaleConfigurationError, NewsMarkConfigurationError,
-    NewsProcessConfigurationError,
+    NewsActivityLoadingRateError, NewsArrivalConfigurationError,
+    NewsComponentIntensityEvaluationError, NewsComponentMarkScaleConfigurationError,
+    NewsMarkConfigurationError, NewsProcessConfigurationError,
 };
 pub use interface::{
     COMPOSABLE_NEWS_MARK_INTERFACE_POLICY, ComposableNewsMarkPayload, ComposableNewsMarkPipeline,

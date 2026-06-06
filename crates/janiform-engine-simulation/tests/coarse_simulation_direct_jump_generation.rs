@@ -254,7 +254,7 @@ fn coarse_simulation_surfaces_first_moment_projection_failures() {
 }
 
 #[test]
-fn coarse_simulation_surfaces_boundary_state_update_failures() {
+fn coarse_simulation_surfaces_invalid_news_target_source_rates() {
     let model_inputs = build_model_inputs_with_components(
         build_sufficient_statistics_model_inputs(
             HawkesKernelParameters::try_new(
@@ -304,12 +304,17 @@ fn coarse_simulation_surfaces_boundary_state_update_failures() {
         .expect_err("overflowing boundary-state loadings must surface through the runner");
 
     assert!(
-        matches!(error, CoarseSimulationRunError::InvalidPathArtifact { .. }),
-        "unexpected boundary-update error: {error:?}"
+        matches!(
+            error,
+            CoarseSimulationRunError::InvalidNewsTargetSourceRates { interval_index: 0 }
+        ),
+        "unexpected news target-source error: {error:?}"
     );
     assert!(
-        error.to_string().contains("terminal_excitation_state"),
-        "boundary update should surface through the invalid terminal-state artifact guard: {error}"
+        error
+            .to_string()
+            .contains("invalid Hawkes target source rates"),
+        "news source-rate validation should surface through the named runner error: {error}"
     );
 }
 

@@ -7,9 +7,9 @@ use janiform_foundations::time::{NANOS_PER_HOUR_F64, utc_datetime_from_nanos};
 
 use super::errors::{
     GammaNormalNewsMarkConstructionError, GammaSeverityMarkSamplingError,
-    NewsArrivalConfigurationError, NewsComponentIntensityEvaluationError,
-    NewsComponentMarkScaleConfigurationError, NewsMarkConfigurationError,
-    NewsProcessConfigurationError,
+    NewsActivityLoadingRateError, NewsArrivalConfigurationError,
+    NewsComponentIntensityEvaluationError, NewsComponentMarkScaleConfigurationError,
+    NewsMarkConfigurationError, NewsProcessConfigurationError,
 };
 use super::interface::{
     GAMMA_NORMAL_NEWS_MARK_CONSTRUCTION_POLICY, NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
@@ -407,6 +407,57 @@ impl NewsComponentMarkScaleConfiguration {
             construction_policy: GAMMA_NORMAL_NEWS_MARK_CONSTRUCTION_POLICY,
         })
     }
+}
+
+/// Derive the expected news activity-loading rate from component intensities and mark scales.
+pub fn expected_news_activity_loading_rate(
+    known_nu_h: f64,
+    surprise_nu_h: f64,
+    known_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+) -> Result<f64, NewsActivityLoadingRateError> {
+    if !known_nu_h.is_finite() || known_nu_h < 0.0 {
+        return Err(NewsActivityLoadingRateError::InvalidKnownIntensity { value: known_nu_h });
+    }
+
+    if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
+        return Err(NewsActivityLoadingRateError::InvalidSurpriseIntensity {
+            value: surprise_nu_h,
+        });
+    }
+
+    known_component_mark_scales.validate().map_err(|source| {
+        NewsActivityLoadingRateError::InvalidKnownComponentMarkScales { source }
+    })?;
+
+    surprise_component_mark_scales
+        .validate()
+        .map_err(
+            |source| NewsActivityLoadingRateError::InvalidSurpriseComponentMarkScales { source },
+        )?;
+
+    let expected_severity_mark = gamma_severity_mark_configuration
+        .expected_severity_mark()
+        .map_err(
+            |source| NewsActivityLoadingRateError::InvalidGammaSeverityMarkConfiguration { source },
+        )?;
+
+    let expected_known_loading_rate =
+        known_nu_h * known_component_mark_scales.activity_coupling_scale * expected_severity_mark;
+
+    let expected_surprise_loading_rate = surprise_nu_h
+        * surprise_component_mark_scales.activity_coupling_scale
+        * expected_severity_mark;
+
+    let expected_loading_rate = expected_known_loading_rate + expected_surprise_loading_rate;
+    if !expected_loading_rate.is_finite() || expected_loading_rate < 0.0 {
+        return Err(NewsActivityLoadingRateError::InvalidDerivedRate {
+            value: expected_loading_rate,
+        });
+    }
+
+    Ok(expected_loading_rate)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

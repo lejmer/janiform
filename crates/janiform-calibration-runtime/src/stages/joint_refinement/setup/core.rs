@@ -14,7 +14,8 @@ use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::numeric::clamp_point_in_place as clamp_in_place;
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
-    HawkesKernelLoadings, HawkesKernelParameters, baseline_intensity_for_stationary_total_intensity,
+    HawkesKernelLoadings, HawkesKernelParameters, HawkesStationaryTargetSourceRates,
+    baseline_intensity_for_stationary_total_intensity,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
@@ -355,6 +356,7 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
             let stationary_long_variance_level = long_variance_parameters
                 .stationary_mean_reversion_level_for_hawkes_kernel(
                     hawkes_fitted_parameters.kernel_parameters,
+                    HawkesStationaryTargetSourceRates::zero(),
                 )
                 .map_err(|source| {
                     parameter_decode_error(format!(

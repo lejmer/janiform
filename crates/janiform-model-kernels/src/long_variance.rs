@@ -9,7 +9,7 @@ use janiform_foundations::numeric::{
 
 use crate::hawkes::{
     HawkesEventSide, HawkesKernelParameters, HawkesStationaryIntensityMultipliers,
-    stationary_intensity_multipliers,
+    HawkesStationaryIntensityRates, HawkesStationaryTargetSourceRates, stationary_intensity_rates,
 };
 
 // With zero diffusion and zero event loadings, unit initial state remains fixed for any
@@ -120,6 +120,7 @@ impl LongVarianceParameters {
 
         let stationary_buy_rate =
             baseline_intensity * stationary_intensity_multipliers.buy_intensity_multiplier;
+
         let stationary_sell_rate =
             baseline_intensity * stationary_intensity_multipliers.sell_intensity_multiplier;
 
@@ -149,20 +150,67 @@ impl LongVarianceParameters {
         Ok(level)
     }
 
+    /// Derive the CIR mean-reversion level from stationary event rates.
+    pub fn stationary_mean_reversion_level_for_event_rates(
+        self,
+        stationary_intensity_rates: HawkesStationaryIntensityRates,
+    ) -> Result<f64, LongVarianceStationaryLevelError> {
+        self.validate().map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidLongVarianceParameters { source }
+        })?;
+
+        validate_non_negative_number(
+            stationary_intensity_rates.buy_event_rate_per_hour,
+            "stationary_buy_event_rate",
+        )
+        .map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidStationaryEventRate {
+                field: "stationary_buy_event_rate",
+                source,
+            }
+        })?;
+
+        validate_non_negative_number(
+            stationary_intensity_rates.sell_event_rate_per_hour,
+            "stationary_sell_event_rate",
+        )
+        .map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidStationaryEventRate {
+                field: "stationary_sell_event_rate",
+                source,
+            }
+        })?;
+
+        let event_loading_drift = self.buy_event_loading
+            * stationary_intensity_rates.buy_event_rate_per_hour
+            + self.sell_event_loading * stationary_intensity_rates.sell_event_rate_per_hour;
+
+        let level = 1.0 - event_loading_drift / self.mean_reversion_rate;
+
+        validate_positive_number(level, "stationary_mean_reversion_level").map_err(|source| {
+            LongVarianceStationaryLevelError::InvalidDerivedMeanReversionLevel { source }
+        })?;
+
+        Ok(level)
+    }
+
     /// Derive the stationary mean-reversion level from a mean-normalized Hawkes kernel.
     pub fn stationary_mean_reversion_level_for_hawkes_kernel(
         self,
         kernel_parameters: HawkesKernelParameters,
+        exogenous_source_rates: HawkesStationaryTargetSourceRates,
     ) -> Result<f64, LongVarianceStationaryLevelForHawkesKernelError> {
-        let stationary_multipliers = stationary_intensity_multipliers(
+        let stationary_event_rates = stationary_intensity_rates(
             kernel_parameters.alpha,
             kernel_parameters.beta,
+            kernel_parameters.lambda_bar,
+            exogenous_source_rates,
         )
         .ok_or(
             LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryIntensityMultipliers,
         )?;
 
-        self.stationary_mean_reversion_level(kernel_parameters.lambda_bar, stationary_multipliers)
+        self.stationary_mean_reversion_level_for_event_rates(stationary_event_rates)
             .map_err(|source| {
                 LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryLevel { source }
             })
@@ -233,6 +281,7 @@ impl LongVarianceState {
         }
 
         let decay = (-parameters.mean_reversion_rate * delta_hours).exp();
+
         let next_level = stationary_mean_reversion_level
             + (self.level - stationary_mean_reversion_level) * decay;
 
@@ -469,7 +518,10 @@ impl Error for LongVarianceStationaryLevelForHawkesKernelError {
 
 #[cfg(test)]
 mod tests {
-    use crate::hawkes::{HawkesEventSide, HawkesStationaryIntensityMultipliers};
+    use crate::hawkes::{
+        HawkesEventSide, HawkesKernelLoadings, HawkesKernelParameters, HawkesSourceComponents,
+        HawkesStationaryIntensityMultipliers, HawkesStationaryTargetSourceRates,
+    };
 
     use super::{LongVarianceParameters, LongVarianceState};
 
@@ -489,6 +541,39 @@ mod tests {
             .expect("stationary level should build");
 
         assert_eq!(level, 1.0 - (0.10 * 1.0 + 0.20 * 1.5) / 4.0);
+    }
+
+    #[test]
+    fn stationary_mean_reversion_level_includes_exogenous_hawkes_source_rates() {
+        let parameters = LongVarianceParameters::try_new(10.0, 0.0, 0.10, 0.20)
+            .expect("parameters should build");
+
+        let zero_loadings = HawkesKernelLoadings::from_target_components(
+            HawkesSourceComponents::new(0.0, 0.0),
+            HawkesSourceComponents::new(0.0, 0.0),
+        );
+
+        let kernel_parameters =
+            HawkesKernelParameters::try_new(3.0, 2.0, zero_loadings, zero_loadings)
+                .expect("zero-loadings kernel should build");
+
+        let level = parameters
+            .stationary_mean_reversion_level_for_hawkes_kernel(
+                kernel_parameters,
+                HawkesStationaryTargetSourceRates {
+                    target_plus_source_rate: 0.4,
+                    target_minus_source_rate: 0.2,
+                },
+            )
+            .expect("stationary level should build");
+
+        let expected_buy_rate = 3.0 + 0.4 / 2.0;
+        let expected_sell_rate = 3.0 + 0.2 / 2.0;
+
+        assert_eq!(
+            level,
+            1.0 - (0.10 * expected_buy_rate + 0.20 * expected_sell_rate) / 10.0
+        );
     }
 
     #[test]

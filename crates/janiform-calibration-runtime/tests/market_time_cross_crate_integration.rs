@@ -257,8 +257,8 @@ fn simulation_coarse_and_calibration_paths_share_one_hawkes_intensity_projection
     assert_eq!(simulation_projection, calibration_projection);
     assert!((simulation_projection.deseasonalized.lambda_plus - 0.8).abs() <= 1e-12);
     assert!((simulation_projection.deseasonalized.lambda_minus - 0.85).abs() <= 1e-12);
-    assert!((simulation_projection.seasonality_scaled.lambda_plus - 0.72).abs() <= 1e-12);
-    assert!((simulation_projection.seasonality_scaled.lambda_minus - 0.765).abs() <= 1e-12);
+    assert!((simulation_projection.seasonality_scaled.lambda_plus - 0.75).abs() <= 1e-12);
+    assert!((simulation_projection.seasonality_scaled.lambda_minus - 0.80).abs() <= 1e-12);
 }
 
 #[test]

@@ -23,6 +23,55 @@ impl HawkesStationaryIntensityMultipliers {
     }
 }
 
+/// Stationary buy and sell event rates implied by the Hawkes first moments.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct HawkesStationaryIntensityRates {
+    pub buy_event_rate_per_hour: f64,
+    pub sell_event_rate_per_hour: f64,
+}
+
+/// Exogenous Hawkes target-sum source rates before decay normalization.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct HawkesStationaryTargetSourceRates {
+    pub target_plus_source_rate: f64,
+    pub target_minus_source_rate: f64,
+}
+
+impl HawkesStationaryTargetSourceRates {
+    pub const fn zero() -> Self {
+        Self {
+            target_plus_source_rate: 0.0,
+            target_minus_source_rate: 0.0,
+        }
+    }
+}
+
+/// Map one shared exogenous activity-loading rate into Hawkes target source rates.
+pub fn target_source_rates_from_shared_activity_loading(
+    rho: HawkesKernelLoadings,
+    activity_loading_rate: f64,
+) -> Option<HawkesStationaryTargetSourceRates> {
+    if !activity_loading_rate.is_finite() || activity_loading_rate < 0.0 {
+        return None;
+    }
+
+    let target_plus_source_rate = activity_loading_rate * (rho.plus_plus + rho.plus_minus);
+    let target_minus_source_rate = activity_loading_rate * (rho.minus_plus + rho.minus_minus);
+
+    if !target_plus_source_rate.is_finite()
+        || target_plus_source_rate < 0.0
+        || !target_minus_source_rate.is_finite()
+        || target_minus_source_rate < 0.0
+    {
+        return None;
+    }
+
+    Some(HawkesStationaryTargetSourceRates {
+        target_plus_source_rate,
+        target_minus_source_rate,
+    })
+}
+
 /// Compute the shared baseline intensity that matches a stationary total event rate.
 ///
 /// The Hawkes kernel stores the de-seasonalized buy and sell baseline as the
@@ -64,6 +113,7 @@ pub fn spectral_radius_alpha_over_beta(alpha: HawkesKernelLoadings, beta: f64) -
     let discriminant = ((scaled_plus_plus - scaled_minus_minus).powi(2)
         + 4.0 * scaled_plus_minus * scaled_minus_plus)
         .max(0.0);
+
     let square_root_discriminant = discriminant.sqrt();
 
     let first_eigenvalue = 0.5 * (trace + square_root_discriminant);
@@ -101,7 +151,39 @@ pub fn stationary_intensity_multipliers(
     alpha: HawkesKernelLoadings,
     beta: f64,
 ) -> Option<HawkesStationaryIntensityMultipliers> {
+    let stationary_rates =
+        stationary_intensity_rates(alpha, beta, 1.0, HawkesStationaryTargetSourceRates::zero())?;
+
+    Some(HawkesStationaryIntensityMultipliers {
+        buy_intensity_multiplier: stationary_rates.buy_event_rate_per_hour,
+        sell_intensity_multiplier: stationary_rates.sell_event_rate_per_hour,
+    })
+}
+
+/// Compute stationary buy and sell event rates with exogenous target-sum source rates.
+///
+/// The exogenous source rates are the terms added to the target-sum ODE before
+/// the shared Hawkes decay. For coupled news, for example, the buy-target source
+/// is `E[dJ/dt] * (rho_++ + rho_+-)`.
+pub fn stationary_intensity_rates(
+    alpha: HawkesKernelLoadings,
+    beta: f64,
+    baseline_intensity: f64,
+    exogenous_source_rates: HawkesStationaryTargetSourceRates,
+) -> Option<HawkesStationaryIntensityRates> {
     if !beta.is_finite() || beta <= 0.0 {
+        return None;
+    }
+
+    if !baseline_intensity.is_finite() || baseline_intensity <= 0.0 {
+        return None;
+    }
+
+    if !exogenous_source_rates.target_plus_source_rate.is_finite()
+        || exogenous_source_rates.target_plus_source_rate < 0.0
+        || !exogenous_source_rates.target_minus_source_rate.is_finite()
+        || exogenous_source_rates.target_minus_source_rate < 0.0
+    {
         return None;
     }
 
@@ -116,8 +198,30 @@ pub fn stationary_intensity_multipliers(
         return None;
     }
 
-    Some(HawkesStationaryIntensityMultipliers {
-        buy_intensity_multiplier: ((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant,
-        sell_intensity_multiplier: (scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant,
+    let right_hand_side_plus =
+        baseline_intensity + exogenous_source_rates.target_plus_source_rate / beta;
+
+    let right_hand_side_minus =
+        baseline_intensity + exogenous_source_rates.target_minus_source_rate / beta;
+
+    let buy_event_rate_per_hour = ((1.0 - scaled_minus_minus) * right_hand_side_plus
+        + scaled_plus_minus * right_hand_side_minus)
+        / determinant;
+
+    let sell_event_rate_per_hour = (scaled_minus_plus * right_hand_side_plus
+        + (1.0 - scaled_plus_plus) * right_hand_side_minus)
+        / determinant;
+
+    if !buy_event_rate_per_hour.is_finite()
+        || buy_event_rate_per_hour < 0.0
+        || !sell_event_rate_per_hour.is_finite()
+        || sell_event_rate_per_hour < 0.0
+    {
+        return None;
+    }
+
+    Some(HawkesStationaryIntensityRates {
+        buy_event_rate_per_hour,
+        sell_event_rate_per_hour,
     })
 }

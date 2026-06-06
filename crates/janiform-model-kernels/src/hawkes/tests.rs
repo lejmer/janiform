@@ -138,7 +138,7 @@ fn shared_decay_drift_matches_closed_form_per_component() {
 }
 
 #[test]
-fn intensity_projection_matches_deseasonalized_and_scaled_equations() {
+fn intensity_projection_matches_deseasonalized_and_seasonal_baseline_equations() {
     let state = HawkesExcitationState {
         y_plus_plus: 1.2,
         y_plus_minus: 0.4,
@@ -162,13 +162,13 @@ fn intensity_projection_matches_deseasonalized_and_scaled_equations() {
     );
     assert_within_tolerance(
         projection.seasonality_scaled.lambda_plus,
-        3.0,
+        2.6,
         DECAY_TOLERANCE,
         "seasonality_scaled.lambda_plus",
     );
     assert_within_tolerance(
         projection.seasonality_scaled.lambda_minus,
-        2.0,
+        1.8,
         DECAY_TOLERANCE,
         "seasonality_scaled.lambda_minus",
     );
@@ -186,8 +186,8 @@ fn intensity_projection_handles_hourly_piecewise_seasonality_edge_values() {
     let lambda_bar = 0.40;
 
     let seasonality_factors = [0.25, 1.0, 3.5];
-    let expected_scaled_plus = [0.15, 0.60, 2.10];
-    let expected_scaled_minus = [0.175, 0.70, 2.45];
+    let expected_scaled_plus = [0.30, 0.60, 1.60];
+    let expected_scaled_minus = [0.40, 0.70, 1.70];
 
     for (position, seasonality_factor) in seasonality_factors.iter().copied().enumerate() {
         let projection = state.project_intensities(lambda_bar, seasonality_factor);
@@ -273,13 +273,13 @@ fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
     );
     assert_within_tolerance(
         projection.seasonality_scaled.lambda_plus,
-        1.04,
+        0.95,
         DECAY_TOLERANCE,
         "seasonality_scaled.lambda_plus",
     );
     assert_within_tolerance(
         projection.seasonality_scaled.lambda_minus,
-        1.56,
+        1.35,
         DECAY_TOLERANCE,
         "seasonality_scaled.lambda_minus",
     );

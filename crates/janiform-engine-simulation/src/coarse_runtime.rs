@@ -16,11 +16,13 @@ use janiform_foundations::randomness::{
 };
 use janiform_model_kernels::hawkes::{
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+    target_source_rates_from_shared_activity_loading,
 };
 use janiform_model_kernels::news::{
-    NewsArrivalComponent, NewsMarkInterfaceError, NewsProcessConfigurationError,
-    SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventTimestampedInput,
-    dispatch_shared_news_events_with_resolved_market_states,
+    NewsActivityLoadingRateError, NewsArrivalComponent, NewsMarkInterfaceError,
+    NewsProcessConfigurationError, SharedNewsAccumulatorState, SharedNewsEventDispatchError,
+    SharedNewsEventTimestampedInput, dispatch_shared_news_events_with_resolved_market_states,
+    expected_news_activity_loading_rate,
 };
 use janiform_model_kernels::return_clock::{
     EffectiveReturnClocksBuildError, IntegratedSideActivityDecomposition,
@@ -155,15 +157,6 @@ where
             |source| CoarseSimulationRunError::EndogenousFirstMomentProjectionFailure {
                 interval_index: 0,
                 message: source.to_string(),
-            },
-        )?;
-
-    let long_variance_stationary_mean_reversion_level = model_inputs
-        .long_variance_parameters
-        .stationary_mean_reversion_level_for_hawkes_kernel(kernel_parameters)
-        .map_err(
-            |source| CoarseSimulationRunError::InvalidLongVarianceStationaryLevel {
-                source: Box::new(source),
             },
         )?;
 
@@ -352,6 +345,12 @@ where
             SimulationRandomnessSubstreamDomain::LongVarianceDiffusion,
             interval_index as u64,
         );
+
+        let long_variance_stationary_mean_reversion_level =
+            coarse_interval_long_variance_stationary_mean_reversion_level(
+                &run_request,
+                interval_index,
+            )?;
 
         let long_variance_transition = sample_long_variance_transition(
             long_variance_state,
@@ -546,6 +545,53 @@ where
     })
 }
 
+fn coarse_interval_long_variance_stationary_mean_reversion_level(
+    run_request: &CoarseSimulationRunRequest,
+    interval_index: usize,
+) -> Result<f64, CoarseSimulationRunError> {
+    let equation_specification = run_request
+        .model_inputs
+        .sufficient_statistics_model_inputs
+        .equation_specification;
+
+    let news_process_configuration = &run_request.model_inputs.news_process_configuration;
+
+    let news_activity_loading_rate = expected_news_activity_loading_rate(
+        run_request.interval_factors.nu_h_known[interval_index],
+        run_request.interval_factors.nu_h_surprise[interval_index],
+        news_process_configuration.known_component_mark_scales,
+        news_process_configuration.surprise_component_mark_scales,
+        news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks,
+    )
+    .map_err(
+        |source| CoarseSimulationRunError::InvalidNewsActivityLoadingRate {
+            interval_index,
+            source: Box::new(source),
+        },
+    )?;
+
+    let exogenous_source_rates = target_source_rates_from_shared_activity_loading(
+        equation_specification.hawkes_kernel_parameters.rho,
+        news_activity_loading_rate,
+    )
+    .ok_or(CoarseSimulationRunError::InvalidNewsTargetSourceRates { interval_index })?;
+
+    run_request
+        .model_inputs
+        .long_variance_parameters
+        .stationary_mean_reversion_level_for_hawkes_kernel(
+            equation_specification.hawkes_kernel_parameters,
+            exogenous_source_rates,
+        )
+        .map_err(
+            |source| CoarseSimulationRunError::InvalidLongVarianceStationaryLevel {
+                source: Box::new(source),
+            },
+        )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoarseSimulationRunError {
     Cancelled {
@@ -564,6 +610,13 @@ pub enum CoarseSimulationRunError {
         source: Box<
             janiform_model_kernels::long_variance::LongVarianceStationaryLevelForHawkesKernelError,
         >,
+    },
+    InvalidNewsActivityLoadingRate {
+        interval_index: usize,
+        source: Box<NewsActivityLoadingRateError>,
+    },
+    InvalidNewsTargetSourceRates {
+        interval_index: usize,
     },
     InvalidIntervalDelta {
         source: Box<super::coarse::IntervalDeltaGridError>,
@@ -659,6 +712,17 @@ impl Display for CoarseSimulationRunError {
             Self::InvalidLongVarianceStationaryLevel { source } => write!(
                 formatter,
                 "long_variance_parameters imply an invalid stationary mean-reversion level: {source}"
+            ),
+            Self::InvalidNewsActivityLoadingRate {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} news activity-loading rate is invalid: {source}"
+            ),
+            Self::InvalidNewsTargetSourceRates { interval_index } => write!(
+                formatter,
+                "interval {interval_index} news activity-loading rate produces invalid Hawkes target source rates"
             ),
             Self::InvalidIntervalDelta { source } => {
                 write!(formatter, "interval_delta is invalid: {source}")
@@ -790,6 +854,7 @@ impl Error for CoarseSimulationRunError {
             Self::CalendarRegistryLoadFailure { source } => Some(source.as_ref()),
             Self::InvalidNigDriverConfiguration { source } => Some(source.as_ref()),
             Self::InvalidLongVarianceStationaryLevel { source } => Some(source.as_ref()),
+            Self::InvalidNewsActivityLoadingRate { source, .. } => Some(source.as_ref()),
             Self::InvalidIntervalDelta { source } => Some(source.as_ref()),
             Self::TransformSliceSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::NewsProcessConfigurationFailure { source, .. } => Some(source.as_ref()),
@@ -807,7 +872,8 @@ impl Error for CoarseSimulationRunError {
             Self::InvalidPathArtifact { source } => Some(source.as_ref()),
             Self::IntervalBoundaryOverflow { .. }
             | Self::EndogenousFirstMomentProjectionFailure { .. }
-            | Self::KnownNewsFactorAlignmentFailure { .. } => None,
+            | Self::KnownNewsFactorAlignmentFailure { .. }
+            | Self::InvalidNewsTargetSourceRates { .. } => None,
         }
     }
 }
