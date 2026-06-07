@@ -1,0 +1,180 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{First-moment guard for \(Z_t\)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} First-moment guard for \(Z_t\)\\
+\textbf{Depends on.} \texttt{01\_long\_variance\_normalization.tex}\\
+\textbf{Feeds.} P13, affine domain constraints, calibration admissibility, pricing admissibility
+
+\section{Purpose}
+
+Derive the admissibility condition that keeps the unit-mean long-variance
+normalization compatible with a positive mean-reversion level. The guard
+prevents uncompensated event feedback from exhausting the entire stationary
+first-moment budget of \(Z_t\).
+
+\section{Setup}
+
+Use the physical long-variance dynamics
+\[
+dZ_t
+=
+\kappa_z(\bar z-Z_t)\,dt
++\sigma_z\sqrt{Z_t}\,dW_t^Z
++\chi_+\,dN_t^+
++\chi_-\,dN_t^-,
+\]
+with stationary event-feedback drift
+\[
+b_Z
+=
+\chi_+\lambda_{\mathrm{stat}}^+
++\chi_-\lambda_{\mathrm{stat}}^-.
+\]
+
+From the unit-mean normalization,
+\[
+\bar z=1-\frac{b_Z}{\kappa_z}.
+\]
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(\kappa_z\) & Mean-reversion rate & Positive inverse time\\
+\(\bar z\) & Mean-reversion level & Positive\\
+\(\chi_+\) & Buy-event long-variance jump loading & Non-negative\\
+\(\chi_-\) & Sell-event long-variance jump loading & Non-negative\\
+\(\lambda_{\mathrm{stat}}^+\) & Stationary buy event rate & Non-negative inverse time\\
+\(\lambda_{\mathrm{stat}}^-\) & Stationary sell event rate & Non-negative inverse time\\
+\(b_Z\) & Stationary event-feedback drift into \(Z_t\) & Non-negative inverse time\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+The unit-mean normalization fixes \(\bar z=1-b_Z/\kappa_z\).
+& Rewriting positivity of \(\bar z\).
+& The guard is the positivity condition for the derived level.\\
+The long-variance mean-reversion level is strictly positive.
+& Applying \(\bar z>0\).
+& The CIR-type drift target must remain an admissible positive level.\\
+\(\kappa_z>0\).
+& Multiplying the inequality by \(\kappa_z\).
+& The inequality direction is preserved and the process mean-reverts.\\
+Event loadings and stationary event rates are non-negative.
+& Interpreting \(b_Z\) as consumed first-moment budget.
+& Positive event feedback can only reduce the retained level under unit normalization.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Proposition.} Under the unit-mean normalization, the
+long-variance first moment is admissible only if
+\[
+\kappa_z
+>
+\chi_+\lambda_{\mathrm{stat}}^+
++\chi_-\lambda_{\mathrm{stat}}^-.
+\]
+
+Equivalently,
+\[
+b_Z<\kappa_z.
+\]
+
+\section{Derivation}
+
+The unit-mean normalization gives
+\[
+\bar z
+=
+1-\frac{b_Z}{\kappa_z}.
+\]
+
+The long-variance drift target must satisfy \(\bar z>0\). Substituting the
+normalized level,
+\[
+1-\frac{b_Z}{\kappa_z}>0.
+\]
+
+Because \(\kappa_z>0\), multiply by \(\kappa_z\) without changing the inequality
+direction:
+\[
+\kappa_z-b_Z>0.
+\]
+
+Therefore,
+\[
+\kappa_z>b_Z.
+\]
+
+Replacing \(b_Z\) by the event-feedback drift gives
+\[
+\kappa_z
+>
+\chi_+\lambda_{\mathrm{stat}}^+
++\chi_-\lambda_{\mathrm{stat}}^-.
+\]
+
+The boundary case \(b_Z=\kappa_z\) gives \(\bar z=0\), which violates the
+strict positive-level contract. The supercritical case \(b_Z>\kappa_z\) gives
+\(\bar z<0\), so the unit-mean target would require a negative mean-reversion
+level.
+
+\section{Domain and validity}
+
+The guard is valid under the same first-moment conditions as the normalization:
+\[
+\kappa_z>0,\qquad
+\chi_+\ge 0,\qquad
+\chi_-\ge 0,\qquad
+\lambda_{\mathrm{stat}}^+\ge 0,\qquad
+\lambda_{\mathrm{stat}}^-\ge 0,
+\]
+with finite stationary side event rates. If the Hawkes system is not stationary,
+or if the stationary event rates are not finite, then \(b_Z\) is not a valid
+finite first-moment input and the guard cannot be evaluated as a finite
+inequality.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item The event-feedback drift consumes part, but not all, of the long-variance first-moment budget.
+    \item The retained mean-reversion level \(\bar z\) remains positive.
+    \item Calibration must project or reject event loadings whose stationary event-feedback drift reaches or exceeds \(\kappa_z\).
+    \item Pricing and affine-transform inputs must use parameter sets that satisfy the same first-moment admissibility condition.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Exact guard substitution
+& \(b_Z<\kappa_z\) if and only if the derived \(\bar z\) is positive.
+& \texttt{check\_long\_variance\_first\_moment.py}\\
+Kernel guard contract
+& Parameter sets with \(b_Z\ge\kappa_z\) fail stationary-level validation.
+& Unit test \texttt{stationary\_mean\_reversion\_level\_rejects\_exhausted\_event\_feedback\_budget}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}
