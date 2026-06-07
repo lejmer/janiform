@@ -265,16 +265,16 @@ Check & Expected result & Evidence location\\
 \midrule
 Side exponent sign and compensation
 & Buy uses \(\psi_+(u)-ium_+\), sell uses \(\psi_-(-u)+ium_-\).
-& \texttt{crates/janiform-model-kernels/src/nig/tests.rs} test \texttt{buy\_and\_sell\_sign\_convention\_helpers\_match\_equation\_mapping}\\
+& Test \texttt{buy\_and\_sell\_sign\_convention\_helpers\_match\_equation\_mapping}\\
 Weighted exponent assembly
 & The combined trading exponent equals \(A^+\) times the buy exponent plus \(A^-\) times the sell exponent.
-& \texttt{crates/janiform-model-kernels/src/nig/tests.rs} test \texttt{trading\_time\_weighted\_exponent\_composition\_matches\_manual\_assembly}\\
+& Test \texttt{trading\_time\_weighted\_exponent\_composition\_matches\_manual\_assembly}\\
 Zero conditional drift
 & The first derivative of the trading-block log-MGF at the origin is zero for arbitrary clocks.
-& \texttt{crates/janiform-model-kernels/src/nig/tests.rs} test \texttt{trading\_time\_compensated\_combined\_first\_moment\_is\_zero\_for\_arbitrary\_activity}\\
+& Test \texttt{trading\_time\_compensated\_combined\_first\_moment\_is\_zero\_for\_arbitrary\_activity}\\
 Return-decomposition adapter
 & The shared return-decomposition path delegates to the same side-weighted exponent map.
-& \texttt{crates/janiform-model-kernels/src/return\_decomposition.rs} test \texttt{shared\_trading\_time\_exponent\_adapter\_matches\_direct\_driver\_composition}\\
+& Test \texttt{shared\_trading\_time\_exponent\_adapter\_matches\_direct\_driver\_composition}\\
 \bottomrule
 \end{tabularx}
 
