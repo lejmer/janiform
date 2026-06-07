@@ -1,4 +1,4 @@
-# Janiform Assumptions
+# Assumptions
 
 This inventory lists the assumptions Janiform relies on as a mathematical model and empirical modeling framework. Each assumption should support a derivation, admissibility condition, calibration argument, validation comparison, or limitation in the paper.
 

@@ -1,4 +1,4 @@
-# Janiform Claims-Evidence Matrix
+# Claims-evidence matrix
 
 Reference ids follow `design/paper/plan.md`.
 

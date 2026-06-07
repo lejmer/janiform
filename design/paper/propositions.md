@@ -1,4 +1,4 @@
-# Janiform Propositions
+# Propositions
 
 This inventory lists the paper-level propositions needed to cover Janiform as a mathematical and scientific model. Evidence artifacts can support these propositions, but the propositions themselves should state what Janiform claims about returns, activity, information shocks, observation, sufficiency, pricing, and calibration.
 
