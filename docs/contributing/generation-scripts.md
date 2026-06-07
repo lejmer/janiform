@@ -24,6 +24,9 @@ Run scripts from the repository root with the project environment active. For se
 - `scripts/update_public_api_contract_snapshot.py`
   - **Generates:** `tests/fixtures/python_api_contracts/public_api_contract_snapshot.json`.
   - **Use it when:** The public Python API surface changes intentionally. See [Maintaining public API contracts](public-api-contracts.md).
+- `scripts/update_workflow_response_schema_snapshot.py`
+  - **Generates:** `tests/fixtures/python_api_contracts/workflow_response_schema_snapshot.json`.
+  - **Use it when:** Workflow response payload shapes change intentionally.
 
 > **NOTE:** For Rust crate graph work, treat any added, removed, or reordered workspace crate dependency in a `crates/*/Cargo.toml` file as an internal crate dependency change. Run `python scripts/generate_internal_crate_graph_policy.py` in the same change so the checked-in policy fixture records the approved graph.
 
