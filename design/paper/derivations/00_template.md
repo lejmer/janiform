@@ -72,12 +72,6 @@ Describe how the result should be checked analytically or numerically.
 |-------|-----------------|-------------------|
 | ...   | ...             | ...               |
 
-## Paper Placement
-
-Primary section: `...`
-Appendix location: `...`
-Nearby figures or tables: `...`
-
 ## Open Questions
 
 - ...
