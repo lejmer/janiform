@@ -1126,17 +1126,11 @@
                 "absolute_integral_estimate": {
                   "type": "float"
                 },
-                "contour_damping_factor": {
+                "discounted_projection_price": {
                   "type": "float"
                 },
-                "contour_imaginary_shift": {
-                  "type": "float"
-                },
-                "contour_policy": {
+                "domain_policy": {
                   "type": "string"
-                },
-                "discounted_call_price": {
-                  "type": "float"
                 },
                 "engine_policy": {
                   "type": "string"
@@ -1218,15 +1212,15 @@
                   },
                   "type": "object"
                 },
-                "numeric_settings_policy": {
+                "projection_policy": {
                   "type": "string"
                 },
-                "quadrature_rule": {
+                "projection_rule": {
                   "type": "string"
                 },
                 "schema_version": {
                   "type": "string",
-                  "value": "pricing.fourier_inversion.diagnostics.v1"
+                  "value": "pricing.integration_quality.diagnostics.v1"
                 },
                 "stability_policy": {
                   "type": "string"
