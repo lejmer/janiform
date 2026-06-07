@@ -1,0 +1,51 @@
+# Janiform Propositions
+
+This inventory lists the paper-level propositions needed to cover Janiform as a mathematical and scientific model. Evidence artifacts can support these propositions, but the propositions themselves should state what Janiform claims about returns, activity, information shocks, observation, sufficiency, pricing, and calibration.
+
+| ID | Proposition | Needed for |
+|----|-------------|------------|
+| P01 | The Janiform log-return process decomposes additively into buy-side business-time returns, sell-side business-time returns with opposite sign, open-session news jumps, and closed-session gap jumps. | Establishes the model's primitive return decomposition. |
+| P02 | Directional buy and sell activity are distinct stochastic clocks, not a single scalar activity clock. | Supports asymmetric order flow, asymmetric return distributions, and the single-clock comparison. |
+| P03 | Conditional on activity clocks and jump marks, the trading-return characteristic function factorizes by side. | Provides the conditional CF/MGF used in moment, distribution, and pricing derivations. |
+| P04 | Side mean compensation makes the core trading block zero-mean conditional on its business-time clocks. | Separates compensated trading variation from anchor dynamics, news jumps, gaps, and risk-neutral tilting. |
+| P05 | Conditional mean and variance over an interval are determined by side activity clocks and side-driver cumulants. | Links the stochastic-clock structure to horizon-dependent moments. |
+| P06 | A shared NIG core with a sell-side skew shift is sufficient to introduce directional return skew while retaining a compact two-side Levy specification. | Justifies the side-driver parameterization and the directional asymmetry claim. |
+| P07 | Predictable calendar seasonality and endogenous excitation are distinct sources of activity variation. | Separates deterministic intraday patterns from self- and cross-exciting bursts. |
+| P08 | Hawkes stability is governed by the de-seasonalized excitation kernel. | Defines the branching and stationarity condition independently of deterministic seasonality. |
+| P09 | Stationary side intensities solve a linear balance equation that includes baseline arrivals, Hawkes feedback, and news-induced activity shocks. | Provides stationary activity levels for normalization, diagnostics, and long-variance coupling. |
+| P10 | Structured self, cross, and news excitation can represent directional clustering without modeling the full limit-order book state. | Positions Janiform against more detailed LOB and agent-based simulators. |
+| P11 | Long variance is a persistent state for return-clock exposure, not a stochastic multiplier of event-arrival intensity. | Keeps event timing and return-amplitude memory as separate mechanisms. |
+| P12 | The long-variance mean-reversion level is determined by a unit-stationary-mean normalization under the physical measure. | Makes long-variance scale identifiable and mathematically specified. |
+| P13 | Positive event feedback in long variance requires a first-moment admissibility condition. | Defines when the long-variance process has a valid finite stationary mean. |
+| P14 | Baseline return-clock exposure over an interval can be normalized by the conditional mean of the long-variance state. | Connects persistent variance memory to interval-level business time. |
+| P15 | Endogenous activity can affect return time through side-specific positive exposure scales. | Allows activity bursts to change return variation differently on the buy and sell sides. |
+| P16 | Known scheduled news and surprise news are separate arrival mechanisms. | Captures the distinction between anticipated information times and unscheduled shocks. |
+| P17 | Known-news arrivals are deterministic conditional on the known schedule. | Gives scheduled information events a different conditional law from surprise events. |
+| P18 | Surprise-news intensity can differ between open and closed market states. | Supports distinct open-jump and closed-gap behavior. |
+| P19 | News severity is a shared latent mark that couples activity shocks and return shocks. | Makes news a joint information-and-liquidity event rather than an isolated price jump. |
+| P20 | Open-session news jumps and closed-session gap jumps are mathematically distinct return components. | Explains why news timing relative to market state changes the observed return path. |
+| P21 | Primitive innovations are independent before being coupled through activity, long variance, news severity, and observation state. | Enables conditional factorization of the model law. |
+| P22 | Observed-state mean reversion is an anchor and pressure observation layer applied after structural return increments. | Keeps mean reversion from being confused with the core compensated return process. |
+| P23 | The observed-state pressure recursion is driven by expected core increments and interval-scaled persistence. | Defines the optional anchor-state relaxation mechanism. |
+| P24 | Tick-grid projection is an observation map from latent log price to observed price, with residual information carried forward. | Connects continuous latent returns to discrete tick observations. |
+| P25 | The Janiform transition law admits a finite sufficient-statistics representation for interval returns and terminal state. | Establishes the mathematical basis for linking tick paths, coarse paths, and transform methods. |
+| P26 | The sufficient-statistics vector separates baseline activity, endogenous activity, side event counts, and terminal long variance. | States what information must be preserved to retain the interval transition law. |
+| P27 | Tick aggregation and direct interval simulation are two representations of the same decomposed transition law when conditioned on the same sufficient statistics. | Provides the aggregation consistency proposition. |
+| P28 | The joint transform of activity, news, and terminal long variance is exponential-affine in Hawkes reaction state and long-variance state. | Provides the affine schedule transform theorem. |
+| P29 | Piecewise schedule composition preserves exponential-affine form across multiple intervals. | Extends one-interval transform results to arbitrary maturities and calendars. |
+| P30 | Baseline and endogenous activity loadings must remain separate in the terminal cumulant. | Allows different moment and pricing queries to distinguish predictable activity from excitation-driven activity. |
+| P31 | The affine transform is valid only on an explicit admissible moment domain. | Makes transform existence and failure conditions part of the model theory. |
+| P32 | Terminal pricing can be expressed through a density change parameterized by activity-risk premia and a martingale tilt. | Defines the Janiform terminal pricing measure. |
+| P33 | The martingale tilt is determined by the risk-neutral martingale condition rather than treated as an unconstrained parameter. | Enforces no-arbitrage normalization for the terminal measure. |
+| P34 | The risk-neutral characteristic function is the normalized physical terminal transform under the pricing density. | Connects the physical model to terminal-affine spectral/COS option pricing. |
+| P35 | Put-call parity follows from using a common terminal measure, discount factor, and forward convention for calls and puts. | Provides an arbitrage-consistency proposition for vanilla options. |
+| P36 | Pricing-domain failures are admissibility statements about the transform or measure change, not merely numerical failures. | Makes domain restrictions part of model risk. |
+| P37 | Calibration can be staged because different observations identify different structural layers. | Justifies separating seasonality, activity, return law, news/gaps, long variance, observed-state relaxation, and option refinement. |
+| P38 | Option data can identify risk-adjustment information that is not available from underlying returns alone. | Supports the underlying-only vs joint option refinement comparison. |
+| P39 | Tick-level realism requires matching both event timing and price changes. | Prevents the model from being evaluated only on marginal return distributions. |
+| P40 | Return realism is horizon-dependent and must be evaluated across aggregation scales. | Connects business time, jumps, gaps, and long variance to empirical stylized facts. |
+| P41 | Volatility clustering arises from both endogenous activity clustering and persistent long-variance memory. | Explains why Hawkes excitation and `Z_t` are complementary rather than redundant. |
+| P42 | Existing generator families each omit at least one of Janiform's target ingredients: directional business time, gap-aware news, shared sufficient statistics, or affine pricing. | Grounds the related-work argument in model capabilities. |
+| P43 | Ablations probe structural necessity by removing or simplifying model mechanisms. | Gives the scientific role of single-clock, no-Hawkes, no-news, no-`Z_t`, no-mean-reversion, and pricing-refinement comparisons. |
+| P44 | Empirical claims about Janiform are conditional on specified model inputs, random seeds, sampling horizons, and data transformations. | Makes validation and ablation evidence scientifically reproducible. |
+| P45 | The model's limitations are consequences of its assumptions, admissibility domains, identifiability requirements, and computational transform constraints. | Keeps the limitations section tied to the mathematical model rather than only to software behavior. |
