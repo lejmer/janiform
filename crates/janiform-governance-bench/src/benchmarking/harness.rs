@@ -9,27 +9,20 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
 };
-use janiform_engine_pricing::internal::{
-    FourierInversionEngineSettingsError, FourierInversionPricingError,
-    price_vanilla_option_via_fourier_inversion,
-};
 use janiform_engine_pricing::{
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingMarketInputsError,
+    VanillaOptionPayoffType, VanillaOptionPricingMarketInputsError, intraday_black_scholes_price,
 };
 use janiform_engine_sufficient_statistics::{
     SufficientStatisticsTransformSliceContextError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
     sample_interval_statistics_batch_from_transform_slices,
 };
-use janiform_foundations::complex_math::ComplexScalar;
-use janiform_foundations::complex_math::complex_exponential;
 use janiform_model_kernels::hawkes::HawkesKernelParameterError;
 use janiform_model_kernels::news::NewsMarkConfigurationError;
 
 use super::builders::{
-    build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
-    build_pricing_market_inputs, build_sufficient_statistics_transform_slices,
+    build_equation_specification, build_oracle_transform_input, build_pricing_market_inputs,
+    build_sufficient_statistics_transform_slices,
 };
 use super::catalog::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
@@ -106,17 +99,13 @@ pub enum OraclePricerSufficientStatisticsBenchmarkHarnessError {
         status: ExponentialAffineTransformIntegrationStatus,
         guard_failure_code: Option<ExponentialAffineTransformGuardFailureCode>,
     },
-    InvalidPricingEngineSettings {
-        profile_id: String,
-        source: Box<FourierInversionEngineSettingsError>,
-    },
     InvalidPricingMarketInputs {
         profile_id: String,
         source: Box<VanillaOptionPricingMarketInputsError>,
     },
     PricingEngineFailure {
         profile_id: String,
-        source: Box<FourierInversionPricingError>,
+        message: String,
     },
     InvalidRiskSliceContext {
         profile_id: String,
@@ -205,17 +194,16 @@ impl Display for OraclePricerSufficientStatisticsBenchmarkHarnessError {
                 formatter,
                 "profile `{profile_id}` oracle solver returned status {status:?} with guard_failure_code {guard_failure_code:?}"
             ),
-            Self::InvalidPricingEngineSettings { profile_id, source } => write!(
-                formatter,
-                "profile `{profile_id}` pricing engine settings are invalid: {source}"
-            ),
             Self::InvalidPricingMarketInputs { profile_id, source } => write!(
                 formatter,
                 "profile `{profile_id}` generated invalid pricing market inputs: {source}"
             ),
-            Self::PricingEngineFailure { profile_id, source } => write!(
+            Self::PricingEngineFailure {
+                profile_id,
+                message,
+            } => write!(
                 formatter,
-                "profile `{profile_id}` characteristic-function pricing call failed: {source}"
+                "profile `{profile_id}` pricing call failed: {message}"
             ),
             Self::InvalidRiskSliceContext {
                 profile_id,
@@ -269,9 +257,7 @@ impl Error for OraclePricerSufficientStatisticsBenchmarkHarnessError {
             Self::InvalidOracleSolverSettings { source, .. } => Some(source.as_ref()),
             Self::InvalidOracleTransformInput { source, .. } => Some(source.as_ref()),
             Self::OracleSolverFailure { source, .. } => Some(source.as_ref()),
-            Self::InvalidPricingEngineSettings { source, .. } => Some(source.as_ref()),
             Self::InvalidPricingMarketInputs { source, .. } => Some(source.as_ref()),
-            Self::PricingEngineFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidRiskSliceContext { source, .. } => Some(source.as_ref()),
             Self::SufficientStatisticsSliceSolveFailure { source, .. } => Some(source.as_ref()),
             Self::SufficientStatisticsSliceSamplingFailure { source, .. } => Some(source.as_ref()),
@@ -419,8 +405,6 @@ fn run_profile_benchmark(
         }
     })?;
 
-    let pricing_engine_settings = build_pricing_engine_settings(profile, benchmark_policy)?;
-
     let profile_seed = splitmix64(
         execution_config
             .reproducibility_seed
@@ -531,47 +515,23 @@ fn run_profile_benchmark(
                 VanillaOptionPayoffType::Put
             };
 
-            let payoff = VanillaOptionPayoffConfiguration { payoff_type };
-
             let volatility = interpolate_range(
                 benchmark_policy.pricing_input_ranges.volatility_min,
                 benchmark_policy.pricing_input_ranges.volatility_max,
                 unit_interval_from_seed(invocation_seed ^ 0x51),
             );
 
-            let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
-                OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
-                    profile_id: profile.profile_id.clone(),
-                    source: Box::new(source),
-                }
-            })?;
+            let price = intraday_black_scholes_price(&market_inputs, payoff_type, volatility);
+            if !price.is_finite() {
+                return Err(
+                    OraclePricerSufficientStatisticsBenchmarkHarnessError::PricingEngineFailure {
+                        profile_id: profile.profile_id.clone(),
+                        message: format!("Black-Scholes pricing produced non-finite price {price}"),
+                    },
+                );
+            }
 
-            let drift = (market_inputs.risk_free_rate
-                - market_inputs.dividend_yield
-                - 0.5 * volatility * volatility)
-                * maturity_interval;
-
-            let variance = volatility * volatility * maturity_interval;
-
-            let pricing_result = price_vanilla_option_via_fourier_inversion(
-                &market_inputs,
-                payoff,
-                pricing_engine_settings,
-                |argument| {
-                    let i_times_argument = ComplexScalar::new(-argument.imaginary, argument.real);
-                    let drift_term = i_times_argument.scale(drift);
-                    let diffusion_term = argument.square().scale(-0.5 * variance);
-                    complex_exponential(drift_term.plus(diffusion_term))
-                },
-            )
-            .map_err(|source| {
-                OraclePricerSufficientStatisticsBenchmarkHarnessError::PricingEngineFailure {
-                    profile_id: profile.profile_id.clone(),
-                    source: Box::new(source),
-                }
-            })?;
-
-            Ok(pricing_result.price)
+            Ok(price)
         },
     )?;
 

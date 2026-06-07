@@ -4,7 +4,6 @@ mod black_scholes;
 mod characteristic;
 mod constants;
 mod contracts;
-mod fourier;
 mod grids;
 mod implied_volatility;
 mod interval_schedule;
@@ -35,13 +34,10 @@ pub use characteristic::{
     solve_anchored_local_pricing_tilt,
 };
 pub use constants::{
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_CONTOUR_POLICY,
-    FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
-    FOURIER_INVERSION_ENGINE_POLICY, FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY,
-    FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY, FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY,
-    FOURIER_INVERSION_TRUNCATION_CHECK_POLICY,
-    INTRADAY_PRICING_CONTINUOUS_RATE_TIME_SCALING_POLICY, INTRADAY_PRICING_HOURS_PER_YEAR,
-    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, INTRADAY_PRICING_CONTINUOUS_RATE_TIME_SCALING_POLICY,
+    INTRADAY_PRICING_HOURS_PER_YEAR, PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
+    PRICING_INTEGRATION_QUALITY_GATE_POLICY, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY,
+    PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, SPECTRAL_PRICING_COLLOCATION_POLICY,
     SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
@@ -57,6 +53,8 @@ pub use contracts::{
     AnchoredLocalTiltAdmissibilityStatus, AnchoredLocalTiltBoundaryStateSummary,
     AnchoredLocalTiltDomainStatus, AnchoredLocalTiltSolveDiagnostics,
     AnchoredVanillaOptionPricingBoundaryInput, AnchoredVanillaOptionPricingBoundaryInputError,
+    PricingIntegrationNumericQualityDiagnostics, PricingIntegrationProjectionRule,
+    PricingIntegrationQualityDiagnostics, PricingIntegrationQualityGate,
     SpectralPricingDiagnostics, SpectralPricingDiagnosticsError,
     SpectralPricingIntervalDiagnostics, TerminalAffineCumulantStatus,
     TerminalAffineMeasureChangeDiagnostics, TerminalAffineOptionSmileContributionDiagnostics,
@@ -74,10 +72,6 @@ pub use contracts::{
     VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError,
     VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingRunResultError,
     VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
-};
-pub use fourier::{
-    FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
-    FourierInversionPricingError, FourierInversionPricingResult,
 };
 pub use grids::{
     SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,
@@ -108,10 +102,7 @@ pub use maturity_inputs::{
 pub use pricing_kernel::{
     VanillaOptionPricingKernelParameters, VanillaOptionPricingKernelParametersError,
 };
-pub use progress::{
-    PricingNodeProgress, PricingNodeProgressPhase, PricingProgressEvent, PricingProgressPhase,
-    pricing_progress_phase_label,
-};
+pub use progress::{PricingProgressEvent, PricingProgressPhase, pricing_progress_phase_label};
 pub use runner::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingExecutionInputError,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingIntervalFactorsError,
@@ -123,14 +114,6 @@ pub use vanilla_payoff::vanilla_option_terminal_payoff;
 
 #[doc(hidden)]
 pub mod internal {
-    pub use super::fourier::{
-        FourierInversionContour, FourierInversionContourError, FourierInversionEngineSettings,
-        FourierInversionEngineSettingsError, FourierInversionIntegrationStabilityControls,
-        FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
-        FourierInversionNumericSettings, FourierInversionNumericSettingsError,
-        FourierInversionPricingError, FourierInversionPricingResult,
-        FourierInversionQuadratureRule, price_vanilla_option_via_fourier_inversion,
-    };
     pub use super::grids::SpectralThetaWarmStartState;
     pub use super::spectral::run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state;
 }

@@ -3504,7 +3504,7 @@
 | Member | Value |
 |--------|-------|
 | `NODE_SETUP` | `node_setup` |
-| `FOURIER_PRICING` | `fourier_pricing` |
+| `PRICING_PROJECTION` | `pricing_projection` |
 | `RISK_NEUTRAL_CHARACTERISTIC_FUNCTION` | `risk_neutral_characteristic_function` |
 | `TERMINAL_AFFINE_MEASURE_CHANGE` | `terminal_affine_measure_change` |
 | `SPECTRAL_DIAGNOSTICS` | `spectral_diagnostics` |
@@ -4041,7 +4041,7 @@
 | Member | Value |
 |--------|-------|
 | `NODE_SETUP` | `node_setup` |
-| `FOURIER_PRICING` | `fourier_pricing` |
+| `PRICING_PROJECTION` | `pricing_projection` |
 | `RISK_NEUTRAL_CHARACTERISTIC_FUNCTION` | `risk_neutral_characteristic_function` |
 | `TERMINAL_AFFINE_MEASURE_CHANGE` | `terminal_affine_measure_change` |
 | `SPECTRAL_DIAGNOSTICS` | `spectral_diagnostics` |

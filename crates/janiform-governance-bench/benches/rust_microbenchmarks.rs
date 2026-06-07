@@ -2,7 +2,7 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationStatus, solve_exponential_affine_transform_with_settings,
 };
-use janiform_engine_pricing::internal::price_vanilla_option_via_fourier_inversion;
+use janiform_engine_pricing::intraday_black_scholes_price;
 use janiform_engine_simulation::evolve_hawkes_state;
 use janiform_engine_sufficient_statistics::sample_interval_statistics_batch_from_transform_slices;
 use janiform_governance_bench::benchmarking::{
@@ -51,14 +51,12 @@ fn bench_pricing_kernel_hot_path(criterion: &mut Criterion) {
 
     group.bench_function(case.profile_id, |bench| {
         bench.iter(|| {
-            let result = price_vanilla_option_via_fourier_inversion(
+            let price = intraday_black_scholes_price(
                 &case.market_inputs,
-                case.payoff,
-                case.engine_settings,
-                |argument| case.characteristic_function(argument),
-            )
-            .expect("pricing microbenchmark input should stay valid");
-            criterion::black_box(result.price);
+                case.payoff.payoff_type,
+                case.implied_volatility,
+            );
+            criterion::black_box(price);
         });
     });
 

@@ -5,20 +5,18 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformInput, ExponentialAffineTransformSolverSettings,
     ExponentialAffineTransformSolverSettingsError,
 };
-use janiform_engine_pricing::internal::FourierInversionEngineSettings;
 use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
 };
 use janiform_engine_sufficient_statistics::SufficientStatisticsTransformSlices;
-use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionStep,
 };
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::builders::{
-    build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
-    build_pricing_market_inputs, build_sufficient_statistics_transform_slices,
+    build_equation_specification, build_oracle_transform_input, build_pricing_market_inputs,
+    build_sufficient_statistics_transform_slices,
 };
 use super::catalog::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
@@ -124,18 +122,7 @@ pub struct PreparedPricingKernelBenchmarkCase {
     pub profile_id: &'static str,
     pub market_inputs: VanillaOptionPricingMarketInputs,
     pub payoff: VanillaOptionPayoffConfiguration,
-    pub engine_settings: FourierInversionEngineSettings,
-    pub drift: f64,
-    pub variance: f64,
-}
-
-impl PreparedPricingKernelBenchmarkCase {
-    pub fn characteristic_function(&self, argument: ComplexScalar) -> ComplexScalar {
-        let i_times_argument = ComplexScalar::new(-argument.imaginary, argument.real);
-        let drift_term = i_times_argument.scale(self.drift);
-        let diffusion_term = argument.square().scale(-0.5 * self.variance);
-        complex_exponential(drift_term.plus(diffusion_term))
-    }
+    pub implied_volatility: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -217,38 +204,17 @@ impl MicrobenchmarkFixtureSet {
                 },
             )?;
 
-        let engine_settings = build_pricing_engine_settings(profile, &self.policy)
-            .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
-
         let payoff = VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         };
 
         let volatility = interpolate_pricing_volatility(&self.policy, invocation_seed);
 
-        let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
-            MicrobenchmarkFixtureError::InvalidPreparedWorkload {
-                source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
-                    profile_id: profile.profile_id.clone(),
-                    source: Box::new(source),
-                },
-            }
-        })?;
-
-        let drift = (market_inputs.risk_free_rate
-            - market_inputs.dividend_yield
-            - 0.5 * volatility * volatility)
-            * maturity_interval;
-
-        let variance = volatility * volatility * maturity_interval;
-
         Ok(PreparedPricingKernelBenchmarkCase {
             profile_id,
             market_inputs,
             payoff,
-            engine_settings,
-            drift,
-            variance,
+            implied_volatility: volatility,
         })
     }
 

@@ -17,10 +17,6 @@ fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() 
             "engine-pricing/contracts.rs",
             include_str!("../../janiform-engine-pricing/src/contracts.rs"),
         ),
-        (
-            "engine-pricing/fourier.rs",
-            include_str!("../../janiform-engine-pricing/src/fourier.rs"),
-        ),
     ];
     let simulation_source = include_str!("../../janiform-engine-simulation/src/lib.rs");
 

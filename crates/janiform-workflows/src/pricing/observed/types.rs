@@ -110,7 +110,7 @@ pub struct ObservedOptionsPricingRequest {
     /// Pricing interval schedule policy.
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
-    /// Optional Fourier-COS collocation node count override.
+    /// Optional spectral collocation node count override.
     pub spectral_collocation_node_count_override: Option<usize>,
     /// Optional model-P terminal distribution diagnostics for observed option nodes.
     #[serde(default)]

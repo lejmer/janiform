@@ -37,7 +37,7 @@ notes live in [`docs/contributing/writing-tests.md`](../../../docs/contributing/
   - `rationale`: required documentation for why each parameter group is set as recorded
   - `model_parameters`: Hawkes and Gamma inputs used by benchmark invocations
   - `oracle_solver_probes`: transform probe and factor ranges used in oracle and sufficient-statistics paths
-  - `pricing_input_ranges`: pricing workload ranges for market inputs and Fourier settings
+  - `pricing_input_ranges`: pricing workload ranges for market inputs
   - `seed_partition`: deterministic component seed salts
 - Coarse fine consistency tolerance policy fields include:
   - `policy_version` and `change_log`: required version history with rationale metadata

@@ -8,13 +8,12 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
 use super::constants::MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT;
 use super::contracts::{
-    AnchoredVanillaOptionPricingBoundaryInput, SpectralPricingIntervalDiagnostics,
-    TerminalAffineMeasureChangeDiagnostics, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingFailureStage, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingStatus,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntegrationQualityDiagnostics,
+    SpectralPricingIntervalDiagnostics, TerminalAffineMeasureChangeDiagnostics,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingFailureStage,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingStatus,
 };
-use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::PricingIntervalSchedule;
 use super::progress::PricingProgressEvent;
@@ -32,7 +31,7 @@ pub struct VanillaOptionMaturitySummary {
     pub terminal_affine_measure_change: Option<TerminalAffineMeasureChangeDiagnostics>,
     pub collocation_nodes: Vec<f64>,
     pub interval_summaries: Vec<SpectralPricingIntervalDiagnostics>,
-    pub integration_quality: Option<FourierInversionDiagnostics>,
+    pub integration_quality: Option<PricingIntegrationQualityDiagnostics>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]

@@ -260,7 +260,7 @@ fn price_strike_node(context: &StrikeNodePricingContext<'_>, strike: f64) -> Pri
             implied_volatility: None,
             implied_volatility_status: None,
             pricing_status: VanillaOptionPricingStatus::Failed,
-            pricing_failure_stage: Some(VanillaOptionPricingFailureStage::FourierPricing),
+            pricing_failure_stage: Some(VanillaOptionPricingFailureStage::PricingProjection),
             pricing_failure_reason: Some(
                 "spectral strike valuation returned a non-finite price".to_string(),
             ),

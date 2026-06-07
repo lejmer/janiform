@@ -12,11 +12,13 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
 use super::black_scholes::{intraday_discount_factor, intraday_forward_price};
 use super::constants::{
-    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
-    SPECTRAL_PRICING_COLLOCATION_POLICY, SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
-    SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+    PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
+    PRICING_INTEGRATION_QUALITY_GATE_POLICY, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
 };
 use super::contracts::{
+    PricingIntegrationNumericQualityDiagnostics, PricingIntegrationProjectionRule,
+    PricingIntegrationQualityDiagnostics, PricingIntegrationQualityGate,
     SpectralPricingDiagnostics, VanillaOptionPricingDiagnostics,
     VanillaOptionPricingFailureDiagnostic, VanillaOptionPricingFailureStage,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
@@ -25,13 +27,8 @@ use super::contracts::{
     VanillaOptionPricingRunResultBuildError, VanillaOptionPricingRunResultBuildInput,
     VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
 };
-use super::fourier::{
-    FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
-    FourierInversionNumericQualityGate, FourierInversionPricingError,
-    FourierInversionQuadratureRule,
-};
 use super::interval_schedule::PricingIntervalSchedule;
-use super::progress::PricingNodeProgress;
+use super::progress::PricingProgressEvent;
 
 /// One-interval pricing factors required to execute the canonical vanilla pricing workflow.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -336,7 +333,7 @@ pub fn run_vanilla_option_pricing(
 
 pub fn run_vanilla_option_pricing_with_observer(
     execution_input: VanillaOptionPricingExecutionInput,
-    _observer: Option<&mut dyn FnMut(PricingNodeProgress)>,
+    _observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
 ) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunError> {
     execution_input.validate().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
@@ -457,25 +454,23 @@ pub(crate) fn build_spectral_compatibility_integration_diagnostics(
     price: f64,
     maturity_interval: f64,
     spectral_diagnostics: &SpectralPricingDiagnostics,
-) -> FourierInversionDiagnostics {
+) -> PricingIntegrationQualityDiagnostics {
     let domain_width = spectral_diagnostics.deviation_domain_upper_bound
         - spectral_diagnostics.deviation_domain_lower_bound;
 
-    let integration_step_count = spectral_diagnostics.collocation_node_count.max(1);
+    let integration_step_count = spectral_diagnostics.collocation_node_count;
 
     let integration_interval_width = domain_width / integration_step_count as f64;
 
     let terminal_abs_integrand = 0.0;
 
-    FourierInversionDiagnostics {
-        schema_version: FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
+    PricingIntegrationQualityDiagnostics {
+        schema_version: PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
         engine_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
-        contour_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
-        numeric_settings_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
+        domain_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
+        projection_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
         stability_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
-        quadrature_rule: FourierInversionQuadratureRule::Midpoint,
-        contour_damping_factor: 1.0,
-        contour_imaginary_shift: 1.0,
+        projection_rule: PricingIntegrationProjectionRule::SpectralCosCollocation,
         integration_upper_bound: domain_width,
         integration_step_count,
         integration_interval_width,
@@ -484,13 +479,13 @@ pub(crate) fn build_spectral_compatibility_integration_diagnostics(
         absolute_integral_estimate: price.abs(),
         max_abs_integrand: price.abs(),
         terminal_abs_integrand,
-        discounted_call_price: price,
-        numeric_quality_diagnostics: FourierInversionNumericQualityDiagnostics {
+        discounted_projection_price: price,
+        numeric_quality_diagnostics: PricingIntegrationNumericQualityDiagnostics {
             stability_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
             convergence_check_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
             truncation_check_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
-            quality_gate_policy: FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
-            quality_gate: FourierInversionNumericQualityGate::DiagnosticsOnly,
+            quality_gate_policy: PRICING_INTEGRATION_QUALITY_GATE_POLICY,
+            quality_gate: PricingIntegrationQualityGate::DiagnosticsOnly,
             convergence_absolute_tolerance: maturity_interval,
             convergence_relative_tolerance: 1.0,
             terminal_integrand_absolute_tolerance: maturity_interval,
@@ -536,10 +531,7 @@ pub(crate) fn pricing_failure_diagnostic_from_run_error(
 ) -> VanillaOptionPricingFailureDiagnostic {
     let stage = match error {
         VanillaOptionPricingRunError::InternalNumericsFailure { .. } => {
-            VanillaOptionPricingFailureStage::FourierPricing
-        }
-        VanillaOptionPricingRunError::FourierPricingFailure { .. } => {
-            VanillaOptionPricingFailureStage::FourierPricing
+            VanillaOptionPricingFailureStage::PricingProjection
         }
         VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction { .. } => {
             VanillaOptionPricingFailureStage::RiskNeutralCharacteristicFunction
@@ -581,9 +573,6 @@ pub enum VanillaOptionPricingRunError {
     InvalidDriverParameters {
         source: Box<NigSharedPlusShiftConfigurationError>,
     },
-    FourierPricingFailure {
-        source: Box<FourierInversionPricingError>,
-    },
     InvalidRiskNeutralCharacteristicFunction {
         numerator: ComplexScalar,
         denominator: ComplexScalar,
@@ -620,12 +609,6 @@ impl Display for VanillaOptionPricingRunError {
                 write!(
                     formatter,
                     "pricing request NIG driver parameters are invalid: {source}"
-                )
-            }
-            Self::FourierPricingFailure { source } => {
-                write!(
-                    formatter,
-                    "vanilla pricing Fourier inversion failed: {source}"
                 )
             }
             Self::InvalidRiskNeutralCharacteristicFunction {
@@ -668,7 +651,6 @@ impl Error for VanillaOptionPricingRunError {
         match self {
             Self::InvalidExecutionInput { source } => Some(source.as_ref()),
             Self::InvalidDriverParameters { source } => Some(source.as_ref()),
-            Self::FourierPricingFailure { source } => Some(source.as_ref()),
             Self::InvalidSpectralDiagnostics { source } => Some(source.as_ref()),
             Self::InvalidResponseDiagnostics { source } => Some(source.as_ref()),
             Self::InvalidResponse { source } => Some(source.as_ref()),

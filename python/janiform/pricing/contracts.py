@@ -170,7 +170,7 @@ class VanillaOptionPricingStatus(StrEnum):
 
 class VanillaOptionPricingFailureStage(StrEnum):
     NODE_SETUP = "node_setup"
-    FOURIER_PRICING = "fourier_pricing"
+    PRICING_PROJECTION = "pricing_projection"
     RISK_NEUTRAL_CHARACTERISTIC_FUNCTION = "risk_neutral_characteristic_function"
     TERMINAL_AFFINE_MEASURE_CHANGE = "terminal_affine_measure_change"
     SPECTRAL_DIAGNOSTICS = "spectral_diagnostics"
@@ -1539,7 +1539,7 @@ class VanillaOptionPricingFailureDiagnostic(ContractModel):
                 PRICING_ERROR_FACTORY,
                 enum_type=VanillaOptionPricingFailureStage,
                 allowed_values_message=(
-                    "must be one of: node_setup, fourier_pricing, "
+                    "must be one of: node_setup, pricing_projection, "
                     "risk_neutral_characteristic_function, terminal_affine_measure_change, "
                     "spectral_diagnostics, "
                     "response_diagnostics, response_assembly, "

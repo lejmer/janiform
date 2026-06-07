@@ -14,22 +14,10 @@ pub const SPECTRAL_PRICING_COLLOCATION_POLICY: &str = "uniform_cosine_collocatio
 pub const SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY: &str = "compatibility_integration_diagnostics_are_reported_from_spectral_collocation_residual_metadata.v1";
 pub const SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY: &str =
     "terminal_affine_schedule_cumulant_measure_change_with_shared_maturity_characteristic_grid.v1";
-pub const FOURIER_INVERSION_ENGINE_POLICY: &str =
-    "carr_madan_damped_call_inversion_with_put_call_parity_extension.v1";
-pub const FOURIER_INVERSION_CONTOUR_POLICY: &str =
-    "single_damping_factor_contour_shift_with_positive_alpha_requirement.v1";
-pub const FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY: &str =
-    "bounded_frequency_quadrature_with_explicit_rule_selection_and_step_count.v1";
-pub const FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY: &str =
-    "interval_tolerance_and_tail_truncation_quality_controls_with_tunable_quality_gate.v1";
-pub const FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY: &str =
-    "half_resolution_integral_agreement_with_absolute_and_relative_tolerance.v1";
-pub const FOURIER_INVERSION_TRUNCATION_CHECK_POLICY: &str =
-    "terminal_integrand_absolute_and_peak_ratio_tail_checks.v1";
-pub const FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY: &str =
-    "diagnostics_only_or_explicit_quality_gate_failure_based_on_stability_controls.v1";
-pub const FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION: &str =
-    "pricing.fourier_inversion.diagnostics.v1";
+pub const PRICING_INTEGRATION_QUALITY_GATE_POLICY: &str =
+    "diagnostics_only_or_explicit_quality_gate_failure_based_on_pricing_projection_controls.v1";
+pub const PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION: &str =
+    "pricing.integration_quality.diagnostics.v1";
 pub const VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION: &str =
     "pricing.vanilla_option.run_result.v1";
 pub const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION: &str =
@@ -40,8 +28,6 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "pricing.vanilla_option.run_output_schema_metadata.v1";
 pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
     "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
-pub(crate) const INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY: &str = "dyadic_contour_probe_and_midpoint_refinement_until_quadrature_and_tail_error_estimates_fall_below_cuberoot_machine_epsilon_call_bound.v1";
-
 /// Constant cosine mode plus one positive frequency mode.
 pub(crate) const MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT: usize = 2;
 /// Public default pricing interval in hours, overrideable on the pricing request contract.
@@ -76,5 +62,3 @@ pub(crate) const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str
     "integration_convergence_check_passed",
     "integration_truncation_check_passed",
 ];
-
-pub(crate) const FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE: f64 = 1.0e-12;

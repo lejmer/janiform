@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "94b60a47f03474487a51c7bc04b38b2d42936d76cebdb523d9db3df0ac5243a3",
+  "approved_snapshot_sha256": "e51085c95f918a3a32a33fef0ef2b83661eac24acc25263bba67119a47e65809",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -666,9 +666,9 @@
         "docs/reference/python-api.md",
         "docs/reference/python-api.md"
       ],
-      "rationale": "High-level calibration and pricing now expose explicit solver, preprocessing, and Fourier inversion settings on the public Python request surfaces, so callers can override the previous source-only defaults without rebuilding Janiform.",
+      "rationale": "High-level calibration and pricing expose explicit solver, preprocessing, and pricing projection settings on the public Python request surfaces, so callers can override source-only defaults without rebuilding Janiform.",
       "snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
-      "summary": "Approve explicit high-level solver, preprocessing, and Fourier inversion settings on the public Python API surface."
+      "summary": "Approve explicit high-level solver, preprocessing, and pricing projection settings on the public Python API surface."
     },
     {
       "approved_on": "2026-03-29",
@@ -1634,6 +1634,19 @@
       "updated_surfaces": [
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-07",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The pricing failure-stage enum now describes the active spectral projection layer instead of the removed direct Fourier inversion implementation.",
+      "snapshot_sha256": "e51085c95f918a3a32a33fef0ef2b83661eac24acc25263bba67119a47e65809",
+      "summary": "Rename the public pricing failure stage from Fourier pricing to pricing projection.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
       ]
     }
   ],
