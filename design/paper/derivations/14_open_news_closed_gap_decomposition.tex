@@ -1,0 +1,223 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Open-news vs closed-gap decomposition}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Open-news vs closed-gap decomposition\\
+\textbf{Depends on.} \texttt{13\_news\_mark\_mgf.tex}\\
+\textbf{Feeds.} News and gaps section, sufficient-statistics consistency, gap-behavior validation
+
+\section{Purpose}
+
+Derive the decomposition that routes the same coupled news return mark into an
+open-market news jump \(M_t\) or a reopening gap \(G_t\), depending only on the
+market state at the event timestamp.
+This makes explicit why Janiform treats open news and closed-session news as one
+mark law with different observation timing, not as two unrelated return-shock
+mechanisms.
+
+\section{Setup}
+
+Let \(c\in\{\mathrm{known},\mathrm{surprise}\}\) index the news component, and
+let \(\{\tau_m^c\}\) be its event times.
+Each event has a shared severity mark \(U_m^c\) and a coupled return-jump
+mark \(\zeta_m^c\).
+The activity shock always enters the news activity accumulator,
+\[
+J_t^c=\sum_{\tau_m^c\le t}a_cU_m^c.
+\]
+
+Let \(O(\tau)\) be the open-market indicator at event time \(\tau\), and let
+\[
+C(\tau)=1-O(\tau)
+\]
+be the closed-market indicator.
+For a closed-market event, let \(r(\tau)\) be the first reopening time
+after \(\tau\).
+For an open-market event, \(r(\tau)\) is not used.
+Open-market news return jumps are applied through \(M_t\).
+Closed-market news return jumps are stored until
+reopening and applied through \(G_t\).
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(\tau_m^c\) & News event time for component \(c\) & Calendar time\\
+\(O(\tau)\) & Open-market event indicator & \(\{0,1\}\)\\
+\(C(\tau)\) & Closed-market event indicator & \(\{0,1\}\)\\
+\(r(\tau)\) & First reopening time after a closed event & Calendar time\\
+\(U_m^c\) & Shared severity mark & Non-negative\\
+\(\zeta_m^c\) & Coupled return-jump mark & Real\\
+\(J_t^c\) & Activity-shock accumulator & Non-negative\\
+\(M_t^c\) & Open-market news return-jump accumulator & Real\\
+\(G_t^c\) & Closed-market reopening-gap accumulator & Real\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+Every news event has one market-state classification at its event timestamp.
+& Splitting each event with \(O(\tau)\) and \(C(\tau)\).
+& Prevents the same return mark from being counted as both open news and a closed gap.\\
+Open and closed indicators are complementary.
+& Showing disjointness of \(M_t\) and \(G_t\) routing.
+& Ensures \(O(\tau)+C(\tau)=1\).\\
+Closed-session return jumps are observable at first reopening.
+& Defining \(G_t\) using \(r(\tau)\).
+& Connects closed news to realized close-open gap returns.\\
+The same coupled mark \(\zeta_m^c\) is used in either route.
+& Writing \(M_t^c\) and \(G_t^c\).
+& Keeps open-news jumps and closed gaps as different timing views of one news-return mechanism.\\
+Activity shock routing is independent of open or closed return routing.
+& Defining \(J_t^c\) without \(O(\tau)\) or \(C(\tau)\).
+& Closed news can still excite later activity even though its return jump is delayed to reopening.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Identity.} For each news component \(c\),
+\[
+M_t^c
+=
+\sum_{\tau_m^c\le t}O(\tau_m^c)\zeta_m^c,
+\qquad
+G_t^c
+=
+\sum_{r(\tau_m^c)\le t}C(\tau_m^c)\zeta_m^c.
+\]
+The total open-news and closed-gap accumulators are
+\[
+M_t=M_t^{\mathrm{known}}+M_t^{\mathrm{surprise}},
+\qquad
+G_t=G_t^{\mathrm{known}}+G_t^{\mathrm{surprise}}.
+\]
+For one event at time \(\tau\), with \(r(\tau)\) used only when
+\(C(\tau)=1\), the return mark contribution is routed as
+\[
+\Delta M_\tau^c=O(\tau)\zeta^c,
+\qquad
+\Delta G_{r(\tau)}^c=C(\tau)\zeta^c,
+\qquad
+\Delta M_\tau^c\Delta G_{r(\tau)}^c=0.
+\]
+
+\section{Derivation}
+
+For a single event at time \(\tau\), the market is either open or closed, so
+\[
+O(\tau)\in\{0,1\},
+\qquad
+C(\tau)=1-O(\tau),
+\qquad
+O(\tau)C(\tau)=0.
+\]
+The same coupled return mark \(\zeta^c\) must be observed through exactly one
+return channel.
+Therefore, the open-channel increment at the event time is
+\[
+\Delta M_\tau^c=O(\tau)\zeta^c.
+\]
+If \(O(\tau)=1\), this equals \(\zeta^c\). If \(O(\tau)=0\), it equals zero.
+
+For a closed event, the return mark is not an open-market direct jump at
+\(\tau\).
+It is carried to the first reopening time \(r(\tau)\), giving
+\[
+\Delta G_{r(\tau)}^c=C(\tau)\zeta^c.
+\]
+If \(C(\tau)=1\), this equals \(\zeta^c\) at reopening. If \(C(\tau)=0\), it
+equals zero.
+
+Summing open-channel increments over events whose event time is at or before
+\(t\) gives
+\[
+M_t^c
+=
+\sum_{\tau_m^c\le t}O(\tau_m^c)\zeta_m^c.
+\]
+Summing closed-channel increments over events whose reopening time is at or
+before \(t\) gives
+\[
+G_t^c
+=
+\sum_{r(\tau_m^c)\le t}C(\tau_m^c)\zeta_m^c.
+\]
+Since \(O(\tau)C(\tau)=0\), no single event can contribute a nonzero return
+mark to both channels:
+\[
+\Delta M_\tau^c\Delta G_{r(\tau)}^c
+=
+O(\tau)C(\tau)(\zeta^c)^2
+=0.
+\]
+
+The activity shock is not decomposed by return-jump timing.
+It is accumulated from every event:
+\[
+J_t^c
+=
+\sum_{\tau_m^c\le t}a_cU_m^c.
+\]
+Thus, the news event has one shared severity channel for activity and one
+return-jump mark routed by market state.
+
+\section{Domain and validity}
+
+The decomposition requires a deterministic market-state classifier for event
+timestamps, complementary open and closed states, and a well-defined reopening
+map for closed events.
+It also requires finite return marks and non-negative severity marks.
+The identity is a routing and accounting result, not a claim that closed-market
+price discovery is directly observed before reopening.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item Open news and closed gaps share the same return-mark law and differ by market-state routing.
+    \item Closed events do not create an \(M_t\) jump at the closed timestamp.
+    \item Open events do not create a \(G_t\) gap contribution.
+    \item Every active news return jump is paired with a news activity shock through the shared severity mark.
+    \item The decomposition supports separate diagnostics for open jumps and closed gaps without introducing a second news-return mechanism.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Shared dispatch routing
+& A closed event increments \(G_t\) and not \(M_t\); an open event increments \(M_t\) and not \(G_t\).
+& Test \texttt{news\_dispatch\_routes\_same\_coupled\_return\_jump\_by\_market\_state} in \texttt{crates/janiform-model-kernels/tests/news\_coupling\_distribution\_regression.rs}\\
+Canonical dispatch implementation
+& Dispatch sorts events deterministically, increments \(J_t\) with the constructed activity-shock mark for every event, and routes the coupled return jump by market state.
+& \texttt{dispatch\_shared\_news\_events} in \texttt{crates/janiform-model-kernels/src/news/dispatch.rs}\\
+Fixture validation
+& Open-market expected outcomes must have zero closed-gap increment, and closed-market expected outcomes must have zero open-jump increment.
+& \texttt{\_validate\_open\_closed\_gap\_behavior\_expected\_outcome} in \texttt{tests/support/fixture\_validation.py}\\
+Gap behavior diagnostics
+& Controlled open/closed fixtures produce separate open-jump and closed-gap summaries with the expected totals.
+& Test \texttt{gap\_behavior\_metrics\_match\_controlled\_open\_closed\_fixture} in \texttt{crates/janiform-validation/tests/gap\_behavior\_diagnostics.rs}\\
+Regression harness
+& Open-window closed-gap leakage is reported in the closed-gap semantic bucket.
+& Test \texttt{test\_open\_closed\_gap\_leakage\_regression\_harness\_reports\_semantic\_bucket\_for\_failures} in \texttt{tests/test\_open\_closed\_gap\_leakage\_regression\_harness.py}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}
