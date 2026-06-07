@@ -5848,8 +5848,8 @@
               "value": "node_setup"
             },
             {
-              "name": "FOURIER_PRICING",
-              "value": "fourier_pricing"
+              "name": "PRICING_PROJECTION",
+              "value": "pricing_projection"
             },
             {
               "name": "RISK_NEUTRAL_CHARACTERISTIC_FUNCTION",
@@ -6539,8 +6539,8 @@
               "value": "node_setup"
             },
             {
-              "name": "FOURIER_PRICING",
-              "value": "fourier_pricing"
+              "name": "PRICING_PROJECTION",
+              "value": "pricing_projection"
             },
             {
               "name": "RISK_NEUTRAL_CHARACTERISTIC_FUNCTION",

@@ -5,7 +5,7 @@
   "rationale": {
     "model_parameters": "Use one stable Hawkes-Gamma benchmark kernel with explicit spectral-radius margin so oracle, pricing, and sufficient-statistics benchmarks measure throughput and latency under valid dynamics rather than domain failures.",
     "oracle_solver_probes": "Use low-amplitude positive u probes and near-unity z probes to keep transform evaluations in a numerically stable region while still varying workload across invocations.",
-    "pricing_input_ranges": "Use bounded spot, strike, maturity, rate, and volatility ranges that remain realistic for vanilla option workloads and reduce CI flakiness from extreme Fourier inversion pathologies.",
+    "pricing_input_ranges": "Use bounded spot, strike, maturity, rate, and volatility ranges that remain realistic for vanilla option workloads and reduce CI flakiness from extreme pricing pathologies.",
     "seed_partition": "Use fixed pairwise-distinct seed salts so oracle, pricing, and sufficient-statistics benchmarks remain reproducible while avoiding cross-component random-stream coupling."
   },
   "model_parameters": {
@@ -35,8 +35,6 @@
     "news_intensity_factor_max": 0.04
   },
   "pricing_input_ranges": {
-    "integration_upper_bound": 120.0,
-    "minimum_integration_step_count": 128,
     "spot_base": 90.0,
     "spot_underlying_count_scale": 2.5,
     "spot_noise_span": 8.0,

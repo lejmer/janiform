@@ -12,21 +12,6 @@ pub fn vanilla_option_terminal_payoff(
     }
 }
 
-pub(crate) fn vanilla_payoff_price_from_discounted_call(
-    payoff_type: VanillaOptionPayoffType,
-    discounted_call_price: f64,
-    discounted_spot: f64,
-    discounted_strike: f64,
-) -> Option<f64> {
-    vanilla_payoff_price_from_discounted_projection(
-        payoff_type,
-        VanillaOptionPayoffType::Call,
-        discounted_call_price,
-        discounted_spot,
-        discounted_strike,
-    )
-}
-
 pub(crate) fn vanilla_payoff_price_from_discounted_projection(
     payoff_type: VanillaOptionPayoffType,
     projection_payoff_type: VanillaOptionPayoffType,
@@ -93,7 +78,7 @@ pub(crate) fn unvalidated_vanilla_payoff_price_from_discounted_projection(
 mod tests {
     use super::{
         VanillaOptionPayoffType, otm_vanilla_projection_payoff_type,
-        vanilla_payoff_price_from_discounted_call, vanilla_payoff_price_from_discounted_projection,
+        vanilla_payoff_price_from_discounted_projection,
     };
 
     #[test]
@@ -120,18 +105,6 @@ mod tests {
         );
 
         assert_eq!(price, Some(3.0));
-    }
-
-    #[test]
-    fn discounted_call_mapping_uses_call_projection() {
-        let put_price = vanilla_payoff_price_from_discounted_call(
-            VanillaOptionPayoffType::Put,
-            5.0,
-            101.0,
-            99.0,
-        );
-
-        assert_eq!(put_price, Some(3.0));
     }
 
     #[test]

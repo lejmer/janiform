@@ -3,11 +3,6 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
 };
-use janiform_engine_pricing::internal::{
-    FourierInversionContour, FourierInversionEngineSettings, FourierInversionEngineSettingsError,
-    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityGate,
-    FourierInversionNumericSettings, FourierInversionQuadratureRule,
-};
 use janiform_engine_pricing::{
     VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
 };
@@ -66,65 +61,6 @@ pub fn build_equation_specification(
         gamma_mark_configuration,
         LongVarianceParameters::neutral(),
     ))
-}
-
-pub fn build_pricing_engine_settings(
-    profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
-) -> Result<FourierInversionEngineSettings, OraclePricerSufficientStatisticsBenchmarkHarnessError> {
-    let contour = FourierInversionContour::try_new(1.5).map_err(|source| {
-        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
-            profile_id: profile.profile_id.clone(),
-            source: Box::new(FourierInversionEngineSettingsError::InvalidContour { source }),
-        }
-    })?;
-
-    let integration_step_count = profile.interval_settings.oracle_solver_step_count.max(
-        benchmark_policy
-            .pricing_input_ranges
-            .minimum_integration_step_count,
-    );
-
-    let numeric_settings = FourierInversionNumericSettings::try_new(
-        benchmark_policy
-            .pricing_input_ranges
-            .integration_upper_bound,
-        integration_step_count,
-        FourierInversionQuadratureRule::Midpoint,
-    )
-    .map_err(|source| {
-        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
-            profile_id: profile.profile_id.clone(),
-            source: Box::new(
-                FourierInversionEngineSettingsError::InvalidNumericSettings { source },
-            ),
-        }
-    })?;
-
-    let stability_controls = FourierInversionIntegrationStabilityControls::try_new(
-        1.0e-5,
-        1.0e-4,
-        5.0e-4,
-        1.0e-2,
-        FourierInversionNumericQualityGate::DiagnosticsOnly,
-    )
-    .map_err(|source| {
-        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
-            profile_id: profile.profile_id.clone(),
-            source: Box::new(
-                FourierInversionEngineSettingsError::InvalidStabilityControls { source },
-            ),
-        }
-    })?;
-
-    FourierInversionEngineSettings::try_new(contour, numeric_settings, stability_controls).map_err(
-        |source| {
-            OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
-                profile_id: profile.profile_id.clone(),
-                source: Box::new(source),
-            }
-        },
-    )
 }
 
 pub fn build_oracle_transform_input(

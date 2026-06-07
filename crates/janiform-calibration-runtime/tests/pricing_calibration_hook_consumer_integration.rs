@@ -6,21 +6,21 @@ use janiform_affine_oracle::affine_oracle::{
     solve_exponential_affine_transform_with_settings,
 };
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
-use janiform_engine_pricing::internal::{
-    FourierInversionContour, FourierInversionEngineSettings,
-    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityGate,
-    FourierInversionNumericSettings, FourierInversionQuadratureRule,
-    price_vanilla_option_via_fourier_inversion,
+use janiform_engine_pricing::{
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntegrationNumericQualityDiagnostics,
+    PricingIntegrationProjectionRule, PricingIntegrationQualityDiagnostics,
+    PricingIntegrationQualityGate, PricingIntervalSchedule, PricingIntervalScheduleMetadata,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
+    build_pricing_transform_input, build_vanilla_option_pricing_run_result,
 };
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
-    PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingKernelParameters,
-    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionPricingResponse, VanillaOptionPricingRunResultBuildInput,
-    VanillaOptionPricingStatus, build_pricing_transform_input,
-    build_vanilla_option_pricing_run_result,
+    PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
+    PRICING_INTEGRATION_QUALITY_GATE_POLICY, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::NANOS_PER_HOUR;
@@ -36,28 +36,6 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use support::shared::black_scholes_log_return_characteristic_function;
-
-fn reference_fourier_inversion_settings() -> FourierInversionEngineSettings {
-    FourierInversionEngineSettings::try_new(
-        FourierInversionContour::try_new(1.5).expect("contour should construct"),
-        FourierInversionNumericSettings::try_new(
-            150.0,
-            4_096,
-            FourierInversionQuadratureRule::Midpoint,
-        )
-        .expect("numeric settings should construct"),
-        FourierInversionIntegrationStabilityControls::try_new(
-            1.0e-5,
-            1.0e-4,
-            5.0e-4,
-            1.0e-2,
-            FourierInversionNumericQualityGate::DiagnosticsOnly,
-        )
-        .expect("stability controls should construct"),
-    )
-    .expect("engine settings should construct")
-}
 
 fn reference_affine_transform_solver_settings() -> ExponentialAffineTransformSolverSettings {
     ExponentialAffineTransformSolverSettings::try_new(
@@ -66,6 +44,48 @@ fn reference_affine_transform_solver_settings() -> ExponentialAffineTransformSol
     )
     .expect("solver settings should construct")
     .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Disabled)
+}
+
+fn reference_integration_quality_diagnostics(
+    maturity_interval: f64,
+) -> PricingIntegrationQualityDiagnostics {
+    PricingIntegrationQualityDiagnostics {
+        schema_version: PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
+        engine_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+        domain_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
+        projection_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
+        stability_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+        projection_rule: PricingIntegrationProjectionRule::SpectralCosCollocation,
+        integration_upper_bound: 10.0,
+        integration_step_count: 64,
+        integration_interval_width: 10.0 / 64.0,
+        integrand_evaluation_count: 64,
+        integral_estimate: 12.5,
+        absolute_integral_estimate: 12.5,
+        max_abs_integrand: 12.5,
+        terminal_abs_integrand: 0.0,
+        discounted_projection_price: 12.5,
+        numeric_quality_diagnostics: PricingIntegrationNumericQualityDiagnostics {
+            stability_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+            convergence_check_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
+            truncation_check_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
+            quality_gate_policy: PRICING_INTEGRATION_QUALITY_GATE_POLICY,
+            quality_gate: PricingIntegrationQualityGate::DiagnosticsOnly,
+            convergence_absolute_tolerance: maturity_interval,
+            convergence_relative_tolerance: 1.0,
+            terminal_integrand_absolute_tolerance: maturity_interval,
+            terminal_integrand_ratio_tolerance: 1.0,
+            coarse_integral_estimate: 12.5,
+            convergence_absolute_difference: 0.0,
+            convergence_relative_difference: 0.0,
+            terminal_integrand_absolute_value: 0.0,
+            terminal_integrand_ratio: 0.0,
+            convergence_check_passed: true,
+            truncation_check_passed: true,
+            insufficient_convergence_resolution: false,
+            numeric_quality_is_poor: false,
+        },
+    }
 }
 
 #[test]
@@ -195,17 +215,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     )
     .expect("transform solve should succeed");
 
-    let integration_diagnostics = price_vanilla_option_via_fourier_inversion(
-        &market_inputs,
-        VanillaOptionPayoffConfiguration {
-            payoff_type: VanillaOptionPayoffType::Call,
-        },
-        reference_fourier_inversion_settings(),
-        // Use a Black-Scholes baseline here to validate wiring, not Janiform dynamics.
-        |argument| black_scholes_log_return_characteristic_function(&market_inputs, 0.2, argument),
-    )
-    .expect("Fourier pricing run should succeed")
-    .diagnostics;
+    let integration_diagnostics = reference_integration_quality_diagnostics(maturity_interval);
 
     let numeric_quality = integration_diagnostics.numeric_quality_diagnostics;
 

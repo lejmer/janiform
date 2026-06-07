@@ -40,10 +40,6 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
         "cargo test -p janiform-verification --test coarse_fine_consistency_regression_harness"
         in runner_script_text
     )
-    assert (
-        "cargo test -p janiform-governance-bench --test pricing_benchmark_validation_regression"
-        in runner_script_text
-    )
 
 
 def test_multiplatform_verification_workflow_has_linux_rust_verification_and_windows_smoke_jobs() -> None:

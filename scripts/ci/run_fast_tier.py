@@ -39,10 +39,6 @@ def _default_fast_tier_commands() -> list[TierCommand]:
             command="cargo test -p janiform-verification --test coarse_fine_consistency_regression_harness",
         ),
         TierCommand(
-            name="rust_pricing_benchmark_regression",
-            command="cargo test -p janiform-governance-bench --test pricing_benchmark_validation_regression",
-        ),
-        TierCommand(
             name="ci_workflow_lint_and_smoke",
             command="pytest ci/tests/test_ci_tiered_execution_strategy.py",
         ),

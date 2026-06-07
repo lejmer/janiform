@@ -46,8 +46,6 @@ pub struct OraclePricerSufficientStatisticsBenchmarkOracleSolverProbes {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OraclePricerSufficientStatisticsBenchmarkPricingInputRanges {
-    pub integration_upper_bound: f64,
-    pub minimum_integration_step_count: usize,
     pub spot_base: f64,
     pub spot_underlying_count_scale: f64,
     pub spot_noise_span: f64,
@@ -211,18 +209,6 @@ impl OraclePricerSufficientStatisticsBenchmarkPolicy {
 
         let pricing_ranges = self.pricing_input_ranges;
         validate_positive_finite_policy_field(
-            "pricing_input_ranges.integration_upper_bound",
-            pricing_ranges.integration_upper_bound,
-        )?;
-        if pricing_ranges.minimum_integration_step_count == 0 {
-            return Err(
-                OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidPositiveCountField {
-                    field_name: "pricing_input_ranges.minimum_integration_step_count",
-                    value: pricing_ranges.minimum_integration_step_count,
-                },
-            );
-        }
-        validate_positive_finite_policy_field(
             "pricing_input_ranges.spot_base",
             pricing_ranges.spot_base,
         )?;
@@ -315,10 +301,6 @@ pub enum OraclePricerSufficientStatisticsBenchmarkPolicyValidationError {
         field_name: &'static str,
         value: f64,
     },
-    InvalidPositiveCountField {
-        field_name: &'static str,
-        value: usize,
-    },
     DuplicateSeedSaltValues,
 }
 
@@ -368,10 +350,6 @@ impl Display for OraclePricerSufficientStatisticsBenchmarkPolicyValidationError 
             Self::InvalidPositiveFiniteField { field_name, value } => write!(
                 formatter,
                 "benchmark policy {field_name} must be finite and strictly positive, found {value}"
-            ),
-            Self::InvalidPositiveCountField { field_name, value } => write!(
-                formatter,
-                "benchmark policy {field_name} must be greater than 0, found {value}"
             ),
             Self::DuplicateSeedSaltValues => write!(
                 formatter,

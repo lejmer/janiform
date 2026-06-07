@@ -4,11 +4,8 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_engine_pricing::internal::{
-    FourierInversionEngineSettings, price_vanilla_option_via_fourier_inversion,
-};
 use janiform_engine_pricing::{
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, intraday_black_scholes_price,
 };
 use janiform_engine_sufficient_statistics::{
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSettings,
@@ -24,14 +21,13 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformSolverSettings, solve_exponential_affine_transform_with_settings,
 };
 use janiform_foundations::complex_math::ComplexScalar;
-use janiform_foundations::complex_math::complex_exponential;
 use janiform_foundations::randomness::standard_normal_draw_from_unit_interval_draws;
 use janiform_governance_bench::benchmarking::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
     OraclePricerSufficientStatisticsBenchmarkPolicy,
     OraclePricerSufficientStatisticsBenchmarkPolicyValidationError, build_equation_specification,
-    build_oracle_transform_input, build_pricing_engine_settings, build_pricing_market_inputs,
-    derive_invocation_seed, fnv1a_64, interpolate_range, splitmix64, unit_interval_from_seed,
+    build_oracle_transform_input, build_pricing_market_inputs, derive_invocation_seed, fnv1a_64,
+    interpolate_range, splitmix64, unit_interval_from_seed,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
@@ -1311,14 +1307,6 @@ fn run_coarse_fine_pricing_experiment(
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
     setup: &CoarseFineScenarioSetup,
 ) -> Result<CoarseFinePricingExperiment, CoarseFineConsistencyRegressionHarnessError> {
-    let pricing_engine_settings = build_pricing_engine_settings(profile, benchmark_policy)
-        .map_err(|source| {
-            coarse_fine_scenario_error(
-                &setup.scenario_id,
-                format!("failed to construct pricing engine settings: {source}"),
-            )
-        })?;
-
     let pricing_invocation_seed = derive_invocation_seed(setup.seeds.pricing_component_seed, 1);
 
     let pricing_market_inputs =
@@ -1341,7 +1329,6 @@ fn run_coarse_fine_pricing_experiment(
     let coarse_value = price_coarse_fine_benchmark_vanilla_option(
         &setup.scenario_id,
         &pricing_market_inputs,
-        pricing_engine_settings,
         pricing_inputs,
     )?;
 
@@ -1407,37 +1394,21 @@ fn build_coarse_fine_pricing_inputs(
 fn price_coarse_fine_benchmark_vanilla_option(
     scenario_id: &str,
     pricing_market_inputs: &VanillaOptionPricingMarketInputs,
-    pricing_engine_settings: FourierInversionEngineSettings,
     pricing_inputs: CoarseFinePricingInputs,
 ) -> Result<f64, CoarseFineConsistencyRegressionHarnessError> {
-    let pricing_payoff = VanillaOptionPayoffConfiguration {
-        payoff_type: pricing_inputs.payoff_type,
-    };
-
-    let pricing_drift = (pricing_inputs.risk_free_rate
-        - pricing_inputs.dividend_yield
-        - 0.5 * pricing_inputs.volatility * pricing_inputs.volatility)
-        * pricing_inputs.maturity_interval;
-
-    let pricing_variance =
-        pricing_inputs.volatility * pricing_inputs.volatility * pricing_inputs.maturity_interval;
-
-    let coarse_pricing_result = price_vanilla_option_via_fourier_inversion(
+    let price = intraday_black_scholes_price(
         pricing_market_inputs,
-        pricing_payoff,
-        pricing_engine_settings,
-        |argument| {
-            let i_times_argument = ComplexScalar::new(-argument.imaginary, argument.real);
-            let drift_term = i_times_argument.scale(pricing_drift);
-            let diffusion_term = argument.square().scale(-0.5 * pricing_variance);
-            complex_exponential(drift_term.plus(diffusion_term))
-        },
-    )
-    .map_err(|source| {
-        coarse_fine_scenario_error(scenario_id, format!("coarse pricing call failed: {source}"))
-    })?;
+        pricing_inputs.payoff_type,
+        pricing_inputs.volatility,
+    );
+    if !price.is_finite() {
+        return Err(coarse_fine_scenario_error(
+            scenario_id,
+            format!("coarse pricing call produced non-finite price {price}"),
+        ));
+    }
 
-    Ok(coarse_pricing_result.price)
+    Ok(price)
 }
 
 fn run_coarse_fine_sufficient_statistics_experiment(

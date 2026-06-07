@@ -30,7 +30,8 @@ use janiform_model_kernels::return_clock::{
 };
 
 use super::constants::{
-    MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT,
+    PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION, SPECTRAL_PRICING_COLLOCATION_POLICY,
     SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY,
     VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
@@ -42,7 +43,6 @@ use super::constants::{
     VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VANILLA_OPTION_REQUEST_VALIDATION_POLICY,
     VANILLA_OPTION_RESPONSE_VALIDATION_POLICY,
 };
-use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
 use super::pricing_kernel::{
@@ -60,7 +60,7 @@ pub enum VanillaOptionPricingStatus {
 #[serde(rename_all = "snake_case")]
 pub enum VanillaOptionPricingFailureStage {
     NodeSetup,
-    FourierPricing,
+    PricingProjection,
     RiskNeutralCharacteristicFunction,
     TerminalAffineMeasureChange,
     SpectralDiagnostics,
@@ -124,6 +124,73 @@ impl Display for VanillaOptionPricingFailureDiagnosticError {
 }
 
 impl Error for VanillaOptionPricingFailureDiagnosticError {}
+
+/// Projection family used for pricing integration-quality diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingIntegrationProjectionRule {
+    SpectralCosCollocation,
+}
+
+/// Deterministic numerical-quality diagnostics for the pricing projection layer.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PricingIntegrationNumericQualityDiagnostics {
+    pub stability_policy: &'static str,
+    pub convergence_check_policy: &'static str,
+    pub truncation_check_policy: &'static str,
+    pub quality_gate_policy: &'static str,
+    pub quality_gate: PricingIntegrationQualityGate,
+    pub convergence_absolute_tolerance: f64,
+    pub convergence_relative_tolerance: f64,
+    pub terminal_integrand_absolute_tolerance: f64,
+    pub terminal_integrand_ratio_tolerance: f64,
+    pub coarse_integral_estimate: f64,
+    pub convergence_absolute_difference: f64,
+    pub convergence_relative_difference: f64,
+    pub terminal_integrand_absolute_value: f64,
+    pub terminal_integrand_ratio: f64,
+    pub convergence_check_passed: bool,
+    pub truncation_check_passed: bool,
+    pub insufficient_convergence_resolution: bool,
+    pub numeric_quality_is_poor: bool,
+}
+
+/// Quality-gate behavior for pricing projection diagnostics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingIntegrationQualityGate {
+    #[default]
+    DiagnosticsOnly,
+    EnforceFailure,
+}
+
+/// Deterministic diagnostics emitted by one pricing projection run.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PricingIntegrationQualityDiagnostics {
+    pub schema_version: &'static str,
+    pub engine_policy: &'static str,
+    pub domain_policy: &'static str,
+    pub projection_policy: &'static str,
+    pub stability_policy: &'static str,
+    pub projection_rule: PricingIntegrationProjectionRule,
+    pub integration_upper_bound: f64,
+    pub integration_step_count: usize,
+    pub integration_interval_width: f64,
+    pub integrand_evaluation_count: usize,
+    pub integral_estimate: f64,
+    pub absolute_integral_estimate: f64,
+    pub max_abs_integrand: f64,
+    pub terminal_abs_integrand: f64,
+    pub discounted_projection_price: f64,
+    pub numeric_quality_diagnostics: PricingIntegrationNumericQualityDiagnostics,
+}
+
+impl PricingIntegrationQualityDiagnostics {
+    pub const fn schema_version() -> &'static str {
+        PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VanillaOptionPayoffType {
@@ -1759,14 +1826,14 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA:
 pub struct VanillaOptionPricingRunDiagnostics {
     pub schema_version: &'static str,
     pub transform: Option<ExponentialAffineTransformIntegrationResult>,
-    pub integration_quality: Option<FourierInversionDiagnostics>,
+    pub integration_quality: Option<PricingIntegrationQualityDiagnostics>,
     pub spectral: Option<SpectralPricingDiagnostics>,
 }
 
 impl VanillaOptionPricingRunDiagnostics {
     pub fn new(
         transform: Option<ExponentialAffineTransformIntegrationResult>,
-        integration_quality: Option<FourierInversionDiagnostics>,
+        integration_quality: Option<PricingIntegrationQualityDiagnostics>,
         spectral: Option<SpectralPricingDiagnostics>,
     ) -> Self {
         Self {
@@ -1779,7 +1846,7 @@ impl VanillaOptionPricingRunDiagnostics {
 
     pub fn try_new(
         transform: Option<ExponentialAffineTransformIntegrationResult>,
-        integration_quality: Option<FourierInversionDiagnostics>,
+        integration_quality: Option<PricingIntegrationQualityDiagnostics>,
         spectral: Option<SpectralPricingDiagnostics>,
     ) -> Result<Self, VanillaOptionPricingRunDiagnosticsError> {
         let diagnostics = Self::new(transform, integration_quality, spectral);
@@ -1912,7 +1979,7 @@ impl VanillaOptionPricingCalibrationHooks {
         response: &VanillaOptionPricingResponse,
         market_inputs: VanillaOptionPricingMarketInputs,
         transform: Option<ExponentialAffineTransformIntegrationResult>,
-        integration_quality: Option<FourierInversionDiagnostics>,
+        integration_quality: Option<PricingIntegrationQualityDiagnostics>,
     ) -> Result<Self, VanillaOptionPricingCalibrationHooksError> {
         response.validate().map_err(|source| {
             VanillaOptionPricingCalibrationHooksError::InvalidResponse { source }
@@ -2215,7 +2282,7 @@ pub struct VanillaOptionPricingRunResultBuildInput {
     pub output_selection: VanillaOptionPricingOptionalOutputSelection,
     pub market_inputs_for_calibration_hooks: Option<VanillaOptionPricingMarketInputs>,
     pub transform_diagnostics_source: Option<ExponentialAffineTransformIntegrationResult>,
-    pub integration_quality_source: Option<FourierInversionDiagnostics>,
+    pub integration_quality_source: Option<PricingIntegrationQualityDiagnostics>,
     pub spectral_source: Option<SpectralPricingDiagnostics>,
     pub runtime_interval_schedule: PricingIntervalSchedule,
     pub maturity_terminal_interval_indices: Vec<usize>,

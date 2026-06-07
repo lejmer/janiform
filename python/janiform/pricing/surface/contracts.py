@@ -1064,7 +1064,7 @@ def _require_optional_failure_stage(
         PRICING_ERROR_FACTORY,
         enum_type=VanillaOptionPricingFailureStage,
         allowed_values_message=(
-            "must be one of: node_setup, fourier_pricing, "
+            "must be one of: node_setup, pricing_projection, "
             "risk_neutral_characteristic_function, terminal_affine_measure_change, "
             "spectral_diagnostics, response_diagnostics, response_assembly, "
             "run_result_assembly, worker_execution"

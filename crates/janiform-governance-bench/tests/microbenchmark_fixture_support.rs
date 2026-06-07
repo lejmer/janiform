@@ -78,7 +78,7 @@ fn microbenchmark_cases_prepare_deterministic_component_inputs() {
                 .expect("pricing benchmark case should be single-node")
                 * 0.5
     );
-    assert!(pricing_case.variance.is_finite());
+    assert!(pricing_case.implied_volatility.is_finite());
 
     let sufficient_statistics_case = fixture_set
         .prepare_sufficient_statistics_sampling_case(
