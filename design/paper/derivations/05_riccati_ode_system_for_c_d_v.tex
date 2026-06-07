@@ -1,0 +1,292 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Riccati/ODE system for \((C,\mathbf D,V)\)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Riccati/ODE system for \((C,D,V)\)\\
+\textbf{Depends on.} \texttt{04\_affine\_transform\_ansatz.tex}\\
+\textbf{Feeds.} Affine schedule transform, affine domain constraints, terminal pricing measure
+
+\section{Purpose}
+
+Derive the deterministic equations for the affine schedule loadings
+\((C,\mathbf D,V)\). These equations are the actual transform recursion used
+once the affine ansatz has reduced the conditional expectation to a finite
+system of coefficient equations.
+
+\section{Setup}
+
+Use the same one-interval setup as
+\texttt{04\_affine\_transform\_ansatz.tex}. Let \(\tau\in[0,\Delta]\) denote
+backward elapsed time from the terminal condition. The terminal conditions are
+\[
+C(0)=0,
+\qquad
+\mathbf D(0)=\mathbf D_{\mathrm{term}},
+\qquad
+V(0)=\xi.
+\]
+
+The Hawkes jump vectors and news loading vector are
+\[
+\mathbf{k}_+=(\alpha_{++},0,\alpha_{-+},0),
+\qquad
+\mathbf{k}_-=(0,\alpha_{+-},0,\alpha_{--}),
+\qquad
+\mathbf r=(\rho_{++},\rho_{+-},\rho_{-+},\rho_{--}).
+\]
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(H_\pm^B(\mathbf D,V)\) & Baseline-event Hamiltonian after baseline clock loading is included & Complex finite\\
+\(H_\pm^E(\mathbf D,V)\) & Endogenous-event Hamiltonian after endogenous clock loading is included & Complex finite\\
+\(\kappa_z\) & Long-variance mean-reversion rate & Strictly positive\\
+\(\bar z\) & Derived long-variance mean-reversion level & Strictly positive\\
+\(\sigma_z\) & Long-variance volatility of volatility & Non-negative\\
+\(\chi_\pm\) & Long-variance event-jump loading by side & Non-negative\\
+\(M_c(q,r)\) & Gamma-normal news mark transform for component \(c\) & Moment domain\\
+\(\ell_c(q,r)\) & \(\log M_c(q,r)\) on the principal branch & Moment domain\\
+\(\nu_h^{\mathrm{known}}\) & Equivalent rate for scheduled known-news timestamps & Non-negative\\
+\(\nu_h^{\mathrm{surprise}}\) & Surprise-news Poisson rate & Non-negative\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+The affine ansatz holds for the interval transform.
+& Coefficient matching between \(\partial_\tau f/f\) and \(\mathcal A f/f\).
+& This turns the transform problem into ODEs for \(C\), \(\mathbf D\), and \(V\).\\
+Buy endogenous intensity is \(Y^{++}+Y^{+-}\), and sell endogenous intensity is \(Y^{-+}+Y^{--}\).
+& Assigning \(H_+^E\) to \(D_{++},D_{+-}\) and \(H_-^E\) to \(D_{-+},D_{--}\).
+& The side intensity convention determines which state coordinates get each Hamiltonian.\\
+Baseline event intensities are both \(s_h\bar\lambda\).
+& Deriving the scalar baseline event term and the \(Z\)-linear baseline clock term.
+& Baseline arrivals affect \(C\), while baseline return clocks affect \(V\).\\
+The long-variance diffusion is CIR affine.
+& Deriving the Riccati terms in \(V'\) and the drift term in \(C'\).
+& A square-root affine diffusion produces \(V^2\) but no higher powers of \(Z\).\\
+Known news is deterministic-arrival random-mark and surprise news is compound Poisson.
+& Choosing \(\nu^{\mathrm{known}}\ell_{\mathrm{known}}\) and \(\nu^{\mathrm{surprise}}(M_{\mathrm{surprise}}-1)\).
+& The two news components have different arrival transforms.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Identity.} Define
+\[
+\begin{aligned}
+H_+^B(\mathbf D,V)
+&=
+z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^B,\\
+H_-^B(\mathbf D,V)
+&=
+z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^B,\\
+H_+^E(\mathbf D,V)
+&=
+z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^E,\\
+H_-^E(\mathbf D,V)
+&=
+z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^E.
+\end{aligned}
+\]
+For \(c\in\{\mathrm{known},\mathrm{surprise}\}\), define
+\[
+M_c(q,r)
+=
+\left(
+1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+\right)^{-k_U},
+\qquad
+\ell_c(q,r)=\log M_c(q,r).
+\]
+Then the affine schedule loadings solve
+\[
+\begin{aligned}
+D_{++}'(\tau) &= -\beta D_{++}(\tau)
+    +H_+^E(\mathbf D(\tau),V(\tau)),\\
+D_{+-}'(\tau) &= -\beta D_{+-}(\tau)
+    +H_+^E(\mathbf D(\tau),V(\tau)),\\
+D_{-+}'(\tau) &= -\beta D_{-+}(\tau)
+    +H_-^E(\mathbf D(\tau),V(\tau)),\\
+D_{--}'(\tau) &= -\beta D_{--}(\tau)
+    +H_-^E(\mathbf D(\tau),V(\tau)),\\
+V'(\tau)
+&=
+-\kappa_zV(\tau)
++\frac{1}{2}\sigma_z^2V(\tau)^2
+-s_h\bar\lambda\big(u_+^B+u_-^B\big),\\
+C'(\tau)
+&=
+\kappa_z\bar zV(\tau)
++s_h\bar\lambda\Big(
+H_+^B(\mathbf D(\tau),V(\tau))+u_+^B
++H_-^B(\mathbf D(\tau),V(\tau))+u_-^B
+\Big)\\
+&\quad
++\nu_h^{\mathrm{known}}\ell_{\mathrm{known}}
+\left(q,\mathbf D(\tau)\cdot\mathbf r\right)
++\nu_h^{\mathrm{surprise}}
+\left(
+M_{\mathrm{surprise}}\left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
+\right).
+\end{aligned}
+\]
+
+\section{Derivation}
+
+Use
+\[
+f_\tau(\mathbf y,z)
+=
+\exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right).
+\]
+The left side of the Kolmogorov equation gives
+\[
+\frac{\partial_\tau f_\tau}{f_\tau}
+=
+C'(\tau)+\mathbf D'(\tau)\cdot\mathbf y+V'(\tau)z.
+\]
+
+Hawkes decay contributes
+\[
+-\beta\mathbf D(\tau)\cdot\mathbf y.
+\]
+
+A buy event has multiplier
+\[
+z_+\exp(\mathbf D(\tau)\cdot\mathbf k_+ + V(\tau)\chi_+),
+\]
+and a sell event has multiplier
+\[
+z_-\exp(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-).
+\]
+Subtracting one gives the usual jump-generator increment. Subtracting the
+activity clock loading gives the Hamiltonian associated with the clock type.
+For endogenous activity, this yields \(H_+^E\) multiplying
+\(Y^{++}+Y^{+-}\) and \(H_-^E\) multiplying \(Y^{-+}+Y^{--}\). Combining with
+Hawkes decay gives the four \(\mathbf D\) equations.
+
+For baseline arrivals, the event intensities are both \(s_h\bar\lambda\).
+Their pure event contribution is
+\[
+s_h\bar\lambda
+\left[
+z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) -1
++z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) -1
+\right].
+\]
+Because \(H_\pm^B+u_\pm^B=z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1\),
+this is the baseline term in \(C'\):
+\[
+s_h\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
+\]
+
+The baseline return clocks are long-variance scaled, so their transform
+loadings contribute
+\[
+-s_h\bar\lambda(u_+^B+u_-^B)z.
+\]
+This term is \(z\)-linear and therefore enters \(V'\), not \(C'\).
+
+The continuous long-variance generator contributes
+\[
+\kappa_z\bar zV(\tau)
++\left(
+-\kappa_zV(\tau)+\frac{1}{2}\sigma_z^2V(\tau)^2
+\right)z.
+\]
+The constant part enters \(C'\), and the \(z\)-linear part enters \(V'\).
+Adding the baseline clock term gives the stated Riccati equation for \(V\).
+
+For news component \(c\), the activity jump and return jump have conditional
+mark transform
+\[
+M_c\left(q,\mathbf D(\tau)\cdot\mathbf r\right)
+=
+\left(
+1-\theta_U\left(
+(\mathbf D(\tau)\cdot\mathbf r)a_c
++qm_c+\frac{1}{2}q^2\sigma_c^2
+\right)
+\right)^{-k_U}.
+\]
+Known-news timestamps are deterministic conditional on the schedule, so their
+equivalent rate contributes the log transform
+\[
+\nu_h^{\mathrm{known}}\ell_{\mathrm{known}}
+\left(q,\mathbf D(\tau)\cdot\mathbf r\right).
+\]
+Surprise news is compound Poisson, so it contributes
+\[
+\nu_h^{\mathrm{surprise}}
+\left(
+M_{\mathrm{surprise}}
+\left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
+\right).
+\]
+Both news terms are state independent after conditioning, so both enter
+\(C'\).
+
+Collecting the coefficients of \(1\), each Hawkes coordinate, and \(z\) gives
+the stated system.
+
+\section{Domain and validity}
+
+The ODE system is valid on the maximal interval where \(C(\tau)\),
+\(\mathbf D(\tau)\), and \(V(\tau)\) remain finite and the news mark
+transforms stay inside the gamma-normal moment domain. The terminal conditions
+must be finite. The model parameters must satisfy the Hawkes, news,
+long-variance, and first-moment constraints listed in
+\texttt{06\_affine\_domain\_constraints.tex}.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item The only nonlinear coefficient equation is the Riccati equation for \(V\), plus the exponential Hamiltonians in the Hawkes loading equations.
+    \item Baseline event arrivals affect \(C\), but baseline return-clock exposure affects \(V\) because it is multiplied by \(Z_t\).
+    \item Endogenous activity exposure affects \(\mathbf D\) because endogenous event intensity is state-linear.
+    \item Known and surprise news differ only in the arrival transform, not in the mark transform itself.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Schedule RHS equations
+& \(D'\), \(V'\), and \(C'\) are assembled with the Hamiltonians, long-variance drift, baseline clock loading, and news term shown here.
+& \texttt{evaluate\_schedule\_base\_rhs} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
+Event Hamiltonians with \(V\chi_\pm\)
+& Buy and sell event multipliers include both \(\mathbf D\cdot\mathbf k_\pm\) and \(V\chi_\pm\).
+& \texttt{evaluate\_long\_variance\_schedule\_hamiltonians} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
+Known-news arrival transform
+& Known news uses the deterministic-arrival log transform.
+& Test \texttt{known\_news\_uses\_deterministic\_arrival\_log\_transform}\\
+Surprise-news arrival transform
+& Surprise news uses the compound-Poisson transform \(M-1\).
+& Test \texttt{surprise\_news\_uses\_compound\_poisson\_transform}\\
+Schedule tangent consistency
+& Differentiating the same ODE system gives sensitivities matching finite differences.
+& Test \texttt{schedule\_cumulant\_argument\_tangent\_matches\_finite\_difference}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}
