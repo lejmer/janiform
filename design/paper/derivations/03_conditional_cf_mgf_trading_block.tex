@@ -1,0 +1,281 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Conditional CF/MGF of a trading block}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Conditional CF/MGF of trading block\\
+\textbf{Depends on.} \texttt{01\_long\_variance\_normalization.tex}\\
+\textbf{Feeds.} P03, P04, affine schedule transform, terminal pricing measure, return-distribution plots
+
+\section{Purpose}
+
+Derive the conditional characteristic function and moment-generating function
+of the compensated NIG trading-time block. This is the local transform that
+later gets embedded in the affine schedule and terminal pricing derivations.
+
+\section{Setup}
+
+On one interval \(h\), condition on the decomposed return clocks
+\[
+\mathcal C_h
+=
+\sigma\!\left(B_{Z,h}^+,E_h^+,B_{Z,h}^-,E_h^-\right).
+\]
+
+The effective buy and sell return clocks are
+\[
+A_h^+
+=
+B_{Z,h}^+ + \eta_+E_h^+,
+\qquad
+A_h^-
+=
+B_{Z,h}^- + \eta_-E_h^-,
+\]
+with \(A_h^+\ge 0\), \(A_h^-\ge 0\), \(\eta_+>0\), and \(\eta_->0\).
+
+Let \(L^+\) and \(L^-\) be independent NIG Levy drivers conditional on the
+clock realization. Their characteristic exponents are
+\[
+\mathbb E\!\left[e^{iuL_a^\pm}\right]
+=
+\exp\!\left(a\psi_\pm(u)\right),
+\]
+and their unit business-time means are
+\[
+m_\pm
+=
+\frac{d}{da}\mathbb E[L_a^\pm]\bigg|_{a=1}.
+\]
+
+The trading block is
+\[
+X_{\mathrm{tr},h}
+=
+\left(L_{A_h^+}^+ - A_h^+m_+\right)
+-
+\left(L_{A_h^-}^- - A_h^-m_-\right).
+\]
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(A_h^+\) & Effective buy-side return clock & Non-negative business time\\
+\(A_h^-\) & Effective sell-side return clock & Non-negative business time\\
+\(B_{Z,h}^\pm\) & Baseline return-clock exposure scaled by long variance & Non-negative business time\\
+\(E_h^\pm\) & Endogenous side activity exposure & Non-negative business time\\
+\(\eta_\pm\) & Endogenous activity return-clock exposure multiplier & Positive\\
+\(\psi_\pm(u)\) & Unit-time NIG characteristic exponent for side \(\pm\) & Complex transform domain\\
+\(K_\pm(q)\) & Unit-time NIG log-MGF, \(K_\pm(q)=\psi_\pm(-iq)\) & Moment domain\\
+\(m_\pm\) & Unit-time side mean & Log-return per business time\\
+\(X_{\mathrm{tr},h}\) & Compensated trading-time return block & Log return\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+The side drivers are independent conditional on the clocks.
+& Factoring the conditional expectation into buy and sell terms.
+& This gives the product form whose logarithm is additive in side clocks.\\
+The side drivers are Levy processes in business time.
+& Evaluating \(\mathbb E[e^{iuL_{A_h^\pm}^\pm}\mid\mathcal C_h]\).
+& The exponent scales linearly with the realized business-time clock.\\
+The clocks are known after conditioning on \(\mathcal C_h\).
+& Treating \(A_h^\pm\) as constants inside the conditional transform.
+& The trading-block transform is conditional on activity, not yet averaged over it.\\
+The trading block uses side mean compensation.
+& Adding the deterministic phase factors involving \(m_\pm\).
+& This makes the trading block zero-mean conditional on the clocks.\\
+The sell-side driver enters the return with a negative sign.
+& Evaluating the sell exponent at \(-u\) for the CF and \(-q\) for the MGF.
+& This preserves the buy-minus-sell return convention.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Identity.} Conditional on \(\mathcal C_h\), the trading-block
+characteristic function is
+\[
+\phi_{\mathrm{tr},h}(u\mid\mathcal C_h)
+=
+\mathbb E\!\left[e^{iuX_{\mathrm{tr},h}}\mid\mathcal C_h\right]
+=
+\exp\!\left(
+A_h^+\left[\psi_+(u)-ium_+\right]
++
+A_h^-\left[\psi_-(-u)+ium_-\right]
+\right).
+\]
+
+For every \(q\) in the common moment domain, the conditional MGF is
+\[
+M_{\mathrm{tr},h}(q\mid\mathcal C_h)
+=
+\mathbb E\!\left[e^{qX_{\mathrm{tr},h}}\mid\mathcal C_h\right]
+=
+\exp\!\left(
+A_h^+\left[K_+(q)-qm_+\right]
++
+A_h^-\left[K_-(-q)+qm_-\right]
+\right),
+\]
+where \(K_\pm(q)=\psi_\pm(-iq)\).
+
+\section{Derivation}
+
+Start from the compensated trading block:
+\[
+X_{\mathrm{tr},h}
+=
+L_{A_h^+}^+ - A_h^+m_+
+-L_{A_h^-}^- + A_h^-m_-.
+\]
+
+For the CF, condition on \(\mathcal C_h\) and separate the deterministic
+compensation terms:
+\[
+\mathbb E\!\left[e^{iuX_{\mathrm{tr},h}}\mid\mathcal C_h\right]
+=
+e^{-iuA_h^+m_+}
+e^{iuA_h^-m_-}
+\mathbb E\!\left[
+e^{iuL_{A_h^+}^+}
+e^{-iuL_{A_h^-}^-}
+\mid\mathcal C_h
+\right].
+\]
+
+Conditional independence of the side drivers gives
+\[
+\mathbb E\!\left[
+e^{iuL_{A_h^+}^+}
+e^{-iuL_{A_h^-}^-}
+\mid\mathcal C_h
+\right]
+=
+\mathbb E\!\left[e^{iuL_{A_h^+}^+}\mid\mathcal C_h\right]
+\mathbb E\!\left[e^{-iuL_{A_h^-}^-}\mid\mathcal C_h\right].
+\]
+
+Because \(L^\pm\) are Levy processes in business time and \(A_h^\pm\) are fixed
+under \(\mathcal C_h\),
+\[
+\mathbb E\!\left[e^{iuL_{A_h^+}^+}\mid\mathcal C_h\right]
+=
+\exp\!\left(A_h^+\psi_+(u)\right),
+\qquad
+\mathbb E\!\left[e^{-iuL_{A_h^-}^-}\mid\mathcal C_h\right]
+=
+\exp\!\left(A_h^-\psi_-(-u)\right).
+\]
+
+Multiplying the four exponential factors and collecting exponents yields
+\[
+\phi_{\mathrm{tr},h}(u\mid\mathcal C_h)
+=
+\exp\!\left(
+A_h^+\left[\psi_+(u)-ium_+\right]
++
+A_h^-\left[\psi_-(-u)+ium_-\right]
+\right).
+\]
+
+The MGF derivation is the same calculation with \(q\) in place of \(iu\). The
+buy-side raw log moment is \(A_h^+K_+(q)\). The sell-side raw log moment is
+\(A_h^-K_-(-q)\), because the sell driver enters the return as
+\(-L_{A_h^-}^-\). The compensation terms contribute \(-qA_h^+m_+\) and
+\(+qA_h^-m_-\), giving
+\[
+M_{\mathrm{tr},h}(q\mid\mathcal C_h)
+=
+\exp\!\left(
+A_h^+\left[K_+(q)-qm_+\right]
++
+A_h^-\left[K_-(-q)+qm_-\right]
+\right).
+\]
+
+The conditional first moment follows by differentiating the log-MGF at
+\(q=0\). Since \(K_\pm'(0)=m_\pm\),
+\[
+\frac{d}{dq}\log M_{\mathrm{tr},h}(q\mid\mathcal C_h)\bigg|_{q=0}
+=
+A_h^+(m_+-m_+)+A_h^-(-m_-+m_-)
+=
+0.
+\]
+
+\section{Domain and validity}
+
+The CF identity is valid for real \(u\) whenever the side NIG characteristic
+exponents are valid at \(u\) and \(-u\). The MGF identity is valid for all
+\(q\) such that both side log moments are finite:
+\[
+q\in\mathcal D_+,
+\qquad
+-q\in\mathcal D_-.
+\]
+
+For an NIG driver with parameters \((\alpha_\pm,\beta_\pm,\delta_\pm,\mu_\pm)\),
+the real MGF domain is
+\[
+-\alpha_\pm-\beta_\pm
+<
+q
+<
+\alpha_\pm-\beta_\pm.
+\]
+Therefore the trading-block MGF requires \(q\) to satisfy the buy-side domain
+and \(-q\) to satisfy the sell-side domain.
+
+The clock variables must be finite and non-negative. This derivation conditions
+on the clocks and does not yet average over Hawkes activity, long variance,
+news, or gaps.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item The conditional trading-block transform is additive in the buy and sell return clocks.
+    \item The sell-side contribution uses the negated transform argument because Janiform returns use the buy-minus-sell convention.
+    \item Side mean compensation gives zero conditional trading drift for any realized non-negative clocks.
+    \item If open-news and closed-gap increments are conditionally independent of the trading drivers after conditioning on their marks, the full interval CF multiplies this trading-block CF by the corresponding jump and gap transform factor.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Side exponent sign and compensation
+& Buy uses \(\psi_+(u)-ium_+\), sell uses \(\psi_-(-u)+ium_-\).
+& \texttt{crates/janiform-model-kernels/src/nig/tests.rs} test \texttt{buy\_and\_sell\_sign\_convention\_helpers\_match\_equation\_mapping}\\
+Weighted exponent assembly
+& The combined trading exponent equals \(A^+\) times the buy exponent plus \(A^-\) times the sell exponent.
+& \texttt{crates/janiform-model-kernels/src/nig/tests.rs} test \texttt{trading\_time\_weighted\_exponent\_composition\_matches\_manual\_assembly}\\
+Zero conditional drift
+& The first derivative of the trading-block log-MGF at the origin is zero for arbitrary clocks.
+& \texttt{crates/janiform-model-kernels/src/nig/tests.rs} test \texttt{trading\_time\_compensated\_combined\_first\_moment\_is\_zero\_for\_arbitrary\_activity}\\
+Return-decomposition adapter
+& The shared return-decomposition path delegates to the same side-weighted exponent map.
+& \texttt{crates/janiform-model-kernels/src/return\_decomposition.rs} test \texttt{shared\_trading\_time\_exponent\_adapter\_matches\_direct\_driver\_composition}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}
