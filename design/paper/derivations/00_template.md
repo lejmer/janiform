@@ -1,4 +1,4 @@
-# Derivation Title
+# Derivation title
 
 Status: Draft
 Plan item: `Exact derivation name from design/paper/plan.md`
@@ -27,7 +27,7 @@ Use this section to make all conventions explicit:
 |--------|---------|-----------------|
 | `...`  | ...     | ...             |
 
-## Assumptions Used
+## Assumptions used
 
 | Assumption | Where it is used | Why it is needed |
 |------------|------------------|------------------|
@@ -51,7 +51,7 @@ Work through the derivation step by step.
 
 Keep each algebraic transition justified. If a step depends on independence, conditioning, affine closure, a moment-domain constraint, or a normalization, name that reason explicitly.
 
-## Domain And Validity
+## Domain and validity
 
 List the exact conditions under which the result is valid.
 
@@ -72,6 +72,6 @@ Describe how the result should be checked analytically or numerically.
 |-------|-----------------|-------------------|
 | ...   | ...             | ...               |
 
-## Open Questions
+## Open questions (if any)
 
 - ...
