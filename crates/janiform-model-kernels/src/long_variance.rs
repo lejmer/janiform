@@ -580,7 +580,7 @@ mod tests {
         HawkesStationaryIntensityMultipliers, HawkesStationaryTargetSourceRates,
     };
 
-    use super::{LongVarianceParameters, LongVarianceState};
+    use super::{LongVarianceParameters, LongVarianceState, LongVarianceStationaryLevelError};
 
     #[test]
     fn stationary_mean_reversion_level_offsets_event_feedback_drift() {
@@ -631,6 +631,27 @@ mod tests {
             level,
             1.0 - (0.10 * expected_buy_rate + 0.20 * expected_sell_rate) / 10.0
         );
+    }
+
+    #[test]
+    fn stationary_mean_reversion_level_rejects_exhausted_event_feedback_budget() {
+        let parameters =
+            LongVarianceParameters::try_new(4.0, 0.0, 0.5, 0.5).expect("parameters should build");
+
+        let error = parameters
+            .stationary_mean_reversion_level(
+                2.0,
+                HawkesStationaryIntensityMultipliers {
+                    buy_intensity_multiplier: 2.0,
+                    sell_intensity_multiplier: 2.0,
+                },
+            )
+            .expect_err("event feedback drift at the mean-reversion rate must be rejected");
+
+        assert!(matches!(
+            error,
+            LongVarianceStationaryLevelError::InvalidDerivedMeanReversionLevel { .. }
+        ));
     }
 
     #[test]
