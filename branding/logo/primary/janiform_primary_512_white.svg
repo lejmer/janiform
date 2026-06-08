@@ -2,7 +2,7 @@
   <defs>
     <symbol id="janiform-icon" viewBox="0 0 512 512">
 
-  <path id="black-silhouette" fill="#B0B0B0" d="
+  <path id="black-silhouette" fill="#FFFFFF" d="
     M 256 28
     C 366 28 421 65 442 177
     C 443 185 443 191 447 198
@@ -40,7 +40,7 @@
     C 91 40 171 28 256 28
     Z"/>
 
-  <path id="dark-interior" fill="#FFFFFF" d="
+  <path id="dark-interior" fill="#909090" d="
     M 256 40
     C 365 40 406 79 428 177
     C 429 187 430 193 435 201
@@ -61,8 +61,8 @@
     L 256 40
     Z"/>
 
-  <circle id="left-eye" cx="137" cy="201" r="18" fill="#FFFFFF"/>
-  <circle id="right-eye" cx="375" cy="201" r="19" fill="#B0B0B0"/>
+  <circle id="left-eye" cx="137" cy="201" r="18" fill="#909090"/>
+  <circle id="right-eye" cx="375" cy="201" r="19" fill="#FFFFFF"/>
     </symbol>
   </defs>
 
