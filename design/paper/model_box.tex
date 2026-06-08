@@ -1,0 +1,219 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+
+\title{Janiform model box}
+\author{}
+\date{}
+
+\begin{document}
+    \maketitle
+
+    \section*{Mathematical formulation}
+
+    Let \(S_t=S_0 e^{X_t}\).
+    In price form, Janiform can be written as
+    \[
+        dS_t
+        =
+        S_{t-}\left(e^{dX_t}-1\right),
+    \]
+    where the exponential differential notation is shorthand for applying log-return
+    increments multiplicatively to price.
+    Equivalently, for jumps,
+    \[
+        \frac{\Delta S_t}{S_{t-}}
+        =
+        e^{\Delta X_t}-1.
+    \]
+
+    Janiform models log price as
+    \[
+        X_t
+        =
+        \widetilde L^+_{A_t^+}
+        -
+        \widetilde L^-_{A_t^-}
+        +
+        M_t+G_t,
+    \]
+    or, in differential form,
+    \[
+        dX_t
+        =
+        d\widetilde L^+_{A_t^+}
+        -
+        d\widetilde L^-_{A_t^-}
+        +
+        dM_t
+        +
+        dG_t.
+    \]
+    The business-time drivers \(L^\pm\) are independent NIG L\'evy processes
+    with characteristic exponents
+    \[
+        \mathbb E\left[e^{iuL_t^\pm}\right]
+        =
+        \exp\left(t\psi_\pm(u)\right),
+        \qquad
+        \psi_\pm(u)=\psi_{\mathrm{NIG}}(u;\alpha,\beta_\pm,\delta,\mu),
+    \]
+    where
+    \[
+        \beta_+=\beta_0,
+        \qquad
+        \beta_-=\beta_0+\Delta_\beta.
+    \]
+    Their unit-business-time means are
+    \[
+        m_\pm
+        =
+        \mu+\delta\frac{\beta_\pm}{\sqrt{\alpha^2-\beta_\pm^2}},
+    \]
+    and the compensated drivers are
+    \[
+        \widetilde L_t^\pm
+        =
+        L_t^\pm-m_\pm t.
+    \]
+
+    Define the open-market clock indicator
+    \[
+        \mathcal O(t)
+        =
+        \begin{cases}
+            1, & t \text{ is open-market time},\\
+            0, & t \text{ is closed-market time}.
+        \end{cases}
+    \]
+
+    The buy and sell return clocks are
+    \begin{gather*}
+        A_t^+
+        =
+        \int_0^t \mathcal O(u)s(u)\bar\lambda Z_u\,du
+        +
+        \eta_+\int_0^t \mathcal O(u)
+        \big(Y_u^{++}+Y_u^{+-}\big)\,du,\\
+        A_t^-
+        =
+        \int_0^t \mathcal O(u)s(u)\bar\lambda Z_u\,du
+        +
+        \eta_-\int_0^t \mathcal O(u)
+        \big(Y_u^{-+}+Y_u^{--}\big)\,du.\\
+    \end{gather*}
+    Equivalently,
+    \begin{gather*}
+        dA_t^+
+        =
+        \mathcal O(t)
+        \left[
+            s(t)\bar\lambda Z_t
+        +
+            \eta_+\big(Y_t^{++}+Y_t^{+-}\big)
+        \right]dt,\\
+        dA_t^-
+        =
+        \mathcal O(t)
+        \left[
+            s(t)\bar\lambda Z_t
+        +
+            \eta_-\big(Y_t^{-+}+Y_t^{--}\big)
+        \right]dt.\\
+    \end{gather*}
+
+    Trade arrivals have intensities
+    \[
+        \lambda_t^+
+        =
+        \mathcal O(t)
+        \left(s(t)\bar\lambda+Y_t^{++}+Y_t^{+-}\right),
+        \qquad
+        \lambda_t^-
+        =
+        \mathcal O(t)
+        \left(s(t)\bar\lambda+Y_t^{-+}+Y_t^{--}\right),
+    \]
+    with Hawkes reaction state
+    \[
+        dY_t^{ij}
+        =
+        -\beta Y_t^{ij}\,dt
+        +
+        \alpha_{ij}\,dN_t^j
+        +
+        \rho_{ij}\,dJ_t,
+        \qquad i,j\in\{+,-\}.
+    \]
+
+    The long-variance state is
+    \[
+        dZ_t
+        =
+        \kappa_z(\bar z-Z_t)\,dt
+        +
+        \sigma_z\sqrt{Z_t}\,dW_t^Z
+        +
+        \chi_+\,dN_t^+
+        +
+        \chi_-\,dN_t^-,
+    \]
+    with \(\bar z\) chosen so that \(Z_t\) has unit stationary mean.
+
+    At news times \(\tau_m^c\), \(c\in\{\mathrm{known},\mathrm{surprise}\}\),
+    \begin{gather*}
+        U_m^c\sim\Gamma(k_U,1/k_U),
+        \qquad
+        Z_m^{N,c}\sim\mathcal N(0,1),\\
+        J_m^c=a_c U_m^c,
+        \qquad
+        \zeta_m^c
+        =
+        m_c U_m^c+\sigma_c\sqrt{U_m^c}Z_m^{N,c}.\\
+    \end{gather*}
+    The news activity-shock process is
+    \[
+        J_t
+        =
+        \sum_{c\in\{\mathrm{known},\mathrm{surprise}\}}
+        \sum_{\tau_m^c\le t}J_m^c.
+    \]
+    Writing \(r(\tau)\) for the first reopening time after a closed-market news
+    arrival, the open-news jump process is
+    \[
+        M_t
+        =
+        \sum_{c\in\{\mathrm{known},\mathrm{surprise}\}}
+        \sum_{\tau_m^c\le t}\mathcal O(\tau_m^c)\zeta_m^c.
+    \]
+    The closed-session reopening-gap process is
+    \[
+        G_t
+        =
+        \sum_{c\in\{\mathrm{known},\mathrm{surprise}\}}
+        \sum_{r(\tau_m^c)\le t}
+        \big(1-\mathcal O(\tau_m^c)\big)\zeta_m^c.
+    \]
+
+    \section*{Parameter families}
+
+    The model parameters are naturally grouped as
+    \begin{gather*}
+        \Theta_{\mathrm{NIG}}
+        =
+        (\alpha,\beta_0,\Delta_\beta,\delta,\mu),\\
+        \Theta_{\mathrm{trade}}
+        =
+        (\bar\lambda,s(\cdot),\beta,\alpha_{ij},\rho_{ij},\eta_+,\eta_-),\\
+        \Theta_Z
+        =
+        (\kappa_z,\sigma_z,\chi_+,\chi_-,Z_0),\\
+        \Theta_{\mathrm{news}}
+        =
+        \left(k_U,\nu^{\mathrm{known}},\nu^{\mathrm{surprise}},
+        a_c,m_c,\sigma_c\right)_{c\in\{\mathrm{known},\mathrm{surprise}\}},\\
+    \end{gather*}
+    plus the calendar defining open and closed market states.
+
+\end{document}
