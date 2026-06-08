@@ -2464,6 +2464,42 @@ def test_high_level_simulation_result_exposes_tabular_exports(
     ]
 
 
+def test_simulation_output_preferences_default_without_input_inference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import janiform._workflow_outputs as workflow_outputs_module
+
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-simulation-output-defaults",
+    )
+    model.metadata["input_inference"] = None
+
+    preferences = workflow_outputs_module.simulation_output_preferences_from_model(model)
+
+    assert preferences == workflow_outputs_module.SimulationOutputPreferences(
+        file_format="parquet",
+        timestamp_column="timestamp_utc",
+        timestamp_timezone="UTC",
+        tick_price_input_policy=None,
+        price_column="price",
+        trade_sign_column=None,
+        bid_column=None,
+        ask_column=None,
+        reference_price=100.0,
+    )
+    assert workflow_outputs_module.simulation_output_columns(preferences) == (
+        "timestamp_utc",
+        "price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor",
+    )
+
+
 def test_build_high_level_coarse_simulation_result_preserves_session_context_for_exports(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

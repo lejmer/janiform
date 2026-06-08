@@ -6,6 +6,12 @@ use crate::error::WorkflowError;
 use super::artifacts::SimulationOutputColumns;
 use super::artifacts::validation_error;
 
+const DEFAULT_SIMULATION_TIMESTAMP_COLUMN: &str = "timestamp_utc";
+const DEFAULT_SIMULATION_PRICE_COLUMN: &str = "price";
+const DEFAULT_SIMULATION_FILE_FORMAT: &str = "parquet";
+const BID_ASK_MIDPOINT_PRICE_INPUT_POLICY: &str = "bid_ask_midpoint";
+const EXPLICIT_PRICE_COLUMN_INPUT_POLICY: &str = "explicit_price_column";
+
 /// Output preferences derived from a persisted fitted-model payload.
 #[derive(Clone, Debug)]
 pub struct SimulationOutputPreferences {
@@ -25,7 +31,7 @@ pub fn simulation_output_preferences_from_model_payload(
         .get("metadata")
         .ok_or_else(|| validation_error("model_payload.metadata", "must be present"))?;
 
-    let timestamp_column = required_string(
+    let timestamp_column = optional_string(
         metadata,
         &[
             "input_inference",
@@ -33,7 +39,9 @@ pub fn simulation_output_preferences_from_model_payload(
             "timestamp_column",
         ],
         "model_payload.metadata.input_inference.tick_data_column_mapping.timestamp_column",
-    )?;
+    )?
+    .unwrap_or_else(|| DEFAULT_SIMULATION_TIMESTAMP_COLUMN.to_string());
+
     let price_column = simulation_output_price_column(metadata)?;
     let side_column = simulation_output_side_column(metadata)?;
     let reference_price = simulation_output_reference_price(metadata)?;
@@ -60,7 +68,7 @@ fn default_simulation_output_file_format(metadata: &Value) -> Result<&'static st
     match raw_file_format.as_deref() {
         Some("csv") => Ok("csv"),
         Some("parquet") => Ok("parquet"),
-        _ => Ok("parquet"),
+        _ => Ok(DEFAULT_SIMULATION_FILE_FORMAT),
     }
 }
 
@@ -75,7 +83,7 @@ fn simulation_output_price_column(metadata: &Value) -> Result<String, WorkflowEr
         "model_payload.metadata.input_inference.normalization_policy.tick_price_input_policy",
     )?;
 
-    if tick_price_input_policy.as_deref() == Some("bid_ask_midpoint") {
+    if tick_price_input_policy.as_deref() == Some(BID_ASK_MIDPOINT_PRICE_INPUT_POLICY) {
         return Ok("mid_price".to_string());
     }
 
@@ -88,7 +96,7 @@ fn simulation_output_price_column(metadata: &Value) -> Result<String, WorkflowEr
         ],
         "model_payload.metadata.input_inference.tick_data_column_mapping.price_column",
     )?
-    .unwrap_or_else(|| "price".to_string()))
+    .unwrap_or_else(|| DEFAULT_SIMULATION_PRICE_COLUMN.to_string()))
 }
 
 fn simulation_output_side_column(metadata: &Value) -> Result<Option<String>, WorkflowError> {
@@ -102,7 +110,7 @@ fn simulation_output_side_column(metadata: &Value) -> Result<Option<String>, Wor
         "model_payload.metadata.input_inference.normalization_policy.tick_price_input_policy",
     )?;
 
-    if tick_price_input_policy.as_deref() != Some("explicit_price_column") {
+    if tick_price_input_policy.as_deref() != Some(EXPLICIT_PRICE_COLUMN_INPUT_POLICY) {
         return Ok(None);
     }
 
@@ -146,26 +154,6 @@ fn simulation_output_reference_price(metadata: &Value) -> Result<f64, WorkflowEr
     Ok(reference_price)
 }
 
-fn required_string(
-    value: &Value,
-    path: &[&str],
-    field_name: &'static str,
-) -> Result<String, WorkflowError> {
-    let Some(raw_value) = nested_value(value, path) else {
-        return Err(validation_error(field_name, "must be present"));
-    };
-
-    let Some(string_value) = raw_value.as_str() else {
-        return Err(validation_error(field_name, "must be a string"));
-    };
-
-    if string_value.is_empty() {
-        return Err(validation_error(field_name, "must be non-empty"));
-    }
-
-    Ok(string_value.to_string())
-}
-
 fn optional_string(
     value: &Value,
     path: &[&str],
@@ -194,4 +182,61 @@ fn optional_string(
     }
 
     Ok(Some(string_value.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::simulation_output_preferences_from_model_payload;
+
+    #[test]
+    fn output_preferences_use_canonical_columns_without_input_inference() {
+        let preferences = simulation_output_preferences_from_model_payload(&json!({
+            "metadata": {
+                "input_inference": null,
+                "simulation_output_preferences": {
+                    "reference_price": 6563.25,
+                },
+            },
+        }))
+        .expect("missing input inference should use synthetic output defaults");
+
+        assert_eq!(preferences.output_columns.timestamp_column, "timestamp_utc");
+        assert_eq!(preferences.output_columns.price_column, "price");
+        assert_eq!(preferences.output_columns.side_column, None);
+        assert_eq!(preferences.reference_price, 6563.25);
+        assert_eq!(preferences.default_file_format, "parquet");
+    }
+
+    #[test]
+    fn output_preferences_preserve_explicit_trade_side_column() {
+        let preferences = simulation_output_preferences_from_model_payload(&json!({
+            "metadata": {
+                "input_inference": {
+                    "tick_data_source": {
+                        "file_format": "csv",
+                    },
+                    "tick_data_column_mapping": {
+                        "timestamp_column": "time",
+                        "price_column": "trade_price",
+                        "trade_sign_column": "side",
+                    },
+                    "normalization_policy": {
+                        "tick_price_input_policy": "explicit_price_column",
+                    },
+                },
+            },
+        }))
+        .expect("explicit input inference should shape simulation columns");
+
+        assert_eq!(preferences.output_columns.timestamp_column, "time");
+        assert_eq!(preferences.output_columns.price_column, "trade_price");
+        assert_eq!(
+            preferences.output_columns.side_column,
+            Some("side".to_string())
+        );
+        assert_eq!(preferences.reference_price, 1.0);
+        assert_eq!(preferences.default_file_format, "csv");
+    }
 }

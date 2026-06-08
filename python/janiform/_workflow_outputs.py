@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
+from typing import TYPE_CHECKING, Any, Final, Optional, Protocol, cast
 
 import pyarrow
 from pyarrow import parquet
@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from .model import JaniformModel
     from .simulation.coarse import CoarseSimulationPath
     from .simulation.seeded import SeededTickSimulationResponse
+
+DEFAULT_SIMULATION_FILE_FORMAT: Final[str] = "parquet"
+DEFAULT_SIMULATION_TIMESTAMP_COLUMN: Final[str] = "timestamp_utc"
+DEFAULT_SIMULATION_TIMESTAMP_TIMEZONE: Final[str] = "UTC"
+DEFAULT_SIMULATION_PRICE_COLUMN: Final[str] = "price"
 
 
 class SimulationArtifactSink(Protocol):
@@ -44,16 +49,31 @@ def generate_workflow_run_id(prefix: str) -> str:
 
 
 def simulation_output_preferences_from_model(model: JaniformModel) -> SimulationOutputPreferences:
+    reference_price = cast(
+        dict[str, Any],
+        model.metadata.get("simulation_output_preferences", {}),
+    ).get("reference_price")
+    raw_input_inference = model.metadata.get("input_inference")
+
+    if raw_input_inference is None:
+        return SimulationOutputPreferences(
+            file_format=DEFAULT_SIMULATION_FILE_FORMAT,
+            timestamp_column=DEFAULT_SIMULATION_TIMESTAMP_COLUMN,
+            timestamp_timezone=DEFAULT_SIMULATION_TIMESTAMP_TIMEZONE,
+            tick_price_input_policy=None,
+            price_column=DEFAULT_SIMULATION_PRICE_COLUMN,
+            trade_sign_column=None,
+            bid_column=None,
+            ask_column=None,
+            reference_price=1.0 if reference_price is None else reference_price,
+        )
+
     # Deferred because fitted-model runtime modules import this artifact module.
     from .calibration.fit._runtime.input_inference import (
         tick_data_input_inference_from_model_metadata,
     )
 
     input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
-    reference_price = cast(
-        dict[str, Any],
-        model.metadata.get("simulation_output_preferences", {}),
-    ).get("reference_price")
 
     return SimulationOutputPreferences(
         file_format=input_inference.file_format,
