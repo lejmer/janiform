@@ -2,7 +2,7 @@
   <title id="title">Janiform dual-face icon</title>
   <desc id="desc">Monochrome Janiform logo mark, a two-sided face with transparent exterior and preserved black interior fill.</desc>
 
-  <path id="black-silhouette" fill="#000000" d="
+  <path id="base-silhouette" fill="#000000" d="
     M 256 28
     C 366 28 421 65 442 177
     C 443 185 443 191 447 198
@@ -40,7 +40,7 @@
     C 91 40 171 28 256 28
     Z"/>
 
-  <path id="dark-interior" fill="#333333" d="
+  <path id="right-interior" fill="#333333" d="
     M 256 40
     C 365 40 406 79 428 177
     C 429 187 430 193 435 201
