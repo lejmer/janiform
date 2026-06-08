@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "janiform"
-description = "Python package and CLI for the Janiform SDE."
+description = "Python package and CLI for Janiform, a hyperrealistic high-frequency return model."
 readme = "README.md"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
@@ -28,6 +28,10 @@ test = [
 dev = [
     "janiform[test]",
     "maturin>=1.9,<2.0",
+]
+paper = [
+    "matplotlib>=3.10",
+    "scienceplots>=2.2.1",
 ]
 
 [project.scripts]
