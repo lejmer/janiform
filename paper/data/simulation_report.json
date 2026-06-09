@@ -1,0 +1,22 @@
+{
+  "diagnostics": {
+    "export": {
+      "chunk_count": 50945,
+      "record_count": 13041749
+    },
+    "native": {
+      "estimated_debug_trace_bytes": 0,
+      "estimated_event_projection_index_bytes": 151521216,
+      "estimated_fine_path_bytes": 3334514304,
+      "estimated_public_projection_index_bytes": 151568832,
+      "estimated_total_retained_bytes": 3637604352,
+      "event_count": 13041218,
+      "public_transition_count": 13041749,
+      "transition_count": 13041981
+    }
+  },
+  "primary_output_path": "C:\\Users\\anton\\source\\repos\\janiform\\paper/data/synthetic_es_continuous.parquet",
+  "schema_version": "janiform.workflow_report.v1",
+  "simulation_kind": "seeded_tick",
+  "workflow": "simulate"
+}
