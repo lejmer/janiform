@@ -27,14 +27,14 @@
     "id": "inter_arrival_distribution_empirical_market_data",
     "title": "Empirical ES continuous futures inter-arrival distribution"
   },
-  "generated_at_utc": "2026-06-09T19:16:30.249376+00:00",
+  "generated_at_utc": "2026-06-09T20:17:04.584842+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/inter_arrival_distribution.py"
+      ".\\paper\\scripts\\figures\\inter_arrival_distribution.py"
     ],
-    "git_commit": "06d68ae81ba264a2bbd9ce66f8d90c41e0699735",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "62cf3c3ef5991829e08c4d28d89d3b05830f5a75",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
   },
   "inputs": [
@@ -96,8 +96,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_distribution.pdf",
       "role": "figure",
-      "sha256": "ca2829943171ec71008bea33348f6e97d88b96c22b2569af3b1c89431faae7ec",
-      "size_bytes": 16479
+      "sha256": "8aad1698394f89fec5bda4c1db3fe61f11df8ea1ca5af25a1c273f53a4c27978",
+      "size_bytes": 16269
     }
   ],
   "parameters": {

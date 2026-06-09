@@ -27,14 +27,14 @@
     "id": "inter_arrival_distribution_synthetic_model_output",
     "title": "Janiform synthetic ES inter-arrival distribution"
   },
-  "generated_at_utc": "2026-06-09T19:16:30.624658+00:00",
+  "generated_at_utc": "2026-06-09T20:17:04.836901+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/inter_arrival_distribution.py"
+      ".\\paper\\scripts\\figures\\inter_arrival_distribution.py"
     ],
-    "git_commit": "06d68ae81ba264a2bbd9ce66f8d90c41e0699735",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "62cf3c3ef5991829e08c4d28d89d3b05830f5a75",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
   },
   "inputs": [
@@ -74,8 +74,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_distribution_synthetic.pdf",
       "role": "figure",
-      "sha256": "7d8d2432e56ec829264f5bbb86eb64e0ad2c0a22b5f3961f8a3329797e2bfa41",
-      "size_bytes": 16813
+      "sha256": "1bda94ddb69c35e4ae66ec36afe8dd4846a88554f086cc46db60f7a311df8bdf",
+      "size_bytes": 16616
     }
   ],
   "parameters": {
