@@ -27,6 +27,13 @@ from shared.es_continuous_inputs import (
 )
 from shared.figure_metadata import path_for_metadata
 from shared.figure_output import write_figure_and_metadata
+from shared.intraday_buckets import (
+    MINUTES_PER_DAY,
+    assign_grouped_values,
+    intraday_bucket_indices,
+    intraday_bucket_midpoint_hours,
+    validate_bin_minutes,
+)
 
 
 FIGURE_ID: Final[str] = "inter_arrival_intraday_profile"
@@ -38,7 +45,6 @@ DEFAULT_OUTPUT_DIR: Final[Path] = REPO_ROOT / "paper" / "assets" / "figures"
 DEFAULT_OUTPUT_PREFIX: Final[str] = FIGURE_ID
 
 DEFAULT_BIN_MINUTES: Final[int] = 60
-MINUTES_PER_DAY: Final[int] = 1440
 
 SCIENCEPLOTS_STYLE: Final[list[str]] = ["science", "no-latex"]
 
@@ -150,14 +156,6 @@ def main() -> None:
     print("Inter-arrival intraday profile figure generation complete")
 
 
-def validate_bin_minutes(bin_minutes: int) -> None:
-    if bin_minutes <= 0:
-        raise ValueError("--bin-minutes must be positive")
-
-    if MINUTES_PER_DAY % bin_minutes != 0:
-        raise ValueError("--bin-minutes must divide evenly into 1,440 minutes")
-
-
 def load_intraday_profile_dataset(
     spec: DatasetSpec,
     bin_minutes: int,
@@ -215,16 +213,6 @@ def load_intraday_profile_dataset(
     )
 
 
-def intraday_bucket_indices(timestamps: pd.Series, bin_minutes: int) -> np.ndarray:
-    minute_of_day = timestamps.dt.hour.to_numpy(dtype=np.float64) * 60.0
-    minute_of_day += timestamps.dt.minute.to_numpy(dtype=np.float64)
-    minute_of_day += timestamps.dt.second.to_numpy() / 60.0
-    minute_of_day += timestamps.dt.microsecond.to_numpy() / 60_000_000.0
-    minute_of_day += timestamps.dt.nanosecond.to_numpy() / 60_000_000_000.0
-
-    return np.floor(minute_of_day / bin_minutes).astype(np.int64)
-
-
 def build_intraday_profile(
     *,
     spec: DatasetSpec,
@@ -255,23 +243,15 @@ def build_intraday_profile(
     assign_grouped_values(lower_quartile_values, grouped_inter_arrival_seconds.quantile(0.25))
     assign_grouped_values(upper_quartile_values, grouped_inter_arrival_seconds.quantile(0.75))
 
-    bucket_start_minutes = np.arange(bucket_count, dtype=np.float64) * bin_minutes
-    bucket_midpoint_hours = (bucket_start_minutes + bin_minutes / 2.0) / 60.0
-
     return IntradayProfile(
         label=spec.label,
         color=spec.color,
-        bucket_midpoint_hours=bucket_midpoint_hours,
+        bucket_midpoint_hours=intraday_bucket_midpoint_hours(bin_minutes),
         observation_counts=observation_counts,
         median_inter_arrival_seconds=median_values,
         lower_quartile_inter_arrival_seconds=lower_quartile_values,
         upper_quartile_inter_arrival_seconds=upper_quartile_values,
     )
-
-
-def assign_grouped_values(target: np.ndarray, grouped_values: pd.Series) -> None:
-    for bucket_index, value in grouped_values.items():
-        target[int(bucket_index)] = value
 
 
 def render_single_dataset_figure(
