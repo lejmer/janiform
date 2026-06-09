@@ -241,5 +241,7 @@ data/databento*/
 *.aux
 *.fdb_latexmk
 *.fls
-*.pdf
 *.synctex.gz
+
+# Repo-PDFs that should be ignored
+design/**/*.pdf
