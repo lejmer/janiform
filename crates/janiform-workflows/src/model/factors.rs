@@ -158,7 +158,7 @@ fn hourly_seasonality_source(
         };
     }
 
-    if interval_duration_nanos < NANOS_PER_HOUR
+    if interval_duration_nanos != NANOS_PER_HOUR
         || !runtime_interval_grid_is_hour_aligned(range_start_utc, range_end_utc)
     {
         return HourlySeasonalityFactorSource::Materialized {
@@ -394,6 +394,7 @@ fn average_weekly_hour_multiplier_over_interval(
         };
 
         let segment_end_utc = next_hour_boundary_utc.min(interval_end_utc);
+
         let segment_duration_seconds = (segment_end_utc - current)
             .to_std()
             .map_err(|source| validation_error("surprise_multiplier_interval", source.to_string()))?
@@ -421,6 +422,7 @@ fn weekly_hour_bucket_index(timestamp_utc: DateTime<Utc>) -> Result<usize, Workf
                 "weekday index does not fit in usize",
             )
         })?;
+
     let hour_index = usize::try_from(timestamp_utc.hour()).map_err(|_| {
         validation_error(
             "surprise_multiplier_interval",
@@ -438,9 +440,87 @@ fn runtime_interval_grid_is_hour_aligned(
     let Some(range_start_utc_nanos) = range_start_utc.timestamp_nanos_opt() else {
         return false;
     };
+
     let Some(range_end_utc_nanos) = range_end_utc.timestamp_nanos_opt() else {
         return false;
     };
 
     range_start_utc_nanos % NANOS_PER_HOUR == 0 && range_end_utc_nanos % NANOS_PER_HOUR == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{Duration as ChronoDuration, TimeZone, Utc};
+    use janiform::model::factors::hourly::NANOS_PER_HOUR;
+    use janiform_foundations::time::NANOS_PER_DAY;
+
+    use super::hourly_seasonality_source;
+
+    #[test]
+    fn runtime_seasonality_source_materializes_non_hourly_intervals() {
+        let range_start_utc = Utc
+            .with_ymd_and_hms(2026, 3, 2, 0, 0, 0)
+            .single()
+            .expect("test timestamp should be valid");
+
+        let range_end_utc = range_start_utc + ChronoDuration::days(2);
+
+        let seasonality_grid = (
+            vec![
+                range_start_utc
+                    .timestamp_nanos_opt()
+                    .expect("test timestamp should fit in nanos"),
+                (range_start_utc + ChronoDuration::days(1))
+                    .timestamp_nanos_opt()
+                    .expect("test timestamp should fit in nanos"),
+            ],
+            vec![1.0, 1.1],
+        );
+
+        let source = hourly_seasonality_source(
+            range_start_utc,
+            range_end_utc,
+            NANOS_PER_DAY,
+            &seasonality_grid,
+        );
+
+        assert!(matches!(
+            source,
+            janiform::model::factors::hourly::HourlySeasonalityFactorSource::Materialized { .. }
+        ));
+    }
+
+    #[test]
+    fn runtime_seasonality_source_uses_explicit_source_for_hourly_aligned_grid() {
+        let range_start_utc = Utc
+            .with_ymd_and_hms(2026, 3, 2, 0, 0, 0)
+            .single()
+            .expect("test timestamp should be valid");
+
+        let range_end_utc = range_start_utc + ChronoDuration::hours(2);
+
+        let seasonality_grid = (
+            vec![
+                range_start_utc
+                    .timestamp_nanos_opt()
+                    .expect("test timestamp should fit in nanos"),
+                (range_start_utc + ChronoDuration::hours(1))
+                    .timestamp_nanos_opt()
+                    .expect("test timestamp should fit in nanos"),
+            ],
+            vec![1.0, 1.1],
+        );
+
+        let source = hourly_seasonality_source(
+            range_start_utc,
+            range_end_utc,
+            NANOS_PER_HOUR,
+            &seasonality_grid,
+        );
+
+        assert!(matches!(
+            source,
+            janiform::model::factors::hourly::HourlySeasonalityFactorSource::Explicit { .. }
+        ));
+    }
 }
