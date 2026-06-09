@@ -48,7 +48,7 @@ This document contains the help content for the `janiform` command-line program.
 
 ## `janiform`
 
-Janiform is a high-frequency return model for hyperrealistic simulation of market prices and derivative valuation.
+Janiform is a high-frequency return model for realistic simulation of market prices and derivative valuation.
 
 This command-line interface fits the model from market data, then uses fitted models for simulation, derivative valuation, reporting, and validation. Use command help for details on each task.
 

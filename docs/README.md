@@ -1,6 +1,6 @@
 # Janiform
 
-A high-frequency return model written in Rust, capable of hyperrealistic simulation of market prices and derivatives pricing. Janiform comes both as a command-line interface and an importable Python package.
+A high-frequency return model written in Rust, capable of realistic simulation of market prices and derivatives pricing. Janiform comes both as a command-line interface and an importable Python package.
 
 Start with a working installation, then build up from a plain-language overview into your first model. After that, move into the task pages when you are ready to learn more.
 

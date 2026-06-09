@@ -2,7 +2,7 @@
 
 ## What Janiform does
 
-Janiform is a hyperrealistic high-frequency return model for market prices. It is designed to model observed market behavior well enough to allow you to simulate ultra-realistic price paths, and carry the fitted structure into derivative pricing.
+Janiform is a realistic high-frequency return model for market prices. It is designed to model observed market behavior well enough to allow you to simulate ultra-realistic price paths, and carry the fitted structure into derivative pricing.
 
 Janiform uses a two-sided structure: buy-side and sell-side forces are modeled as separate but connected parts of price formation. High-frequency markets are shaped by the timing, direction, and intensity of market activity, not only by the sequence of observed price changes.
 

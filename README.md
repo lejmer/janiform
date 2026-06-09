@@ -11,7 +11,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)](https://github.com/lejmer/janiform/blob/develop/Cargo.toml)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)](https://github.com/lejmer/janiform)
 
-A high-frequency return model written in Rust, capable of hyperrealistic simulation of market prices and derivatives pricing. Janiform comes both as a command-line interface and an importable Python package.
+A high-frequency return model written in Rust, capable of realistic simulation of market prices and derivatives pricing. Janiform comes both as a command-line interface and an importable Python package.
 
 > **NOTE:** Janiform is pre-v0.1. Install it from a source checkout with the local bootstrap scripts.
 

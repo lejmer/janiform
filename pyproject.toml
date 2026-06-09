@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "janiform"
-description = "Python package and CLI for Janiform, a hyperrealistic high-frequency return model."
+description = "Python package and CLI for Janiform, a realistic high-frequency return model."
 readme = "README.md"
 license = "AGPL-3.0-only"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
