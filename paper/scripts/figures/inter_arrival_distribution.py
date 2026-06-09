@@ -6,67 +6,39 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from shared.matplotlib_environment import configure_matplotlib_runtime
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 
-from shared.matplotlib_environment import configure_matplotlib_runtime
+# Configure MPLCONFIGDIR before importing Matplotlib because home may be read-only.
+MATPLOTLIB_CONFIG_DIR: Final[Path] = configure_matplotlib_runtime(REPO_ROOT)
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import pyarrow.parquet as pq
 import scienceplots  # noqa: F401
 from matplotlib.axes import Axes
 
-from shared.figure_output import write_figure_and_metadata
-from shared.figure_metadata import (
-    file_artifact_metadata,
-    path_for_metadata,
+from shared.datasets import DatasetSpec, load_timestamp_dataset
+from shared.es_continuous_inputs import (
+    default_empirical_input_path,
+    default_synthetic_input_path,
+    es_continuous_dataset_specs,
 )
+from shared.figure_metadata import path_for_metadata
+from shared.figure_output import write_figure_and_metadata
 
-
-MATPLOTLIB_CONFIG_DIR: Final[Path] = configure_matplotlib_runtime(REPO_ROOT)
 
 FIGURE_ID: Final[str] = "inter_arrival_distribution"
 FIGURE_TITLE: Final[str] = "Inter-arrival distribution"
 
-DEFAULT_EMPIRICAL_INPUT_PATH: Final[Path] = (
-    REPO_ROOT
-    / "data"
-    / "databento-converted"
-    / "ES_FUT-TBBO"
-    / "continuous"
-    / "es_continuous.parquet"
-)
-
-DEFAULT_SYNTHETIC_INPUT_PATH: Final[Path] = (
-    REPO_ROOT
-    / "paper"
-    / "data"
-    / "synthetic_es_continuous"
-    / "synthetic_es_continuous.parquet"
-)
-
+DEFAULT_EMPIRICAL_INPUT_PATH: Final[Path] = default_empirical_input_path(REPO_ROOT)
+DEFAULT_SYNTHETIC_INPUT_PATH: Final[Path] = default_synthetic_input_path(REPO_ROOT)
 DEFAULT_OUTPUT_DIR: Final[Path] = REPO_ROOT / "paper" / "assets" / "figures"
 DEFAULT_OUTPUT_PREFIX: Final[str] = FIGURE_ID
 
 DEFAULT_LOG_BIN_COUNT: Final[int] = 80
 
-EMPIRICAL_TIMESTAMP_COLUMN: Final[str] = "event_timestamp_utc"
-SYNTHETIC_TIMESTAMP_COLUMN: Final[str] = "timestamp_utc"
-
 SCIENCEPLOTS_STYLE: Final[list[str]] = ["science", "no-latex"]
-
-
-@dataclass(frozen=True)
-class DatasetSpec:
-    label: str
-    role: str
-    input_path: Path
-    timestamp_column: str
-    dataset_family: str
-    instrument: str
-    color: str
 
 
 @dataclass(frozen=True)
@@ -136,24 +108,9 @@ def main() -> None:
     if bin_count <= 0:
         raise ValueError("--bin-count must be positive")
 
-    empirical_spec = DatasetSpec(
-        label="Empirical",
-        role="empirical_market_data",
-        input_path=arguments.empirical_input_path,
-        timestamp_column=EMPIRICAL_TIMESTAMP_COLUMN,
-        dataset_family="databento_converted",
-        instrument="ES continuous future",
-        color="#2F5D8C",
-    )
-
-    synthetic_spec = DatasetSpec(
-        label="Janiform synthetic",
-        role="synthetic_model_output",
-        input_path=arguments.synthetic_input_path,
-        timestamp_column=SYNTHETIC_TIMESTAMP_COLUMN,
-        dataset_family="janiform_synthetic",
-        instrument="ES continuous future",
-        color="#B34D4A",
+    empirical_spec, synthetic_spec = es_continuous_dataset_specs(
+        empirical_input_path=arguments.empirical_input_path,
+        synthetic_input_path=arguments.synthetic_input_path,
     )
 
     empirical_dataset = load_inter_arrival_dataset(empirical_spec)
@@ -199,36 +156,8 @@ def main() -> None:
 
 
 def load_inter_arrival_dataset(spec: DatasetSpec) -> InterArrivalDataset:
-    print(f"[{spec.label}] Reading parquet metadata: {spec.input_path}")
-
-    parquet_file = pq.ParquetFile(spec.input_path)
-    parquet_metadata = parquet_file.metadata
-
-    print(f"[{spec.label}] Loading timestamp column: {spec.timestamp_column}")
-
-    timestamp_table = pq.read_table(spec.input_path, columns=[spec.timestamp_column])
-    timestamp_series = timestamp_table.column(spec.timestamp_column).to_pandas()
-
-    event_count = len(timestamp_series)
-
-    print(f"[{spec.label}] Loaded {event_count:,} event timestamps")
-
-    if event_count < 2:
-        raise ValueError(f"{spec.label} dataset must contain at least two timestamps")
-
-    print(f"[{spec.label}] Normalizing timestamps and checking order")
-
-    timestamps = pd.to_datetime(timestamp_series, utc=True)
-    timestamp_null_count = int(timestamps.isna().sum())
-    if timestamp_null_count > 0:
-        raise ValueError(
-            f"{spec.label} timestamp column contains {timestamp_null_count:,} null values"
-        )
-
-    original_timestamp_order_is_monotonic = bool(timestamps.is_monotonic_increasing)
-    if not original_timestamp_order_is_monotonic:
-        print(f"[{spec.label}] Timestamps are not monotonic, sorting before differencing")
-        timestamps = timestamps.sort_values(kind="mergesort").reset_index(drop=True)
+    timestamp_dataset = load_timestamp_dataset(spec, repository_root=REPO_ROOT)
+    timestamps = timestamp_dataset.timestamps
 
     print(f"[{spec.label}] Computing inter-arrival times")
 
@@ -254,33 +183,11 @@ def load_inter_arrival_dataset(spec: DatasetSpec) -> InterArrivalDataset:
             f"{spec.label} positive inter-arrival times must vary for log density plotting"
         )
 
-    input_metadata = file_artifact_metadata(
-        spec.input_path,
-        role=spec.role,
-        artifact_type="parquet",
-        media_type="application/vnd.apache.parquet",
-        repository_root=REPO_ROOT,
-    ) | {
-        "dataset_family": spec.dataset_family,
-        "instrument": spec.instrument,
-        "timestamp_column": spec.timestamp_column,
-        "parquet_row_count": parquet_metadata.num_rows,
-        "parquet_row_group_count": parquet_metadata.num_row_groups,
-        "parquet_columns": parquet_file.schema_arrow.names,
-        "loaded_columns": timestamp_table.schema.names,
-    }
-
-    data_summary = {
-        "label": spec.label,
-        "event_count": event_count,
-        "timestamp_null_count": timestamp_null_count,
+    data_summary = timestamp_dataset.data_summary | {
         "raw_inter_arrival_count": int(inter_arrival_ns.size),
         "positive_inter_arrival_count": int(positive_inter_arrival_ns.size),
         "zero_inter_arrival_count": zero_inter_arrival_count,
         "negative_inter_arrival_count_after_sorting": negative_inter_arrival_count,
-        "original_timestamp_order_is_monotonic": original_timestamp_order_is_monotonic,
-        "timestamp_min_utc": timestamps.iloc[0].isoformat(),
-        "timestamp_max_utc": timestamps.iloc[-1].isoformat(),
         "positive_inter_arrival_seconds": {
             "minimum": minimum_inter_arrival_seconds,
             "maximum": maximum_inter_arrival_seconds,
@@ -290,7 +197,7 @@ def load_inter_arrival_dataset(spec: DatasetSpec) -> InterArrivalDataset:
 
     return InterArrivalDataset(
         spec=spec,
-        input_metadata=input_metadata,
+        input_metadata=timestamp_dataset.input_metadata,
         data_summary=data_summary,
         positive_inter_arrival_seconds=positive_inter_arrival_seconds,
     )
