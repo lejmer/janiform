@@ -1,0 +1,109 @@
+{
+  "data_summary": {
+    "synthetic_model_output": {
+      "event_count": 13041749,
+      "label": "Janiform synthetic",
+      "move_count": 3178726,
+      "no_move_count": 9863022,
+      "no_move_profile": {
+        "empty_bucket_count": 0,
+        "maximum_bucket_no_move_frequency": 0.8109386589786293,
+        "maximum_bucket_observation_count": 1854362,
+        "minimum_bucket_no_move_frequency": 0.7306227155215649,
+        "minimum_bucket_observation_count": 71453,
+        "nonempty_bucket_count": 24
+      },
+      "original_timestamp_order_is_monotonic": true,
+      "overall_no_move_frequency": 0.7562653411183838,
+      "price_column": "price",
+      "price_comparison_count": 13041748,
+      "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.320867592+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "zero_return_no_move_frequency_synthetic_model_output",
+    "title": "Janiform synthetic ES no-move frequency"
+  },
+  "generated_at_utc": "2026-06-09T22:36:42.257280+00:00",
+  "generator": {
+    "command": [
+      "paper/scripts/figures/zero_return_no_move_frequency.py"
+    ],
+    "git_commit": "08354e2b0520692f179b66c863074f4408e87c45",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "janiform_synthetic",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "timestamp_utc",
+        "price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "timestamp_utc",
+        "price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor"
+      ],
+      "parquet_row_count": 13041749,
+      "parquet_row_group_count": 13,
+      "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
+      "role": "synthetic_model_output",
+      "size_bytes": 147778554,
+      "timestamp_column": "timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Only timestamp and observed price columns are loaded from parquet inputs.",
+    "No-move indicators use exact equality of consecutive observed prices.",
+    "Each price comparison is assigned to the UTC time of day of the later event."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/zero_return_no_move_frequency_synthetic.pdf",
+      "role": "figure",
+      "sha256": "d37097ebb8daefc90c7505ad63ec4e2751237c127f77e6775b8a09d0b2aefdfe",
+      "size_bytes": 19222
+    }
+  ],
+  "parameters": {
+    "bin_count": 24,
+    "bin_minutes": 60,
+    "bucket_assignment_policy": "price_comparison_assigned_to_later_timestamp_utc",
+    "comparison_policy": "exact_observed_price_equality",
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "profile_statistic": "no_move_count_divided_by_valid_price_comparison_count",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots"
+  },
+  "plot_summary": {
+    "curves": [
+      {
+        "label": "Janiform synthetic",
+        "nonempty_bucket_count": 24
+      }
+    ],
+    "plot_type": "intraday_no_move_frequency_profile",
+    "x_axis": "utc_time_of_day",
+    "y_axis": "no_move_frequency"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}

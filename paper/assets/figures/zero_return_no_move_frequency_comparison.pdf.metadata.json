@@ -1,0 +1,183 @@
+{
+  "data_summary": {
+    "empirical_market_data": {
+      "event_count": 13979843,
+      "label": "Empirical",
+      "move_count": 3702976,
+      "no_move_count": 10276866,
+      "no_move_profile": {
+        "empty_bucket_count": 0,
+        "maximum_bucket_no_move_frequency": 0.7903236312709665,
+        "maximum_bucket_observation_count": 1975939,
+        "minimum_bucket_no_move_frequency": 0.5508575627747043,
+        "minimum_bucket_observation_count": 75934,
+        "nonempty_bucket_count": 24
+      },
+      "original_timestamp_order_is_monotonic": true,
+      "overall_no_move_frequency": 0.7351203253942356,
+      "price_column": "trade_price",
+      "price_comparison_count": 13979842,
+      "timestamp_max_utc": "2026-04-01T23:59:52.316025957+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.041603953+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "trade_price",
+      "value_null_count": 0
+    },
+    "synthetic_model_output": {
+      "event_count": 13041749,
+      "label": "Janiform synthetic",
+      "move_count": 3178726,
+      "no_move_count": 9863022,
+      "no_move_profile": {
+        "empty_bucket_count": 0,
+        "maximum_bucket_no_move_frequency": 0.8109386589786293,
+        "maximum_bucket_observation_count": 1854362,
+        "minimum_bucket_no_move_frequency": 0.7306227155215649,
+        "minimum_bucket_observation_count": 71453,
+        "nonempty_bucket_count": 24
+      },
+      "original_timestamp_order_is_monotonic": true,
+      "overall_no_move_frequency": 0.7562653411183838,
+      "price_column": "price",
+      "price_comparison_count": 13041748,
+      "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.320867592+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "zero_return_no_move_frequency_comparison",
+    "title": "Empirical vs Janiform synthetic no-move frequency"
+  },
+  "generated_at_utc": "2026-06-09T22:36:42.474737+00:00",
+  "generator": {
+    "command": [
+      "paper/scripts/figures/zero_return_no_move_frequency.py"
+    ],
+    "git_commit": "08354e2b0520692f179b66c863074f4408e87c45",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "databento_converted",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "event_timestamp_utc",
+        "trade_price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "event_timestamp_utc",
+        "receive_timestamp_utc",
+        "trade_price",
+        "trade_size",
+        "trade_sign",
+        "bid_price",
+        "ask_price",
+        "bid_size",
+        "ask_size",
+        "bid_order_count",
+        "ask_order_count",
+        "instrument_id",
+        "publisher_id",
+        "sequence",
+        "flags",
+        "ts_in_delta",
+        "raw_symbol",
+        "source_file",
+        "source_date_utc",
+        "active_contract_symbol",
+        "is_roll_boundary_source_date",
+        "roll_adjustment_increment",
+        "cumulative_additive_back_adjustment",
+        "continuous_series_id",
+        "source_contract_symbol",
+        "raw_trade_price",
+        "raw_bid_price",
+        "raw_ask_price"
+      ],
+      "parquet_row_count": 13979843,
+      "parquet_row_group_count": 14,
+      "path": "data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet",
+      "role": "empirical_market_data",
+      "size_bytes": 392260938,
+      "timestamp_column": "event_timestamp_utc"
+    },
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "janiform_synthetic",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "timestamp_utc",
+        "price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "timestamp_utc",
+        "price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor"
+      ],
+      "parquet_row_count": 13041749,
+      "parquet_row_group_count": 13,
+      "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
+      "role": "synthetic_model_output",
+      "size_bytes": 147778554,
+      "timestamp_column": "timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Only timestamp and observed price columns are loaded from parquet inputs.",
+    "No-move indicators use exact equality of consecutive observed prices.",
+    "Each price comparison is assigned to the UTC time of day of the later event."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/zero_return_no_move_frequency_comparison.pdf",
+      "role": "figure",
+      "sha256": "460d6a8ef549be07661d64f407700a474c50245eb19b217b5e7d9d52d7b443af",
+      "size_bytes": 19735
+    }
+  ],
+  "parameters": {
+    "bin_count": 24,
+    "bin_minutes": 60,
+    "bucket_assignment_policy": "price_comparison_assigned_to_later_timestamp_utc",
+    "comparison_policy": "exact_observed_price_equality",
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "profile_statistic": "no_move_count_divided_by_valid_price_comparison_count",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots"
+  },
+  "plot_summary": {
+    "curves": [
+      {
+        "label": "Empirical",
+        "nonempty_bucket_count": 24
+      },
+      {
+        "label": "Janiform synthetic",
+        "nonempty_bucket_count": 24
+      }
+    ],
+    "plot_type": "intraday_no_move_frequency_profile",
+    "x_axis": "utc_time_of_day",
+    "y_axis": "no_move_frequency"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}
