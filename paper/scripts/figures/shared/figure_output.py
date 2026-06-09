@@ -6,7 +6,7 @@ from typing import Any, Optional
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-from figure_metadata import (
+from .figure_metadata import (
     build_figure_metadata,
     file_artifact_metadata,
     write_metadata_json,
