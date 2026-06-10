@@ -19,6 +19,7 @@ from ....._workflow_outputs import (
     persist_seeded_tick_simulation,
     simulation_output_preferences_from_model,
     simulation_output_price_column,
+    simulation_output_side_column,
 )
 from .....calendar import CalendarRegistry
 from .....mean_reversion import MeanReversionBoundaryState
@@ -190,6 +191,11 @@ def _build_simulation_from_model_artifact_request(
     state_snapshot_capture: SeededTickEventStateSnapshotCapture,
 ) -> dict[str, Any]:
     preferences = simulation_output_preferences_from_model(model)
+    side_column = (
+        None
+        if simulation_kind == SimulationKind.COARSE_INTERVAL
+        else simulation_output_side_column(preferences)
+    )
 
     return {
         "run_id": run_id,
@@ -203,7 +209,7 @@ def _build_simulation_from_model_artifact_request(
         "output_columns": {
             "timestamp_column": preferences.timestamp_column,
             "price_column": simulation_output_price_column(preferences),
-            "side_column": _simulation_output_side_column(preferences),
+            "side_column": side_column,
         },
         "reference_price": preferences.reference_price,
         "continuation_data": (
@@ -303,13 +309,3 @@ def _interval_duration_nanos(interval: str | timedelta) -> int:
     from .....hourly_factors.workflow import _parse_interval_duration_nanos
 
     return _parse_interval_duration_nanos(interval, field_name="interval")
-
-
-def _simulation_output_side_column(preferences: Any) -> Optional[str]:
-    if (
-        preferences.tick_price_input_policy == "explicit_price_column"
-        and preferences.trade_sign_column is not None
-    ):
-        return preferences.trade_sign_column
-
-    return None

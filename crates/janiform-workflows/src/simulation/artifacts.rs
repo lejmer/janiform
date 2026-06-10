@@ -28,7 +28,7 @@ const STATE_COLUMN_NAMES: [&str; 4] = [
     "deviation_from_anchor",
 ];
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct SimulationOutputColumns {
     /// Output timestamp column name.
     pub timestamp_column: String,
@@ -36,6 +36,18 @@ pub struct SimulationOutputColumns {
     pub price_column: String,
     /// Optional output trade-side column name.
     pub side_column: Option<String>,
+}
+
+impl SimulationOutputColumns {
+    /// Return the same timestamp and price columns without a side column.
+    pub(crate) fn without_side_column(&self) -> Self {
+        // Intentional copies because export settings own their output column contract.
+        Self {
+            timestamp_column: self.timestamp_column.clone(),
+            price_column: self.price_column.clone(),
+            side_column: None,
+        }
+    }
 }
 
 /// Summary of an exported simulation artifact.
@@ -459,7 +471,25 @@ mod tests {
 
     use serde_json::{Value, json};
 
-    use super::write_model_artifact_simulation_sidecars;
+    use super::{SimulationOutputColumns, write_model_artifact_simulation_sidecars};
+
+    #[test]
+    fn output_columns_can_drop_side_column_for_coarse_exports() {
+        let columns = SimulationOutputColumns {
+            timestamp_column: "timestamp_utc".to_string(),
+            price_column: "price".to_string(),
+            side_column: Some("side".to_string()),
+        };
+
+        assert_eq!(
+            columns.without_side_column(),
+            SimulationOutputColumns {
+                timestamp_column: "timestamp_utc".to_string(),
+                price_column: "price".to_string(),
+                side_column: None,
+            }
+        );
+    }
 
     #[test]
     fn model_artifact_simulation_sidecars_record_output_and_model_context() {

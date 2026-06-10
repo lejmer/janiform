@@ -382,7 +382,7 @@ fn build_direct_job(
                     CoarseIntervalExportSettings {
                         // Intentional copies because export settings own their column
                         // and calendar contracts after request construction completes.
-                        columns: request.output_columns.clone(),
+                        columns: request.output_columns.without_side_column(),
                         calendar_registry: context.calendar_registry.clone(),
                         exchange_code: context.model.session_resolution.exchange_code.clone(),
                         reference_price: request.reference_price,
