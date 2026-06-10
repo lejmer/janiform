@@ -2,44 +2,41 @@
   "data_summary": {
     "empirical_market_data": {
       "event_count": 13979843,
-      "intraday_profile": {
+      "label": "Empirical",
+      "move_count": 3702976,
+      "no_move_count": 10276866,
+      "no_move_profile": {
         "empty_bucket_count": 0,
-        "maximum_bucket_observation_count": 1942827,
-        "median_inter_arrival_seconds": {
-          "maximum": 0.20438528,
-          "minimum": 0.000656824
-        },
-        "minimum_bucket_observation_count": 75295,
+        "maximum_bucket_no_move_frequency": 0.7903236312709665,
+        "maximum_bucket_observation_count": 1975939,
+        "minimum_bucket_no_move_frequency": 0.5508575627747043,
+        "minimum_bucket_observation_count": 75934,
         "nonempty_bucket_count": 24
       },
-      "label": "Empirical",
-      "negative_inter_arrival_count_after_sorting": 0,
       "original_timestamp_order_is_monotonic": true,
-      "positive_inter_arrival_count": 13769459,
-      "positive_inter_arrival_seconds": {
-        "maximum": 176400.163782296,
-        "minimum": 1.74e-07
-      },
-      "raw_inter_arrival_count": 13979842,
+      "overall_no_move_frequency": 0.7351203253942356,
+      "price_column": "trade_price",
+      "price_comparison_count": 13979842,
       "timestamp_max_utc": "2026-04-01T23:59:52.316025957+00:00",
       "timestamp_min_utc": "2026-03-02T00:00:00.041603953+00:00",
       "timestamp_null_count": 0,
-      "zero_inter_arrival_count": 210383
+      "value_column": "trade_price",
+      "value_null_count": 0
     }
   },
   "figure": {
-    "id": "inter_arrival_intraday_profile_empirical_market_data",
-    "title": "Empirical ES continuous futures inter-arrival intraday profile"
+    "id": "zero_return_no_move_frequency_empirical_market_data",
+    "title": "Empirical ES continuous futures no-move frequency"
   },
-  "generated_at_utc": "2026-06-09T21:48:51.703538+00:00",
+  "generated_at_utc": "2026-06-10T16:38:30.208785+00:00",
   "generator": {
     "command": [
-      ".\\paper\\scripts\\figures\\inter_arrival_intraday_profile.py"
+      "paper/scripts/figures/zero_return_no_move_frequency.py"
     ],
-    "git_commit": "198f3005a8c65a5dfc3f6671aa3cae16769a5bb2",
-    "platform": "Windows-11-10.0.26200-SP0",
-    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
-    "script_path": "paper/scripts/figures/inter_arrival_intraday_profile.py"
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
   },
   "inputs": [
     {
@@ -48,7 +45,8 @@
       "exists": true,
       "instrument": "ES continuous future",
       "loaded_columns": [
-        "event_timestamp_utc"
+        "event_timestamp_utc",
+        "trade_price"
       ],
       "media_type": "application/vnd.apache.parquet",
       "parquet_columns": [
@@ -90,34 +88,33 @@
     }
   ],
   "notes": [
-    "Only timestamp columns are loaded from parquet inputs.",
-    "Inter-arrival times are assigned to the UTC time of day of the later event.",
-    "Zero timestamp deltas cannot be displayed on log-y profile plots."
+    "Only timestamp and observed price columns are loaded from parquet inputs.",
+    "No-move indicators use exact equality of consecutive observed prices.",
+    "Each price comparison is assigned to the UTC time of day of the later event."
   ],
   "outputs": [
     {
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/inter_arrival_intraday_profile.pdf",
+      "path": "paper/assets/figures/zero_return_no_move_frequency/zero_return_no_move_frequency.pdf",
       "role": "figure",
-      "sha256": "6e8400ef1e96a29a2a90decf11a6b5f54d8adc2b75940c50aa74adef99b45969",
-      "size_bytes": 19389
+      "sha256": "fef57bd1fee31867701af7720332ae5e45490048cfe24e70ff03bf306657928c",
+      "size_bytes": 19205
     }
   ],
   "parameters": {
     "bin_count": 24,
     "bin_minutes": 60,
-    "bucket_assignment_policy": "positive_inter_arrival_assigned_to_later_timestamp_utc",
+    "bucket_assignment_policy": "price_comparison_assigned_to_later_timestamp_utc",
+    "comparison_policy": "exact_observed_price_equality",
     "matplotlib_config_dir": "paper/build/matplotlib",
-    "profile_statistic": "median_positive_inter_arrival_seconds",
-    "quartile_band": "p25_to_p75_positive_inter_arrival_seconds",
+    "profile_statistic": "no_move_count_divided_by_valid_price_comparison_count",
     "style": [
       "science",
       "no-latex"
     ],
-    "style_provider": "scienceplots",
-    "zero_inter_arrival_policy": "excluded_from_log_profile_and_reported_in_metadata"
+    "style_provider": "scienceplots"
   },
   "plot_summary": {
     "curves": [
@@ -126,9 +123,9 @@
         "nonempty_bucket_count": 24
       }
     ],
-    "plot_type": "log_y_intraday_profile",
+    "plot_type": "intraday_no_move_frequency_profile",
     "x_axis": "utc_time_of_day",
-    "y_axis": "median_positive_inter_arrival_seconds"
+    "y_axis": "no_move_frequency"
   },
   "schema_version": "paper.figure_metadata.v1"
 }

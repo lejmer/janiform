@@ -2,19 +2,23 @@
   "data_summary": {
     "synthetic_model_output": {
       "event_count": 13041749,
+      "intraday_profile": {
+        "empty_bucket_count": 0,
+        "maximum_bucket_observation_count": 1854362,
+        "median_inter_arrival_seconds": {
+          "maximum": 0.499810213,
+          "minimum": 0.030063851
+        },
+        "minimum_bucket_observation_count": 71453,
+        "nonempty_bucket_count": 24
+      },
       "label": "Janiform synthetic",
       "negative_inter_arrival_count_after_sorting": 0,
       "original_timestamp_order_is_monotonic": true,
       "positive_inter_arrival_count": 13041748,
       "positive_inter_arrival_seconds": {
         "maximum": 176400.190688463,
-        "minimum": 1e-09,
-        "quantiles": {
-          "p50": 0.052873291,
-          "p90": 0.3006914651,
-          "p95": 0.5406962131999994,
-          "p99": 1.501441559619995
-        }
+        "minimum": 1e-09
       },
       "raw_inter_arrival_count": 13041748,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
@@ -24,18 +28,18 @@
     }
   },
   "figure": {
-    "id": "inter_arrival_distribution_synthetic_model_output",
-    "title": "Janiform synthetic ES inter-arrival distribution"
+    "id": "inter_arrival_intraday_profile_synthetic_model_output",
+    "title": "Janiform synthetic ES inter-arrival intraday profile"
   },
-  "generated_at_utc": "2026-06-09T20:17:04.836901+00:00",
+  "generated_at_utc": "2026-06-10T16:38:05.881663+00:00",
   "generator": {
     "command": [
-      ".\\paper\\scripts\\figures\\inter_arrival_distribution.py"
+      "paper/scripts/figures/inter_arrival_intraday_profile.py"
     ],
-    "git_commit": "62cf3c3ef5991829e08c4d28d89d3b05830f5a75",
-    "platform": "Windows-11-10.0.26200-SP0",
-    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
-    "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/inter_arrival_intraday_profile.py"
   },
   "inputs": [
     {
@@ -65,41 +69,44 @@
   ],
   "notes": [
     "Only timestamp columns are loaded from parquet inputs.",
-    "Zero timestamp deltas cannot be displayed on log-x density plots."
+    "Inter-arrival times are assigned to the UTC time of day of the later event.",
+    "Zero timestamp deltas cannot be displayed on log-y profile plots."
   ],
   "outputs": [
     {
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/inter_arrival_distribution_synthetic.pdf",
+      "path": "paper/assets/figures/inter_arrival_intraday_profile/inter_arrival_intraday_profile_synthetic.pdf",
       "role": "figure",
-      "sha256": "1bda94ddb69c35e4ae66ec36afe8dd4846a88554f086cc46db60f7a311df8bdf",
-      "size_bytes": 16616
+      "sha256": "1b808d29568592694a0e4588323946c2b90b2274311dd2abf989c02eae0a70ea",
+      "size_bytes": 19459
     }
   ],
   "parameters": {
-    "bin_count": 80,
-    "binning_policy": "shared_log_spaced_from_positive_data_minimum_to_positive_data_maximum",
-    "density_policy": "numpy_histogram_density_plotted_at_geometric_bin_centers",
+    "bin_count": 24,
+    "bin_minutes": 60,
+    "bucket_assignment_policy": "positive_inter_arrival_assigned_to_later_timestamp_utc",
     "matplotlib_config_dir": "paper/build/matplotlib",
+    "profile_statistic": "median_positive_inter_arrival_seconds",
+    "quartile_band": "p25_to_p75_positive_inter_arrival_seconds",
     "style": [
       "science",
       "no-latex"
     ],
     "style_provider": "scienceplots",
-    "zero_inter_arrival_policy": "excluded_from_log_density_and_reported_in_metadata"
+    "zero_inter_arrival_policy": "excluded_from_log_profile_and_reported_in_metadata"
   },
   "plot_summary": {
     "curves": [
       {
         "label": "Janiform synthetic",
-        "nonzero_density_bin_count": 60
+        "nonempty_bucket_count": 24
       }
     ],
-    "plot_type": "log_log_density_curve",
-    "x_axis": "positive_event_inter_arrival_seconds",
-    "y_axis": "density"
+    "plot_type": "log_y_intraday_profile",
+    "x_axis": "utc_time_of_day",
+    "y_axis": "median_positive_inter_arrival_seconds"
   },
   "schema_version": "paper.figure_metadata.v1"
 }

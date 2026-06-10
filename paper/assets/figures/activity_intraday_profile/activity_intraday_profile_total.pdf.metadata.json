@@ -1,42 +1,62 @@
 {
   "data_summary": {
     "empirical_market_data": {
+      "activity_profiles": {
+        "buy_side": {
+          "activity_side": "buy_side",
+          "empty_bucket_count": 0,
+          "maximum_bucket_activity_count": 248236,
+          "minimum_bucket_activity_count": 9488,
+          "nonempty_bucket_count": 24,
+          "total_activity_count": 1851810
+        },
+        "sell_side": {
+          "activity_side": "sell_side",
+          "empty_bucket_count": 0,
+          "maximum_bucket_activity_count": 247647,
+          "minimum_bucket_activity_count": 9549,
+          "nonempty_bucket_count": 24,
+          "total_activity_count": 1851166
+        },
+        "total": {
+          "activity_side": "total",
+          "empty_bucket_count": 0,
+          "maximum_bucket_activity_count": 1975939,
+          "minimum_bucket_activity_count": 75934,
+          "nonempty_bucket_count": 24,
+          "total_activity_count": 13979843
+        }
+      },
+      "buy_side_tick_count": 1851810,
       "event_count": 13979843,
       "label": "Empirical",
-      "move_count": 3702976,
-      "no_move_count": 10276866,
-      "no_move_profile": {
-        "empty_bucket_count": 0,
-        "maximum_bucket_no_move_frequency": 0.7903236312709665,
-        "maximum_bucket_observation_count": 1975939,
-        "minimum_bucket_no_move_frequency": 0.5508575627747043,
-        "minimum_bucket_observation_count": 75934,
-        "nonempty_bucket_count": 24
-      },
+      "no_move_tick_count": 10276866,
       "original_timestamp_order_is_monotonic": true,
-      "overall_no_move_frequency": 0.7351203253942356,
       "price_column": "trade_price",
-      "price_comparison_count": 13979842,
+      "sell_side_tick_count": 1851166,
+      "side_comparison_count": 13979842,
+      "side_proxy_policy": "observed_price_direction",
       "timestamp_max_utc": "2026-04-01T23:59:52.316025957+00:00",
       "timestamp_min_utc": "2026-03-02T00:00:00.041603953+00:00",
       "timestamp_null_count": 0,
+      "total_tick_count": 13979843,
       "value_column": "trade_price",
       "value_null_count": 0
     }
   },
   "figure": {
-    "id": "zero_return_no_move_frequency_empirical_market_data",
-    "title": "Empirical ES continuous futures no-move frequency"
+    "id": "activity_intraday_profile_total_empirical_market_data",
+    "title": "Empirical ES continuous futures total activity intraday profile"
   },
-  "generated_at_utc": "2026-06-09T22:36:42.042379+00:00",
+  "generated_at_utc": "2026-06-10T16:38:57.102024+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/zero_return_no_move_frequency.py"
+      "paper/scripts/figures/activity_intraday_profile.py"
     ],
-    "git_commit": "08354e2b0520692f179b66c863074f4408e87c45",
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
     "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
-    "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
+    "script_path": "paper/scripts/figures/activity_intraday_profile.py"
   },
   "inputs": [
     {
@@ -89,43 +109,48 @@
   ],
   "notes": [
     "Only timestamp and observed price columns are loaded from parquet inputs.",
-    "No-move indicators use exact equality of consecutive observed prices.",
-    "Each price comparison is assigned to the UTC time of day of the later event."
+    "Buy-side and sell-side activity use observed price direction as a side proxy.",
+    "Unchanged observed prices contribute to total activity but not to either side."
   ],
   "outputs": [
     {
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/zero_return_no_move_frequency.pdf",
+      "path": "paper/assets/figures/activity_intraday_profile/activity_intraday_profile_total.pdf",
       "role": "figure",
-      "sha256": "388cbd91c636cb4b49494cb17a1559ea82ba027c1cd5797ed7ceec460f51ff15",
-      "size_bytes": 19205
+      "sha256": "5e0c08ff7e51a7f271aa232195f3db666cc9b05be078ae4c23a25130745f3aaf",
+      "size_bytes": 21284
     }
   ],
   "parameters": {
+    "activity_side": "total",
+    "activity_statistic": "raw_tick_count_per_utc_time_of_day_bucket",
     "bin_count": 24,
     "bin_minutes": 60,
-    "bucket_assignment_policy": "price_comparison_assigned_to_later_timestamp_utc",
-    "comparison_policy": "exact_observed_price_equality",
+    "buy_side_policy": "current_observed_price_greater_than_previous_observed_price",
     "matplotlib_config_dir": "paper/build/matplotlib",
-    "profile_statistic": "no_move_count_divided_by_valid_price_comparison_count",
+    "sell_side_policy": "current_observed_price_less_than_previous_observed_price",
+    "side_proxy_policy": "observed_price_direction",
     "style": [
       "science",
       "no-latex"
     ],
-    "style_provider": "scienceplots"
+    "style_provider": "scienceplots",
+    "total_activity_policy": "all_observed_ticks_by_timestamp_bucket"
   },
   "plot_summary": {
     "curves": [
       {
+        "activity_side": "total",
         "label": "Empirical",
-        "nonempty_bucket_count": 24
+        "maximum_bucket_activity_count": 1975939,
+        "total_activity_count": 13979843
       }
     ],
-    "plot_type": "intraday_no_move_frequency_profile",
+    "plot_type": "intraday_activity_count_profile",
     "x_axis": "utc_time_of_day",
-    "y_axis": "no_move_frequency"
+    "y_axis": "tick_count"
   },
   "schema_version": "paper.figure_metadata.v1"
 }

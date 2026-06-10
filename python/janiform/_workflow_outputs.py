@@ -22,6 +22,7 @@ DEFAULT_SIMULATION_FILE_FORMAT: Final[str] = "parquet"
 DEFAULT_SIMULATION_TIMESTAMP_COLUMN: Final[str] = "timestamp_utc"
 DEFAULT_SIMULATION_TIMESTAMP_TIMEZONE: Final[str] = "UTC"
 DEFAULT_SIMULATION_PRICE_COLUMN: Final[str] = "price"
+DEFAULT_SIMULATION_SIDE_COLUMN: Final[str] = "side"
 
 
 class SimulationArtifactSink(Protocol):
@@ -96,13 +97,18 @@ def simulation_output_price_column(preferences: SimulationOutputPreferences) -> 
             return preferences.price_column or "price"
 
 
-def simulation_output_columns(preferences: SimulationOutputPreferences) -> tuple[str, ...]:
+def simulation_output_side_column(preferences: SimulationOutputPreferences) -> str:
+    return preferences.trade_sign_column or DEFAULT_SIMULATION_SIDE_COLUMN
+
+
+def simulation_output_columns(
+    preferences: SimulationOutputPreferences,
+    *,
+    include_side: bool = True,
+) -> tuple[str, ...]:
     columns = [preferences.timestamp_column, simulation_output_price_column(preferences)]
-    if (
-        preferences.tick_price_input_policy == "explicit_price_column"
-        and preferences.trade_sign_column is not None
-    ):
-        columns.append(preferences.trade_sign_column)
+    if include_side:
+        columns.append(simulation_output_side_column(preferences))
 
     columns.extend(
         (
@@ -116,16 +122,6 @@ def simulation_output_columns(preferences: SimulationOutputPreferences) -> tuple
     return tuple(columns)
 
 
-def _simulation_output_side_column(preferences: SimulationOutputPreferences) -> Optional[str]:
-    if (
-        preferences.tick_price_input_policy == "explicit_price_column"
-        and preferences.trade_sign_column is not None
-    ):
-        return preferences.trade_sign_column
-
-    return None
-
-
 def persist_seeded_tick_simulation(
     *,
     simulation_result: SeededTickSimulationResponse,
@@ -136,6 +132,7 @@ def persist_seeded_tick_simulation(
     from .simulation.seeded import SeededTickSimulationResponse
 
     resolved_output_path = Path(output_path)
+    side_column = simulation_output_side_column(preferences)
     if sink is None:
         native_result = (
             simulation_result._native_result
@@ -149,7 +146,7 @@ def persist_seeded_tick_simulation(
                 preferences.reference_price,
                 preferences.timestamp_column,
                 simulation_output_price_column(preferences),
-                _simulation_output_side_column(preferences),
+                side_column,
             )
 
             return
@@ -177,6 +174,7 @@ def persist_seeded_tick_simulation(
                 pressure_state=record.pressure_state,
                 deviation_from_anchor=record.deviation_from_anchor,
                 preferences=preferences,
+                side_column=side_column,
             )
 
             record_batch.append(output_row)
@@ -222,7 +220,7 @@ def persist_coarse_simulation(
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
-        columns=simulation_output_columns(preferences),
+        columns=simulation_output_columns(preferences, include_side=False),
     )
 
     try:
@@ -250,6 +248,7 @@ def persist_coarse_simulation(
                     pressure_state=record.pressure_state_end,
                     deviation_from_anchor=record.deviation_from_anchor_end,
                     preferences=preferences,
+                    side_column=None,
                 )
             )
             if len(record_batch) >= 256:
@@ -302,17 +301,15 @@ def _seeded_tick_output_row(
     pressure_state: float,
     deviation_from_anchor: float,
     preferences: SimulationOutputPreferences,
+    side_column: Optional[str],
 ) -> dict[str, Any]:
     output_row: dict[str, Any] = {
         timestamp_column: timestamp_value,
         simulation_output_price_column(preferences): price_value,
     }
 
-    if (
-        preferences.tick_price_input_policy == "explicit_price_column"
-        and preferences.trade_sign_column is not None
-    ):
-        output_row[preferences.trade_sign_column] = side_value
+    if side_column is not None:
+        output_row[side_column] = side_value
 
     output_row["observed_log_price"] = observed_log_price
     output_row["anchor_value"] = anchor_value
@@ -423,4 +420,5 @@ __all__ = [
     "simulation_output_columns",
     "simulation_output_price_column",
     "simulation_output_preferences_from_model",
+    "simulation_output_side_column",
 ]

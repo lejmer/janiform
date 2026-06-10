@@ -28,12 +28,12 @@
     "id": "zero_return_no_move_frequency_synthetic_model_output",
     "title": "Janiform synthetic ES no-move frequency"
   },
-  "generated_at_utc": "2026-06-09T22:36:42.257280+00:00",
+  "generated_at_utc": "2026-06-10T16:38:30.411599+00:00",
   "generator": {
     "command": [
       "paper/scripts/figures/zero_return_no_move_frequency.py"
     ],
-    "git_commit": "08354e2b0520692f179b66c863074f4408e87c45",
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
     "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
     "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
@@ -75,9 +75,9 @@
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/zero_return_no_move_frequency_synthetic.pdf",
+      "path": "paper/assets/figures/zero_return_no_move_frequency/zero_return_no_move_frequency_synthetic.pdf",
       "role": "figure",
-      "sha256": "d37097ebb8daefc90c7505ad63ec4e2751237c127f77e6775b8a09d0b2aefdfe",
+      "sha256": "bf048cbc5c8ed0e20e284424b0ad981fdbdce562294bf6e7a1d3eb228488ab70",
       "size_bytes": 19222
     }
   ],

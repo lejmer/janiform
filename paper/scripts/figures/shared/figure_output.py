@@ -13,6 +13,16 @@ from .figure_metadata import (
 )
 
 
+def script_figure_output_dir(*, output_root: Path, script_path: Path) -> Path:
+    output_dir = output_root / script_path.stem
+
+    print(f"Using figure output directory: {output_dir}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    return output_dir
+
+
 def write_figure_and_metadata(
     *,
     figure: Figure,

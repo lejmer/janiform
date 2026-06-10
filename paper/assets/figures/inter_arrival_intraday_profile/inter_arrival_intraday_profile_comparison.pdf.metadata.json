@@ -57,14 +57,14 @@
     "id": "inter_arrival_intraday_profile_comparison",
     "title": "Empirical vs Janiform synthetic inter-arrival intraday profile"
   },
-  "generated_at_utc": "2026-06-09T21:48:52.170141+00:00",
+  "generated_at_utc": "2026-06-10T16:38:06.163867+00:00",
   "generator": {
     "command": [
-      ".\\paper\\scripts\\figures\\inter_arrival_intraday_profile.py"
+      "paper/scripts/figures/inter_arrival_intraday_profile.py"
     ],
-    "git_commit": "198f3005a8c65a5dfc3f6671aa3cae16769a5bb2",
-    "platform": "Windows-11-10.0.26200-SP0",
-    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
     "script_path": "paper/scripts/figures/inter_arrival_intraday_profile.py"
   },
   "inputs": [
@@ -149,10 +149,10 @@
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/inter_arrival_intraday_profile_comparison.pdf",
+      "path": "paper/assets/figures/inter_arrival_intraday_profile/inter_arrival_intraday_profile_comparison.pdf",
       "role": "figure",
-      "sha256": "b703e1a6fe2332bc005d01a0708ae12dd4e7c5d3937ed885e5a6485a75e449c6",
-      "size_bytes": 18851
+      "sha256": "0ab23b7f9a4ba2754fbd61888735c1286277bb78634eb76f0a6860eaa4ee0d8d",
+      "size_bytes": 18999
     }
   ],
   "parameters": {

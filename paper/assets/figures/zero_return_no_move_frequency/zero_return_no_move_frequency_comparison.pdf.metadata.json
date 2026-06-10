@@ -51,12 +51,12 @@
     "id": "zero_return_no_move_frequency_comparison",
     "title": "Empirical vs Janiform synthetic no-move frequency"
   },
-  "generated_at_utc": "2026-06-09T22:36:42.474737+00:00",
+  "generated_at_utc": "2026-06-10T16:38:30.613429+00:00",
   "generator": {
     "command": [
       "paper/scripts/figures/zero_return_no_move_frequency.py"
     ],
-    "git_commit": "08354e2b0520692f179b66c863074f4408e87c45",
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
     "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
     "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
@@ -145,9 +145,9 @@
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/zero_return_no_move_frequency_comparison.pdf",
+      "path": "paper/assets/figures/zero_return_no_move_frequency/zero_return_no_move_frequency_comparison.pdf",
       "role": "figure",
-      "sha256": "460d6a8ef549be07661d64f407700a474c50245eb19b217b5e7d9d52d7b443af",
+      "sha256": "8c1de95c293262fd63413bb3d018eec0210c83479133b865f3691cd598dbec5d",
       "size_bytes": 19735
     }
   ],

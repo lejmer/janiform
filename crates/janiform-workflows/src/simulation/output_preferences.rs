@@ -8,9 +8,9 @@ use super::artifacts::validation_error;
 
 const DEFAULT_SIMULATION_TIMESTAMP_COLUMN: &str = "timestamp_utc";
 const DEFAULT_SIMULATION_PRICE_COLUMN: &str = "price";
+const DEFAULT_SIMULATION_SIDE_COLUMN: &str = "side";
 const DEFAULT_SIMULATION_FILE_FORMAT: &str = "parquet";
 const BID_ASK_MIDPOINT_PRICE_INPUT_POLICY: &str = "bid_ask_midpoint";
-const EXPLICIT_PRICE_COLUMN_INPUT_POLICY: &str = "explicit_price_column";
 
 /// Output preferences derived from a persisted fitted-model payload.
 #[derive(Clone, Debug)]
@@ -100,21 +100,7 @@ fn simulation_output_price_column(metadata: &Value) -> Result<String, WorkflowEr
 }
 
 fn simulation_output_side_column(metadata: &Value) -> Result<Option<String>, WorkflowError> {
-    let tick_price_input_policy = optional_string(
-        metadata,
-        &[
-            "input_inference",
-            "normalization_policy",
-            "tick_price_input_policy",
-        ],
-        "model_payload.metadata.input_inference.normalization_policy.tick_price_input_policy",
-    )?;
-
-    if tick_price_input_policy.as_deref() != Some(EXPLICIT_PRICE_COLUMN_INPUT_POLICY) {
-        return Ok(None);
-    }
-
-    optional_string(
+    let side_column = optional_string(
         metadata,
         &[
             "input_inference",
@@ -122,7 +108,11 @@ fn simulation_output_side_column(metadata: &Value) -> Result<Option<String>, Wor
             "trade_sign_column",
         ],
         "model_payload.metadata.input_inference.tick_data_column_mapping.trade_sign_column",
-    )
+    )?;
+
+    Ok(Some(side_column.unwrap_or_else(|| {
+        DEFAULT_SIMULATION_SIDE_COLUMN.to_string()
+    })))
 }
 
 fn simulation_output_reference_price(metadata: &Value) -> Result<f64, WorkflowError> {
@@ -204,7 +194,10 @@ mod tests {
 
         assert_eq!(preferences.output_columns.timestamp_column, "timestamp_utc");
         assert_eq!(preferences.output_columns.price_column, "price");
-        assert_eq!(preferences.output_columns.side_column, None);
+        assert_eq!(
+            preferences.output_columns.side_column,
+            Some("side".to_string())
+        );
         assert_eq!(preferences.reference_price, 6563.25);
         assert_eq!(preferences.default_file_format, "parquet");
     }
@@ -238,5 +231,32 @@ mod tests {
         );
         assert_eq!(preferences.reference_price, 1.0);
         assert_eq!(preferences.default_file_format, "csv");
+    }
+
+    #[test]
+    fn output_preferences_preserve_trade_side_column_for_midpoint_input() {
+        let preferences = simulation_output_preferences_from_model_payload(&json!({
+            "metadata": {
+                "input_inference": {
+                    "tick_data_column_mapping": {
+                        "timestamp_column": "time",
+                        "bid_column": "best_bid",
+                        "ask_column": "best_ask",
+                        "trade_sign_column": "aggressor_side",
+                    },
+                    "normalization_policy": {
+                        "tick_price_input_policy": "bid_ask_midpoint",
+                    },
+                },
+            },
+        }))
+        .expect("midpoint input inference should still preserve simulated side output");
+
+        assert_eq!(preferences.output_columns.timestamp_column, "time");
+        assert_eq!(preferences.output_columns.price_column, "mid_price");
+        assert_eq!(
+            preferences.output_columns.side_column,
+            Some("aggressor_side".to_string())
+        );
     }
 }

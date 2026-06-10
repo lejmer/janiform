@@ -49,14 +49,14 @@
     "id": "inter_arrival_distribution_comparison",
     "title": "Empirical vs Janiform synthetic inter-arrival distribution"
   },
-  "generated_at_utc": "2026-06-09T20:17:05.147079+00:00",
+  "generated_at_utc": "2026-06-10T16:37:39.017727+00:00",
   "generator": {
     "command": [
-      ".\\paper\\scripts\\figures\\inter_arrival_distribution.py"
+      "paper/scripts/figures/inter_arrival_distribution.py"
     ],
-    "git_commit": "62cf3c3ef5991829e08c4d28d89d3b05830f5a75",
-    "platform": "Windows-11-10.0.26200-SP0",
-    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
+    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
     "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
   },
   "inputs": [
@@ -140,10 +140,10 @@
       "artifact_type": "pdf",
       "exists": true,
       "media_type": "application/pdf",
-      "path": "paper/assets/figures/inter_arrival_distribution_comparison.pdf",
+      "path": "paper/assets/figures/inter_arrival_distribution/inter_arrival_distribution_comparison.pdf",
       "role": "figure",
-      "sha256": "48eeab4af2f0f0a9056e313e92457dccc95afeda24c466eb86acbcfb19c3a0d2",
-      "size_bytes": 17643
+      "sha256": "16fff38f7d7b2aa2ff6f56acbb34a6ea7afb000f9096e2f337273b1d9f8cc35a",
+      "size_bytes": 17876
     }
   ],
   "parameters": {

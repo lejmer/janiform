@@ -2493,11 +2493,21 @@ def test_simulation_output_preferences_default_without_input_inference(
     assert workflow_outputs_module.simulation_output_columns(preferences) == (
         "timestamp_utc",
         "price",
+        "side",
         "observed_log_price",
         "anchor_value",
         "pressure_state",
         "deviation_from_anchor",
     )
+    assert workflow_outputs_module.simulation_output_columns(preferences, include_side=False) == (
+        "timestamp_utc",
+        "price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor",
+    )
+    assert workflow_outputs_module.simulation_output_side_column(preferences) == "side"
 
 
 def test_build_high_level_coarse_simulation_result_preserves_session_context_for_exports(
@@ -2631,6 +2641,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.005, 0.03])
     assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.002, 0.01])
     assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.005, 0.02])
+    assert all("side" not in row for row in sink.rows)
 
 
 def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> None:
@@ -2703,6 +2714,62 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
     assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.04, 0.05])
     assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.01, 0.02])
     assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.06, 0.07])
+
+
+def test_persist_seeded_tick_simulation_defaults_side_column_without_trade_sign() -> None:
+    import janiform._workflow_outputs as workflow_outputs_module
+
+    class _CapturingSink:
+        def __init__(self) -> None:
+            self.rows: list[dict[str, Any]] = []
+
+        def write_records(self, records: list[dict[str, Any]]) -> None:
+            self.rows.extend(records)
+
+        def close(self) -> None:
+            return None
+
+    sink = _CapturingSink()
+    preferences = workflow_outputs_module.SimulationOutputPreferences(
+        file_format="parquet",
+        timestamp_column="timestamp_utc",
+        timestamp_timezone="UTC",
+        tick_price_input_policy="bid_ask_midpoint",
+        price_column=None,
+        trade_sign_column=None,
+        bid_column="bid",
+        ask_column="ask",
+        reference_price=1.0,
+    )
+    simulation_result = SimpleNamespace(
+        fine_path=(
+            SimpleNamespace(
+                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                observed_log_price=0.10,
+                anchor_value=0.04,
+                pressure_state=0.01,
+                deviation_from_anchor=0.06,
+                side=SeededTickEventSide.SELL,
+            ),
+        )
+    )
+
+    workflow_outputs_module.persist_seeded_tick_simulation(
+        simulation_result=simulation_result,
+        output_path=Path("simulation.parquet"),
+        preferences=preferences,
+        sink=sink,
+    )
+
+    assert [row["timestamp_utc"] for row in sink.rows] == [
+        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+    ]
+    assert [row["mid_price"] for row in sink.rows] == pytest.approx([math.exp(0.10)])
+    assert [row["side"] for row in sink.rows] == [SeededTickEventSide.SELL.value]
+    assert [row["observed_log_price"] for row in sink.rows] == pytest.approx([0.10])
+    assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.04])
+    assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.01])
+    assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.06])
 
 
 def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
