@@ -30,7 +30,7 @@ from shared.es_continuous_inputs import (
     es_continuous_dataset_specs,
 )
 from shared.figure_metadata import path_for_metadata
-from shared.figure_output import write_figure_and_metadata
+from shared.figure_output import script_figure_output_dir, write_figure_and_metadata
 from shared.intraday_buckets import (
     MINUTES_PER_DAY,
     assign_grouped_values,
@@ -114,7 +114,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     arguments = parse_args()
 
-    output_dir: Path = arguments.output_dir
+    output_dir = script_figure_output_dir(
+        output_root=arguments.output_dir,
+        script_path=Path(__file__).resolve(),
+    )
 
     output_prefix = str(arguments.output_prefix)
     bin_minutes = int(arguments.bin_minutes)
