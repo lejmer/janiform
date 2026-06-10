@@ -1,0 +1,171 @@
+{
+  "data_summary": {
+    "empirical_market_data": {
+      "event_count": 13979843,
+      "finite_return_count": 13977391,
+      "horizon": "1h",
+      "horizon_duration_nanos": 3600000000000,
+      "label": "Empirical",
+      "original_timestamp_order_is_monotonic": true,
+      "positive_price_count": 13979843,
+      "price_column": "trade_price",
+      "return_summary": {
+        "maximum": 361.2381689661248,
+        "mean": 0.4652535431048118,
+        "minimum": -155.76932632649587,
+        "quantiles": {
+          "p001": -103.00663727784709,
+          "p01": -72.71845892582007,
+          "p05": -46.08557938226454,
+          "p50": -1.1080127802109985,
+          "p95": 53.230172342981774,
+          "p99": 87.85044829421551,
+          "p999": 200.53738749416183
+        },
+        "standard_deviation": 31.308971618943488
+      },
+      "return_unit": "log_return_basis_points",
+      "source_observation_count": 13977391,
+      "timestamp_max_utc": "2026-04-01T23:59:52.316025957+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.041603953+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "trade_price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "tick_return_distributions_1h_qq_empirical_market_data",
+    "title": "Empirical ES 1h normal QQ plot"
+  },
+  "generated_at_utc": "2026-06-10T17:04:49.222227+00:00",
+  "generator": {
+    "command": [
+      "paper/scripts/figures/tick_return_distributions.py"
+    ],
+    "git_commit": "1ae190a50ed3d1f5e876a79e53c24f534ea2112a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/tick_return_distributions.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "databento_converted",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "event_timestamp_utc",
+        "trade_price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "event_timestamp_utc",
+        "receive_timestamp_utc",
+        "trade_price",
+        "trade_size",
+        "trade_sign",
+        "bid_price",
+        "ask_price",
+        "bid_size",
+        "ask_size",
+        "bid_order_count",
+        "ask_order_count",
+        "instrument_id",
+        "publisher_id",
+        "sequence",
+        "flags",
+        "ts_in_delta",
+        "raw_symbol",
+        "source_file",
+        "source_date_utc",
+        "active_contract_symbol",
+        "is_roll_boundary_source_date",
+        "roll_adjustment_increment",
+        "cumulative_additive_back_adjustment",
+        "continuous_series_id",
+        "source_contract_symbol",
+        "raw_trade_price",
+        "raw_bid_price",
+        "raw_ask_price"
+      ],
+      "parquet_row_count": 13979843,
+      "parquet_row_group_count": 14,
+      "path": "data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet",
+      "role": "empirical_market_data",
+      "size_bytes": 392260938,
+      "timestamp_column": "event_timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Tick returns are adjacent event-to-event log returns.",
+    "Clock-horizon returns use the last observed price at or before the horizon endpoint.",
+    "Histogram and KDE x-ranges use pooled empirical and synthetic return quantiles.",
+    "Single-dataset QQ plots compare against a fitted normal distribution."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_1h_qq.pdf",
+      "role": "figure",
+      "sha256": "3d1f942fa66e36689ed9dcbcfa07c53875bb49955e58866f85e3f75ee95287f3",
+      "size_bytes": 21202
+    }
+  ],
+  "parameters": {
+    "clock_horizon_return_policy": "last_observed_price_at_or_before_start_plus_horizon",
+    "horizons": [
+      {
+        "duration_nanos": null,
+        "label": "tick"
+      },
+      {
+        "duration_nanos": 1000000000,
+        "label": "1s"
+      },
+      {
+        "duration_nanos": 60000000000,
+        "label": "1m"
+      },
+      {
+        "duration_nanos": 300000000000,
+        "label": "5m"
+      },
+      {
+        "duration_nanos": 3600000000000,
+        "label": "1h"
+      },
+      {
+        "duration_nanos": 86400000000000,
+        "label": "daily"
+      }
+    ],
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "plot_tail_probability": 0.001,
+    "qq_point_count": 401,
+    "return_scale": 10000.0,
+    "return_unit": "log_return_basis_points",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots"
+  },
+  "plot_summary": {
+    "curves": [
+      {
+        "label": "Empirical",
+        "point_count": 401,
+        "x_maximum": 97.21724911285516,
+        "x_minimum": -96.28674202664554,
+        "y_maximum": 200.53738749416183,
+        "y_minimum": -103.00663727784709
+      }
+    ],
+    "plot_type": "qq_plot",
+    "x_axis": "normal_reference_quantile_basis_points",
+    "y_axis": "empirical_quantile_basis_points"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}

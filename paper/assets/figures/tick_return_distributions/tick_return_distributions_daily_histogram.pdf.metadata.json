@@ -1,0 +1,176 @@
+{
+  "data_summary": {
+    "empirical_market_data": {
+      "event_count": 13979843,
+      "finite_return_count": 13448664,
+      "horizon": "daily",
+      "horizon_duration_nanos": 86400000000000,
+      "label": "Empirical",
+      "original_timestamp_order_is_monotonic": true,
+      "positive_price_count": 13979843,
+      "price_column": "trade_price",
+      "return_summary": {
+        "maximum": 363.45967274277416,
+        "mean": -14.885650656451329,
+        "minimum": -303.2262628987503,
+        "quantiles": {
+          "p001": -252.446341423056,
+          "p01": -223.51347438402058,
+          "p05": -177.06079138765318,
+          "p50": -36.26678127119476,
+          "p95": 212.28576107601427,
+          "p99": 278.4075696336785,
+          "p999": 316.9757299482612
+        },
+        "standard_deviation": 115.57232699933921
+      },
+      "return_unit": "log_return_basis_points",
+      "source_observation_count": 13448664,
+      "timestamp_max_utc": "2026-04-01T23:59:52.316025957+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.041603953+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "trade_price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "tick_return_distributions_daily_histogram_empirical_market_data",
+    "title": "Empirical ES daily log-return distribution"
+  },
+  "generated_at_utc": "2026-06-10T17:04:53.286690+00:00",
+  "generator": {
+    "command": [
+      "paper/scripts/figures/tick_return_distributions.py"
+    ],
+    "git_commit": "1ae190a50ed3d1f5e876a79e53c24f534ea2112a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/tick_return_distributions.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "databento_converted",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "event_timestamp_utc",
+        "trade_price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "event_timestamp_utc",
+        "receive_timestamp_utc",
+        "trade_price",
+        "trade_size",
+        "trade_sign",
+        "bid_price",
+        "ask_price",
+        "bid_size",
+        "ask_size",
+        "bid_order_count",
+        "ask_order_count",
+        "instrument_id",
+        "publisher_id",
+        "sequence",
+        "flags",
+        "ts_in_delta",
+        "raw_symbol",
+        "source_file",
+        "source_date_utc",
+        "active_contract_symbol",
+        "is_roll_boundary_source_date",
+        "roll_adjustment_increment",
+        "cumulative_additive_back_adjustment",
+        "continuous_series_id",
+        "source_contract_symbol",
+        "raw_trade_price",
+        "raw_bid_price",
+        "raw_ask_price"
+      ],
+      "parquet_row_count": 13979843,
+      "parquet_row_group_count": 14,
+      "path": "data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet",
+      "role": "empirical_market_data",
+      "size_bytes": 392260938,
+      "timestamp_column": "event_timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Tick returns are adjacent event-to-event log returns.",
+    "Clock-horizon returns use the last observed price at or before the horizon endpoint.",
+    "Histogram and KDE x-ranges use pooled empirical and synthetic return quantiles.",
+    "Single-dataset QQ plots compare against a fitted normal distribution."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_daily_histogram.pdf",
+      "role": "figure",
+      "sha256": "411f89967b3094250efd37265f8e914cd0df603b29b00ce1c12790f7b43a80fe",
+      "size_bytes": 21894
+    }
+  ],
+  "parameters": {
+    "clock_horizon_return_policy": "last_observed_price_at_or_before_start_plus_horizon",
+    "histogram_bin_count": 160,
+    "horizons": [
+      {
+        "duration_nanos": null,
+        "label": "tick"
+      },
+      {
+        "duration_nanos": 1000000000,
+        "label": "1s"
+      },
+      {
+        "duration_nanos": 60000000000,
+        "label": "1m"
+      },
+      {
+        "duration_nanos": 300000000000,
+        "label": "5m"
+      },
+      {
+        "duration_nanos": 3600000000000,
+        "label": "1h"
+      },
+      {
+        "duration_nanos": 86400000000000,
+        "label": "daily"
+      }
+    ],
+    "kde_bandwidth_policy": "silverman_rule_1_06_sigma_n_to_negative_one_fifth",
+    "kde_point_count": 240,
+    "kde_policy": "gaussian_kde_approximated_from_histogram_bins",
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "plot_tail_probability": 0.001,
+    "return_scale": 10000.0,
+    "return_unit": "log_return_basis_points",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots"
+  },
+  "plot_summary": {
+    "plot_range_basis_points": {
+      "maximum": 402.13742905383043,
+      "minimum": -439.8067704906516
+    },
+    "plot_type": "histogram_with_binned_gaussian_kde",
+    "series": [
+      {
+        "label": "Empirical",
+        "lower_tail_excluded_count": 0,
+        "plotted_return_count": 13448664,
+        "upper_tail_excluded_count": 0
+      }
+    ],
+    "x_axis": "log_return_basis_points",
+    "y_axis": "density"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}

@@ -1,0 +1,149 @@
+{
+  "data_summary": {
+    "synthetic_model_output": {
+      "event_count": 13041749,
+      "finite_return_count": 13041317,
+      "horizon": "5m",
+      "horizon_duration_nanos": 300000000000,
+      "label": "Janiform synthetic",
+      "original_timestamp_order_is_monotonic": true,
+      "positive_price_count": 13041749,
+      "price_column": "price",
+      "return_summary": {
+        "maximum": 102.42147681610803,
+        "mean": -0.04701923739861266,
+        "minimum": -93.00580608638143,
+        "quantiles": {
+          "p001": -66.9584522130684,
+          "p01": -43.252360104162335,
+          "p05": -27.798667543450488,
+          "p50": 0.0,
+          "p95": 27.201624794514508,
+          "p99": 42.83540674665076,
+          "p999": 62.0774185098405
+        },
+        "standard_deviation": 16.507883387256246
+      },
+      "return_unit": "log_return_basis_points",
+      "source_observation_count": 13041317,
+      "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.320867592+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "tick_return_distributions_5m_qq_synthetic_model_output",
+    "title": "Janiform synthetic ES 5m normal QQ plot"
+  },
+  "generated_at_utc": "2026-06-10T17:04:42.178077+00:00",
+  "generator": {
+    "command": [
+      "paper/scripts/figures/tick_return_distributions.py"
+    ],
+    "git_commit": "1ae190a50ed3d1f5e876a79e53c24f534ea2112a",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/tick_return_distributions.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "janiform_synthetic",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "timestamp_utc",
+        "price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "timestamp_utc",
+        "price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor"
+      ],
+      "parquet_row_count": 13041749,
+      "parquet_row_group_count": 13,
+      "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
+      "role": "synthetic_model_output",
+      "size_bytes": 147778554,
+      "timestamp_column": "timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Tick returns are adjacent event-to-event log returns.",
+    "Clock-horizon returns use the last observed price at or before the horizon endpoint.",
+    "Histogram and KDE x-ranges use pooled empirical and synthetic return quantiles.",
+    "Single-dataset QQ plots compare against a fitted normal distribution."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_5m_qq_synthetic.pdf",
+      "role": "figure",
+      "sha256": "98cac2ff15fc242f2f5e11564af00b3520eb349c15881f9f2841afc3035908ec",
+      "size_bytes": 22448
+    }
+  ],
+  "parameters": {
+    "clock_horizon_return_policy": "last_observed_price_at_or_before_start_plus_horizon",
+    "horizons": [
+      {
+        "duration_nanos": null,
+        "label": "tick"
+      },
+      {
+        "duration_nanos": 1000000000,
+        "label": "1s"
+      },
+      {
+        "duration_nanos": 60000000000,
+        "label": "1m"
+      },
+      {
+        "duration_nanos": 300000000000,
+        "label": "5m"
+      },
+      {
+        "duration_nanos": 3600000000000,
+        "label": "1h"
+      },
+      {
+        "duration_nanos": 86400000000000,
+        "label": "daily"
+      }
+    ],
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "plot_tail_probability": 0.001,
+    "qq_point_count": 401,
+    "return_scale": 10000.0,
+    "return_unit": "log_return_basis_points",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots"
+  },
+  "plot_summary": {
+    "curves": [
+      {
+        "label": "Janiform synthetic",
+        "point_count": 401,
+        "x_maximum": 50.96617531235159,
+        "x_minimum": -51.06021378714882,
+        "y_maximum": 62.0774185098405,
+        "y_minimum": -66.9584522130684
+      }
+    ],
+    "plot_type": "qq_plot",
+    "x_axis": "normal_reference_quantile_basis_points",
+    "y_axis": "empirical_quantile_basis_points"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}
