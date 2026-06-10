@@ -1,0 +1,134 @@
+{
+  "data_summary": {
+    "synthetic_model_output": {
+      "activity_profiles": {
+        "buy_side": {
+          "activity_side": "buy_side",
+          "empty_bucket_count": 0,
+          "maximum_bucket_activity_count": 246781,
+          "minimum_bucket_activity_count": 6651,
+          "nonempty_bucket_count": 24,
+          "total_activity_count": 1571091
+        },
+        "sell_side": {
+          "activity_side": "sell_side",
+          "empty_bucket_count": 0,
+          "maximum_bucket_activity_count": 252742,
+          "minimum_bucket_activity_count": 6858,
+          "nonempty_bucket_count": 24,
+          "total_activity_count": 1607635
+        },
+        "total": {
+          "activity_side": "total",
+          "empty_bucket_count": 0,
+          "maximum_bucket_activity_count": 1854362,
+          "minimum_bucket_activity_count": 71453,
+          "nonempty_bucket_count": 24,
+          "total_activity_count": 13041749
+        }
+      },
+      "buy_side_tick_count": 1571091,
+      "event_count": 13041749,
+      "label": "Janiform synthetic",
+      "no_move_tick_count": 9863022,
+      "original_timestamp_order_is_monotonic": true,
+      "price_column": "price",
+      "sell_side_tick_count": 1607635,
+      "side_comparison_count": 13041748,
+      "side_proxy_policy": "observed_price_direction",
+      "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.320867592+00:00",
+      "timestamp_null_count": 0,
+      "total_tick_count": 13041749,
+      "value_column": "price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "activity_intraday_profile_total_synthetic_model_output",
+    "title": "Janiform synthetic ES total activity intraday profile"
+  },
+  "generated_at_utc": "2026-06-10T14:27:45.754066+00:00",
+  "generator": {
+    "command": [
+      "paper/scripts/figures/activity_intraday_profile.py"
+    ],
+    "git_commit": "e77f344abfa2e6fd5c6814e7f376e26c2c3e2134",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "script_path": "paper/scripts/figures/activity_intraday_profile.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "janiform_synthetic",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "timestamp_utc",
+        "price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "timestamp_utc",
+        "price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor"
+      ],
+      "parquet_row_count": 13041749,
+      "parquet_row_group_count": 13,
+      "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
+      "role": "synthetic_model_output",
+      "size_bytes": 147778554,
+      "timestamp_column": "timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Only timestamp and observed price columns are loaded from parquet inputs.",
+    "Buy-side and sell-side activity use observed price direction as a side proxy.",
+    "Unchanged observed prices contribute to total activity but not to either side."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/activity_intraday_profile_total_synthetic.pdf",
+      "role": "figure",
+      "sha256": "25b6b519cc76a674f6deada6639a24e3aa44ca43dde327a98a6d5e0a5911e0bb",
+      "size_bytes": 21901
+    }
+  ],
+  "parameters": {
+    "activity_side": "total",
+    "activity_statistic": "raw_tick_count_per_utc_time_of_day_bucket",
+    "bin_count": 24,
+    "bin_minutes": 60,
+    "buy_side_policy": "current_observed_price_greater_than_previous_observed_price",
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "sell_side_policy": "current_observed_price_less_than_previous_observed_price",
+    "side_proxy_policy": "observed_price_direction",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots",
+    "total_activity_policy": "all_observed_ticks_by_timestamp_bucket"
+  },
+  "plot_summary": {
+    "curves": [
+      {
+        "activity_side": "total",
+        "label": "Janiform synthetic",
+        "maximum_bucket_activity_count": 1854362,
+        "total_activity_count": 13041749
+      }
+    ],
+    "plot_type": "intraday_activity_count_profile",
+    "x_axis": "utc_time_of_day",
+    "y_axis": "tick_count"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}
