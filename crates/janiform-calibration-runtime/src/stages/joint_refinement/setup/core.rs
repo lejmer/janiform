@@ -18,7 +18,7 @@ use janiform_model_kernels::hawkes::{
     baseline_intensity_for_stationary_total_intensity,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
-use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
+use janiform_model_kernels::news::{NewsProcessConfiguration, SurpriseNewsArrivalConfiguration};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use janiform_work_scheduler::{StaticWorkPoolInput, run_static_work_pool};
@@ -75,9 +75,8 @@ use janiform_calibration_artifacts::{
 type RestartSeedCandidate = (String, Vec<f64>);
 type RestartSeedCandidateBatch = Vec<RestartSeedCandidate>;
 
-const RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID: &str = "return_scale.15m.realized_variance";
-const RETURN_SCALE_MEAN_ABSOLUTE_RETURN_15M_METRIC_ID: &str =
-    "return_scale.15m.mean_absolute_return";
+const RETURN_SCALE_REALIZED_VARIANCE_1D_METRIC_ID: &str = "return_scale.1d.realized_variance";
+const RETURN_SCALE_MEAN_ABSOLUTE_RETURN_1D_METRIC_ID: &str = "return_scale.1d.mean_absolute_return";
 const RETURN_SCALE_TICK_REALIZED_VARIANCE_METRIC_ID: &str = "return_scale.tick.realized_variance";
 const RETURN_SCALE_TICK_MEAN_ABSOLUTE_RETURN_METRIC_ID: &str =
     "return_scale.tick.mean_absolute_return";
@@ -86,13 +85,13 @@ const SENSITIVITY_REPAIR_TRUST_REGION_SCALE_COUNT: usize = JOINT_REFINEMENT_PARA
 
 const RETURN_SCALE_ALIGNMENT_METRICS: [ReturnScaleAlignmentMetric; 4] = [
     ReturnScaleAlignmentMetric {
-        metric_id: RETURN_SCALE_REALIZED_VARIANCE_15M_METRIC_ID,
-        seed_label: "realized_variance_15m",
+        metric_id: RETURN_SCALE_REALIZED_VARIANCE_1D_METRIC_ID,
+        seed_label: "realized_variance_1d",
         scale_mapping: ReturnScaleAlignmentScaleMapping::Quadratic,
     },
     ReturnScaleAlignmentMetric {
-        metric_id: RETURN_SCALE_MEAN_ABSOLUTE_RETURN_15M_METRIC_ID,
-        seed_label: "mean_absolute_return_15m",
+        metric_id: RETURN_SCALE_MEAN_ABSOLUTE_RETURN_1D_METRIC_ID,
+        seed_label: "mean_absolute_return_1d",
         scale_mapping: ReturnScaleAlignmentScaleMapping::Linear,
     },
     ReturnScaleAlignmentMetric {
@@ -272,6 +271,10 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
                 }),
             )
         } else {
+            disable_known_activity_coupling_if_known_news_channel_absent(
+                &mut news_process_configuration,
+            );
+
             if let Some(index) = context.active_parameter_layout.known_activity_scale_index {
                 news_process_configuration
                     .known_component_mark_scales
@@ -541,11 +544,16 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
     let nig_block = vec![next_index, next_index + 1, next_index + 2, next_index + 3];
     next_index += 4;
 
-    let known_activity_scale_index = (return_components_fitted_parameters
-        .news_process_configuration
-        .known_component_mark_scales
-        .activity_coupling_scale
-        > 0.0)
+    let known_news_channel_enabled = known_news_channel_is_enabled(
+        &return_components_fitted_parameters.news_process_configuration,
+    );
+
+    let known_activity_scale_index = (known_news_channel_enabled
+        && return_components_fitted_parameters
+            .news_process_configuration
+            .known_component_mark_scales
+            .activity_coupling_scale
+            > 0.0)
         .then_some(next_index);
     if known_activity_scale_index.is_some() {
         next_index += 1;
@@ -571,6 +579,7 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
             .arrivals
             .surprise
             .closed_baseline_intensity;
+
     let surprise_baseline_scale_index =
         (combined_surprise_arrival_intensity > 0.0).then_some(next_index);
     if surprise_baseline_scale_index.is_some() {
@@ -669,6 +678,26 @@ impl JointRefinementActiveParameterLayout {
             .map(|index| index + 1)
             .unwrap_or(0)
     }
+}
+
+fn disable_known_activity_coupling_if_known_news_channel_absent(
+    news_process_configuration: &mut NewsProcessConfiguration,
+) {
+    if known_news_channel_is_enabled(news_process_configuration) {
+        return;
+    }
+
+    news_process_configuration
+        .known_component_mark_scales
+        .activity_coupling_scale = 0.0;
+}
+
+fn known_news_channel_is_enabled(news_process_configuration: &NewsProcessConfiguration) -> bool {
+    !news_process_configuration
+        .arrivals
+        .known
+        .scheduled_event_timestamps_utc_nanos
+        .is_empty()
 }
 
 pub(in crate::stages::joint_refinement) struct ParameterBoundsBuildInput<'a> {
@@ -3334,8 +3363,11 @@ pub(in crate::stages::joint_refinement) fn stage_input_to_activity_input(
 mod tests {
     use super::{
         JointRefinementRestartAdmissionScreening, ScreenedRestartCandidate,
-        compare_screened_restart_candidates_by_score, select_screened_restart_candidates,
+        build_active_parameter_layout, compare_screened_restart_candidates_by_score,
+        disable_known_activity_coupling_if_known_news_channel_absent,
+        select_screened_restart_candidates,
     };
+    use crate::stages::joint_refinement::execution::test_joint_fitted_parameters;
 
     fn screened_restart_candidate(
         restart_id: &str,
@@ -3353,6 +3385,30 @@ mod tests {
             },
             source_order,
         }
+    }
+
+    #[test]
+    fn absent_known_news_channel_freezes_known_activity_coupling() {
+        let mut fitted_parameters =
+            test_joint_fitted_parameters().return_components_fitted_parameters;
+        fitted_parameters
+            .news_process_configuration
+            .known_component_mark_scales
+            .activity_coupling_scale = 0.25;
+
+        let active_parameter_layout = build_active_parameter_layout(&fitted_parameters);
+        assert_eq!(active_parameter_layout.known_activity_scale_index, None);
+
+        disable_known_activity_coupling_if_known_news_channel_absent(
+            &mut fitted_parameters.news_process_configuration,
+        );
+        assert_eq!(
+            fitted_parameters
+                .news_process_configuration
+                .known_component_mark_scales
+                .activity_coupling_scale,
+            0.0
+        );
     }
 
     #[test]

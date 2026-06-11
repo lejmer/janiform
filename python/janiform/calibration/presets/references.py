@@ -54,13 +54,16 @@ class SessionExplicitConfiguration(ContractModel):
     def __post_init__(self) -> None:
         if not self.exchange_code.strip():
             raise calibration_error("exchange_code", "must be a non-empty string")
+
         if not self.timezone_name.strip():
             raise calibration_error("timezone_name", "must be a non-empty string")
+
         if len(self.regular_session_windows) == 0:
             raise calibration_error(
                 "regular_session_windows",
                 "must contain at least one regular session window",
             )
+
         if self.exchange_name is not None and not self.exchange_name.strip():
             raise calibration_error("exchange_name", "must be non-empty when provided")
 
@@ -72,6 +75,7 @@ class SessionExplicitConfiguration(ContractModel):
             field_path="regular_session_windows",
             duplicate_message="must not contain duplicate regular session windows",
         )
+
         _validate_unique_string_keys(
             values=tuple(
                 (
@@ -99,7 +103,9 @@ class SessionExplicitConfiguration(ContractModel):
             f"{field_path}.regular_session_windows",
             calibration_error,
         )
+
         raw_recurring_closed_windows = raw_payload.get("recurring_closed_windows", ())
+
         if isinstance(raw_recurring_closed_windows, str) or not isinstance(
             raw_recurring_closed_windows,
             list | tuple,
@@ -163,8 +169,10 @@ class SessionConfigurationOverridePatch(ContractModel):
                 "override_patch",
                 "must change at least one session field",
             )
+
         if self.timezone_name is not None and not self.timezone_name.strip():
             raise calibration_error("timezone_name", "must be non-empty when provided")
+
         if self.regular_session_windows is not None and len(self.regular_session_windows) == 0:
             raise calibration_error(
                 "regular_session_windows",
@@ -244,6 +252,7 @@ class KnownNewsEvent(ContractModel):
     def __post_init__(self) -> None:
         if not self.event_id.strip():
             raise calibration_error("event_id", "must be a non-empty string")
+
         if self.event_name is not None and not self.event_name.strip():
             raise calibration_error("event_name", "must be non-empty when provided")
 
@@ -251,6 +260,7 @@ class KnownNewsEvent(ContractModel):
             values=self.tags,
             field_path="tags",
         )
+
         _validate_unique_string_keys(
             values=self.tags,
             field_path="tags",
@@ -284,6 +294,7 @@ class KnownNewsEvent(ContractModel):
             )
             for tag_index, tag in enumerate(raw_tags)
         )
+
         return KnownNewsEvent(
             event_id=require_non_empty_string(
                 raw_payload,
@@ -336,6 +347,7 @@ class KnownNewsExplicitConfiguration(ContractModel):
             f"{field_path}.events",
             calibration_error,
         )
+
         raw_calendar_timezone_name = raw_payload.get("calendar_timezone_name")
         if raw_calendar_timezone_name is not None and not isinstance(raw_calendar_timezone_name, str):
             raise calibration_error(
@@ -371,6 +383,7 @@ class KnownNewsConfigurationOverridePatch(ContractModel):
                 "override_patch",
                 "must change at least one known-news field",
             )
+
         if self.calendar_timezone_name is not None and not self.calendar_timezone_name.strip():
             raise calibration_error("calendar_timezone_name", "must be non-empty when provided")
 
@@ -381,10 +394,12 @@ class KnownNewsConfigurationOverridePatch(ContractModel):
             field_path="additional_events",
             duplicate_message="must not contain duplicate event_id values",
         )
+
         _validate_non_empty_strings(
             values=self.removed_event_ids,
             field_path="removed_event_ids",
         )
+
         _validate_unique_string_keys(
             values=self.removed_event_ids,
             field_path="removed_event_ids",
@@ -456,6 +471,7 @@ class MarketProfileColumnAliasHint(ContractModel):
     def __post_init__(self) -> None:
         if not self.canonical_name.strip():
             raise calibration_error("canonical_name", "must be a non-empty string")
+
         if len(self.aliases) == 0:
             raise calibration_error("aliases", "must contain at least one alias")
 
@@ -481,6 +497,7 @@ class MarketProfileColumnAliasHint(ContractModel):
             f"{field_path}.aliases",
             calibration_error,
         )
+
         return MarketProfileColumnAliasHint(
             canonical_name=require_non_empty_string(
                 raw_payload,
@@ -513,10 +530,12 @@ class SessionPresetReference(ContractModel):
             self.preset_name,
             field_path="preset_name",
         )
+
         _validate_optional_non_empty_string(
             self.exchange_code_hint,
             field_path="exchange_code_hint",
         )
+
         _validate_optional_non_empty_string(
             self.timezone_name_hint,
             field_path="timezone_name_hint",
@@ -529,11 +548,13 @@ class SessionPresetReference(ContractModel):
                         "registry_scope",
                         "is not allowed when usage_mode=automatic. Use usage_mode=named for preset lookups.",
                     )
+
                 if self.preset_name is not None:
                     raise calibration_error(
                         "preset_name",
                         "is not allowed when usage_mode=automatic. Remove the preset name or switch to usage_mode=named.",
                     )
+
                 if self.configuration is not None:
                     raise calibration_error(
                         "configuration",
@@ -545,16 +566,19 @@ class SessionPresetReference(ContractModel):
                         "registry_scope",
                         "is required when usage_mode=named. Choose built_in or user_registered.",
                     )
+
                 if self.preset_name is None:
                     raise calibration_error(
                         "preset_name",
                         "is required when usage_mode=named",
                     )
+
                 if self.configuration is not None:
                     raise calibration_error(
                         "configuration",
                         "cannot be combined with usage_mode=named. Use override_patch for small changes or usage_mode=explicit for full configuration.",
                     )
+
                 if self.exchange_code_hint is not None or self.timezone_name_hint is not None:
                     raise calibration_error(
                         "usage_mode",
@@ -566,21 +590,25 @@ class SessionPresetReference(ContractModel):
                         "registry_scope",
                         "is not allowed when usage_mode=explicit",
                     )
+
                 if self.preset_name is not None:
                     raise calibration_error(
                         "preset_name",
                         "is not allowed when usage_mode=explicit",
                     )
+
                 if self.configuration is None:
                     raise calibration_error(
                         "configuration",
                         "is required when usage_mode=explicit",
                     )
+
                 if self.override_patch is not None:
                     raise calibration_error(
                         "override_patch",
                         "cannot be combined with usage_mode=explicit because the explicit configuration is already the full replacement",
                     )
+
                 if self.exchange_code_hint is not None or self.timezone_name_hint is not None:
                     raise calibration_error(
                         "usage_mode",
@@ -614,10 +642,12 @@ class SessionPresetReference(ContractModel):
 
         _validate_optional_raw_string(raw_registry_scope, f"{field_path}.registry_scope")
         _validate_optional_raw_string(raw_preset_name, f"{field_path}.preset_name")
+
         _validate_optional_raw_string(
             raw_exchange_code_hint,
             f"{field_path}.exchange_code_hint",
         )
+
         _validate_optional_raw_string(
             raw_timezone_name_hint,
             f"{field_path}.timezone_name_hint",
@@ -677,8 +707,10 @@ class KnownNewsPresetReference(ContractModel):
                         "registry_scope",
                         "is required when usage_mode=named. Choose built_in or user_registered.",
                     )
+
                 if self.preset_name is None:
                     raise calibration_error("preset_name", "is required when usage_mode=named")
+
                 if self.configuration is not None:
                     raise calibration_error(
                         "configuration",
@@ -690,16 +722,19 @@ class KnownNewsPresetReference(ContractModel):
                         "registry_scope",
                         "is not allowed when usage_mode=explicit",
                     )
+
                 if self.preset_name is not None:
                     raise calibration_error(
                         "preset_name",
                         "is not allowed when usage_mode=explicit",
                     )
+
                 if self.configuration is None:
                     raise calibration_error(
                         "configuration",
                         "is required when usage_mode=explicit",
                     )
+
                 if self.override_patch is not None:
                     raise calibration_error(
                         "override_patch",
@@ -766,7 +801,6 @@ class MarketProfileExplicitConfiguration(ContractModel):
     timestamp_timezone_name: Optional[str] = None
     tick_size: Optional[float] = None
     column_alias_hints: tuple[MarketProfileColumnAliasHint, ...] = ()
-    default_calibration_hint_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.profile_name.strip():
@@ -778,15 +812,6 @@ class MarketProfileExplicitConfiguration(ContractModel):
         if self.tick_size is not None:
             require_positive_finite_scalar(self.tick_size, "tick_size", calibration_error)
 
-        _validate_non_empty_strings(
-            values=self.default_calibration_hint_ids,
-            field_path="default_calibration_hint_ids",
-        )
-        _validate_unique_string_keys(
-            values=self.default_calibration_hint_ids,
-            field_path="default_calibration_hint_ids",
-            duplicate_message="must not contain duplicate calibration hint identifiers",
-        )
         _validate_unique_string_keys(
             values=tuple(hint.canonical_name for hint in self.column_alias_hints),
             field_path="column_alias_hints",
@@ -799,8 +824,11 @@ class MarketProfileExplicitConfiguration(ContractModel):
                     "known_news_policy",
                     "apply_by_default requires a known_news_reference",
                 )
-            if self.known_news_reference.usage_mode == PresetReferenceUsageMode.NAMED:
-                if self.known_news_reference.preset_name == "none":
+
+            if (
+                self.known_news_reference.usage_mode == PresetReferenceUsageMode.NAMED
+                and self.known_news_reference.preset_name == "none"
+            ):
                     raise calibration_error(
                         "known_news_reference",
                         "cannot auto-apply the `none` known-news preset",
@@ -826,16 +854,6 @@ class MarketProfileExplicitConfiguration(ContractModel):
         if isinstance(raw_column_alias_hints, str) or not isinstance(raw_column_alias_hints, list | tuple):
             raise calibration_error(
                 f"{field_path}.column_alias_hints",
-                "must be a sequence when provided",
-            )
-
-        raw_default_calibration_hint_ids = raw_payload.get("default_calibration_hint_ids", ())
-        if isinstance(raw_default_calibration_hint_ids, str) or not isinstance(
-            raw_default_calibration_hint_ids,
-            list | tuple,
-        ):
-            raise calibration_error(
-                f"{field_path}.default_calibration_hint_ids",
                 "must be a sequence when provided",
             )
 
@@ -887,13 +905,6 @@ class MarketProfileExplicitConfiguration(ContractModel):
                 )
                 for hint_index, raw_hint in enumerate(raw_column_alias_hints)
             ),
-            default_calibration_hint_ids=tuple(
-                _require_non_empty_string_value(
-                    hint_id,
-                    f"{field_path}.default_calibration_hint_ids[{hint_index}]",
-                )
-                for hint_index, hint_id in enumerate(raw_default_calibration_hint_ids)
-            ),
         )
 
 
@@ -905,7 +916,6 @@ class MarketProfileOverridePatch(ContractModel):
     timestamp_timezone_name: Optional[str] = None
     tick_size: Optional[float] = None
     column_alias_hints: Optional[tuple[MarketProfileColumnAliasHint, ...]] = None
-    default_calibration_hint_ids: Optional[tuple[str, ...]] = None
 
     def __post_init__(self) -> None:
         if (
@@ -915,7 +925,6 @@ class MarketProfileOverridePatch(ContractModel):
             and self.timestamp_timezone_name is None
             and self.tick_size is None
             and self.column_alias_hints is None
-            and self.default_calibration_hint_ids is None
         ):
             raise calibration_error(
                 "override_patch",
@@ -939,16 +948,6 @@ class MarketProfileOverridePatch(ContractModel):
                 values=tuple(hint.canonical_name for hint in self.column_alias_hints),
                 field_path="column_alias_hints",
                 duplicate_message="must not contain duplicate canonical_name values",
-            )
-        if self.default_calibration_hint_ids is not None:
-            _validate_non_empty_strings(
-                values=self.default_calibration_hint_ids,
-                field_path="default_calibration_hint_ids",
-            )
-            _validate_unique_string_keys(
-                values=self.default_calibration_hint_ids,
-                field_path="default_calibration_hint_ids",
-                duplicate_message="must not contain duplicate calibration hint identifiers",
             )
 
     @staticmethod
@@ -974,16 +973,6 @@ class MarketProfileOverridePatch(ContractModel):
         ):
             raise calibration_error(
                 f"{field_path}.column_alias_hints",
-                "must be a sequence when provided",
-            )
-
-        raw_default_calibration_hint_ids = raw_payload.get("default_calibration_hint_ids")
-        if raw_default_calibration_hint_ids is not None and (
-            isinstance(raw_default_calibration_hint_ids, str)
-            or not isinstance(raw_default_calibration_hint_ids, list | tuple)
-        ):
-            raise calibration_error(
-                f"{field_path}.default_calibration_hint_ids",
                 "must be a sequence when provided",
             )
 
@@ -1035,17 +1024,6 @@ class MarketProfileOverridePatch(ContractModel):
                 if raw_column_alias_hints is not None
                 else None
             ),
-            default_calibration_hint_ids=(
-                tuple(
-                    _require_non_empty_string_value(
-                        hint_id,
-                        f"{field_path}.default_calibration_hint_ids[{hint_index}]",
-                    )
-                    for hint_index, hint_id in enumerate(raw_default_calibration_hint_ids)
-                )
-                if raw_default_calibration_hint_ids is not None
-                else None
-            ),
         )
 
 
@@ -1075,8 +1053,10 @@ class MarketProfileReference(ContractModel):
                         "registry_scope",
                         "is required when usage_mode=named. Choose built_in or user_registered.",
                     )
+
                 if self.preset_name is None:
                     raise calibration_error("preset_name", "is required when usage_mode=named")
+
                 if self.configuration is not None:
                     raise calibration_error(
                         "configuration",
@@ -1088,16 +1068,19 @@ class MarketProfileReference(ContractModel):
                         "registry_scope",
                         "is not allowed when usage_mode=explicit",
                     )
+
                 if self.preset_name is not None:
                     raise calibration_error(
                         "preset_name",
                         "is not allowed when usage_mode=explicit",
                     )
+
                 if self.configuration is None:
                     raise calibration_error(
                         "configuration",
                         "is required when usage_mode=explicit",
                     )
+
                 if self.override_patch is not None:
                     raise calibration_error(
                         "override_patch",

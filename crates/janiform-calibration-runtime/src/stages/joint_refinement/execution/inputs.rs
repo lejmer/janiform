@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use janiform_foundations::time::{
-    NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR,
+    NANOS_PER_DAY, NANOS_PER_FIFTEEN_MINUTES, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR,
     checked_ceil_to_hour_utc_nanos, checked_floor_to_hour_utc_nanos,
     checked_interval_count_between_utc_nanos,
 };
@@ -15,7 +15,9 @@ use crate::stages::joint_metrics::{
     sampled_return_values, scale_normalized_returns, tick_count_series,
     zeroed_interval_observation_template,
 };
-use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
+use crate::stages::long_variance::metrics::{
+    aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+};
 use crate::stages::long_variance::source::select_long_variance_slow_horizon_intervals;
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateGenerationInput,
@@ -98,6 +100,9 @@ pub(crate) fn build_observed_data(
         NANOS_PER_HOUR,
     );
 
+    let observed_1d_intervals =
+        aggregate_intervals_to_fixed_duration(tick_hourly_intervals.as_slice(), NANOS_PER_DAY);
+
     let observed_slow_horizon_selection = select_long_variance_slow_horizon_intervals(
         tick_hourly_intervals.as_slice(),
         coarse_data_records,
@@ -137,12 +142,12 @@ pub(crate) fn build_observed_data(
     let observed_15m_rv_activity_metric =
         rolling_variance_activity_metric(observed_15m_intervals.as_slice());
 
-    let observed_5m_log_returns = observed_5m_intervals
+    let observed_1h_log_returns = tick_hourly_intervals
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
 
-    let observed_15m_log_returns = observed_15m_intervals
+    let observed_1d_log_returns = observed_1d_intervals
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
@@ -158,14 +163,14 @@ pub(crate) fn build_observed_data(
         sampled_observed_tick_returns(observed_returns.as_slice(), observed_tick_sample_count);
 
     let observed_tick_shape_returns = scale_normalized_returns(observed_tick_returns.as_slice());
-    let observed_5m_shape_returns = scale_normalized_returns(observed_5m_log_returns.as_slice());
-    let observed_15m_shape_returns = scale_normalized_returns(observed_15m_log_returns.as_slice());
+    let observed_1h_shape_returns = scale_normalized_returns(observed_1h_log_returns.as_slice());
+    let observed_1d_shape_returns = scale_normalized_returns(observed_1d_log_returns.as_slice());
 
     let observed_tick_return_scale_summary =
         return_scale_summary_from_returns(observed_tick_returns.as_slice());
 
-    let observed_5m_return_scale_summary = return_scale_summary(observed_5m_intervals.as_slice());
-    let observed_15m_return_scale_summary = return_scale_summary(observed_15m_intervals.as_slice());
+    let observed_1h_return_scale_summary = return_scale_summary(tick_hourly_intervals.as_slice());
+    let observed_1d_return_scale_summary = return_scale_summary(observed_1d_intervals.as_slice());
 
     let observed_5m_business_time_bucket_thresholds = business_time_bucket_thresholds(
         observed_5m_intervals.as_slice(),
@@ -228,6 +233,9 @@ pub(crate) fn build_observed_data(
             &observed_tick_continuous_return_calibration_sample,
         );
 
+    let simulated_hourly_interval_template =
+        zeroed_interval_observation_template(tick_hourly_intervals.as_slice());
+
     Ok(JointRefinementObservedData {
         observed_open_event_rate_per_hour,
         fallback_sell_share_proxy: candidate_generation_input.open_session_sell_share_proxy,
@@ -236,13 +244,15 @@ pub(crate) fn build_observed_data(
         weighted_tick_continuous_return_optimizer_context,
         observed_5m_intervals: observed_5m_intervals.clone(),
         observed_15m_intervals: observed_15m_intervals.clone(),
+        observed_1h_intervals: tick_hourly_intervals,
+        observed_1d_intervals,
         observed_tick_intraday_mean_absolute_returns,
         observed_tick_shape_returns,
-        observed_5m_shape_returns,
-        observed_15m_shape_returns,
+        observed_1h_shape_returns,
+        observed_1d_shape_returns,
         observed_tick_return_scale_summary,
-        observed_5m_return_scale_summary,
-        observed_15m_return_scale_summary,
+        observed_1h_return_scale_summary,
+        observed_1d_return_scale_summary,
         observed_5m_business_time_bucket_thresholds,
         observed_15m_business_time_bucket_thresholds,
         observed_5m_business_time_return_scale_summaries,
@@ -265,9 +275,7 @@ pub(crate) fn build_observed_data(
         simulated_15m_interval_template: zeroed_interval_observation_template(
             observed_15m_intervals.as_slice(),
         ),
-        simulated_hourly_interval_template: zeroed_interval_observation_template(
-            tick_hourly_intervals.as_slice(),
-        ),
+        simulated_hourly_interval_template,
     })
 }
 

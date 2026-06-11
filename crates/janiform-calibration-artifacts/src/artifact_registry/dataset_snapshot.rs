@@ -32,7 +32,7 @@ pub const CALIBRATION_DATASET_SNAPSHOT_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "calibration.artifact_registry.dataset_snapshot.output_schema_metadata.v1";
 pub const CALIBRATION_DATASET_SNAPSHOT_PERSISTENCE_SCOPE_POLICY: &str =
     "artifact_required_only_for_execution_mode_disk_when_persistence_is_enabled.v1";
-pub const CALIBRATION_DATASET_SNAPSHOT_STAGE_INPUT_NAMING_POLICY: &str = "trade_events_data_reference_maps_to_seasonality_and_option_surface_data_reference_maps_to_return_components.v1";
+pub const CALIBRATION_DATASET_SNAPSHOT_STAGE_INPUT_NAMING_POLICY: &str = "trade_events_data_reference_maps_to_seasonality_coarse_data_reference_maps_to_long_variance_and_option_surface_data_reference_maps_to_return_components.v1";
 pub const CALIBRATION_DATASET_SNAPSHOT_CHECKSUM_ALGORITHM: &str = "fnv1a_64_hex_utf8.v1";
 pub const CALIBRATION_DATASET_REFERENCE_CHECKSUM_SCOPE: &str = "reference_string_utf8_bytes.v1";
 pub const CALIBRATION_DATASET_SNAPSHOT_CHECKSUM_SCOPE: &str =
@@ -102,6 +102,7 @@ pub struct CalibrationDatasetSnapshotProvenance {
 #[serde(rename_all = "snake_case")]
 pub enum CalibrationDatasetInputName {
     TradeEventsDataReference,
+    CoarseDataReference,
     OptionSurfaceDataReference,
 }
 
@@ -109,6 +110,7 @@ impl CalibrationDatasetInputName {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::TradeEventsDataReference => "trade_events_data_reference",
+            Self::CoarseDataReference => "coarse_data_reference",
             Self::OptionSurfaceDataReference => "option_surface_data_reference",
         }
     }
@@ -116,6 +118,7 @@ impl CalibrationDatasetInputName {
     pub const fn primary_stage(self) -> CalibrationStage {
         match self {
             Self::TradeEventsDataReference => CalibrationStage::Seasonality,
+            Self::CoarseDataReference => CalibrationStage::LongVariance,
             Self::OptionSurfaceDataReference => CalibrationStage::ReturnComponents,
         }
     }
@@ -155,6 +158,7 @@ impl CalibrationDatasetSnapshotArtifact {
         if self.run_id.trim().is_empty() {
             return Err(CalibrationDatasetSnapshotArtifactValidationError::EmptyRunId);
         }
+
         if self.execution_mode != CalibrationExecutionMode::Disk {
             return Err(
                 CalibrationDatasetSnapshotArtifactValidationError::UnsupportedExecutionMode {
@@ -172,21 +176,25 @@ impl CalibrationDatasetSnapshotArtifact {
             CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_FAMILY,
             self.schema_metadata.schema_family.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "schema_metadata.schema_generation",
             CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_GENERATION,
             self.schema_metadata.schema_generation.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "schema_metadata.forward_extension_policy",
             CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY,
             self.schema_metadata.forward_extension_policy.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "output_schema_metadata.schema_version",
             CALIBRATION_DATASET_SNAPSHOT_OUTPUT_SCHEMA_METADATA_VERSION,
             self.output_schema_metadata.schema_version.as_str(),
         )?;
+
         validate_exact_string_list(
             "output_schema_metadata.required_artifact_fields",
             &CALIBRATION_DATASET_SNAPSHOT_REQUIRED_ARTIFACT_FIELDS,
@@ -194,6 +202,7 @@ impl CalibrationDatasetSnapshotArtifact {
                 .required_artifact_fields
                 .as_slice(),
         )?;
+
         validate_exact_string_list(
             "output_schema_metadata.required_provenance_fields",
             &CALIBRATION_DATASET_SNAPSHOT_REQUIRED_PROVENANCE_FIELDS,
@@ -201,6 +210,7 @@ impl CalibrationDatasetSnapshotArtifact {
                 .required_provenance_fields
                 .as_slice(),
         )?;
+
         validate_exact_string_list(
             "output_schema_metadata.required_input_dataset_fields",
             &CALIBRATION_DATASET_SNAPSHOT_REQUIRED_INPUT_DATASET_FIELDS,
@@ -213,58 +223,70 @@ impl CalibrationDatasetSnapshotArtifact {
             "provenance.artifact_manifest_schema_version",
             self.provenance.artifact_manifest_schema_version.as_str(),
         )?;
+
         validate_non_empty_provenance_field(
             "provenance.run_contract_schema_version",
             self.provenance.run_contract_schema_version.as_str(),
         )?;
+
         validate_non_empty_provenance_field(
             "provenance.run_spec_schema_version",
             self.provenance.run_spec_schema_version.as_str(),
         )?;
+
         validate_non_empty_provenance_field(
             "provenance.data_inputs_schema_version",
             self.provenance.data_inputs_schema_version.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.artifact_manifest_schema_version",
             CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION,
             self.provenance.artifact_manifest_schema_version.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.run_contract_schema_version",
             CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
             self.provenance.run_contract_schema_version.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.run_spec_schema_version",
             CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
             self.provenance.run_spec_schema_version.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.data_inputs_schema_version",
             CALIBRATION_RUN_DATA_INPUTS_SCHEMA_VERSION,
             self.provenance.data_inputs_schema_version.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.execution_mode_default_policy",
             CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
             self.provenance.execution_mode_default_policy.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.persistence_scope_policy",
             CALIBRATION_DATASET_SNAPSHOT_PERSISTENCE_SCOPE_POLICY,
             self.provenance.persistence_scope_policy.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.stage_input_naming_policy",
             CALIBRATION_DATASET_SNAPSHOT_STAGE_INPUT_NAMING_POLICY,
             self.provenance.stage_input_naming_policy.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.reference_checksum_algorithm",
             CALIBRATION_DATASET_SNAPSHOT_CHECKSUM_ALGORITHM,
             self.provenance.reference_checksum_algorithm.as_str(),
         )?;
+
         validate_exact_metadata_field(
             "provenance.snapshot_checksum_algorithm",
             CALIBRATION_DATASET_SNAPSHOT_CHECKSUM_ALGORITHM,
@@ -277,6 +299,7 @@ impl CalibrationDatasetSnapshotArtifact {
 
         let mut seen_input_names = BTreeSet::new();
         let mut has_trade_events_reference = false;
+
         for input_dataset in &self.input_datasets {
             if !seen_input_names.insert(input_dataset.input_name) {
                 return Err(
@@ -420,7 +443,9 @@ impl CalibrationDatasetSnapshotArtifact {
         ];
 
         let mut input_datasets = self.input_datasets.clone();
+
         input_datasets.sort_by_key(|input_dataset| input_dataset.input_name);
+
         for input_dataset in input_datasets {
             segments.push(format!("input_name={}", input_dataset.input_name.as_str()));
             segments.push(format!(
@@ -457,6 +482,15 @@ pub fn build_calibration_dataset_snapshot_artifact(
                 .as_str(),
         ),
     }];
+
+    if let Some(coarse_data_reference) = &run_contract.run_spec.data_inputs.coarse_data_reference {
+        input_datasets.push(CalibrationDatasetInputSnapshot {
+            input_name: CalibrationDatasetInputName::CoarseDataReference,
+            primary_stage: CalibrationStage::LongVariance,
+            data_reference: coarse_data_reference.to_owned(),
+            reference_checksum: compute_reference_checksum_hex(coarse_data_reference),
+        });
+    }
 
     if let Some(option_surface_data_reference) = &run_contract
         .run_spec
@@ -534,6 +568,7 @@ pub fn calibration_dataset_snapshot_artifact_path(
 ) -> PathBuf {
     let run_directory =
         calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
+
     calibration_dataset_snapshot_artifact_path_in_run_directory(run_directory.as_path())
 }
 
@@ -548,10 +583,12 @@ pub fn persist_calibration_dataset_snapshot_artifact_to_disk(
     artifact: &CalibrationDatasetSnapshotArtifact,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
+
     let artifact_path = calibration_dataset_snapshot_artifact_path(
         persistence_root_directory,
         artifact.run_id.as_str(),
     );
+
     persist_validated_json_artifact(
         artifact_kind,
         artifact_path.as_path(),
@@ -580,6 +617,7 @@ pub fn persist_calibration_dataset_snapshot_from_run_contract_to_disk(
     run_contract: &CalibrationRunContract,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
+
     let artifact = build_calibration_dataset_snapshot_artifact(run_contract).map_err(|source| {
         CalibrationArtifactIoError::validation_failed(artifact_kind, source.to_string())
     })?;
@@ -744,6 +782,69 @@ impl Display for CalibrationDatasetSnapshotArtifactValidationError {
 }
 
 impl Error for CalibrationDatasetSnapshotArtifactValidationError {}
+
+#[cfg(test)]
+mod tests {
+    use super::{CalibrationDatasetInputName, build_calibration_dataset_snapshot_artifact};
+    use crate::contracts::{
+        CalibrationOptimizerSettings, CalibrationRunContract, CalibrationRunDataInputs,
+        CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStageGraph,
+        CalibrationStageSolverSettings,
+    };
+    use crate::{CalibrationExecutionMode, CalibrationStage};
+
+    #[test]
+    fn dataset_snapshot_includes_coarse_data_reference_when_provided() {
+        let data_inputs = CalibrationRunDataInputs::try_new(
+            "XNYS",
+            "dataset://synthetic/trades/v1",
+            Some("dataset://synthetic/coarse/v1".to_string()),
+            Some("dataset://synthetic/options/v1".to_string()),
+        )
+        .expect("data inputs should validate");
+
+        let seed_settings = CalibrationRunSeedSettings::try_new(17, Vec::new())
+            .expect("seed settings should validate");
+
+        let optimizer_settings =
+            CalibrationOptimizerSettings::try_new("fixture", 1, 1, 1.0e-6, 1.0e-6, 1.0)
+                .expect("optimizer settings should validate");
+
+        let run_spec = CalibrationRunSpec::builder(
+            "run-with-coarse",
+            data_inputs,
+            CalibrationExecutionMode::Disk,
+            vec![CalibrationStage::Seasonality],
+            seed_settings,
+            vec![CalibrationStageSolverSettings {
+                stage: CalibrationStage::Seasonality,
+                optimizer_settings,
+            }],
+        )
+        .build()
+        .expect("run spec should validate");
+
+        let run_contract =
+            CalibrationRunContract::try_new(run_spec, CalibrationStageGraph::new(Vec::new()))
+                .expect("run contract should validate");
+
+        let snapshot = build_calibration_dataset_snapshot_artifact(&run_contract)
+            .expect("dataset snapshot should build");
+
+        assert_eq!(
+            snapshot
+                .input_datasets
+                .iter()
+                .map(|input_dataset| input_dataset.input_name)
+                .collect::<Vec<_>>(),
+            vec![
+                CalibrationDatasetInputName::TradeEventsDataReference,
+                CalibrationDatasetInputName::CoarseDataReference,
+                CalibrationDatasetInputName::OptionSurfaceDataReference,
+            ],
+        );
+    }
+}
 
 fn validate_exact_metadata_field(
     field: &'static str,

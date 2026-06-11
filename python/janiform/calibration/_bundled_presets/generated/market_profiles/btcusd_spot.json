@@ -11,9 +11,6 @@
         "canonical_name": "timestamp"
       }
     ],
-    "default_calibration_hint_ids": [
-      "crypto_spot_defaults"
-    ],
     "known_news_policy": "suggest_only",
     "known_news_reference": {
       "configuration": null,
@@ -41,7 +38,7 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:f126966684565c981a6e2a36df3278b73647fad6633da3f8ab13ae2326bea1d3",
+      "content_hash": "sha256:a5726e05b0e79a694822845547ffb5b82661ff9f5abc73ed54b2d01d19107f4f",
       "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",

@@ -92,7 +92,7 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
     let return_scale_metric = selected_joint_candidate
         .family_metrics
         .iter()
-        .find(|metric| metric.metric_id == "return_scale.15m.realized_variance")
+        .find(|metric| metric.metric_id == "return_scale.1d.realized_variance")
         .expect("joint return-scale metric should be emitted");
     assert_eq!(return_scale_metric.target_family, "return_scale");
     assert!(return_scale_metric.observed_value > 0.0);

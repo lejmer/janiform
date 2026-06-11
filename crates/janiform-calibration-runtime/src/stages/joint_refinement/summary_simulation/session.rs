@@ -15,14 +15,16 @@ use crate::stages::joint_metrics::{
     return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
     scale_normalized_returns, tick_count_series,
 };
-use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
+use crate::stages::long_variance::metrics::{
+    aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+};
 use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
 use janiform_engine_simulation::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickSimulationTransitionConsumer,
     estimate_seeded_result_capacities, stream_seeded_tick_event_simulation,
 };
 use janiform_foundations::cancellation::CancellationToken;
-use janiform_foundations::time::NANOS_PER_HOUR;
+use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR};
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform_market_time::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
@@ -187,15 +189,18 @@ pub fn write_joint_refinement_worker_frame<T: Serialize>(
     message: &T,
 ) -> Result<(), String> {
     let payload = serialize_joint_refinement_worker_payload(message)?;
+
     let frame_length = u64::try_from(payload.len())
         .map_err(|_| "worker frame payload length exceeds u64".to_string())?;
 
     writer
         .write_all(frame_length.to_le_bytes().as_slice())
         .map_err(|source| format!("failed to write worker frame length prefix: {source}"))?;
+
     writer
         .write_all(payload.as_slice())
         .map_err(|source| format!("failed to write worker frame payload: {source}"))?;
+
     writer
         .flush()
         .map_err(|source| format!("failed to flush worker frame payload: {source}"))
@@ -219,6 +224,7 @@ pub fn read_joint_refinement_worker_frame<T: DeserializeOwned>(
         .map_err(|source| format!("failed to read worker frame length prefix: {source}"))?;
 
     let frame_length_u64 = u64::from_le_bytes(frame_length_prefix);
+
     let frame_length = usize::try_from(frame_length_u64)
         .map_err(|_| "worker frame length exceeds usize".to_string())?;
 
@@ -288,10 +294,12 @@ impl JointRefinementSummaryCollector {
             &mut self.simulated_5m_intervals,
             JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
         );
+
         finalize_sell_share_proxies(
             &mut self.simulated_15m_intervals,
             JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
         );
+
         finalize_sell_share_proxies(
             &mut self.simulated_hourly_intervals,
             JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
@@ -309,6 +317,22 @@ impl JointRefinementSummaryCollector {
             .map(|interval| interval.log_return)
             .collect::<Vec<_>>();
 
+        let simulated_1h_log_returns = self
+            .simulated_hourly_intervals
+            .iter()
+            .map(|interval| interval.log_return)
+            .collect::<Vec<_>>();
+
+        let simulated_1d_intervals = aggregate_intervals_to_fixed_duration(
+            self.simulated_hourly_intervals.as_slice(),
+            NANOS_PER_DAY,
+        );
+
+        let simulated_1d_log_returns = simulated_1d_intervals
+            .iter()
+            .map(|interval| interval.log_return)
+            .collect::<Vec<_>>();
+
         let simulated_tick_returns = sampled_return_values(
             self.tick_shape_return_sampler.retained_returns(),
             observed_tick_shape_target_count,
@@ -316,8 +340,15 @@ impl JointRefinementSummaryCollector {
 
         let simulated_5m_return_scale_summary =
             return_scale_summary(self.simulated_5m_intervals.as_slice());
+
         let simulated_15m_return_scale_summary =
             return_scale_summary(self.simulated_15m_intervals.as_slice());
+
+        let simulated_1h_return_scale_summary =
+            return_scale_summary(self.simulated_hourly_intervals.as_slice());
+
+        let simulated_1d_return_scale_summary =
+            return_scale_summary(simulated_1d_intervals.as_slice());
 
         let simulated_5m_business_time_return_scale_summaries =
             return_scale_summaries_by_business_time_bucket(
@@ -338,12 +369,16 @@ impl JointRefinementSummaryCollector {
 
         let simulated_5m_intraday_mean_absolute_returns =
             mean_absolute_return_by_utc_hour(self.simulated_5m_intervals.as_slice());
+
         let simulated_15m_intraday_mean_absolute_returns =
             mean_absolute_return_by_utc_hour(self.simulated_15m_intervals.as_slice());
+
         let simulated_hourly_tick_counts =
             tick_count_series(self.simulated_hourly_intervals.as_slice());
+
         let simulated_15m_rv_activity_metric =
             rolling_variance_activity_metric(self.simulated_15m_intervals.as_slice());
+
         let simulated_long_variance_horizon_summaries = long_variance_horizon_summaries(
             self.simulated_5m_intervals.as_slice(),
             self.simulated_hourly_intervals.as_slice(),
@@ -361,11 +396,19 @@ impl JointRefinementSummaryCollector {
             simulated_15m_shape_returns: scale_normalized_returns(
                 simulated_15m_log_returns.as_slice(),
             ),
+            simulated_1h_shape_returns: scale_normalized_returns(
+                simulated_1h_log_returns.as_slice(),
+            ),
+            simulated_1d_shape_returns: scale_normalized_returns(
+                simulated_1d_log_returns.as_slice(),
+            ),
             simulated_tick_return_scale_summary: return_scale_summary_from_returns(
                 simulated_tick_returns.as_slice(),
             ),
             simulated_5m_return_scale_summary,
             simulated_15m_return_scale_summary,
+            simulated_1h_return_scale_summary,
+            simulated_1d_return_scale_summary,
             simulated_5m_business_time_return_scale_summaries,
             simulated_15m_business_time_return_scale_summaries,
             simulated_tick_intraday_mean_absolute_returns,
@@ -407,6 +450,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
             self.simulated_5m_intervals.as_mut_slice(),
             &mut self.simulated_5m_cursor,
         );
+
         accumulate_return_into_intervals_with_cursor(
             record.timestamp_utc_nanos,
             record.return_components.total_return,
@@ -415,6 +459,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
             self.simulated_15m_intervals.as_mut_slice(),
             &mut self.simulated_15m_cursor,
         );
+
         accumulate_return_into_intervals_with_cursor(
             record.timestamp_utc_nanos,
             record.return_components.total_return,
@@ -435,6 +480,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
 
             self.trade_absolute_return_sum_by_hour[hour_index] +=
                 record.return_components.total_return.abs();
+
             self.trade_count_by_hour[hour_index] += 1;
         }
 
@@ -805,6 +851,7 @@ fn summary_simulation_memory_estimate_from_session(
     // The streaming tick-shape sampler reserves the observed shape target, not
     // the simulated event count.
     let estimated_trade_return_capacity = session_state.observed_tick_shape_target_count;
+
     let estimated_trade_return_capacity_bytes =
         estimated_trade_return_capacity.saturating_mul(size_of::<f64>());
 
@@ -865,7 +912,9 @@ pub(crate) mod tests {
         scale_normalized_returns, tick_count_series,
     };
     use crate::stages::joint_refinement::JointRefinementSeedSummary;
-    use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
+    use crate::stages::long_variance::metrics::{
+        aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+    };
     use crate::stages::return_components::{
         ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
         ReturnComponentsKnownNewsCalendarInput,
@@ -897,7 +946,7 @@ pub(crate) mod tests {
         JointRefinementStageFittedParameters,
     };
     use janiform_engine_simulation::run_seeded_tick_event_simulation;
-    use janiform_foundations::time::{NANOS_PER_HOUR, utc_nanos};
+    use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR, utc_nanos};
     use janiform_market_time::calendar::{
         ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
     };
@@ -940,7 +989,9 @@ pub(crate) mod tests {
             full_path_seed_summary_fixture(&fixture, &session_state);
 
         let comparable_summary_only = summary_only.clone();
+
         let mut comparable_full_path_summary = full_path_summary.clone();
+
         comparable_full_path_summary.simulated_tick_shape_returns =
             comparable_summary_only.simulated_tick_shape_returns.clone();
         comparable_full_path_summary.simulated_tick_return_scale_summary =
@@ -1115,6 +1166,7 @@ pub(crate) mod tests {
     #[test]
     fn exact_summary_only_response_omits_diagnostics_entirely() {
         let fixture = joint_refinement_summary_fixture();
+
         let worker_response = spawn_worker_summary_response(
             &fixture.session_context,
             &RunCandidateRequest {
@@ -1140,6 +1192,7 @@ pub(crate) mod tests {
     #[test]
     fn run_config_preserves_candidate_mean_reversion_parameters() {
         let mut fixture = joint_refinement_summary_fixture();
+
         let mean_reversion_fitted_parameters =
             MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
                 .expect("mean-reversion fixture parameters should validate");
@@ -1147,6 +1200,7 @@ pub(crate) mod tests {
             .fitted_parameters
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters = mean_reversion_fitted_parameters.clone();
+
         let session_state =
             initialize_joint_refinement_summary_simulation_session(&fixture.session_context)
                 .expect("summary simulation session should initialize");
@@ -1170,6 +1224,7 @@ pub(crate) mod tests {
         let worker_executable = worker_executable_path();
 
         let mut child = spawn_worker_process(worker_executable.as_path());
+
         let (mut stdin, mut stdout) = worker_stdio(&mut child);
 
         write_joint_refinement_worker_frame(
@@ -1274,11 +1329,13 @@ pub(crate) mod tests {
     #[test]
     fn run_candidate_request_is_smaller_than_initialize_session_request() {
         let fixture = joint_refinement_summary_fixture();
+
         let initialize_request = InitializeSessionRequest {
             schema_version: JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                 .to_string(),
             session_context: fixture.session_context.clone(),
         };
+
         let run_candidate_request = RunCandidateRequest {
             schema_version: JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION
                 .to_string(),
@@ -1291,10 +1348,12 @@ pub(crate) mod tests {
             serialize_joint_refinement_worker_payload(&initialize_request)
                 .expect("initialize-session request should serialize")
                 .len();
+
         let run_candidate_request_size =
             serialize_joint_refinement_worker_payload(&run_candidate_request)
                 .expect("run-candidate request should serialize")
                 .len();
+
         assert!(
             run_candidate_request_size < initialize_request_size,
             "run-candidate request should stay smaller than initialize-session request",
@@ -1327,6 +1386,7 @@ pub(crate) mod tests {
                 .as_slice(),
             janiform_foundations::time::NANOS_PER_FIVE_MINUTES,
         );
+
         let simulated_15m_intervals = aggregate_simulated_path_to_interval_template(
             run_result.fine_path.as_slice(),
             fixture
@@ -1335,6 +1395,7 @@ pub(crate) mod tests {
                 .as_slice(),
             janiform_foundations::time::NANOS_PER_FIFTEEN_MINUTES,
         );
+
         let simulated_hourly_intervals = aggregate_simulated_path_to_interval_template(
             run_result.fine_path.as_slice(),
             fixture
@@ -1348,10 +1409,27 @@ pub(crate) mod tests {
             .iter()
             .map(|interval| interval.log_return)
             .collect::<Vec<_>>();
+
         let simulated_15m_log_returns = simulated_15m_intervals
             .iter()
             .map(|interval| interval.log_return)
             .collect::<Vec<_>>();
+
+        let simulated_1h_log_returns = simulated_hourly_intervals
+            .iter()
+            .map(|interval| interval.log_return)
+            .collect::<Vec<_>>();
+
+        let simulated_1d_intervals = aggregate_intervals_to_fixed_duration(
+            simulated_hourly_intervals.as_slice(),
+            NANOS_PER_DAY,
+        );
+
+        let simulated_1d_log_returns = simulated_1d_intervals
+            .iter()
+            .map(|interval| interval.log_return)
+            .collect::<Vec<_>>();
+
         let simulated_tick_returns = sampled_trade_returns(
             run_result.fine_path.as_slice(),
             fixture.session_context.observed_tick_shape_target_count,
@@ -1370,6 +1448,12 @@ pub(crate) mod tests {
                 simulated_15m_shape_returns: scale_normalized_returns(
                     simulated_15m_log_returns.as_slice(),
                 ),
+                simulated_1h_shape_returns: scale_normalized_returns(
+                    simulated_1h_log_returns.as_slice(),
+                ),
+                simulated_1d_shape_returns: scale_normalized_returns(
+                    simulated_1d_log_returns.as_slice(),
+                ),
                 simulated_tick_return_scale_summary: return_scale_summary_from_returns(
                     simulated_tick_returns.as_slice(),
                 ),
@@ -1378,6 +1462,12 @@ pub(crate) mod tests {
                 ),
                 simulated_15m_return_scale_summary: return_scale_summary(
                     simulated_15m_intervals.as_slice(),
+                ),
+                simulated_1h_return_scale_summary: return_scale_summary(
+                    simulated_hourly_intervals.as_slice(),
+                ),
+                simulated_1d_return_scale_summary: return_scale_summary(
+                    simulated_1d_intervals.as_slice(),
                 ),
                 simulated_5m_business_time_return_scale_summaries:
                     return_scale_summaries_by_business_time_bucket(
@@ -1549,6 +1639,7 @@ pub(crate) mod tests {
         let worker_executable = worker_executable_path();
 
         let mut child = spawn_worker_process(worker_executable.as_path());
+
         let (mut stdin, mut stdout) = worker_stdio(&mut child);
 
         write_joint_refinement_worker_frame(
@@ -1636,26 +1727,32 @@ pub(crate) mod tests {
             .stdin
             .take()
             .expect("worker stdin should be available");
+
         let stdout = child
             .stdout
             .take()
             .expect("worker stdout should be available");
+
         (stdin, std::io::BufReader::new(stdout))
     }
 
     fn worker_executable_path() -> PathBuf {
         static WORKER_EXECUTABLE: LazyLock<PathBuf> = LazyLock::new(|| {
             let manifest_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
             let workspace_root = manifest_directory
                 .parent()
                 .and_then(Path::parent)
                 .expect("workspace root should resolve from manifest directory");
+
             let current_executable =
                 std::env::current_exe().expect("current test executable should resolve");
+
             let profile_directory = current_executable
                 .parent()
                 .and_then(Path::parent)
                 .expect("cargo profile directory should resolve");
+
             let worker_executable = profile_directory.join(if cfg!(windows) {
                 "janiform-joint-refinement-worker.exe"
             } else {
@@ -1664,11 +1761,13 @@ pub(crate) mod tests {
 
             if worker_executable_requires_rebuild(worker_executable.as_path(), workspace_root) {
                 let cargo_path = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+
                 let build_status = Command::new(cargo_path)
                     .current_dir(workspace_root)
                     .args(["build", "-p", "janiform-joint-refinement-worker"])
                     .status()
                     .expect("worker crate build should launch");
+
                 assert!(
                     build_status.success(),
                     "worker crate build failed with status {build_status}",
@@ -1720,15 +1819,19 @@ pub(crate) mod tests {
 
     fn latest_path_modified_at(path: &Path) -> Option<SystemTime> {
         let metadata = fs::metadata(path).ok()?;
+
         if metadata.is_file() {
             return metadata.modified().ok();
         }
+
         if !metadata.is_dir() {
             return None;
         }
 
         let mut latest_modified = metadata.modified().ok();
+
         let entries = fs::read_dir(path).ok()?;
+
         for entry in entries.flatten() {
             if let Some(entry_modified) = latest_path_modified_at(entry.path().as_path()) {
                 latest_modified = Some(latest_modified.map_or(entry_modified, |current_latest| {
@@ -2010,6 +2113,7 @@ pub(crate) mod tests {
             known_news_open_event_count: 2,
             open_session_known_news_activity_share: 0.06,
         };
+
         let directional_label_diagnostics = HawkesStageDirectionalLabelDiagnostics {
             policy_id: "tick_price_change_with_flat_move_carryover.v1".to_string(),
             first_inferred_trade_sign: "buy".to_string(),

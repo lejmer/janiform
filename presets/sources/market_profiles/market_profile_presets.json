@@ -24,8 +24,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -46,8 +45,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -68,8 +66,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -90,8 +87,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -112,8 +108,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -134,8 +129,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -156,8 +150,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -178,8 +171,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -200,8 +192,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -222,8 +213,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -244,8 +234,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -266,8 +255,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -288,8 +276,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -310,8 +297,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -332,8 +318,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -354,8 +339,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -376,8 +360,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -398,8 +381,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -420,8 +402,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -442,8 +423,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -464,8 +444,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -486,8 +465,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -508,8 +486,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -530,8 +507,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -552,8 +528,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -574,8 +549,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -596,8 +570,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.00001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -618,8 +591,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.001,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}],
-        "default_calibration_hint_ids": ["fx_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
       }
     },
     {
@@ -638,8 +610,7 @@
         "known_news_preset_name": "us_macro_core",
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "America/New_York",
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp", "timestamp_est", "trade_time"]}],
-        "default_calibration_hint_ids": ["us_equity_cash_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp", "timestamp_est", "trade_time"]}]
       }
     },
     {
@@ -659,8 +630,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.01,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["exchange_timestamp", "timestamp_utc", "trade_time_utc"]}],
-        "default_calibration_hint_ids": ["crypto_spot_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["exchange_timestamp", "timestamp_utc", "trade_time_utc"]}]
       }
     },
     {
@@ -680,8 +650,7 @@
         "known_news_policy": "suggest_only",
         "timestamp_timezone_name": "UTC",
         "tick_size": 0.25,
-        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_recv"]}],
-        "default_calibration_hint_ids": ["equity_index_futures_defaults"]
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_recv"]}]
       }
     }
   ]

@@ -1,5 +1,5 @@
 use janiform_engine_sufficient_statistics::SufficientStatisticsPath;
-use janiform_foundations::numeric::compute_sorted_quantile;
+use janiform_foundations::numeric::{compute_sorted_quantile, mean_absolute_aligned_distance};
 use janiform_validation::stylized_facts::return_series_shared::compute_lag_autocorrelation;
 
 use super::contracts::{
@@ -347,13 +347,7 @@ fn compute_wasserstein_distance(left_series: &[f64], right_series: &[f64]) -> Op
     sorted_left.sort_by(f64::total_cmp);
     sorted_right.sort_by(f64::total_cmp);
 
-    let total_distance = sorted_left
-        .iter()
-        .zip(sorted_right.iter())
-        .map(|(left_value, right_value)| (left_value - right_value).abs())
-        .sum::<f64>();
-
-    let distance = total_distance / sorted_left.len() as f64;
+    let distance = mean_absolute_aligned_distance(sorted_left.as_slice(), sorted_right.as_slice());
     distance.is_finite().then_some(distance)
 }
 

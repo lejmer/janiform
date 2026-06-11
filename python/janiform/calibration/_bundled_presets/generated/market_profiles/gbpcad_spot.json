@@ -11,9 +11,6 @@
         "canonical_name": "timestamp"
       }
     ],
-    "default_calibration_hint_ids": [
-      "fx_spot_defaults"
-    ],
     "known_news_policy": "suggest_only",
     "known_news_reference": {
       "configuration": null,
@@ -41,7 +38,7 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:e2b463da4d635fbb6a78a97a99f84e85d59eeb841bf5cbaf662474ee0940100f",
+      "content_hash": "sha256:1f2223002199f879bcbeadb9059793c9c2431ab79ee4ce5d7eef9ad9672ace6b",
       "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",

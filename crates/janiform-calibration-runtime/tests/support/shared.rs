@@ -354,15 +354,15 @@ pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile.cumulative_deterministic_evaluation_millis = 0;
     runtime_profile.cumulative_modeled_rate_millis = 0;
     runtime_profile.cumulative_likelihood_context_resolution_millis = 0;
-    runtime_profile.cumulative_likelihood_context_5m_sample_millis = 0;
-    runtime_profile.cumulative_likelihood_context_15m_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_1h_sample_millis = 0;
+    runtime_profile.cumulative_likelihood_context_1d_sample_millis = 0;
     runtime_profile.cumulative_likelihood_context_tick_sample_millis = 0;
     runtime_profile.cumulative_likelihood_context_tick_optimizer_millis = 0;
-    runtime_profile.cumulative_likelihood_context_5m_optimizer_millis = 0;
-    runtime_profile.cumulative_likelihood_context_15m_optimizer_millis = 0;
+    runtime_profile.cumulative_likelihood_context_1h_optimizer_millis = 0;
+    runtime_profile.cumulative_likelihood_context_1d_optimizer_millis = 0;
     runtime_profile.cumulative_tick_likelihood_millis = 0;
-    runtime_profile.cumulative_5m_likelihood_millis = 0;
-    runtime_profile.cumulative_15m_likelihood_millis = 0;
+    runtime_profile.cumulative_1h_likelihood_millis = 0;
+    runtime_profile.cumulative_1d_likelihood_millis = 0;
     runtime_profile.cumulative_expected_activity_counts_millis = 0;
     runtime_profile.cumulative_deterministic_activity_shape_millis = 0;
     runtime_profile.cumulative_deterministic_activity_level_millis = 0;
@@ -616,14 +616,14 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} cumulative_likelihood_context_resolution_millis drifted"
     );
     assert_eq!(
-        actual_profile.cumulative_likelihood_context_5m_sample_millis,
-        expected_profile.cumulative_likelihood_context_5m_sample_millis,
-        "{context} cumulative_likelihood_context_5m_sample_millis drifted"
+        actual_profile.cumulative_likelihood_context_1h_sample_millis,
+        expected_profile.cumulative_likelihood_context_1h_sample_millis,
+        "{context} cumulative_likelihood_context_1h_sample_millis drifted"
     );
     assert_eq!(
-        actual_profile.cumulative_likelihood_context_15m_sample_millis,
-        expected_profile.cumulative_likelihood_context_15m_sample_millis,
-        "{context} cumulative_likelihood_context_15m_sample_millis drifted"
+        actual_profile.cumulative_likelihood_context_1d_sample_millis,
+        expected_profile.cumulative_likelihood_context_1d_sample_millis,
+        "{context} cumulative_likelihood_context_1d_sample_millis drifted"
     );
     assert_eq!(
         actual_profile.cumulative_likelihood_context_tick_sample_millis,
@@ -636,14 +636,14 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} cumulative_likelihood_context_tick_optimizer_millis drifted"
     );
     assert_eq!(
-        actual_profile.cumulative_likelihood_context_5m_optimizer_millis,
-        expected_profile.cumulative_likelihood_context_5m_optimizer_millis,
-        "{context} cumulative_likelihood_context_5m_optimizer_millis drifted"
+        actual_profile.cumulative_likelihood_context_1h_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_1h_optimizer_millis,
+        "{context} cumulative_likelihood_context_1h_optimizer_millis drifted"
     );
     assert_eq!(
-        actual_profile.cumulative_likelihood_context_15m_optimizer_millis,
-        expected_profile.cumulative_likelihood_context_15m_optimizer_millis,
-        "{context} cumulative_likelihood_context_15m_optimizer_millis drifted"
+        actual_profile.cumulative_likelihood_context_1d_optimizer_millis,
+        expected_profile.cumulative_likelihood_context_1d_optimizer_millis,
+        "{context} cumulative_likelihood_context_1d_optimizer_millis drifted"
     );
     assert_eq!(
         actual_profile.cumulative_tick_likelihood_millis,
@@ -651,14 +651,14 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} cumulative_tick_likelihood_millis drifted"
     );
     assert_eq!(
-        actual_profile.cumulative_5m_likelihood_millis,
-        expected_profile.cumulative_5m_likelihood_millis,
-        "{context} cumulative_5m_likelihood_millis drifted"
+        actual_profile.cumulative_1h_likelihood_millis,
+        expected_profile.cumulative_1h_likelihood_millis,
+        "{context} cumulative_1h_likelihood_millis drifted"
     );
     assert_eq!(
-        actual_profile.cumulative_15m_likelihood_millis,
-        expected_profile.cumulative_15m_likelihood_millis,
-        "{context} cumulative_15m_likelihood_millis drifted"
+        actual_profile.cumulative_1d_likelihood_millis,
+        expected_profile.cumulative_1d_likelihood_millis,
+        "{context} cumulative_1d_likelihood_millis drifted"
     );
     assert_eq!(
         actual_profile.cumulative_expected_activity_counts_millis,

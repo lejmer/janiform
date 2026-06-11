@@ -56,6 +56,9 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
             .candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
+        &prepared_candidate_generation_input
+            .candidate_generation_input
+            .tick_grid_observation_model,
     );
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
@@ -153,6 +156,7 @@ pub fn evaluate_return_components_exact_candidate(
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
+        &candidate_generation_input.tick_grid_observation_model,
     );
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(

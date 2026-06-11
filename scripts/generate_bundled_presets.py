@@ -200,7 +200,6 @@ def _build_market_profile_artifacts(
                 MarketProfileColumnAliasHint.from_mapping(raw_hint, field_path="column_alias_hints")
                 for raw_hint in configuration_source.get("column_alias_hints", ())
             ),
-            default_calibration_hint_ids=tuple(configuration_source.get("default_calibration_hint_ids", ())),
         )
 
         artifacts.append(

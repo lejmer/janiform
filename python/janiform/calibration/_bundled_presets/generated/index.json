@@ -5,7 +5,7 @@
     {
       "artifact_path": "market_profiles/audcad_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:c4a61c595de7e2c749a2a93ce154d2202d893935ed88bda191913c57e503d2cb",
+      "content_hash": "sha256:754299201f55d28a416ff5c547882fa58da08d1a0ab3a87c3033e0a037176246",
       "description": "Default AUD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "AUD/CAD Spot",
       "preset_name": "audcad_spot",
@@ -15,7 +15,7 @@
     {
       "artifact_path": "market_profiles/audchf_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:9307b7c99ab8521a87fcfda0d097a2fd0f78292e21d024a832c73d6d81a204b9",
+      "content_hash": "sha256:c6b59fbef5fe75dec559f2cd2963cf02e1d86c20ba47607e7bd884bec5b1e94e",
       "description": "Default AUD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "AUD/CHF Spot",
       "preset_name": "audchf_spot",
@@ -25,7 +25,7 @@
     {
       "artifact_path": "market_profiles/audjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:532a90cbc9a8d3be65d3242a6a7256041d8f1413b9d601c66b67ddd58f6a7606",
+      "content_hash": "sha256:58cab47e4f8b4f2a44960d017c048fcd33365183dc45e145943f346ef89d67a6",
       "description": "Default AUD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "AUD/JPY Spot",
       "preset_name": "audjpy_spot",
@@ -35,7 +35,7 @@
     {
       "artifact_path": "market_profiles/audnzd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:69990844f2d1a68f8d575f83c795816a02c2fda306b4b9ca224fb5f81a3f4bc6",
+      "content_hash": "sha256:8ec388e3351c914f76647770a928c287f168f78a2e5d8bcc70089bf0c42a468c",
       "description": "Default AUD/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "AUD/NZD Spot",
       "preset_name": "audnzd_spot",
@@ -45,7 +45,7 @@
     {
       "artifact_path": "market_profiles/audusd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:215090068daa229fb1a31d3696f9ad173e9acee416e50dede2b197b7a54e38c8",
+      "content_hash": "sha256:520a6ffa9a826320565de1dc51cb2ddf19c8ca2a6fe27c04a5187b13f01fc34b",
       "description": "Default AUD/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "AUD/USD Spot",
       "preset_name": "audusd_spot",
@@ -55,7 +55,7 @@
     {
       "artifact_path": "market_profiles/btcusd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:f126966684565c981a6e2a36df3278b73647fad6633da3f8ab13ae2326bea1d3",
+      "content_hash": "sha256:a5726e05b0e79a694822845547ffb5b82661ff9f5abc73ed54b2d01d19107f4f",
       "description": "Default BTC/USD spot profile with continuous 24/7 trading and no known-news events enabled.",
       "display_name": "BTC/USD Spot",
       "preset_name": "btcusd_spot",
@@ -65,7 +65,7 @@
     {
       "artifact_path": "market_profiles/cadchf_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:9d088204ba627a9a610bd5045b514b12edd62446b0662ceec1618de3111f4523",
+      "content_hash": "sha256:7e055b80284d7cd4bf1324976a57b2d1430f04926c7ebe48a8aa1bc798bcdeb5",
       "description": "Default CAD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "CAD/CHF Spot",
       "preset_name": "cadchf_spot",
@@ -75,7 +75,7 @@
     {
       "artifact_path": "market_profiles/cadjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:6fab4bd0de6b15659189dc6a4c969412422cb16cf4f8e0943872135dd5cb5708",
+      "content_hash": "sha256:c6037f10bb86ec4554eea8fc98927fb1d5275289465e684500f6745f2677aabd",
       "description": "Default CAD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "CAD/JPY Spot",
       "preset_name": "cadjpy_spot",
@@ -85,7 +85,7 @@
     {
       "artifact_path": "market_profiles/chfjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:3b5b43a01ce0b33cdf82fb3d1be0b8839291490455a84d64ca8ce5014e54bb58",
+      "content_hash": "sha256:919be7a27da4c0cf7423728c5d49e835010aed00332e8358bccdf98574e12b66",
       "description": "Default CHF/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "CHF/JPY Spot",
       "preset_name": "chfjpy_spot",
@@ -95,7 +95,7 @@
     {
       "artifact_path": "market_profiles/es_futures_globex.json",
       "category": "market_profile",
-      "content_hash": "sha256:465de585b4a23d3257253feeab99994c932bd86a3feecf6ea84cc49d6df9f7eb",
+      "content_hash": "sha256:a647d4d0dd5b2fc242e35f7c1c07f1799ad66389bdf83924a2c40d57470c5adf",
       "description": "Default E-mini S&P 500 futures profile with the bundled CME Globex session and no known-news events enabled.",
       "display_name": "ES Futures Globex",
       "preset_name": "es_futures_globex",
@@ -105,7 +105,7 @@
     {
       "artifact_path": "market_profiles/euraud_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:d9aad61e0969031170a0466fda64fce068c1adc99f17fa647f24d1ec36bf44a1",
+      "content_hash": "sha256:87fcbd6f333aee36fbb1a8af473fee59d2da0a284857394e7567db20ad5924a0",
       "description": "Default EUR/AUD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "EUR/AUD Spot",
       "preset_name": "euraud_spot",
@@ -115,7 +115,7 @@
     {
       "artifact_path": "market_profiles/eurcad_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:ecd50cc4f2d5f5827c53c32f607ce04378b15f7592a0a9ae33950630018b3ec0",
+      "content_hash": "sha256:97eab3918fa8528a6fb1380867d61e1ef8b706f36f637a69bcc6fc4af44e8611",
       "description": "Default EUR/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "EUR/CAD Spot",
       "preset_name": "eurcad_spot",
@@ -125,7 +125,7 @@
     {
       "artifact_path": "market_profiles/eurchf_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:677132bbb2c73a000727a98eeeb9dc906d6b3e782b6afea49471ca753acf5a5b",
+      "content_hash": "sha256:58f2b4918d32b2631e75a8fae9792cd261e722d988ebbc069f00024c3178a97e",
       "description": "Default EUR/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "EUR/CHF Spot",
       "preset_name": "eurchf_spot",
@@ -135,7 +135,7 @@
     {
       "artifact_path": "market_profiles/eurgbp_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:56cdeb956b4a3ea82adcc693ed4acbbf4b32fefc179e82216abe26d659d32f6e",
+      "content_hash": "sha256:d2e43a6a0fb31de3e9a4254589e2d7eec636469dc595b460ab71daafbbc4964a",
       "description": "Default EUR/GBP spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "EUR/GBP Spot",
       "preset_name": "eurgbp_spot",
@@ -145,7 +145,7 @@
     {
       "artifact_path": "market_profiles/eurjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:bbfc48573f1838fbcdf61d7d97b243af4c32312b0219863cb36dc9d3e70032d4",
+      "content_hash": "sha256:7b01a980f4232d835e3bfb6b4c8535bcf0ce6f1b7a15104b2017a72649ede483",
       "description": "Default EUR/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "EUR/JPY Spot",
       "preset_name": "eurjpy_spot",
@@ -155,7 +155,7 @@
     {
       "artifact_path": "market_profiles/eurnzd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:56d012c234b8640dc509d37f73453fb77f4b47cbaf49c226ab987f2b3ddc39c4",
+      "content_hash": "sha256:c37a560d8fe35c1a86f4b3c98707e67dd82c3f8cfaee625682f42c992c19b9b8",
       "description": "Default EUR/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "EUR/NZD Spot",
       "preset_name": "eurnzd_spot",
@@ -165,7 +165,7 @@
     {
       "artifact_path": "market_profiles/eurusd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:ca86473369279905d39a1a17b4317084f83725b2b5d9f6386623f9fb795ceed2",
+      "content_hash": "sha256:fb6e4d7f3f6158d08ab98f5e1ecc456dca9db978e11e600f752df98dd04d9bc2",
       "description": "Default EUR/USD spot profile with the bundled 24/5 FX session and suggested EU and US macro events.",
       "display_name": "EUR/USD Spot",
       "preset_name": "eurusd_spot",
@@ -175,7 +175,7 @@
     {
       "artifact_path": "market_profiles/gbpaud_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:f8b415d91ed2345d904b516081d265c313f3788dcfbd9b17fd5d1a55547d43eb",
+      "content_hash": "sha256:1e8caabb2ac090a1a4932b178c5d2d2d31d388171152ccf8b403dca4a8effcd4",
       "description": "Default GBP/AUD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "GBP/AUD Spot",
       "preset_name": "gbpaud_spot",
@@ -185,7 +185,7 @@
     {
       "artifact_path": "market_profiles/gbpcad_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:e2b463da4d635fbb6a78a97a99f84e85d59eeb841bf5cbaf662474ee0940100f",
+      "content_hash": "sha256:1f2223002199f879bcbeadb9059793c9c2431ab79ee4ce5d7eef9ad9672ace6b",
       "description": "Default GBP/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "GBP/CAD Spot",
       "preset_name": "gbpcad_spot",
@@ -195,7 +195,7 @@
     {
       "artifact_path": "market_profiles/gbpchf_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:e2fd597396ef195432335d5f590e6948950bbc6dba0006e52e3d0afd205b8426",
+      "content_hash": "sha256:b49d4936f4360a7aecc35299395c2248fd9266575dafbd48ab97a49b9c144ade",
       "description": "Default GBP/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "GBP/CHF Spot",
       "preset_name": "gbpchf_spot",
@@ -205,7 +205,7 @@
     {
       "artifact_path": "market_profiles/gbpjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:5ff969886cfa6d435b8040d1d349d20d620750af336663f9c31362cd9438421e",
+      "content_hash": "sha256:98cd901a83989189276bc056fdf3fddb0e834322360399cfaede327db684880f",
       "description": "Default GBP/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "GBP/JPY Spot",
       "preset_name": "gbpjpy_spot",
@@ -215,7 +215,7 @@
     {
       "artifact_path": "market_profiles/gbpnzd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:a2278eda3edc4fd46a53c27459c1db3fb57f5143960d62bd89a7471aca2a5486",
+      "content_hash": "sha256:d217bdb6ec5efac2255bfd5a159cd70686db3d4fede70f0cd3da5eb8aab2389b",
       "description": "Default GBP/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "GBP/NZD Spot",
       "preset_name": "gbpnzd_spot",
@@ -225,7 +225,7 @@
     {
       "artifact_path": "market_profiles/gbpusd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:92f8eaf4315a2033f9dd876a18d443535a2051f46543c3e2254ceda0780c1e39",
+      "content_hash": "sha256:4b307cf05900afbab11698cf590f1641d35d31c39900160cabadf8b96af33118",
       "description": "Default GBP/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "GBP/USD Spot",
       "preset_name": "gbpusd_spot",
@@ -235,7 +235,7 @@
     {
       "artifact_path": "market_profiles/nzdcad_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:a560b4766343486037102dd4b40248009712a2a0dcce047a0dfecfe9e35139f1",
+      "content_hash": "sha256:87451a70218114560b248d87837429eb94f7a94623982a741cbb23bba1b7005b",
       "description": "Default NZD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "NZD/CAD Spot",
       "preset_name": "nzdcad_spot",
@@ -245,7 +245,7 @@
     {
       "artifact_path": "market_profiles/nzdchf_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:9ea2b636699d440bb8a271649a08eeaee33193578b4fc0a2611665b70160ea9d",
+      "content_hash": "sha256:6134a4af44531265a2baa34ab27f3d1d14df2a6ece4a75fc97ea48df3a3bf9c5",
       "description": "Default NZD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "NZD/CHF Spot",
       "preset_name": "nzdchf_spot",
@@ -255,7 +255,7 @@
     {
       "artifact_path": "market_profiles/nzdjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:2544f09921a150431f06b7196f77a3013f13ff0d32755a85582338eafeb76f55",
+      "content_hash": "sha256:9a539eeb34b1443719ac97bfb862a84f22209798c24dd9c695742159ae90b061",
       "description": "Default NZD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "NZD/JPY Spot",
       "preset_name": "nzdjpy_spot",
@@ -265,7 +265,7 @@
     {
       "artifact_path": "market_profiles/nzdusd_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:7f21f99e37d1cec0da01d98a56020e8d4116a8f1ceadb79c8752555a5b8d4899",
+      "content_hash": "sha256:e717f0a9f8afe4754d4cfed00d5e645491f31c408eea225444ba2cc86dc1693b",
       "description": "Default NZD/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "NZD/USD Spot",
       "preset_name": "nzdusd_spot",
@@ -275,7 +275,7 @@
     {
       "artifact_path": "market_profiles/us_equity_cash.json",
       "category": "market_profile",
-      "content_hash": "sha256:973f052f726586d05559f4232a4012c937cd5b3c7e36ca70970e47cd5f84750f",
+      "content_hash": "sha256:76a9fc95c1119d679d196e3c68ff5475d1a33399c940b13330717989fed7536a",
       "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
       "display_name": "US Equity Cash",
       "preset_name": "us_equity_cash",
@@ -285,7 +285,7 @@
     {
       "artifact_path": "market_profiles/usdcad_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:cc509d11e4e72778b9b2b31756d0d5d1fb96a957e207dd7203e815af46ff4d08",
+      "content_hash": "sha256:af57f982e895e2e939d3c33ade9f03e7c0658425051eb660969d2c626bc8a1a4",
       "description": "Default USD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "USD/CAD Spot",
       "preset_name": "usdcad_spot",
@@ -295,7 +295,7 @@
     {
       "artifact_path": "market_profiles/usdchf_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:32f20d656f301897d49c8d76be50553e750516df3e5795bd58eae2727586196b",
+      "content_hash": "sha256:cbfba015e17b48becbc2c0ce2f7da81c2cc0d363268c6e20736757fde5b5d65e",
       "description": "Default USD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "USD/CHF Spot",
       "preset_name": "usdchf_spot",
@@ -305,7 +305,7 @@
     {
       "artifact_path": "market_profiles/usdjpy_spot.json",
       "category": "market_profile",
-      "content_hash": "sha256:82a86d30dda05666e582cc759ae90ea82b403c4f213bb7ebd618f15536f8b401",
+      "content_hash": "sha256:e4973a6ff96ef772aa4e5593e7024bf6cd92495e681de2f07cbf305023fa201b",
       "description": "Default USD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
       "display_name": "USD/JPY Spot",
       "preset_name": "usdjpy_spot",

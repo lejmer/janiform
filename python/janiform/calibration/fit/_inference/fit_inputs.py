@@ -67,7 +67,6 @@ class FitInference:
     bid_candidates: tuple[str, ...]
     ask_candidates: tuple[str, ...]
     timestamp_timezone_source: str
-    default_calibration_hint_ids: tuple[str, ...]
 
     @staticmethod
     def from_mapping(raw_payload: Any) -> FitInference:
@@ -143,16 +142,6 @@ def _fit_inference_from_mapping(raw_inference: dict[str, Any]) -> FitInference:
             "must be a sequence in the native fit-input inference payload",
         )
 
-    raw_default_calibration_hint_ids = raw_inference.get(
-        "default_calibration_hint_ids",
-        (),
-    )
-    if not isinstance(raw_default_calibration_hint_ids, list | tuple):
-        raise calibration_error(
-            "default_calibration_hint_ids",
-            "must be a sequence in the native fit-input inference payload",
-        )
-
     return FitInference(
         run_id=str(raw_inference["run_id"]),
         tick_data_source=tick_data_source,
@@ -165,9 +154,6 @@ def _fit_inference_from_mapping(raw_inference: dict[str, Any]) -> FitInference:
         bid_candidates=_candidate_columns(candidate_columns, "bid"),
         ask_candidates=_candidate_columns(candidate_columns, "ask"),
         timestamp_timezone_source=str(raw_inference["timestamp_timezone_source"]),
-        default_calibration_hint_ids=tuple(
-            str(hint_id) for hint_id in raw_default_calibration_hint_ids
-        ),
     )
 
 
@@ -232,9 +218,6 @@ def _market_profile_defaults_payload(
             }
             for alias_hint in market_profile_configuration.column_alias_hints
         ],
-        "default_calibration_hint_ids": list(
-            market_profile_configuration.default_calibration_hint_ids
-        ),
     }
 
 
@@ -324,7 +307,6 @@ def build_fit_inference_payload(
         "timestamp_timezone": inference.normalization_policy.timestamp_timezone,
         "timestamp_timezone_source": inference.timestamp_timezone_source,
         "market_profile": market_profile_name,
-        "default_calibration_hint_ids": list(inference.default_calibration_hint_ids),
         "session_source_kind": session_source_kind,
         "known_news": {
             "selected_preset": known_news_preset_name,

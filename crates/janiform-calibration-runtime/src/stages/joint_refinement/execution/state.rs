@@ -106,8 +106,8 @@ pub(crate) struct JointRefinementDeterministicEvaluation {
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementAggregatedLikelihoodContexts {
     pub(crate) tick: ContinuousReturnOptimizerContext,
-    pub(crate) five_minute: ContinuousReturnOptimizerContext,
-    pub(crate) fifteen_minute: ContinuousReturnOptimizerContext,
+    pub(crate) one_hour: ContinuousReturnOptimizerContext,
+    pub(crate) one_day: ContinuousReturnOptimizerContext,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -120,8 +120,8 @@ pub(crate) struct JointRefinementReturnShapeStatisticEstimate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum JointRefinementReturnShapeHorizon {
     Tick,
-    FiveMinute,
-    FifteenMinute,
+    OneHour,
+    OneDay,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -162,15 +162,15 @@ pub(crate) struct JointRefinementProfilingState {
     cumulative_deterministic_evaluation_millis: AtomicU64,
     cumulative_modeled_rate_millis: AtomicU64,
     cumulative_likelihood_context_resolution_millis: AtomicU64,
-    cumulative_likelihood_context_5m_sample_millis: AtomicU64,
-    cumulative_likelihood_context_15m_sample_millis: AtomicU64,
+    cumulative_likelihood_context_1h_sample_millis: AtomicU64,
+    cumulative_likelihood_context_1d_sample_millis: AtomicU64,
     cumulative_likelihood_context_tick_sample_millis: AtomicU64,
     cumulative_likelihood_context_tick_optimizer_millis: AtomicU64,
-    cumulative_likelihood_context_5m_optimizer_millis: AtomicU64,
-    cumulative_likelihood_context_15m_optimizer_millis: AtomicU64,
+    cumulative_likelihood_context_1h_optimizer_millis: AtomicU64,
+    cumulative_likelihood_context_1d_optimizer_millis: AtomicU64,
     cumulative_tick_likelihood_millis: AtomicU64,
-    cumulative_5m_likelihood_millis: AtomicU64,
-    cumulative_15m_likelihood_millis: AtomicU64,
+    cumulative_1h_likelihood_millis: AtomicU64,
+    cumulative_1d_likelihood_millis: AtomicU64,
     cumulative_expected_activity_counts_millis: AtomicU64,
     cumulative_deterministic_activity_shape_millis: AtomicU64,
     cumulative_deterministic_activity_level_millis: AtomicU64,
@@ -258,13 +258,13 @@ impl JointRefinementProfilingState {
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_likelihood_context_5m_sample_duration(&self, elapsed_millis: u64) {
-        self.cumulative_likelihood_context_5m_sample_millis
+    pub(crate) fn record_likelihood_context_1h_sample_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_1h_sample_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_likelihood_context_15m_sample_duration(&self, elapsed_millis: u64) {
-        self.cumulative_likelihood_context_15m_sample_millis
+    pub(crate) fn record_likelihood_context_1d_sample_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_1d_sample_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
@@ -278,13 +278,13 @@ impl JointRefinementProfilingState {
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_likelihood_context_5m_optimizer_duration(&self, elapsed_millis: u64) {
-        self.cumulative_likelihood_context_5m_optimizer_millis
+    pub(crate) fn record_likelihood_context_1h_optimizer_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_1h_optimizer_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_likelihood_context_15m_optimizer_duration(&self, elapsed_millis: u64) {
-        self.cumulative_likelihood_context_15m_optimizer_millis
+    pub(crate) fn record_likelihood_context_1d_optimizer_duration(&self, elapsed_millis: u64) {
+        self.cumulative_likelihood_context_1d_optimizer_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
@@ -293,13 +293,13 @@ impl JointRefinementProfilingState {
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_5m_likelihood_duration(&self, elapsed_millis: u64) {
-        self.cumulative_5m_likelihood_millis
+    pub(crate) fn record_1h_likelihood_duration(&self, elapsed_millis: u64) {
+        self.cumulative_1h_likelihood_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_15m_likelihood_duration(&self, elapsed_millis: u64) {
-        self.cumulative_15m_likelihood_millis
+    pub(crate) fn record_1d_likelihood_duration(&self, elapsed_millis: u64) {
+        self.cumulative_1d_likelihood_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
@@ -395,11 +395,11 @@ impl JointRefinementProfilingState {
             cumulative_likelihood_context_resolution_millis: self
                 .cumulative_likelihood_context_resolution_millis
                 .load(Ordering::Relaxed),
-            cumulative_likelihood_context_5m_sample_millis: self
-                .cumulative_likelihood_context_5m_sample_millis
+            cumulative_likelihood_context_1h_sample_millis: self
+                .cumulative_likelihood_context_1h_sample_millis
                 .load(Ordering::Relaxed),
-            cumulative_likelihood_context_15m_sample_millis: self
-                .cumulative_likelihood_context_15m_sample_millis
+            cumulative_likelihood_context_1d_sample_millis: self
+                .cumulative_likelihood_context_1d_sample_millis
                 .load(Ordering::Relaxed),
             cumulative_likelihood_context_tick_sample_millis: self
                 .cumulative_likelihood_context_tick_sample_millis
@@ -407,20 +407,20 @@ impl JointRefinementProfilingState {
             cumulative_likelihood_context_tick_optimizer_millis: self
                 .cumulative_likelihood_context_tick_optimizer_millis
                 .load(Ordering::Relaxed),
-            cumulative_likelihood_context_5m_optimizer_millis: self
-                .cumulative_likelihood_context_5m_optimizer_millis
+            cumulative_likelihood_context_1h_optimizer_millis: self
+                .cumulative_likelihood_context_1h_optimizer_millis
                 .load(Ordering::Relaxed),
-            cumulative_likelihood_context_15m_optimizer_millis: self
-                .cumulative_likelihood_context_15m_optimizer_millis
+            cumulative_likelihood_context_1d_optimizer_millis: self
+                .cumulative_likelihood_context_1d_optimizer_millis
                 .load(Ordering::Relaxed),
             cumulative_tick_likelihood_millis: self
                 .cumulative_tick_likelihood_millis
                 .load(Ordering::Relaxed),
-            cumulative_5m_likelihood_millis: self
-                .cumulative_5m_likelihood_millis
+            cumulative_1h_likelihood_millis: self
+                .cumulative_1h_likelihood_millis
                 .load(Ordering::Relaxed),
-            cumulative_15m_likelihood_millis: self
-                .cumulative_15m_likelihood_millis
+            cumulative_1d_likelihood_millis: self
+                .cumulative_1d_likelihood_millis
                 .load(Ordering::Relaxed),
             cumulative_expected_activity_counts_millis: self
                 .cumulative_expected_activity_counts_millis
@@ -480,13 +480,15 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) weighted_tick_continuous_return_optimizer_context: ContinuousReturnOptimizerContext,
     pub(crate) observed_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) observed_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) observed_1h_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) observed_1d_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) observed_tick_intraday_mean_absolute_returns: Vec<f64>,
     pub(crate) observed_tick_shape_returns: Vec<f64>,
-    pub(crate) observed_5m_shape_returns: Vec<f64>,
-    pub(crate) observed_15m_shape_returns: Vec<f64>,
+    pub(crate) observed_1h_shape_returns: Vec<f64>,
+    pub(crate) observed_1d_shape_returns: Vec<f64>,
     pub(crate) observed_tick_return_scale_summary: JointRefinementReturnScaleSummary,
-    pub(crate) observed_5m_return_scale_summary: JointRefinementReturnScaleSummary,
-    pub(crate) observed_15m_return_scale_summary: JointRefinementReturnScaleSummary,
+    pub(crate) observed_1h_return_scale_summary: JointRefinementReturnScaleSummary,
+    pub(crate) observed_1d_return_scale_summary: JointRefinementReturnScaleSummary,
     pub(crate) observed_5m_business_time_bucket_thresholds:
         JointRefinementBusinessTimeBucketThresholds,
     pub(crate) observed_15m_business_time_bucket_thresholds:
@@ -724,9 +726,13 @@ pub struct JointRefinementSeedSummary {
     pub simulated_tick_shape_returns: Vec<f64>,
     pub simulated_5m_shape_returns: Vec<f64>,
     pub simulated_15m_shape_returns: Vec<f64>,
+    pub simulated_1h_shape_returns: Vec<f64>,
+    pub simulated_1d_shape_returns: Vec<f64>,
     pub simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary,
     pub simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
     pub simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
+    pub simulated_1h_return_scale_summary: JointRefinementReturnScaleSummary,
+    pub simulated_1d_return_scale_summary: JointRefinementReturnScaleSummary,
     pub simulated_5m_business_time_return_scale_summaries:
         JointRefinementBusinessTimeBucketReturnScaleSummaries,
     pub simulated_15m_business_time_return_scale_summaries:

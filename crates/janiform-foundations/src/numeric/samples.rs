@@ -316,7 +316,8 @@ fn adjusted_shape_jackknife_standard_error(
     jackknife_standard_error_from_leave_one_out_values(leave_one_out_values.as_slice())
 }
 
-fn jackknife_standard_error_from_leave_one_out_values(values: &[f64]) -> Option<f64> {
+/// Compute the delete-one jackknife standard error from leave-one-out estimates.
+pub fn jackknife_standard_error_from_leave_one_out_values(values: &[f64]) -> Option<f64> {
     if values.len() < 2 {
         return None;
     }
@@ -539,6 +540,19 @@ pub fn z_score(values: &[f64]) -> Vec<f64> {
         .collect()
 }
 
+/// Compute mean absolute distance between two aligned numeric paths.
+pub fn mean_absolute_aligned_distance(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.is_empty() {
+        return f64::INFINITY;
+    }
+
+    left.iter()
+        .zip(right.iter())
+        .map(|(left_value, right_value)| (left_value - right_value).abs())
+        .sum::<f64>()
+        / left.len() as f64
+}
+
 /// Compute mean absolute z-score path error between two aligned series.
 pub fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
     if left.len() != right.len() || left.is_empty() {
@@ -548,12 +562,7 @@ pub fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
     let left_standardized = z_score(left);
     let right_standardized = z_score(right);
 
-    left_standardized
-        .iter()
-        .zip(right_standardized.iter())
-        .map(|(left_value, right_value)| (left_value - right_value).abs())
-        .sum::<f64>()
-        / left_standardized.len() as f64
+    mean_absolute_aligned_distance(left_standardized.as_slice(), right_standardized.as_slice())
 }
 
 #[cfg(test)]
@@ -561,10 +570,10 @@ mod tests {
     use super::{
         adjusted_shape_jackknife_standard_errors, arithmetic_mean, arithmetic_mean_or_zero,
         central_skewness_or_zero, coefficient_of_variation, finite_arithmetic_mean_or_zero,
-        mean_estimate_from_standard_errors, pearson_correlation, relative_rmse, rolling_sum,
-        root_mean_square_or_infinity, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
-        sample_standard_deviation, sample_variance, standardized_path_distance,
-        winsorized_sample_standard_deviation_from_sorted, z_score,
+        mean_absolute_aligned_distance, mean_estimate_from_standard_errors, pearson_correlation,
+        relative_rmse, rolling_sum, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
+        sample_adjusted_skewness, sample_standard_deviation, sample_variance,
+        standardized_path_distance, winsorized_sample_standard_deviation_from_sorted, z_score,
     };
 
     #[test]
@@ -578,6 +587,10 @@ mod tests {
         assert_eq!(pearson_correlation(&[1.0, 2.0], &[2.0, 4.0]), 1.0);
         assert!((root_mean_square_or_infinity(&[3.0, 4.0]) - (12.5f64).sqrt()).abs() <= 1.0e-12);
         assert_eq!(z_score(&[2.0, 2.0]), vec![0.0, 0.0]);
+        assert_eq!(
+            mean_absolute_aligned_distance(&[1.0, 3.0, 6.0], &[2.0, 1.0, 3.0]),
+            2.0
+        );
         assert_eq!(
             standardized_path_distance(&[1.0, 2.0, 3.0], &[2.0, 4.0, 6.0]),
             0.0

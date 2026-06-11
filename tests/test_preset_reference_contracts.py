@@ -238,7 +238,6 @@ def test_market_profile_explicit_configuration_roundtrip_serialization_is_determ
                     aliases=("event_timestamp_utc", "ts_utc"),
                 ),
             ),
-            default_calibration_hint_ids=("fx_defaults",),
         ),
     )
 

@@ -11,9 +11,6 @@
         "canonical_name": "timestamp"
       }
     ],
-    "default_calibration_hint_ids": [
-      "equity_index_futures_defaults"
-    ],
     "known_news_policy": "suggest_only",
     "known_news_reference": {
       "configuration": null,
@@ -41,7 +38,7 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:465de585b4a23d3257253feeab99994c932bd86a3feecf6ea84cc49d6df9f7eb",
+      "content_hash": "sha256:a647d4d0dd5b2fc242e35f7c1c07f1799ad66389bdf83924a2c40d57470c5adf",
       "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",

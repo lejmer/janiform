@@ -81,9 +81,6 @@ pub struct MarketDataFitMarketProfileDefaults {
     /// Profile-specific source-column aliases.
     #[serde(default)]
     pub column_alias_hints: Vec<MarketDataColumnAliasHint>,
-    /// Default calibration hint identifiers associated with the profile.
-    #[serde(default)]
-    pub default_calibration_hint_ids: Vec<String>,
 }
 
 /// Fit-facing market-data input inference output.
@@ -104,8 +101,6 @@ pub struct MarketDataFitInputInferenceOutput {
     pub candidate_columns: MarketDataTickColumnCandidatesPayload,
     /// Source of the selected timestamp timezone.
     pub timestamp_timezone_source: String,
-    /// Default calibration hint identifiers from the selected profile.
-    pub default_calibration_hint_ids: Vec<String>,
 }
 
 /// Candidate tick-data columns grouped by canonical role.
@@ -230,7 +225,6 @@ pub fn infer_market_data_fit_inputs(
         .unwrap_or(&[]);
 
     let candidates = tick_column_candidates(source_probe.available_columns.as_slice(), alias_hints);
-
     let tick_price_input_policy = resolve_fit_tick_price_input_policy(&request, &candidates)?;
 
     let (timestamp_timezone, timestamp_timezone_source) = resolve_timestamp_timezone(&request);
@@ -266,10 +260,6 @@ pub fn infer_market_data_fit_inputs(
         source_probe,
         candidate_columns: MarketDataTickColumnCandidatesPayload::from(candidates),
         timestamp_timezone_source,
-        default_calibration_hint_ids: request
-            .market_profile_defaults
-            .map(|profile_defaults| profile_defaults.default_calibration_hint_ids)
-            .unwrap_or_default(),
     })
 }
 
@@ -338,8 +328,10 @@ fn resolve_fit_tick_price_input_policy(
 
     let has_bid_source =
         request.column_overrides.bid_column.is_some() || !candidates.bid.is_empty();
+
     let has_ask_source =
         request.column_overrides.ask_column.is_some() || !candidates.ask.is_empty();
+
     if has_bid_source && has_ask_source {
         return Ok(Some(MarketDataTickPriceInputPolicy::BidAskMidpoint));
     }
@@ -347,6 +339,7 @@ fn resolve_fit_tick_price_input_policy(
     // The diagnostic list combines candidate groups without mutating the
     // candidate payload returned to callers.
     let mut price_candidates = candidates.price.clone();
+
     for candidate in candidates.bid.iter().chain(candidates.ask.iter()) {
         if !price_candidates.contains(candidate) {
             price_candidates.push(candidate.clone());

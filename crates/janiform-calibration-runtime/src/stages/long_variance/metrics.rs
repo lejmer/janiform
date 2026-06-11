@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use janiform_foundations::numeric::{
-    adjusted_shape_jackknife_standard_errors, arithmetic_mean_or_zero, pearson_correlation,
+    adjusted_shape_jackknife_standard_errors, arithmetic_mean_or_zero,
+    jackknife_standard_error_from_leave_one_out_values, pearson_correlation,
     sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
     sample_variance,
 };
@@ -320,17 +321,28 @@ pub(crate) fn compute_long_variance_horizon_summary(
                 block_duration_nanos,
             )
         }
-        None => long_variance_horizon_moment_summary(computation.intervals.as_slice()),
+        None => long_variance_horizon_moment_summary_with_jackknife_standard_errors(
+            computation.intervals.as_slice(),
+        ),
     };
 
     (computation.horizon_position, summary)
+}
+
+fn long_variance_horizon_moment_summary_with_jackknife_standard_errors(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> LongVarianceHorizonMomentSummary {
+    let mut summary = long_variance_horizon_moment_summary(intervals);
+
+    summary.standard_errors = leave_one_out_horizon_standard_errors(intervals);
+
+    summary
 }
 
 pub(crate) fn ordered_long_variance_horizon_summaries_from_outputs(
     mut outputs: Vec<(usize, LongVarianceHorizonMomentSummary)>,
 ) -> Vec<LongVarianceHorizonMomentSummary> {
     outputs.sort_by_key(|(horizon_position, _)| *horizon_position);
-
     outputs.into_iter().map(|(_, summary)| summary).collect()
 }
 
@@ -474,6 +486,64 @@ fn long_variance_horizon_jackknife_standard_errors(
         activity_variance_correlation: None,
         signed_activity_future_variance_relation: None,
     }
+}
+
+fn leave_one_out_horizon_standard_errors(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> LongVarianceHorizonMomentStandardErrors {
+    LongVarianceHorizonMomentStandardErrors {
+        realized_variance: leave_one_out_horizon_standard_error(intervals, |summary| {
+            summary.realized_variance
+        }),
+        variance_of_variance: leave_one_out_horizon_standard_error(intervals, |summary| {
+            summary.variance_of_variance
+        }),
+        return_skewness: leave_one_out_horizon_standard_error(intervals, |summary| {
+            summary.return_skewness
+        }),
+        return_excess_kurtosis: leave_one_out_horizon_standard_error(intervals, |summary| {
+            summary.return_excess_kurtosis
+        }),
+        activity_variance_correlation: leave_one_out_horizon_standard_error(intervals, |summary| {
+            summary.activity_variance_correlation
+        }),
+        signed_activity_future_variance_relation: leave_one_out_horizon_standard_error(
+            intervals,
+            |summary| summary.signed_activity_future_variance_relation,
+        ),
+    }
+}
+
+fn leave_one_out_horizon_standard_error(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
+) -> Option<f64> {
+    if intervals.len() < 3 {
+        return None;
+    }
+
+    let mut leave_one_out_values = Vec::with_capacity(intervals.len());
+
+    for omitted_position in 0..intervals.len() {
+        let leave_one_out_intervals = intervals
+            .iter()
+            .enumerate()
+            .filter_map(|(interval_position, interval)| {
+                (interval_position != omitted_position).then_some(*interval)
+            })
+            .collect::<Vec<_>>();
+
+        let summary = long_variance_horizon_moment_summary_without_standard_errors(
+            leave_one_out_intervals.as_slice(),
+        );
+        if let Some(value) = extract_metric(summary)
+            && value.is_finite()
+        {
+            leave_one_out_values.push(value);
+        }
+    }
+
+    jackknife_standard_error_from_leave_one_out_values(leave_one_out_values.as_slice())
 }
 
 fn block_standard_error(
@@ -643,6 +713,40 @@ mod tests {
         assert!(summaries[0].standard_errors.realized_variance.is_some());
         assert!(summaries[1].standard_errors.realized_variance.is_some());
         assert!(summaries[3].standard_errors.realized_variance.is_none());
+    }
+
+    #[test]
+    fn weekly_long_variance_horizon_uses_jackknife_standard_errors() {
+        let five_minute_intervals = [
+            interval(0, 5, 0.10, 2, 0.20),
+            interval(5, 10, -0.05, 5, 0.80),
+        ];
+
+        let hourly_intervals = [
+            interval(0, NANOS_PER_HOUR, 0.01, 10, 0.50),
+            interval(
+                NANOS_PER_WEEK,
+                NANOS_PER_WEEK + NANOS_PER_HOUR,
+                0.03,
+                20,
+                0.50,
+            ),
+            interval(
+                2 * NANOS_PER_WEEK,
+                2 * NANOS_PER_WEEK + NANOS_PER_HOUR,
+                -0.06,
+                30,
+                0.50,
+            ),
+        ];
+
+        let summaries = long_variance_horizon_summaries(
+            five_minute_intervals.as_slice(),
+            hourly_intervals.as_slice(),
+        );
+
+        assert_eq!(summaries[3].sample_count, 3);
+        assert!(summaries[3].standard_errors.realized_variance.is_some());
     }
 
     #[test]
