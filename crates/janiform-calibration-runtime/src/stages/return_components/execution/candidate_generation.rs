@@ -108,6 +108,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
+        &candidate_generation_input.tick_grid_observation_model,
     );
 
     emit_return_components_progress(

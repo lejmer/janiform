@@ -7,7 +7,7 @@ use janiform_engine_simulation::{
     CoarseSimulationPath, SeededTickEventDebugTraceRecord, SeededTickEventDebugTraceTransitionKind,
     SeededTickSimulationRunConfig, SeededTickSimulationRunResult,
 };
-use janiform_foundations::numeric::arithmetic_mean_or_zero;
+use janiform_foundations::numeric::{arithmetic_mean_or_zero, mean_absolute_aligned_distance};
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde::Serialize;
@@ -1295,12 +1295,7 @@ fn calculate_wasserstein_distance(left: &[f64], right: &[f64]) -> f64 {
     ordered_left.sort_by(f64::total_cmp);
     ordered_right.sort_by(f64::total_cmp);
 
-    ordered_left
-        .iter()
-        .zip(ordered_right.iter())
-        .map(|(left_value, right_value)| (left_value - right_value).abs())
-        .sum::<f64>()
-        / ordered_left.len() as f64
+    mean_absolute_aligned_distance(ordered_left.as_slice(), ordered_right.as_slice())
 }
 
 fn reconstruct_fine_interval_records(

@@ -275,7 +275,6 @@ fn normalize_market_profile_configuration(
     insert_null_if_missing(configuration, "timestamp_timezone_name");
     insert_null_if_missing(configuration, "tick_size");
     insert_empty_array_if_missing(configuration, "column_alias_hints");
-    insert_empty_array_if_missing(configuration, "default_calibration_hint_ids");
 
     let _tick_size = optional_positive_f64_field(
         configuration,
@@ -313,14 +312,7 @@ fn normalize_market_profile_configuration(
         &format!("{field_path}.column_alias_hints"),
     )?;
 
-    sort_string_array(
-        array_field_mut(
-            configuration,
-            "default_calibration_hint_ids",
-            &format!("{field_path}.default_calibration_hint_ids"),
-        )?,
-        &format!("{field_path}.default_calibration_hint_ids"),
-    )
+    Ok(())
 }
 
 fn normalize_session_reference(

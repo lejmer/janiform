@@ -341,7 +341,6 @@ def _resolved_configuration_payload(configuration: FitExecutionConfiguration) ->
                 "known_news_policy": "suggest_only",
                 "timestamp_timezone_name": "UTC",
                 "column_alias_hints": [],
-                "default_calibration_hint_ids": [],
             },
             "source_kind": "built_in",
             "selected_preset": {

@@ -695,8 +695,14 @@ fn prepare_hawkes_candidate(
     observed_activity_targets: HawkesObservedActivityTargets,
     max_runtime_hourly_seasonality_factor: f64,
 ) -> HawkesPreparedCandidate {
+    // Intentional copy to keep the immutable candidate grid reusable across CPU schedules.
+    let candidate_for_adjustment = candidate_input.clone();
+
     let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) =
-        adjust_candidate_for_deseasonalized_activity(candidate_input, observed_activity_targets);
+        adjust_candidate_for_deseasonalized_activity(
+            candidate_for_adjustment,
+            observed_activity_targets,
+        );
 
     let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
         adjusted_candidate_input.lambda_bar,
@@ -1021,6 +1027,7 @@ fn refinement_alpha_scales(candidate_diagnostic: &HawkesStageCandidateDiagnostic
             (TARGET_STABILITY_MARGIN / effective_branching_ratio).clamp(MINIMUM_ALPHA_SCALE, 1.0),
             12,
         );
+
         alpha_scales.push(targeted_scale);
         alpha_scales.push(round_to(
             (targeted_scale * 0.5).clamp(MINIMUM_ALPHA_SCALE, 1.0),
@@ -1222,10 +1229,58 @@ fn derive_observed_activity_targets(
 }
 
 fn adjust_candidate_for_deseasonalized_activity(
-    candidate_input: &HawkesStageCandidateInput,
-    _observed_activity_targets: HawkesObservedActivityTargets,
+    candidate_input: HawkesStageCandidateInput,
+    observed_activity_targets: HawkesObservedActivityTargets,
 ) -> (HawkesStageCandidateInput, f64) {
-    (candidate_input.clone(), 1.0)
+    let Ok(derived_alpha) =
+        HawkesKernelLoadings::try_from_structured_alpha(candidate_input.structured_alpha)
+    else {
+        return (candidate_input, 1.0);
+    };
+
+    let Some(stationary_multipliers) =
+        stationary_intensity_multipliers(derived_alpha, candidate_input.beta)
+    else {
+        return (candidate_input, 1.0);
+    };
+
+    let stationary_multiplier = stationary_multipliers.buy_intensity_multiplier.max(0.0)
+        + stationary_multipliers.sell_intensity_multiplier.max(0.0);
+
+    let candidate_open_rate_per_hour = candidate_input.lambda_bar * stationary_multiplier;
+
+    let target_open_rate_per_hour =
+        observed_activity_targets.deseasonalized_open_event_rate_per_hour;
+
+    if !candidate_open_rate_per_hour.is_finite()
+        || candidate_open_rate_per_hour <= 0.0
+        || !target_open_rate_per_hour.is_finite()
+        || target_open_rate_per_hour <= 0.0
+    {
+        return (candidate_input, 1.0);
+    }
+
+    let lambda_bar_scale = target_open_rate_per_hour / candidate_open_rate_per_hour;
+    if !lambda_bar_scale.is_finite() || lambda_bar_scale <= 0.0 {
+        return (candidate_input, 1.0);
+    }
+
+    let original_lambda_bar = candidate_input.lambda_bar;
+
+    let mut adjusted_candidate_input = candidate_input;
+
+    adjusted_candidate_input.lambda_bar =
+        round_positive_to_domain(original_lambda_bar * lambda_bar_scale, 12);
+
+    let applied_scale = adjusted_candidate_input.lambda_bar / original_lambda_bar;
+
+    let lambda_bar_scaling_ratio_applied = if applied_scale.is_finite() && applied_scale > 0.0 {
+        applied_scale
+    } else {
+        lambda_bar_scale
+    };
+
+    (adjusted_candidate_input, lambda_bar_scaling_ratio_applied)
 }
 
 fn check_endogenous_stationarity(
@@ -1498,7 +1553,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        HawkesPreparedCandidate, populate_observed_activity_targets_cache,
+        HawkesObservedActivityTargets, HawkesPreparedCandidate,
+        adjust_candidate_for_deseasonalized_activity, populate_observed_activity_targets_cache,
         prepare_hawkes_candidates_from_validated_inputs, ranked_refinement_seed_indices,
         refinement_alpha_scales,
     };
@@ -1587,6 +1643,38 @@ mod tests {
             prepared_candidates[1].adjusted_candidate_input.candidate_id,
             "candidate_b"
         );
+    }
+
+    #[test]
+    fn candidate_adjustment_matches_deseasonalized_open_activity_target() {
+        let candidate_input = HawkesStageCandidateInput {
+            lambda_bar: 1.0,
+            structured_alpha: HawkesStructuredAlphaParameterization {
+                a_self: 5.0,
+                a_cross: 0.0,
+                delta_self: 0.0,
+                delta_cross: 0.0,
+            },
+            ..test_candidate_input("candidate")
+        };
+
+        let observed_activity_targets = HawkesObservedActivityTargets {
+            deseasonalized_open_event_rate_per_hour: 8.0,
+            open_factor_exposure_hours: 1.0,
+            deseasonalized_mean_interarrival_seconds: 1.0,
+            deseasonalized_interarrival_coefficient_of_variation: 1.0,
+            deseasonalized_short_gap_threshold_seconds: 1.0,
+            deseasonalized_short_gap_ratio: 0.0,
+            deseasonalized_known_news_rate_per_hour: 0.0,
+        };
+
+        let (adjusted_candidate, applied_ratio) = adjust_candidate_for_deseasonalized_activity(
+            candidate_input,
+            observed_activity_targets,
+        );
+
+        assert_eq!(adjusted_candidate.lambda_bar, 2.0);
+        assert_eq!(applied_ratio, 2.0);
     }
 
     #[test]

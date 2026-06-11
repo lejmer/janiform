@@ -3,8 +3,8 @@ use janiform_foundations::time::utc_nanos;
 
 use super::close_open_boundaries::derive_close_open_boundary_observations;
 use super::hawkes_inputs::{
-    build_structured_rho_candidate, derive_positive_scale_candidates,
-    open_session_transition_metrics,
+    build_structured_rho_candidate, derive_hawkes_beta_candidates,
+    derive_positive_scale_candidates, open_session_transition_metrics,
 };
 use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::activity_lift;
@@ -246,6 +246,15 @@ fn positive_scale_candidates_remain_strictly_positive_after_rounding() {
         candidate_values.iter().all(|value| *value > 0.0),
         "positive scale candidate generation must preserve strict positivity"
     );
+}
+
+#[test]
+fn hawkes_beta_candidates_include_slow_counterfactuals() {
+    let candidate_values = derive_hawkes_beta_candidates(1_641.6);
+
+    assert!(candidate_values.contains(&60.0));
+    assert!(candidate_values.contains(&120.0));
+    assert!(candidate_values.contains(&300.0));
 }
 
 #[test]

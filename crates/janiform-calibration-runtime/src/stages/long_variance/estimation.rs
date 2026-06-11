@@ -2,7 +2,7 @@ use janiform_foundations::linear_algebra::non_negative_least_squares_2;
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero, pearson_correlation, sample_variance,
 };
-use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_foundations::time::{NANOS_PER_HOUR, duration_nanos_to_hours};
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
@@ -14,6 +14,15 @@ use crate::stages::long_variance::policy::{
     LongVarianceStationaryEventRates, long_variance_mean_reversion_rate_calibration_upper_bound,
     project_long_variance_event_loadings_to_stationary_budget,
 };
+
+const UTC_HOUR_BUCKET_COUNT: usize = 24;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DeseasonalizedSquaredReturnObservation {
+    interval_start_utc_nanos: i64,
+    interval_end_utc_nanos: i64,
+    deseasonalized_squared_return: f64,
+}
 
 pub(crate) fn estimate_long_variance_parameters(
     baseline_parameters: LongVarianceParameters,
@@ -48,14 +57,42 @@ pub(crate) fn estimate_long_variance_parameters(
 fn hourly_squared_return_persistence_decay_rate(
     hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> Option<f64> {
-    let squared_returns = finite_long_variance_squared_returns(hourly_intervals);
-    if squared_returns.len() < 2 {
+    let observations = deseasonalized_hourly_squared_return_observations(hourly_intervals);
+    if observations.len() < 2 {
+        return None;
+    }
+
+    let mut lagged_squared_returns = Vec::new();
+    let mut current_squared_returns = Vec::new();
+    let mut lag_hours = Vec::new();
+
+    for observation_pair in observations.windows(2) {
+        let previous = observation_pair[0];
+        let current = observation_pair[1];
+
+        if previous.interval_end_utc_nanos != current.interval_start_utc_nanos {
+            continue;
+        }
+
+        let current_lag_hours = duration_nanos_to_hours(
+            current.interval_start_utc_nanos - previous.interval_start_utc_nanos,
+        );
+        if !current_lag_hours.is_finite() || current_lag_hours <= 0.0 {
+            continue;
+        }
+
+        lagged_squared_returns.push(previous.deseasonalized_squared_return);
+        current_squared_returns.push(current.deseasonalized_squared_return);
+        lag_hours.push(current_lag_hours);
+    }
+
+    if lagged_squared_returns.len() < 2 {
         return None;
     }
 
     let persistence_correlation = pearson_correlation(
-        &squared_returns[..squared_returns.len() - 1],
-        &squared_returns[1..],
+        lagged_squared_returns.as_slice(),
+        current_squared_returns.as_slice(),
     );
     if !persistence_correlation.is_finite()
         || persistence_correlation <= 0.0
@@ -64,10 +101,72 @@ fn hourly_squared_return_persistence_decay_rate(
         return None;
     }
 
-    let average_interval_hours = average_interval_duration_hours(hourly_intervals)?;
+    let average_interval_hours = arithmetic_mean_or_zero(lag_hours.as_slice());
+    if !average_interval_hours.is_finite() || average_interval_hours <= 0.0 {
+        return None;
+    }
+
     let decay_rate = -persistence_correlation.ln() / average_interval_hours;
 
     (decay_rate.is_finite() && decay_rate > 0.0).then_some(decay_rate)
+}
+
+fn deseasonalized_hourly_squared_return_observations(
+    hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Vec<DeseasonalizedSquaredReturnObservation> {
+    let squared_return_observations = hourly_intervals
+        .iter()
+        .filter(|interval| interval.log_return.is_finite())
+        .filter_map(|interval| {
+            let squared_return = interval.log_return * interval.log_return;
+            if !squared_return.is_finite() {
+                return None;
+            }
+
+            let hour_bucket = utc_hour_bucket(interval.interval_start_utc_nanos);
+
+            Some((*interval, hour_bucket, squared_return))
+        })
+        .collect::<Vec<_>>();
+
+    let mut squared_return_sum_by_hour = [0.0; UTC_HOUR_BUCKET_COUNT];
+    let mut squared_return_count_by_hour = [0usize; UTC_HOUR_BUCKET_COUNT];
+
+    for (_, hour_bucket, squared_return) in squared_return_observations.iter().copied() {
+        squared_return_sum_by_hour[hour_bucket] += squared_return;
+        squared_return_count_by_hour[hour_bucket] =
+            squared_return_count_by_hour[hour_bucket].saturating_add(1);
+    }
+
+    squared_return_observations
+        .into_iter()
+        .filter_map(|(interval, hour_bucket, squared_return)| {
+            let bucket_count = squared_return_count_by_hour[hour_bucket];
+            if bucket_count == 0 {
+                return None;
+            }
+
+            let bucket_mean = squared_return_sum_by_hour[hour_bucket] / bucket_count as f64;
+            if !bucket_mean.is_finite() || bucket_mean <= 0.0 {
+                return None;
+            }
+
+            let deseasonalized_squared_return = squared_return / bucket_mean;
+
+            (deseasonalized_squared_return.is_finite() && deseasonalized_squared_return >= 0.0)
+                .then_some(DeseasonalizedSquaredReturnObservation {
+                    interval_start_utc_nanos: interval.interval_start_utc_nanos,
+                    interval_end_utc_nanos: interval.interval_end_utc_nanos,
+                    deseasonalized_squared_return,
+                })
+        })
+        .collect()
+}
+
+fn utc_hour_bucket(timestamp_utc_nanos: i64) -> usize {
+    timestamp_utc_nanos
+        .div_euclid(NANOS_PER_HOUR)
+        .rem_euclid(UTC_HOUR_BUCKET_COUNT as i64) as usize
 }
 
 fn side_event_loading_estimate(
@@ -169,32 +268,12 @@ fn mean_squared_return(intervals: &[JointRefinementAggregatedIntervalObservation
     (mean_squared_return.is_finite() && mean_squared_return > 0.0).then_some(mean_squared_return)
 }
 
-fn average_interval_duration_hours(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> Option<f64> {
-    let interval_hours = intervals
-        .iter()
-        .filter_map(|interval| {
-            let duration_hours = duration_nanos_to_hours(
-                interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
-            );
-
-            (duration_hours.is_finite() && duration_hours > 0.0).then_some(duration_hours)
-        })
-        .collect::<Vec<_>>();
-    if interval_hours.is_empty() {
-        return None;
-    }
-
-    Some(arithmetic_mean_or_zero(interval_hours.as_slice()))
-}
-
 #[cfg(test)]
 mod tests {
     use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
     use janiform_model_kernels::long_variance::LongVarianceParameters;
 
-    use super::estimate_long_variance_parameters;
+    use super::{estimate_long_variance_parameters, hourly_squared_return_persistence_decay_rate};
     use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
     use crate::stages::long_variance::policy::{
         LongVarianceStationaryEventRates, long_variance_event_feedback_drift_budget,
@@ -222,6 +301,41 @@ mod tests {
             tick_count,
             sell_share_proxy,
         }
+    }
+
+    #[test]
+    fn hourly_persistence_skips_non_adjacent_session_pairs() {
+        let hourly_intervals = [
+            interval(0, NANOS_PER_HOUR, 0.01, 100, 0.50),
+            interval(24 * NANOS_PER_HOUR, NANOS_PER_HOUR, 0.02, 100, 0.50),
+            interval(48 * NANOS_PER_HOUR, NANOS_PER_HOUR, 0.04, 100, 0.50),
+        ];
+
+        assert_eq!(
+            hourly_squared_return_persistence_decay_rate(hourly_intervals.as_slice()),
+            None
+        );
+    }
+
+    #[test]
+    fn hourly_persistence_deseasonalizes_utc_hour_squared_returns() {
+        let hourly_intervals = (0..3)
+            .flat_map(|day_position| {
+                [0.01, 0.02, 0.03, 0.04].into_iter().enumerate().map(
+                    move |(hour_position, log_return)| {
+                        let interval_start = day_position * 24 * NANOS_PER_HOUR
+                            + hour_position as i64 * NANOS_PER_HOUR;
+
+                        interval(interval_start, NANOS_PER_HOUR, log_return, 100, 0.50)
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            hourly_squared_return_persistence_decay_rate(hourly_intervals.as_slice()),
+            None
+        );
     }
 
     #[test]

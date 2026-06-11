@@ -59,8 +59,6 @@ pub struct ResolvedMarketProfile {
     pub known_news_policy: Option<String>,
     /// Profile-specific source-column aliases.
     pub column_alias_hints: Vec<MarketDataColumnAliasHint>,
-    /// Default calibration hint identifiers associated with the profile.
-    pub default_calibration_hint_ids: Vec<String>,
 }
 
 /// Errors raised while resolving bundled market-data presets.
@@ -108,8 +106,6 @@ struct BundledMarketProfileConfiguration {
     tick_size: Option<f64>,
     #[serde(default)]
     column_alias_hints: Vec<MarketDataColumnAliasHint>,
-    #[serde(default)]
-    default_calibration_hint_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -236,7 +232,6 @@ fn resolve_bundled_market_profile(
         known_news_preset_name: profile.configuration.known_news_preset_name.clone(),
         known_news_policy: profile.configuration.known_news_policy.clone(),
         column_alias_hints: profile.configuration.column_alias_hints.clone(),
-        default_calibration_hint_ids: profile.configuration.default_calibration_hint_ids.clone(),
     }))
 }
 
@@ -344,10 +339,6 @@ mod tests {
             inferred_profile.known_news_preset_name.as_deref(),
             Some("eu_us_macro_fx_core")
         );
-        assert_eq!(
-            inferred_profile.default_calibration_hint_ids,
-            vec!["fx_spot_defaults".to_string()]
-        );
     }
 
     #[test]
@@ -394,10 +385,6 @@ mod tests {
             assert_eq!(inferred_profile.profile_name, expected_profile_name);
             assert_eq!(inferred_profile.session_preset_name, "fx_spot_24_5");
             assert_eq!(inferred_profile.exchange_code, "FXSPOT");
-            assert_eq!(
-                inferred_profile.default_calibration_hint_ids,
-                vec!["fx_spot_defaults".to_string()]
-            );
 
             let expected_tick_size = if expected_profile_name
                 .split('_')
@@ -450,10 +437,6 @@ mod tests {
         assert_eq!(
             inferred_profile.known_news_preset_name.as_deref(),
             Some("none")
-        );
-        assert_eq!(
-            inferred_profile.default_calibration_hint_ids,
-            vec!["equity_index_futures_defaults".to_string()]
         );
     }
 }

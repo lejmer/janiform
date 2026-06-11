@@ -157,7 +157,7 @@ pub(super) fn build_hawkes_candidate_inputs(
         / open_session_duration_hours.max(strictly_positive_machine_value());
 
     let branching_values = derive_branching_ratio_candidates(clustering_center);
-    let beta_values = derive_positive_scale_candidates(beta_center);
+    let beta_values = derive_hawkes_beta_candidates(beta_center);
 
     let cross_shares = [0.10, 0.22];
     let lambda_scales = [0.5, 1.0, 2.0];
@@ -376,4 +376,17 @@ pub(super) fn derive_positive_scale_candidates(center: f64) -> Vec<f64> {
             .collect::<Vec<_>>()
             .as_slice(),
     )
+}
+
+pub(super) fn derive_hawkes_beta_candidates(center: f64) -> Vec<f64> {
+    const SLOW_BETA_COUNTERFACTUALS_PER_HOUR: [f64; 3] = [60.0, 120.0, 300.0];
+
+    let mut candidates = derive_positive_scale_candidates(center);
+    candidates.extend(
+        SLOW_BETA_COUNTERFACTUALS_PER_HOUR
+            .into_iter()
+            .map(|beta| round_positive_to_domain(beta, 12)),
+    );
+
+    unique_sorted_values(candidates.as_slice())
 }

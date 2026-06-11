@@ -6429,8 +6429,8 @@
 ### `MarketProfileExplicitConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'`
-- Fields: `profile_name`, `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`, `default_calibration_hint_ids`
+- Signature: `(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = ()) -> 'None'`
+- Fields: `profile_name`, `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`
 
 | Method | Signature |
 |--------|-----------|
@@ -6450,8 +6450,8 @@
 ### `MarketProfileOverridePatch`
 
 - Kind: `contract_model`
-- Signature: `(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'`
-- Fields: `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`, `default_calibration_hint_ids`
+- Signature: `(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None) -> 'None'`
+- Fields: `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`
 
 | Method | Signature |
 |--------|-----------|
@@ -6919,8 +6919,8 @@
 ### `MarketProfileExplicitConfiguration`
 
 - Kind: `contract_model`
-- Signature: `(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'`
-- Fields: `profile_name`, `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`, `default_calibration_hint_ids`
+- Signature: `(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = ()) -> 'None'`
+- Fields: `profile_name`, `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`
 
 | Method | Signature |
 |--------|-----------|
@@ -6940,8 +6940,8 @@
 ### `MarketProfileOverridePatch`
 
 - Kind: `contract_model`
-- Signature: `(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'`
-- Fields: `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`, `default_calibration_hint_ids`
+- Signature: `(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, tick_size: 'Optional[float]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None) -> 'None'`
+- Fields: `session_reference`, `known_news_reference`, `known_news_policy`, `timestamp_timezone_name`, `tick_size`, `column_alias_hints`
 
 | Method | Signature |
 |--------|-----------|

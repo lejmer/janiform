@@ -31,8 +31,6 @@ struct MarketProfileConfigurationPayload {
     tick_size: Option<f64>,
     #[serde(default)]
     column_alias_hints: Vec<MarketDataColumnAliasHint>,
-    #[serde(default)]
-    default_calibration_hint_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,7 +106,6 @@ pub(crate) fn resolve_explicit_market_profile(
         known_news_preset_name,
         known_news_policy: configuration.known_news_policy,
         column_alias_hints: configuration.column_alias_hints,
-        default_calibration_hint_ids: configuration.default_calibration_hint_ids,
     }))
 }
 

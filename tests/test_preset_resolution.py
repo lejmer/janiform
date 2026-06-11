@@ -174,7 +174,6 @@ def test_resolution_supports_full_explicit_replacements_for_market_profile_and_c
                 known_news_policy=MarketProfileKnownNewsPolicy.APPLY_BY_DEFAULT,
                 timestamp_timezone_name="America/New_York",
                 tick_size=0.01,
-                default_calibration_hint_ids=("desk_equity_defaults",),
             ),
         ),
         session_reference=SessionPresetReference(

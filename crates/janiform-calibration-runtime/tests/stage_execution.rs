@@ -1082,11 +1082,16 @@ fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
     explosive_candidate.candidate_id = "candidate_explosive_volume".to_string();
     explosive_candidate.lambda_bar = 42.0;
 
+    let mut seasonality_payload = build_seasonality_stage_success_payload();
+    for factor in &mut seasonality_payload.normalized_combined_factor_by_event {
+        *factor = 0.1;
+    }
+
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
         &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
-            build_seasonality_stage_success_payload(),
+            seasonality_payload,
             vec![explosive_candidate],
         ),
     );

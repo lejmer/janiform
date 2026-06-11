@@ -141,7 +141,6 @@ pub(super) fn apply_market_profile_override_patch(
         "timestamp_timezone_name",
         "tick_size",
         "column_alias_hints",
-        "default_calibration_hint_ids",
     ] {
         replace_if_present(configuration, override_patch, field_name)?;
     }
@@ -320,7 +319,6 @@ pub(super) fn market_profile_override_fields(override_patch: &Map<String, Value>
             "timestamp_timezone_name",
             "tick_size",
             "column_alias_hints",
-            "default_calibration_hint_ids",
         ],
     )
 }

@@ -4,13 +4,15 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero, bowley_skewness_from_sorted, central_skewness_or_zero,
+    MeanEstimate, arithmetic_mean_or_zero, bowley_skewness_from_sorted, central_skewness_or_zero,
     compute_sorted_quantile_or_zero, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted,
     mean_estimate_from_standard_errors, relative_rmse, sample_standard_deviation, sample_variance,
     sorted_finite_values, standardized_path_distance,
     winsorized_sample_standard_deviation_from_sorted,
 };
-use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, duration_nanos_to_hours};
+use janiform_foundations::time::{
+    NANOS_PER_DAY, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, duration_nanos_to_hours,
+};
 
 use super::execution::{
     JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JointRefinementAggregatedLikelihoodContextCacheKey,
@@ -35,7 +37,9 @@ use crate::stages::joint_metrics::{
     return_scale_summary_from_returns, rolling_variance_activity_metric, scale_normalized_returns,
     tick_count_series,
 };
-use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
+use crate::stages::long_variance::metrics::{
+    aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+};
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     build_continuous_return_optimizer_context,
@@ -69,6 +73,13 @@ pub(super) struct JointRefinementLikelihoodFitWithCounts {
     pub(super) fit: f64,
     pub(super) component_shifted_average_negative_log_likelihoods: [f64; 3],
     pub(super) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct JointRefinementReturnScaleSummaryEstimate {
+    mean_absolute_return: MeanEstimate,
+    realized_variance: MeanEstimate,
+    absolute_return_quantile_q90: MeanEstimate,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -591,6 +602,13 @@ fn build_coarse_search_seed_summary(
 
     let simulated_5m_log_returns = interval_log_returns(simulated_5m_intervals.as_slice());
     let simulated_15m_log_returns = interval_log_returns(simulated_15m_intervals.as_slice());
+    let simulated_1h_log_returns = interval_log_returns(simulated_hourly_intervals.as_slice());
+
+    let simulated_1d_intervals =
+        aggregate_intervals_to_fixed_duration(simulated_hourly_intervals.as_slice(), NANOS_PER_DAY);
+
+    let simulated_1d_log_returns = interval_log_returns(simulated_1d_intervals.as_slice());
+
     let simulated_tick_returns =
         coarse_search_tick_shape_proxy_returns(context, fitted_parameters, simulation_seed);
 
@@ -600,6 +618,8 @@ fn build_coarse_search_seed_summary(
         simulated_tick_shape_returns: scale_normalized_returns(simulated_tick_returns.as_slice()),
         simulated_5m_shape_returns: scale_normalized_returns(simulated_5m_log_returns.as_slice()),
         simulated_15m_shape_returns: scale_normalized_returns(simulated_15m_log_returns.as_slice()),
+        simulated_1h_shape_returns: scale_normalized_returns(simulated_1h_log_returns.as_slice()),
+        simulated_1d_shape_returns: scale_normalized_returns(simulated_1d_log_returns.as_slice()),
         simulated_tick_return_scale_summary: return_scale_summary_from_returns(
             simulated_tick_returns.as_slice(),
         ),
@@ -607,6 +627,10 @@ fn build_coarse_search_seed_summary(
         simulated_15m_return_scale_summary: return_scale_summary(
             simulated_15m_intervals.as_slice(),
         ),
+        simulated_1h_return_scale_summary: return_scale_summary(
+            simulated_hourly_intervals.as_slice(),
+        ),
+        simulated_1d_return_scale_summary: return_scale_summary(simulated_1d_intervals.as_slice()),
         simulated_5m_business_time_return_scale_summaries:
             return_scale_summaries_by_business_time_bucket(
                 simulated_5m_intervals.as_slice(),
@@ -887,6 +911,7 @@ fn resolve_deterministic_evaluation(
     fidelity_tier: JointRefinementFidelityTier,
 ) -> JointRefinementDeterministicEvaluation {
     let likelihood_fidelity_tier = likelihood_fidelity_tier_for_joint_fidelity(fidelity_tier);
+
     let cache_key = parameter_bits.map(|bits| JointRefinementDeterministicCacheKey {
         likelihood_fidelity_tier,
         parameter_bits: bits.to_vec(),
@@ -959,8 +984,10 @@ fn build_deterministic_evaluation_for_fidelity(
     let deterministic_evaluation_started_at = std::time::Instant::now();
 
     let modeled_rate_started_at = std::time::Instant::now();
+
     let modeled_open_event_rate_per_hour =
         modeled_open_event_rate_per_hour(fitted_parameters, context);
+
     context
         .profiling_state
         .record_modeled_rate_duration(elapsed_millis(modeled_rate_started_at));
@@ -974,8 +1001,10 @@ fn build_deterministic_evaluation_for_fidelity(
     );
 
     let expected_activity_counts_started_at = std::time::Instant::now();
+
     let expected_hourly_tick_counts =
         expected_hourly_tick_counts(modeled_open_event_rate_per_hour, context);
+
     context
         .profiling_state
         .record_expected_activity_counts_duration(elapsed_millis(
@@ -983,6 +1012,7 @@ fn build_deterministic_evaluation_for_fidelity(
         ));
 
     let deterministic_activity_shape_started_at = std::time::Instant::now();
+
     let raw_expected_activity_shape_fit =
         expected_hourly_tick_counts
             .as_ref()
@@ -992,6 +1022,7 @@ fn build_deterministic_evaluation_for_fidelity(
                     context.observed_data.observed_hourly_tick_counts.as_slice(),
                 )
             });
+
     context
         .profiling_state
         .record_deterministic_activity_shape_duration(elapsed_millis(
@@ -999,6 +1030,7 @@ fn build_deterministic_evaluation_for_fidelity(
         ));
 
     let deterministic_activity_level_started_at = std::time::Instant::now();
+
     let raw_expected_activity_level_fit =
         expected_hourly_tick_counts
             .as_ref()
@@ -1008,6 +1040,7 @@ fn build_deterministic_evaluation_for_fidelity(
                     context.observed_data.observed_hourly_tick_counts.as_slice(),
                 )
             });
+
     context
         .profiling_state
         .record_deterministic_activity_level_duration(elapsed_millis(
@@ -1082,6 +1115,7 @@ fn expected_hourly_tick_counts(
             let duration_hours = duration_nanos_to_hours(
                 interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
             );
+
             let expected_count = modeled_open_event_rate_per_hour * hourly_factor * duration_hours;
 
             expected_count.is_finite().then_some(expected_count)
@@ -1107,12 +1141,14 @@ fn raw_aggregated_likelihood_fit_for_fidelity_with_counts(
     context_cache_policy: LikelihoodContextCachePolicy,
 ) -> JointRefinementLikelihoodFitWithCounts {
     let context_resolution_started_at = std::time::Instant::now();
+
     let likelihood_contexts = resolve_joint_refinement_aggregated_likelihood_contexts(
         modeled_open_event_rate_per_hour,
         context,
         fidelity_tier,
         context_cache_policy,
     );
+
     context
         .profiling_state
         .record_likelihood_context_resolution_duration(elapsed_millis(
@@ -1147,6 +1183,7 @@ fn resolve_joint_refinement_aggregated_likelihood_contexts(
                 context
                     .profiling_state
                     .record_aggregated_likelihood_context_cache_hit();
+
                 return Arc::clone(cached_contexts);
             }
 
@@ -1185,35 +1222,40 @@ fn build_joint_refinement_aggregated_likelihood_contexts(
     context: &JointRefinementContext,
     fidelity_tier: ContinuousLikelihoodFidelityTier,
 ) -> JointRefinementAggregatedLikelihoodContexts {
-    let observed_5m_sample_started_at = std::time::Instant::now();
-    let observed_5m_sample =
+    let observed_1h_sample_started_at = std::time::Instant::now();
+
+    let observed_1h_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
-            context.observed_data.observed_5m_intervals.as_slice(),
+            context.observed_data.observed_1h_intervals.as_slice(),
             modeled_open_event_rate_per_hour,
             context.observed_data.observed_open_event_rate_per_hour,
             context.observed_data.fallback_sell_share_proxy,
         );
+
     context
         .profiling_state
-        .record_likelihood_context_5m_sample_duration(elapsed_millis(
-            observed_5m_sample_started_at,
+        .record_likelihood_context_1h_sample_duration(elapsed_millis(
+            observed_1h_sample_started_at,
         ));
 
-    let observed_15m_sample_started_at = std::time::Instant::now();
-    let observed_15m_sample =
+    let observed_1d_sample_started_at = std::time::Instant::now();
+
+    let observed_1d_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
-            context.observed_data.observed_15m_intervals.as_slice(),
+            context.observed_data.observed_1d_intervals.as_slice(),
             modeled_open_event_rate_per_hour,
             context.observed_data.observed_open_event_rate_per_hour,
             context.observed_data.fallback_sell_share_proxy,
         );
+
     context
         .profiling_state
-        .record_likelihood_context_15m_sample_duration(elapsed_millis(
-            observed_15m_sample_started_at,
+        .record_likelihood_context_1d_sample_duration(elapsed_millis(
+            observed_1d_sample_started_at,
         ));
 
     let observed_tick_sample_started_at = std::time::Instant::now();
+
     let tick_context_source = match fidelity_tier {
         ContinuousLikelihoodFidelityTier::Seed
         | ContinuousLikelihoodFidelityTier::Representative
@@ -1228,6 +1270,7 @@ fn build_joint_refinement_aggregated_likelihood_contexts(
                 .observed_tick_continuous_return_optimizer_context
         }
     };
+
     context
         .profiling_state
         .record_likelihood_context_tick_sample_duration(elapsed_millis(
@@ -1235,34 +1278,38 @@ fn build_joint_refinement_aggregated_likelihood_contexts(
         ));
 
     let tick_context_started_at = std::time::Instant::now();
+
     let tick = rescale_continuous_return_optimizer_context_business_time_scales(
         tick_context_source,
         modeled_open_event_rate_per_hour / context.baseline_modeled_open_event_rate_per_hour,
     );
+
     context
         .profiling_state
         .record_likelihood_context_tick_optimizer_duration(elapsed_millis(tick_context_started_at));
 
-    let five_minute_context_started_at = std::time::Instant::now();
-    let five_minute = build_continuous_return_optimizer_context(&observed_5m_sample);
+    let one_hour_context_started_at = std::time::Instant::now();
+    let one_hour = build_continuous_return_optimizer_context(&observed_1h_sample);
+
     context
         .profiling_state
-        .record_likelihood_context_5m_optimizer_duration(elapsed_millis(
-            five_minute_context_started_at,
+        .record_likelihood_context_1h_optimizer_duration(elapsed_millis(
+            one_hour_context_started_at,
         ));
 
-    let fifteen_minute_context_started_at = std::time::Instant::now();
-    let fifteen_minute = build_continuous_return_optimizer_context(&observed_15m_sample);
+    let one_day_context_started_at = std::time::Instant::now();
+    let one_day = build_continuous_return_optimizer_context(&observed_1d_sample);
+
     context
         .profiling_state
-        .record_likelihood_context_15m_optimizer_duration(elapsed_millis(
-            fifteen_minute_context_started_at,
+        .record_likelihood_context_1d_optimizer_duration(elapsed_millis(
+            one_day_context_started_at,
         ));
 
     JointRefinementAggregatedLikelihoodContexts {
         tick,
-        five_minute,
-        fifteen_minute,
+        one_hour,
+        one_day,
     }
 }
 
@@ -1273,55 +1320,59 @@ fn raw_aggregated_likelihood_fit_for_contexts_with_counts(
     fidelity_tier: ContinuousLikelihoodFidelityTier,
 ) -> JointRefinementLikelihoodFitWithCounts {
     let tick_likelihood_started_at = std::time::Instant::now();
+
     let (tick_objective, tick_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,
             &likelihood_contexts.tick,
             fidelity_tier,
         );
+
     context
         .profiling_state
         .record_tick_likelihood_duration(elapsed_millis(tick_likelihood_started_at));
 
-    let five_minute_likelihood_started_at = std::time::Instant::now();
-    let (five_minute_objective, five_minute_counts) =
-        evaluate_configuration_likelihood_objective_with_context_and_counts(
-            configuration,
-            &likelihood_contexts.five_minute,
-            fidelity_tier,
-        );
-    context
-        .profiling_state
-        .record_5m_likelihood_duration(elapsed_millis(five_minute_likelihood_started_at));
+    let one_hour_likelihood_started_at = std::time::Instant::now();
 
-    let fifteen_minute_likelihood_started_at = std::time::Instant::now();
-    let (fifteen_minute_objective, fifteen_minute_counts) =
+    let (one_hour_objective, one_hour_counts) =
         evaluate_configuration_likelihood_objective_with_context_and_counts(
             configuration,
-            &likelihood_contexts.fifteen_minute,
+            &likelihood_contexts.one_hour,
             fidelity_tier,
         );
+
     context
         .profiling_state
-        .record_15m_likelihood_duration(elapsed_millis(fifteen_minute_likelihood_started_at));
+        .record_1h_likelihood_duration(elapsed_millis(one_hour_likelihood_started_at));
+
+    let one_day_likelihood_started_at = std::time::Instant::now();
+
+    let (one_day_objective, one_day_counts) =
+        evaluate_configuration_likelihood_objective_with_context_and_counts(
+            configuration,
+            &likelihood_contexts.one_day,
+            fidelity_tier,
+        );
+
+    context
+        .profiling_state
+        .record_1d_likelihood_duration(elapsed_millis(one_day_likelihood_started_at));
 
     JointRefinementLikelihoodFitWithCounts {
         fit: [
             tick_objective.shifted_objective_score,
-            five_minute_objective.shifted_objective_score,
-            fifteen_minute_objective.shifted_objective_score,
+            one_hour_objective.shifted_objective_score,
+            one_day_objective.shifted_objective_score,
         ]
         .into_iter()
         .sum::<f64>()
             / 3.0,
         component_shifted_average_negative_log_likelihoods: [
             tick_objective.shifted_objective_score,
-            five_minute_objective.shifted_objective_score,
-            fifteen_minute_objective.shifted_objective_score,
+            one_hour_objective.shifted_objective_score,
+            one_day_objective.shifted_objective_score,
         ],
-        exact_likelihood_evaluator_counts: tick_counts
-            .add(five_minute_counts)
-            .add(fifteen_minute_counts),
+        exact_likelihood_evaluator_counts: tick_counts.add(one_hour_counts).add(one_day_counts),
     }
 }
 
@@ -1329,15 +1380,15 @@ fn aggregated_return_shape_fit(
     seed_summary: &JointRefinementSeedSummary,
     observed_data: &JointRefinementObservedData,
 ) -> f64 {
-    let shape_5m = crate::stages::return_components::distribution_profile_fit_score(
-        seed_summary.simulated_5m_shape_returns.as_slice(),
-        observed_data.observed_5m_shape_returns.as_slice(),
+    let shape_1h = crate::stages::return_components::distribution_profile_fit_score(
+        seed_summary.simulated_1h_shape_returns.as_slice(),
+        observed_data.observed_1h_shape_returns.as_slice(),
     )
     .profile_fit_score;
 
-    let shape_15m = crate::stages::return_components::distribution_profile_fit_score(
-        seed_summary.simulated_15m_shape_returns.as_slice(),
-        observed_data.observed_15m_shape_returns.as_slice(),
+    let shape_1d = crate::stages::return_components::distribution_profile_fit_score(
+        seed_summary.simulated_1d_shape_returns.as_slice(),
+        observed_data.observed_1d_shape_returns.as_slice(),
     )
     .profile_fit_score;
 
@@ -1347,21 +1398,21 @@ fn aggregated_return_shape_fit(
     )
     .profile_fit_score;
 
-    (shape_tick + shape_5m + shape_15m) / 3.0
+    (shape_tick + shape_1h + shape_1d) / 3.0
 }
 
 fn aggregated_return_scale_fit(
     seed_summary: &JointRefinementSeedSummary,
     observed_data: &JointRefinementObservedData,
 ) -> f64 {
-    let fit_15m = return_scale_horizon_fit(
-        seed_summary.simulated_15m_return_scale_summary,
-        observed_data.observed_15m_return_scale_summary,
+    let fit_1d = return_scale_horizon_fit(
+        seed_summary.simulated_1d_return_scale_summary,
+        observed_data.observed_1d_return_scale_summary,
     );
 
-    let fit_5m = return_scale_horizon_fit(
-        seed_summary.simulated_5m_return_scale_summary,
-        observed_data.observed_5m_return_scale_summary,
+    let fit_1h = return_scale_horizon_fit(
+        seed_summary.simulated_1h_return_scale_summary,
+        observed_data.observed_1h_return_scale_summary,
     );
 
     let fit_tick = return_scale_horizon_fit(
@@ -1369,7 +1420,7 @@ fn aggregated_return_scale_fit(
         observed_data.observed_tick_return_scale_summary,
     );
 
-    root_mean_square([fit_tick, fit_5m, fit_15m].as_slice())
+    root_mean_square([fit_tick, fit_1h, fit_1d].as_slice())
 }
 
 fn tick_return_scale_fit(
@@ -1386,14 +1437,14 @@ fn return_asymmetry_fit(
     seed_summary: &JointRefinementSeedSummary,
     observed_data: &JointRefinementObservedData,
 ) -> f64 {
-    let fit_15m = return_asymmetry_horizon_fit(
-        seed_summary.simulated_15m_shape_returns.as_slice(),
-        observed_data.observed_15m_shape_returns.as_slice(),
+    let fit_1d = return_asymmetry_horizon_fit(
+        seed_summary.simulated_1d_shape_returns.as_slice(),
+        observed_data.observed_1d_shape_returns.as_slice(),
     );
 
-    let fit_5m = return_asymmetry_horizon_fit(
-        seed_summary.simulated_5m_shape_returns.as_slice(),
-        observed_data.observed_5m_shape_returns.as_slice(),
+    let fit_1h = return_asymmetry_horizon_fit(
+        seed_summary.simulated_1h_shape_returns.as_slice(),
+        observed_data.observed_1h_shape_returns.as_slice(),
     );
 
     let fit_tick = return_asymmetry_horizon_fit(
@@ -1401,7 +1452,7 @@ fn return_asymmetry_fit(
         observed_data.observed_tick_shape_returns.as_slice(),
     );
 
-    root_mean_square([fit_tick, fit_5m, fit_15m].as_slice())
+    root_mean_square([fit_tick, fit_1h, fit_1d].as_slice())
 }
 
 fn tick_return_asymmetry_fit(
@@ -1625,6 +1676,7 @@ fn build_joint_coarse_search_loss_evaluation(
 
     add_likelihood_terms(&mut builder, deterministic_evaluation);
     add_domain_margin_priors(&mut builder, fitted_parameters, observed_data);
+
     add_deterministic_activity_terms(
         &mut builder,
         fitted_parameters,
@@ -1654,11 +1706,11 @@ fn add_likelihood_terms(
             deterministic_evaluation.component_shifted_average_negative_log_likelihoods[0],
         ),
         (
-            "returns.nig_likelihood.5m",
+            "returns.nig_likelihood.1h",
             deterministic_evaluation.component_shifted_average_negative_log_likelihoods[1],
         ),
         (
-            "returns.nig_likelihood.15m",
+            "returns.nig_likelihood.1d",
             deterministic_evaluation.component_shifted_average_negative_log_likelihoods[2],
         ),
     ] {
@@ -1693,12 +1745,12 @@ fn add_return_shape_terms(
 
     add_return_shape_horizon_terms(
         builder,
-        JointRefinementReturnShapeHorizon::FiveMinute,
+        JointRefinementReturnShapeHorizon::OneHour,
         temporal_block_count,
-        observed_data.observed_5m_shape_returns.as_slice(),
+        observed_data.observed_1h_shape_returns.as_slice(),
         seed_summaries
             .iter()
-            .map(|summary| summary.simulated_5m_shape_returns.as_slice())
+            .map(|summary| summary.simulated_1h_shape_returns.as_slice())
             .collect::<Vec<_>>()
             .as_slice(),
         context,
@@ -1706,12 +1758,12 @@ fn add_return_shape_terms(
 
     add_return_shape_horizon_terms(
         builder,
-        JointRefinementReturnShapeHorizon::FifteenMinute,
+        JointRefinementReturnShapeHorizon::OneDay,
         temporal_block_count,
-        observed_data.observed_15m_shape_returns.as_slice(),
+        observed_data.observed_1d_shape_returns.as_slice(),
         seed_summaries
             .iter()
-            .map(|summary| summary.simulated_15m_shape_returns.as_slice())
+            .map(|summary| summary.simulated_1d_shape_returns.as_slice())
             .collect::<Vec<_>>()
             .as_slice(),
         context,
@@ -1741,12 +1793,12 @@ fn add_coarse_return_shape_terms(
 
     add_return_shape_horizon_terms(
         builder,
-        JointRefinementReturnShapeHorizon::FiveMinute,
+        JointRefinementReturnShapeHorizon::OneHour,
         temporal_block_count,
-        observed_data.observed_5m_shape_returns.as_slice(),
+        observed_data.observed_1h_shape_returns.as_slice(),
         seed_summaries
             .iter()
-            .map(|summary| summary.simulated_5m_shape_returns.as_slice())
+            .map(|summary| summary.simulated_1h_shape_returns.as_slice())
             .collect::<Vec<_>>()
             .as_slice(),
         context,
@@ -1754,12 +1806,12 @@ fn add_coarse_return_shape_terms(
 
     add_return_shape_horizon_terms(
         builder,
-        JointRefinementReturnShapeHorizon::FifteenMinute,
+        JointRefinementReturnShapeHorizon::OneDay,
         temporal_block_count,
-        observed_data.observed_15m_shape_returns.as_slice(),
+        observed_data.observed_1d_shape_returns.as_slice(),
         seed_summaries
             .iter()
-            .map(|summary| summary.simulated_15m_shape_returns.as_slice())
+            .map(|summary| summary.simulated_1d_shape_returns.as_slice())
             .collect::<Vec<_>>()
             .as_slice(),
         context,
@@ -1847,8 +1899,8 @@ fn cached_observed_return_shape_statistic_estimates(
 fn return_shape_horizon_label(horizon: JointRefinementReturnShapeHorizon) -> &'static str {
     match horizon {
         JointRefinementReturnShapeHorizon::Tick => "tick",
-        JointRefinementReturnShapeHorizon::FiveMinute => "5m",
-        JointRefinementReturnShapeHorizon::FifteenMinute => "15m",
+        JointRefinementReturnShapeHorizon::OneHour => "1h",
+        JointRefinementReturnShapeHorizon::OneDay => "1d",
     }
 }
 
@@ -1867,35 +1919,32 @@ fn add_return_scale_terms(
                 .map(|summary| summary.simulated_tick_return_scale_summary),
         ),
         observed_data.observed_tick_shape_returns.len(),
-        seed_summaries.len(),
         "return_scale",
     );
 
     add_return_scale_summary_terms(
         builder,
-        "5m",
-        observed_data.observed_5m_return_scale_summary,
+        "1h",
+        observed_data.observed_1h_return_scale_summary,
         average_return_scale_summary(
             seed_summaries
                 .iter()
-                .map(|summary| summary.simulated_5m_return_scale_summary),
+                .map(|summary| summary.simulated_1h_return_scale_summary),
         ),
-        observed_data.observed_5m_intervals.len(),
-        seed_summaries.len(),
+        observed_data.observed_1h_intervals.len(),
         "return_scale",
     );
 
     add_return_scale_summary_terms(
         builder,
-        "15m",
-        observed_data.observed_15m_return_scale_summary,
+        "1d",
+        observed_data.observed_1d_return_scale_summary,
         average_return_scale_summary(
             seed_summaries
                 .iter()
-                .map(|summary| summary.simulated_15m_return_scale_summary),
+                .map(|summary| summary.simulated_1d_return_scale_summary),
         ),
-        observed_data.observed_15m_intervals.len(),
-        seed_summaries.len(),
+        observed_data.observed_1d_intervals.len(),
         "return_scale",
     );
 }
@@ -1907,29 +1956,27 @@ fn add_coarse_return_scale_terms(
 ) {
     add_return_scale_summary_terms(
         builder,
-        "5m",
-        observed_data.observed_5m_return_scale_summary,
+        "1h",
+        observed_data.observed_1h_return_scale_summary,
         average_return_scale_summary(
             seed_summaries
                 .iter()
-                .map(|summary| summary.simulated_5m_return_scale_summary),
+                .map(|summary| summary.simulated_1h_return_scale_summary),
         ),
-        observed_data.observed_5m_intervals.len(),
-        seed_summaries.len(),
+        observed_data.observed_1h_intervals.len(),
         "return_scale",
     );
 
     add_return_scale_summary_terms(
         builder,
-        "15m",
-        observed_data.observed_15m_return_scale_summary,
+        "1d",
+        observed_data.observed_1d_return_scale_summary,
         average_return_scale_summary(
             seed_summaries
                 .iter()
-                .map(|summary| summary.simulated_15m_return_scale_summary),
+                .map(|summary| summary.simulated_1d_return_scale_summary),
         ),
-        observed_data.observed_15m_intervals.len(),
-        seed_summaries.len(),
+        observed_data.observed_1d_intervals.len(),
         "return_scale",
     );
 }
@@ -2222,11 +2269,13 @@ fn return_shape_statistic_estimates(
     }
 
     let finite_values = sorted_values.as_slice();
+
     let effective_sample_count =
         return_shape_effective_sample_count(finite_values.len(), temporal_block_count);
 
     let mut estimates =
         base_return_shape_statistic_estimates(finite_values, effective_sample_count);
+
     let block_standard_errors =
         return_shape_temporal_block_standard_errors(values, temporal_block_count);
 
@@ -2244,6 +2293,7 @@ fn base_return_shape_statistic_estimates(
     effective_sample_count: usize,
 ) -> Vec<JointRefinementReturnShapeStatisticEstimate> {
     let sample_standard_deviation_value = sample_standard_deviation(finite_values);
+
     let winsorized_volatility = winsorized_sample_standard_deviation_from_sorted(
         finite_values,
         RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE,
@@ -2382,6 +2432,7 @@ fn return_shape_temporal_block_standard_errors(
         }
 
         let sorted_block_values = sorted_finite_values(&finite_values[block_start..block_end]);
+
         let block_estimates = base_return_shape_statistic_estimates(
             sorted_block_values.as_slice(),
             block_end - block_start,
@@ -2440,10 +2491,12 @@ fn average_seed_statistic_estimate(
         .iter()
         .map(|estimate| estimate.value)
         .collect::<Vec<_>>();
+
     let standard_errors = estimates
         .iter()
         .map(|estimate| estimate.standard_error)
         .collect::<Vec<_>>();
+
     let pooled_estimate =
         mean_estimate_from_standard_errors(values.as_slice(), standard_errors.as_slice())?;
 
@@ -2458,12 +2511,15 @@ fn add_return_scale_summary_terms(
     builder: &mut CalibrationLossBuilder,
     horizon_label: &str,
     observed_summary: JointRefinementReturnScaleSummary,
-    model_summary: JointRefinementReturnScaleSummary,
+    model_summary: Option<JointRefinementReturnScaleSummaryEstimate>,
     observed_sample_count: usize,
-    model_seed_count: usize,
     family_id: &str,
 ) {
-    for (metric_name, observed_value, model_value) in [
+    let Some(model_summary) = model_summary else {
+        return;
+    };
+
+    for (metric_name, observed_value, model_estimate) in [
         (
             "mean_absolute_return",
             observed_summary.mean_absolute_return,
@@ -2475,7 +2531,7 @@ fn add_return_scale_summary_terms(
             model_summary.realized_variance,
         ),
         (
-            "absolute_return_quantile_q95",
+            "absolute_return_quantile_q90",
             observed_summary.absolute_return_quantile_q90,
             model_summary.absolute_return_quantile_q90,
         ),
@@ -2485,31 +2541,45 @@ fn add_return_scale_summary_terms(
             format!("{family_id}.{horizon_label}.{metric_name}").as_str(),
             family_id,
             observed_value,
-            model_value,
+            model_estimate.value,
             standard_error_from_positive_value(observed_value, observed_sample_count),
-            standard_error_from_positive_value(model_value, model_seed_count),
+            model_estimate.standard_error,
         );
     }
 }
 
 fn average_return_scale_summary(
     summaries: impl Iterator<Item = JointRefinementReturnScaleSummary>,
-) -> JointRefinementReturnScaleSummary {
+) -> Option<JointRefinementReturnScaleSummaryEstimate> {
     let summaries = summaries.collect::<Vec<_>>();
 
-    JointRefinementReturnScaleSummary {
-        mean_absolute_return: average_seed_score(
-            summaries.iter().map(|summary| summary.mean_absolute_return),
-        ),
-        realized_variance: average_seed_score(
-            summaries.iter().map(|summary| summary.realized_variance),
-        ),
-        absolute_return_quantile_q90: average_seed_score(
-            summaries
-                .iter()
-                .map(|summary| summary.absolute_return_quantile_q90),
-        ),
-    }
+    Some(JointRefinementReturnScaleSummaryEstimate {
+        mean_absolute_return: return_scale_seed_estimate(summaries.as_slice(), |summary| {
+            summary.mean_absolute_return
+        })?,
+        realized_variance: return_scale_seed_estimate(summaries.as_slice(), |summary| {
+            summary.realized_variance
+        })?,
+        absolute_return_quantile_q90: return_scale_seed_estimate(
+            summaries.as_slice(),
+            |summary| summary.absolute_return_quantile_q90,
+        )?,
+    })
+}
+
+fn return_scale_seed_estimate(
+    summaries: &[JointRefinementReturnScaleSummary],
+    extract_metric: fn(JointRefinementReturnScaleSummary) -> f64,
+) -> Option<MeanEstimate> {
+    let values = summaries
+        .iter()
+        .copied()
+        .map(extract_metric)
+        .collect::<Vec<_>>();
+
+    let standard_errors = vec![0.0; values.len()];
+
+    mean_estimate_from_standard_errors(values.as_slice(), standard_errors.as_slice())
 }
 
 fn add_business_time_return_scale_horizon_terms(
@@ -2539,7 +2609,6 @@ fn add_business_time_return_scale_horizon_terms(
                 .checked_div(observed_summaries.bucket_summaries.len().max(1))
                 .unwrap_or(0)
                 .max(1),
-            simulated_summaries_by_seed.len(),
             "business_time_return_scale",
         );
     }
@@ -2639,6 +2708,7 @@ fn activity_level_standard_errors(counts: &[f64], fano_factor: f64) -> ActivityL
 
     let block_mean_standard_error =
         activity_session_block_mean_standard_error(counts).unwrap_or(0.0);
+
     let block_total_standard_error = block_mean_standard_error * count as f64;
 
     ActivityLevelStandardErrors {
@@ -2686,7 +2756,6 @@ fn add_activity_shape_terms(
     }
 
     let concentration = dirichlet_multinomial_concentration_from_hourly_counts(observed_counts);
-
     let count = observed_counts.len().min(model_counts.len());
 
     for hour_index in 0..count {
@@ -2829,8 +2898,10 @@ fn bowley_skewness_standard_error(sorted_values: &[f64], effective_sample_count:
 
     let lower_quartile_standard_error =
         quantile_standard_error(sorted_values, 0.25, effective_sample_count);
+
     let median_standard_error =
         quantile_standard_error(sorted_values, 0.50, effective_sample_count);
+
     let upper_quartile_standard_error =
         quantile_standard_error(sorted_values, 0.75, effective_sample_count);
 
@@ -3048,11 +3119,13 @@ mod tests {
     use super::{
         LikelihoodContextCachePolicy, activity_level_fit_for_counts,
         activity_level_standard_errors, activity_shape_fit_for_counts, add_direct_term,
+        add_return_scale_summary_terms, average_return_scale_summary,
         bowley_skewness_standard_error, likelihood_context_cache_policy_for_joint_fidelity,
         likelihood_fidelity_tier_for_joint_fidelity, return_shape_effective_sample_count,
         return_shape_statistic_estimates, statistic_estimate_by_name,
     };
     use crate::objective::CalibrationLossBuilder;
+    use crate::stages::joint_metrics::JointRefinementReturnScaleSummary;
     use crate::stages::joint_refinement::execution::JointRefinementFidelityTier;
     use crate::stages::return_components::ContinuousLikelihoodFidelityTier;
     use janiform_calibration_artifacts::CalibrationObjectivePolicy;
@@ -3085,6 +3158,7 @@ mod tests {
             "winsorized_volatility_q05_q95",
         )
         .expect("winsorized volatility estimate should be present");
+
         let temporal_blocked_winsorized_volatility = statistic_estimate_by_name(
             return_shape_statistic_estimates(returns.as_slice(), 10),
             "winsorized_volatility_q05_q95",
@@ -3106,11 +3180,13 @@ mod tests {
 
         let base_winsorized_volatility =
             winsorized_sample_standard_deviation_from_sorted(&base_returns, 0.20, 0.80);
+
         let contaminated_winsorized_volatility = winsorized_sample_standard_deviation_from_sorted(
             &tail_contaminated_returns,
             0.20,
             0.80,
         );
+
         let contaminated_sample_volatility =
             sample_standard_deviation(tail_contaminated_returns.as_slice());
 
@@ -3153,6 +3229,52 @@ mod tests {
     }
 
     #[test]
+    fn return_scale_terms_use_q90_label_and_seed_dispersion_standard_error() {
+        let observed_summary = JointRefinementReturnScaleSummary {
+            mean_absolute_return: 1.0,
+            realized_variance: 1.0,
+            absolute_return_quantile_q90: 1.0,
+        };
+
+        let seed_summaries = [
+            JointRefinementReturnScaleSummary {
+                mean_absolute_return: 1.0,
+                realized_variance: 1.0,
+                absolute_return_quantile_q90: 1.0,
+            },
+            JointRefinementReturnScaleSummary {
+                mean_absolute_return: 3.0,
+                realized_variance: 3.0,
+                absolute_return_quantile_q90: 3.0,
+            },
+        ];
+
+        let model_summary = average_return_scale_summary(seed_summaries.into_iter());
+
+        let mut builder = CalibrationLossBuilder::new(CalibrationObjectivePolicy::default());
+
+        add_return_scale_summary_terms(
+            &mut builder,
+            "1d",
+            observed_summary,
+            model_summary,
+            4,
+            "return_scale",
+        );
+
+        let loss = builder.build();
+
+        let q90_term = loss
+            .term_diagnostics
+            .iter()
+            .find(|term| term.term_id == "return_scale.1d.absolute_return_quantile_q90")
+            .expect("q90 return-scale term should be emitted");
+
+        assert_eq!(q90_term.model_value, Some(2.0));
+        assert_eq!(q90_term.model_standard_error, Some(1.0));
+    }
+
+    #[test]
     fn bowley_uncertainty_reflects_discrete_quantile_instability() {
         let mut returns = vec![-1.0; 1_180];
         returns.extend(vec![1.0; 1_220]);
@@ -3165,6 +3287,7 @@ mod tests {
     #[test]
     fn activity_level_uncertainty_uses_session_block_variation() {
         let smooth_counts = vec![100.0; 72];
+
         let clustered_counts = (0..72)
             .map(|hour_index| {
                 if hour_index < 24 {

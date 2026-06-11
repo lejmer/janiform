@@ -167,13 +167,22 @@ fn build_test_observed_data() -> JointRefinementObservedData {
             build_test_interval_observation(0, 900, 0.018, 6, 0.5),
             build_test_interval_observation(900, 1800, -0.012, 5, 0.5),
         ],
+        observed_1h_intervals: vec![
+            build_test_interval_observation(0, 3600, 0.018, 6, 0.5),
+            build_test_interval_observation(3600, 7200, -0.012, 5, 0.5),
+        ],
+        observed_1d_intervals: vec![build_test_interval_observation(0, 86_400, 0.006, 11, 0.5)],
         observed_tick_intraday_mean_absolute_returns: vec![0.01; 24],
         observed_tick_shape_returns: vec![0.012, -0.009, 0.006, -0.004, 0.011, -0.007],
-        observed_5m_shape_returns: vec![0.012, -0.009],
-        observed_15m_shape_returns: vec![0.018, -0.012],
+        observed_1h_shape_returns: vec![0.018, -0.012],
+        observed_1d_shape_returns: vec![0.006],
         observed_tick_return_scale_summary,
-        observed_5m_return_scale_summary,
-        observed_15m_return_scale_summary,
+        observed_1h_return_scale_summary: observed_15m_return_scale_summary,
+        observed_1d_return_scale_summary: JointRefinementReturnScaleSummary {
+            mean_absolute_return: 0.006,
+            realized_variance: 0.000036,
+            absolute_return_quantile_q90: 0.006,
+        },
         observed_5m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds {
             lower_quartile_cutoff: 0.8,
             median_cutoff: 1.0,
@@ -402,6 +411,8 @@ fn build_test_seed_summary(
         simulated_tick_shape_returns: vec![0.01, -0.01],
         simulated_5m_shape_returns: vec![0.02, -0.02],
         simulated_15m_shape_returns: vec![0.03, -0.03],
+        simulated_1h_shape_returns: vec![0.03, -0.03],
+        simulated_1d_shape_returns: vec![0.0],
         simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary {
             mean_absolute_return: 0.01,
             realized_variance: 0.0001,
@@ -409,6 +420,12 @@ fn build_test_seed_summary(
         },
         simulated_5m_return_scale_summary,
         simulated_15m_return_scale_summary,
+        simulated_1h_return_scale_summary: simulated_15m_return_scale_summary,
+        simulated_1d_return_scale_summary: JointRefinementReturnScaleSummary {
+            mean_absolute_return: 0.0,
+            realized_variance: 0.0,
+            absolute_return_quantile_q90: 0.0,
+        },
         simulated_5m_business_time_return_scale_summaries:
             JointRefinementBusinessTimeBucketReturnScaleSummaries {
                 bucket_summaries: [None; 4],
@@ -852,7 +869,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
 
     let baseline_final_objective_terms = vec![
-        build_test_objective_term("return_scale.15m.mean_absolute_return", 1.0, 2.0),
+        build_test_objective_term("return_scale.1d.mean_absolute_return", 1.0, 2.0),
         build_test_objective_term("return_scale.tick.realized_variance", 4.0, 25.0),
     ];
 
@@ -882,7 +899,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
 
     let mean_absolute_return_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
-        "return_scale_mean_absolute_return_15m",
+        "return_scale_mean_absolute_return_1d",
     );
 
     assert_eq!(
@@ -892,7 +909,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
 
     let mean_absolute_return_activity_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
-        "return_scale_mean_absolute_return_15m_activity_aligned",
+        "return_scale_mean_absolute_return_1d_activity_aligned",
     );
 
     assert_eq!(

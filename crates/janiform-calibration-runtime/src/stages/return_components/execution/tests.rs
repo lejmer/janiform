@@ -501,6 +501,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
+        &candidate_generation_input.tick_grid_observation_model,
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -698,6 +699,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
+        &candidate_generation_input.tick_grid_observation_model,
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -856,6 +858,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
+        &candidate_generation_input.tick_grid_observation_model,
     );
 
     let fitted_surprise_episode_selection_layer =

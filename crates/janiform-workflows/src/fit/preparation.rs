@@ -500,7 +500,6 @@ fn resolve_effective_market_profile_reference(
                 "timestamp_timezone_name": profile.timestamp_timezone_name,
                 "tick_size": profile.tick_size,
                 "column_alias_hints": profile.column_alias_hints,
-                "default_calibration_hint_ids": profile.default_calibration_hint_ids,
             },
         })),
         session_reference: None,
@@ -546,7 +545,6 @@ fn market_profile_defaults(
         timestamp_timezone_name: defaults.timestamp_timezone_name,
         tick_size: defaults.tick_size,
         column_alias_hints: defaults.column_alias_hints,
-        default_calibration_hint_ids: defaults.default_calibration_hint_ids,
     }))
 }
 
@@ -558,8 +556,6 @@ struct MarketProfileDefaultsPayload {
     tick_size: Option<f64>,
     #[serde(default)]
     column_alias_hints: Vec<janiform_calibration_runtime::MarketDataColumnAliasHint>,
-    #[serde(default)]
-    default_calibration_hint_ids: Vec<String>,
 }
 
 fn option_surface_source(
