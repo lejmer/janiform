@@ -48,14 +48,14 @@
     "id": "activity_intraday_profile_buy_side_empirical_market_data",
     "title": "Empirical ES continuous futures buy-side activity intraday profile"
   },
-  "generated_at_utc": "2026-06-10T16:38:56.376798+00:00",
+  "generated_at_utc": "2026-06-11T21:42:18.491221+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/activity_intraday_profile.py"
+      "paper\\scripts\\figures\\activity_intraday_profile.py"
     ],
-    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/activity_intraday_profile.py"
   },
   "inputs": [
@@ -119,8 +119,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/activity_intraday_profile/activity_intraday_profile_buy_side.pdf",
       "role": "figure",
-      "sha256": "cc85089e8a2023d5ff41b013c2237c9fb92aa61acc40e7bbb1aa01c52a10fc29",
-      "size_bytes": 18906
+      "sha256": "33dcef6573ffd4dceef8fd5267e039ad9570b29812436fcdc1657f978a2318c8",
+      "size_bytes": 18760
     }
   ],
   "parameters": {

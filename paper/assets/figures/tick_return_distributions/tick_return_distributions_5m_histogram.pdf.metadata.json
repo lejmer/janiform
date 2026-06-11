@@ -37,14 +37,14 @@
     "id": "tick_return_distributions_5m_histogram_empirical_market_data",
     "title": "Empirical ES 5m log-return distribution"
   },
-  "generated_at_utc": "2026-06-10T17:04:39.823828+00:00",
+  "generated_at_utc": "2026-06-11T21:42:58.243166+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/tick_return_distributions.py"
+      "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "1ae190a50ed3d1f5e876a79e53c24f534ea2112a",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
   },
   "inputs": [
@@ -109,8 +109,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_5m_histogram.pdf",
       "role": "figure",
-      "sha256": "ce88e436f72ab8e733eab0590c3423de581aeeba1dc9f9fef4c5eb726eb3fa45",
-      "size_bytes": 22654
+      "sha256": "bc3adb76b0ef05469ff17fae4e1c4c64e6cd57dfdbaffda509fc7d156acc4b00",
+      "size_bytes": 22623
     }
   ],
   "parameters": {
@@ -157,16 +157,16 @@
   },
   "plot_summary": {
     "plot_range_basis_points": {
-      "maximum": 68.6055754676751,
-      "minimum": -60.969415063709675
+      "maximum": 59.31686679525496,
+      "minimum": -49.76727782118218
     },
     "plot_type": "histogram_with_binned_gaussian_kde",
     "series": [
       {
         "label": "Empirical",
-        "lower_tail_excluded_count": 3331,
-        "plotted_return_count": 13956675,
-        "upper_tail_excluded_count": 19580
+        "lower_tail_excluded_count": 17048,
+        "plotted_return_count": 13935825,
+        "upper_tail_excluded_count": 26713
       }
     ],
     "x_axis": "log_return_basis_points",

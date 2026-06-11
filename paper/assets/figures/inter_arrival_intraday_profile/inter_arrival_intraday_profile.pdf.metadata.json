@@ -31,14 +31,14 @@
     "id": "inter_arrival_intraday_profile_empirical_market_data",
     "title": "Empirical ES continuous futures inter-arrival intraday profile"
   },
-  "generated_at_utc": "2026-06-10T16:38:05.615600+00:00",
+  "generated_at_utc": "2026-06-11T21:42:32.140804+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/inter_arrival_intraday_profile.py"
+      "paper\\scripts\\figures\\inter_arrival_intraday_profile.py"
     ],
-    "git_commit": "148c54d249cb7da0da2972e9f72d17e33a3ae42a",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_intraday_profile.py"
   },
   "inputs": [
@@ -101,8 +101,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_intraday_profile/inter_arrival_intraday_profile.pdf",
       "role": "figure",
-      "sha256": "2834be2ab68bab89fa5efe8d2e51ee9eb7244095dffe72a33dc28de2504fd41f",
-      "size_bytes": 19527
+      "sha256": "c7e64bf44a7ac39045b07dc06598a6a991696cd7916e1cdab75c0a403978d1aa",
+      "size_bytes": 19389
     }
   ],
   "parameters": {
