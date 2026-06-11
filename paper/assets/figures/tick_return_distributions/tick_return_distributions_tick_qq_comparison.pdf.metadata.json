@@ -33,33 +33,33 @@
       "value_null_count": 0
     },
     "synthetic_model_output": {
-      "event_count": 13041749,
-      "finite_return_count": 13041748,
+      "event_count": 13919886,
+      "finite_return_count": 13919885,
       "horizon": "tick",
       "horizon_duration_nanos": null,
       "label": "Janiform synthetic",
       "original_timestamp_order_is_monotonic": true,
-      "positive_price_count": 13041749,
+      "positive_price_count": 13919886,
       "price_column": "price",
       "return_summary": {
-        "maximum": 50.62365249150602,
-        "mean": 5.4884525369750354e-05,
-        "minimum": -26.442505731161248,
+        "maximum": 50.44311517275801,
+        "mean": 9.709298779739284e-05,
+        "minimum": -17.114910892779278,
         "quantiles": {
-          "p001": -1.7891776991696418,
-          "p01": -0.7382171627767775,
-          "p05": -0.3653528728442268,
+          "p001": -1.747836251961843,
+          "p01": -0.38200308775770964,
+          "p05": -0.3411362697747222,
           "p50": 0.0,
-          "p95": 0.3653395250502456,
-          "p99": 0.7434585259780135,
-          "p999": 1.8344890387229082
+          "p95": 0.3393649932448284,
+          "p99": 0.3821344666476989,
+          "p999": 1.8013604652189485
         },
-        "standard_deviation": 0.27018533463538297
+        "standard_deviation": 0.21091115600023452
       },
       "return_unit": "log_return_basis_points",
-      "source_observation_count": 13041748,
+      "source_observation_count": 13919885,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.320867592+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.228947429+00:00",
       "timestamp_null_count": 0,
       "value_column": "price",
       "value_null_count": 0
@@ -69,14 +69,14 @@
     "id": "tick_return_distributions_tick_qq_comparison",
     "title": "Empirical vs Janiform synthetic ES tick QQ plot"
   },
-  "generated_at_utc": "2026-06-10T17:04:23.586444+00:00",
+  "generated_at_utc": "2026-06-11T21:42:39.505976+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/tick_return_distributions.py"
+      "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "1ae190a50ed3d1f5e876a79e53c24f534ea2112a",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
   },
   "inputs": [
@@ -140,16 +140,17 @@
       "parquet_columns": [
         "timestamp_utc",
         "price",
+        "side",
         "observed_log_price",
         "anchor_value",
         "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 13041749,
-      "parquet_row_group_count": 13,
+      "parquet_row_count": 13919886,
+      "parquet_row_group_count": 14,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 147778554,
+      "size_bytes": 140996455,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -166,8 +167,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_tick_qq_comparison.pdf",
       "role": "figure",
-      "sha256": "4e85774987d7f2024e9addd2566cfd8b3d1324f216c9568c48bcb5945902b7ac",
-      "size_bytes": 19642
+      "sha256": "d76c8c191de7702d949047ae7c19317c1cd4d5a5a011a4a1abc4c87046199e74",
+      "size_bytes": 18805
     }
   ],
   "parameters": {
@@ -216,8 +217,8 @@
         "point_count": 401,
         "x_maximum": 1.1341812462184464,
         "x_minimum": -1.1326397037692004,
-        "y_maximum": 1.8344890387229082,
-        "y_minimum": -1.7891776991696418
+        "y_maximum": 1.8013604652189485,
+        "y_minimum": -1.747836251961843
       }
     ],
     "plot_type": "qq_plot",

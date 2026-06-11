@@ -37,14 +37,14 @@
     "id": "tick_return_distributions_tick_qq_empirical_market_data",
     "title": "Empirical ES tick normal QQ plot"
   },
-  "generated_at_utc": "2026-06-10T17:04:22.191442+00:00",
+  "generated_at_utc": "2026-06-11T21:42:38.482309+00:00",
   "generator": {
     "command": [
-      "paper/scripts/figures/tick_return_distributions.py"
+      "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "1ae190a50ed3d1f5e876a79e53c24f534ea2112a",
-    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-    "python_version": "3.14.3 (main, Feb  3 2026, 22:52:18) [Clang 21.1.4 ]",
+    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
   },
   "inputs": [
@@ -109,8 +109,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_tick_qq.pdf",
       "role": "figure",
-      "sha256": "bf1705fd34e8c013a79d8fca61f1d4ff5a81d07fe1a2ccfc94af064568a2892e",
-      "size_bytes": 18597
+      "sha256": "175760d2ae81ae07aa6332fc245c7d7d7ade37e9c88571027ed63e7a2897f388",
+      "size_bytes": 18429
     }
   ],
   "parameters": {
