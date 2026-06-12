@@ -1095,11 +1095,7 @@ fn estimate_current_state_from_observed_data(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, intraday_minutes_per_bin, intraday_factor_by_bin, day_of_week_factor, day_of_year_factor))]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "PyO3 boundary mirrors the public Python keyword API."
-)]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, clock_model))]
 fn materialize_runtime_structural_seasonality(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
@@ -1107,32 +1103,18 @@ fn materialize_runtime_structural_seasonality(
     range_start_utc: &str,
     range_end_utc: &str,
     interval_duration_nanos: i64,
-    intraday_minutes_per_bin: u16,
-    intraday_factor_by_bin: &Bound<'_, PyAny>,
-    day_of_week_factor: &Bound<'_, PyAny>,
-    day_of_year_factor: &Bound<'_, PyAny>,
+    clock_model: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
     let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
     let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
 
-    let parsed_intraday_factor_by_bin: Vec<f64> =
-        intraday_factor_by_bin.extract().map_err(|_| {
-            CalibrationExecutionError::new_err(
-                "runtime seasonality intraday_factor_by_bin must be an iterable of float values",
-            )
-        })?;
-
-    let parsed_day_of_week_factor: Vec<f64> = day_of_week_factor.extract().map_err(|_| {
-        CalibrationExecutionError::new_err(
-            "runtime seasonality day_of_week_factor must be an iterable of float values",
-        )
-    })?;
-
-    let parsed_day_of_year_factor: Vec<f64> = day_of_year_factor.extract().map_err(|_| {
-        CalibrationExecutionError::new_err(
-            "runtime seasonality day_of_year_factor must be an iterable of float values",
-        )
-    })?;
+    let parsed_clock_model = serde_json::from_value(py_any_to_json_value(clock_model)?).map_err(
+        |source| {
+            CalibrationExecutionError::new_err(format!(
+                "runtime seasonality clock_model must match the Fourier business-time clock contract: {source}"
+            ))
+        },
+    )?;
 
     let parsed_range_start_utc_nanos =
         parsed_range_start_utc.timestamp_nanos_opt().ok_or_else(|| {
@@ -1154,10 +1136,7 @@ fn materialize_runtime_structural_seasonality(
                 &calendar_registry.registry,
                 RuntimeStructuralSeasonalityMaterializationInput {
                     exchange_code: exchange_code.to_string(),
-                    intraday_minutes_per_bin,
-                    intraday_factor_by_bin: parsed_intraday_factor_by_bin,
-                    day_of_week_factor: parsed_day_of_week_factor,
-                    day_of_year_factor: parsed_day_of_year_factor,
+                    clock_model: parsed_clock_model,
                     range_start_utc_nanos: parsed_range_start_utc_nanos,
                     range_end_utc_nanos: parsed_range_end_utc_nanos,
                     interval_duration_nanos,

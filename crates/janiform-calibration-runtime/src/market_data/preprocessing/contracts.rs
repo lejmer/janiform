@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-    CalibrationIntradaySmoothingKernel, CalibrationMeanReversionStageObservation,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationTimestampEventSessionFilter,
 };
@@ -46,13 +46,12 @@ pub struct MarketDataTranslationPreprocessingSettings {
 pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
     pub session_filter: CalibrationTimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
-    pub known_news_overlay_log_adjustment: f64,
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_smoothing_kernel: CalibrationIntradaySmoothingKernel,
-    pub intraday_smoothing_bandwidth_bins: f64,
-    pub intraday_minimum_bin_events: usize,
-    pub day_of_week_minimum_bucket_events: usize,
-    pub day_of_year_minimum_bucket_events: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_intraday_harmonic_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_weekly_harmonic_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_annual_harmonic_order: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

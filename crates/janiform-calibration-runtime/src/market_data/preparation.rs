@@ -64,8 +64,6 @@ use evidence::{
 const PREPARED_MARKET_DATA_DERIVATION_POLICY_ID: &str =
     "market_data_loading_and_translation.rust.v1";
 const KNOWN_NEWS_WINDOW_FILTER_POLICY_ID: &str = "known_news_outside_tick_window_are_filtered.v1";
-const KNOWN_NEWS_OVERLAY_POLICY_ID: &str =
-    "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1";
 const TRADE_LABEL_DERIVATION_POLICY_ID: &str =
     "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1";
 const HAWKES_SEARCH_POLICY_ID: &str = "hawkes_search_family_uses_unsigned_open_session_activity_targets_and_model_implied_fit_terms.v1";
@@ -81,17 +79,12 @@ const COARSE_DATA_EVIDENCE_POLICY_ID: &str =
 const DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID: &str = "seasonality.session_filter=open_only";
 const DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID: &str =
     "seasonality.sparse_hour_event_threshold=1";
-const DEFAULT_SEASONALITY_INTRADAY_MINUTES_POLICY_ID: &str =
-    "seasonality.intraday.minutes_per_bin=1";
-const DEFAULT_SEASONALITY_INTRADAY_KERNEL_POLICY_ID: &str =
-    "seasonality.intraday.smoothing_kernel=gaussian";
-const DEFAULT_SEASONALITY_INTRADAY_BANDWIDTH_POLICY_ID: &str =
-    "seasonality.intraday.smoothing_bandwidth_bins=3.0";
-const DEFAULT_SEASONALITY_DAY_OF_WEEK_POLICY_ID: &str =
-    "seasonality.day_of_week.minimum_bucket_events=1";
-const DEFAULT_SEASONALITY_DAY_OF_YEAR_POLICY_ID: &str =
-    "seasonality.day_of_year.minimum_bucket_events=1";
-const DEFAULT_KNOWN_NEWS_OVERLAY_POLICY_ID: &str = "known_news_overlay.log_adjustment=0.0";
+const DEFAULT_SEASONALITY_INTRADAY_HARMONIC_POLICY_ID: &str =
+    "seasonality.fourier.maximum_intraday_harmonic_order=data_support_and_solver_budget";
+const DEFAULT_SEASONALITY_WEEKLY_HARMONIC_POLICY_ID: &str =
+    "seasonality.fourier.maximum_weekly_harmonic_order=data_support_and_solver_budget";
+const DEFAULT_SEASONALITY_ANNUAL_HARMONIC_POLICY_ID: &str =
+    "seasonality.fourier.maximum_annual_harmonic_order=data_support_and_solver_budget";
 const DEFAULT_CLOSE_OPEN_GAP_POLICY_ID: &str = "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=3x_median_abs_intraday_return";
 const DEFAULT_INTRADAY_JUMP_POLICY_ID: &str =
     "intraday_jump_detection.material_threshold=4x_median_abs_open_return";
@@ -252,7 +245,6 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
     pub session_closed_tick_count: usize,
     pub known_news_open_event_count: usize,
     pub known_news_closed_event_count: usize,
-    pub seasonality_overlay_count: usize,
     pub hawkes_candidate_count: usize,
     pub known_news_return_sample_count: usize,
     pub intraday_jump_candidate_count: usize,
@@ -653,7 +645,6 @@ fn executed_preprocessing_steps(
 
     if known_news_present {
         preprocessing_steps.push("known_news_window_filtering".to_string());
-        preprocessing_steps.push("known_news_overlay_derivation".to_string());
     }
 
     if !matches!(
@@ -682,20 +673,35 @@ fn deterministic_defaults_applied(
 ) -> Vec<String> {
     let mut applied_defaults = Vec::new();
 
-    if request
+    let seasonality_settings = request
         .preprocessing_settings
         .as_ref()
-        .and_then(|settings| settings.seasonality.as_ref())
-        .is_none()
-    {
+        .and_then(|settings| settings.seasonality.as_ref());
+
+    if seasonality_settings.is_none() {
         applied_defaults.push(DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID.to_string());
         applied_defaults.push(DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID.to_string());
-        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_MINUTES_POLICY_ID.to_string());
-        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_KERNEL_POLICY_ID.to_string());
-        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_BANDWIDTH_POLICY_ID.to_string());
-        applied_defaults.push(DEFAULT_SEASONALITY_DAY_OF_WEEK_POLICY_ID.to_string());
-        applied_defaults.push(DEFAULT_SEASONALITY_DAY_OF_YEAR_POLICY_ID.to_string());
-        applied_defaults.push(DEFAULT_KNOWN_NEWS_OVERLAY_POLICY_ID.to_string());
+    }
+
+    if seasonality_settings
+        .and_then(|settings| settings.maximum_intraday_harmonic_order)
+        .is_none()
+    {
+        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_HARMONIC_POLICY_ID.to_string());
+    }
+
+    if seasonality_settings
+        .and_then(|settings| settings.maximum_weekly_harmonic_order)
+        .is_none()
+    {
+        applied_defaults.push(DEFAULT_SEASONALITY_WEEKLY_HARMONIC_POLICY_ID.to_string());
+    }
+
+    if seasonality_settings
+        .and_then(|settings| settings.maximum_annual_harmonic_order)
+        .is_none()
+    {
+        applied_defaults.push(DEFAULT_SEASONALITY_ANNUAL_HARMONIC_POLICY_ID.to_string());
     }
 
     if request
@@ -1907,11 +1913,6 @@ fn prepared_market_data_plan_from_loading_output(
         known_news_closed_event_count: loading_output
             .preprocessing_output
             .known_news_closed_event_count,
-        seasonality_overlay_count: loading_output
-            .preprocessing_output
-            .seasonality_stage_input
-            .scheduled_event_overlays
-            .len(),
         hawkes_candidate_count: loading_output
             .preprocessing_output
             .hawkes_candidate_inputs
@@ -1937,7 +1938,6 @@ fn prepared_market_data_plan_from_loading_output(
         loading_output.session_resolution.selected_policy_id.clone(),
         PREPARED_MARKET_DATA_DERIVATION_POLICY_ID.to_string(),
         KNOWN_NEWS_WINDOW_FILTER_POLICY_ID.to_string(),
-        KNOWN_NEWS_OVERLAY_POLICY_ID.to_string(),
         TRADE_LABEL_DERIVATION_POLICY_ID.to_string(),
         HAWKES_SEARCH_POLICY_ID.to_string(),
         RETURN_COMPONENTS_JUMP_POLICY_ID.to_string(),

@@ -20,6 +20,7 @@ use super::{
     SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
 };
 use crate::JointRefinementStageOptionPricingInput;
+use crate::SeasonalityStageProgressPhase;
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
@@ -462,11 +463,18 @@ pub struct CalibrationStagedRunReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalibrationStageProgressPhase {
+    Seasonality(SeasonalityStageProgressPhase),
     Hawkes(HawkesStageProgressPhase),
     ReturnComponents(ReturnComponentsStageProgressPhase),
     LongVariance(LongVarianceStageProgressPhase),
     MeanReversion(MeanReversionStageProgressPhase),
     JointRefinement(JointRefinementStageProgressPhase),
+}
+
+impl From<SeasonalityStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: SeasonalityStageProgressPhase) -> Self {
+        Self::Seasonality(phase)
+    }
 }
 
 impl From<HawkesStageProgressPhase> for CalibrationStageProgressPhase {
@@ -505,6 +513,7 @@ impl Serialize for CalibrationStageProgressPhase {
         S: Serializer,
     {
         match self {
+            Self::Seasonality(phase) => phase.serialize(serializer),
             Self::Hawkes(phase) => phase.serialize(serializer),
             Self::ReturnComponents(phase) => phase.serialize(serializer),
             Self::LongVariance(phase) => phase.serialize(serializer),

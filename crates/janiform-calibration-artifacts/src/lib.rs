@@ -186,6 +186,6 @@ pub use stage_outputs::{
     MeanReversionStageGridDiagnostics, MeanReversionStagePredictiveEvidenceDiagnostics,
     MeanReversionStageSeriesSummary, NewsShocksStageDiagnostics, ReturnBackfitStageDiagnostics,
     ReturnBackfitStageObjectiveBlockDiagnostic, ReturnBackfitStageVarianceBudgetDiagnostic,
-    ReturnComponentsStageFittedParameters, SeasonalityStageNormalizationMetadata,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel,
 };

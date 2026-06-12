@@ -43,7 +43,6 @@ pub(super) fn resolve_known_news_records(
 
         retained_records.push(ResolvedKnownNewsRecord {
             event_timestamp_utc_nanos: known_news_record.event_timestamp_utc_nanos,
-            event_identifier: known_news_record.event_identifier.clone(),
             market_state,
         });
     }

@@ -27,9 +27,6 @@ use crate::commands::pricing::run_price_fitted_model_command;
 use crate::commands::pricing::run_price_observed_options_command;
 use crate::commands::reporting::ReportSubcommand;
 use crate::commands::reporting::run_report_fit;
-use crate::commands::seasonality::SeasonalitySubcommand;
-use crate::commands::seasonality::run_seasonality_diagnostics;
-use crate::commands::seasonality::run_seasonality_preprocess_timestamps;
 use crate::commands::simulation::SimulateSubcommand;
 use crate::commands::validation::ValidateSubcommand;
 use crate::commands::validation::run_validate_stylized_facts;
@@ -78,14 +75,6 @@ pub(crate) fn dispatch(
             PresetsSubcommand::List(command) => run_presets_list(context, command),
             PresetsSubcommand::Show(command) => run_presets_show(context, command),
             PresetsSubcommand::Export(command) => run_presets_export(context, command),
-        },
-        RootCommand::Seasonality(command) => match command.command {
-            SeasonalitySubcommand::PreprocessTimestamps(command) => {
-                run_seasonality_preprocess_timestamps(context, command)
-            }
-            SeasonalitySubcommand::Diagnostics(command) => {
-                run_seasonality_diagnostics(context, command)
-            }
         },
         RootCommand::HourlyFactors(command) => match command.command {
             HourlyFactorsSubcommand::MaterializeSeasonality(command) => {

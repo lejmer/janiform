@@ -23,7 +23,7 @@ pub const CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION: &str =
 pub const CALIBRATION_SEASONALITY_STAGE_HANDOFF_POLICY: &str =
     "explicit_run_spec_handoffs_mode_aware_transport.v1";
 pub const CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION: &str =
-    "seasonality_estimator.v1";
+    "fourier_business_time_clock_estimator.v1";
 pub const CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
     "calibration.orchestration.stage_execution.hawkes.report.v1";
 pub const CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION: &str =

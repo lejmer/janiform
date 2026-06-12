@@ -8,7 +8,6 @@ use crate::commands::inspection::InspectCommand;
 use crate::commands::presets::PresetsCommand;
 use crate::commands::pricing::PriceCommand;
 use crate::commands::reporting::ReportCommand;
-use crate::commands::seasonality::SeasonalityCommand;
 use crate::commands::simulation::SimulateCommand;
 use crate::commands::validation::ValidateCommand;
 use crate::context::GlobalCliOptions;
@@ -69,9 +68,6 @@ pub(crate) enum RootCommand {
 
     #[command(about = "Inspect bundled and user-registered presets.")]
     Presets(Box<PresetsCommand>),
-
-    #[command(about = "Prepare and diagnose seasonality inputs.")]
-    Seasonality(Box<SeasonalityCommand>),
 
     #[command(
         name = "hourly-factors",

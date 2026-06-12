@@ -17,6 +17,7 @@ doctest = false
 chrono = { workspace = true }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-engine-pricing = { path = "../janiform-engine-pricing" }
+janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -10,10 +10,8 @@ pub(super) use super::contracts::{
     MarketDataTranslationSeasonalityPreprocessingSettings,
 };
 pub(super) use crate::execution_bridge::{
-    CalibrationDayOfWeekSeasonalityEstimatorSettings,
-    CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
-    CalibrationIntradaySmoothingKernel, CalibrationMeanReversionStageObservation,
+    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -22,7 +20,7 @@ pub(super) use crate::execution_bridge::{
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
-    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationScheduledEventOverlay,
+    CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
     CalibrationSharedNewsMarkLawConfiguration, CalibrationTimestampEventRecord,
     CalibrationTimestampEventSessionFilter,
@@ -32,8 +30,8 @@ pub(super) use crate::stages::hawkes::HawkesStageObservedSourceRegime;
 pub(super) use crate::temporal::datetime_from_nanos;
 pub(super) use janiform_foundations::numeric::{
     arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation,
-    logistic, median_abs, median_abs_non_zero, normalized_pseudocount, round_positive_to_domain,
-    round_to, smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
+    logistic, median_abs, median_abs_non_zero, round_positive_to_domain, round_to,
+    smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
 };
 pub(super) use janiform_market_time::calendar::{
     CalendarDate, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
@@ -76,7 +74,6 @@ pub(super) struct SessionWindowUtc {
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedKnownNewsRecord {
     pub(super) event_timestamp_utc_nanos: i64,
-    pub(super) event_identifier: Option<String>,
     pub(super) market_state: MarketState,
 }
 

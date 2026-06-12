@@ -102,7 +102,7 @@ from janiform.pricing.fitted.physical_distribution import (
     DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
     physical_distribution_diagnostics_request_payload,
 )
-from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
+from janiform.seasonality import SessionFilter
 from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
@@ -464,13 +464,9 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
         seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
             session_filter=SessionFilter.ALL,
             sparse_hour_event_threshold=2,
-            known_news_overlay_log_adjustment=-0.1,
-            intraday_minutes_per_bin=5,
-            intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
-            intraday_smoothing_bandwidth_bins=2.5,
-            intraday_minimum_bin_events=3,
-            day_of_week_minimum_bucket_events=4,
-            day_of_year_minimum_bucket_events=5,
+            maximum_intraday_harmonic_order=11,
+            maximum_weekly_harmonic_order=3,
+            maximum_annual_harmonic_order=5,
         ),
         return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
             intraday_jump_threshold_multiplier=6.0,

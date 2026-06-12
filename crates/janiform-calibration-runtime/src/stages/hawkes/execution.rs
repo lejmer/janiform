@@ -1630,7 +1630,7 @@ fn derive_observed_activity_targets(
         .copied()
         .zip(
             seasonality_payload
-                .normalized_combined_factor_by_event
+                .business_time_rate_by_event
                 .iter()
                 .copied(),
         )
@@ -2063,14 +2063,12 @@ mod tests {
         HawkesStageDirectionalLabelDiagnostics, HawkesStageImpliedMetricsDiagnostic,
         HawkesStageObservedSourceRegime,
     };
-    use crate::stages::seasonality::{
-        SeasonalityStageNormalizedPayload, SeasonalityStageOverlayMetadata,
-    };
-    use janiform_calibration_artifacts::SeasonalityStageNormalizationMetadata;
-    use janiform_market_time::seasonality::{
-        SeasonalityComponentDiagnosticsSummary, SeasonalityDiagnosticsReportOutput,
-        SeasonalityEstimatorConfigurationMetadata, SeasonalityFitQualityMetrics,
-        SeasonalityInputSnapshotMetadata, SeasonalityReproducibilityMetadata,
+    use crate::stages::seasonality::SeasonalityStageNormalizedPayload;
+    use janiform_market_time::business_time_clock::{
+        FOURIER_BUSINESS_TIME_CLOCK_BASIS, FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM,
+        FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
+        FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY,
+        FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY, FourierBusinessTimeClockModel,
     };
     use janiform_model_kernels::hawkes::{
         HawkesKernelLoadings, HawkesStructuredAlphaParameterization,
@@ -2407,6 +2405,32 @@ mod tests {
         }
     }
 
+    fn flat_business_time_clock_model() -> FourierBusinessTimeClockModel {
+        FourierBusinessTimeClockModel {
+            schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION.to_string(),
+            coordinate_system: FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM.to_string(),
+            coefficient_basis: FOURIER_BUSINESS_TIME_CLOCK_BASIS.to_string(),
+            normalization_policy: FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY.to_string(),
+            selection_policy: FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY.to_string(),
+            intraday_harmonic_order: 0,
+            weekly_harmonic_order: 0,
+            annual_harmonic_order: 0,
+            intercept: 0.0,
+            intraday_cosine_coefficients: Vec::new(),
+            intraday_sine_coefficients: Vec::new(),
+            weekly_cosine_coefficients: Vec::new(),
+            weekly_sine_coefficients: Vec::new(),
+            annual_cosine_coefficients: Vec::new(),
+            annual_sine_coefficients: Vec::new(),
+            selected_objective_value: 0.0,
+            selected_negative_log_likelihood: 0.0,
+            evaluated_candidate_count: 1,
+            fit_open_minute_count: 1,
+            fit_open_event_count: 1,
+            fit_open_exposure_seconds: 60.0,
+        }
+    }
+
     fn test_seasonality_payload() -> SeasonalityStageNormalizedPayload {
         SeasonalityStageNormalizedPayload {
             schema_version: "seasonality.normalized.test.v1",
@@ -2415,120 +2439,14 @@ mod tests {
             trade_events_data_reference: "memory://trade-events".to_string(),
             timestamp_event_input_schema_version: "timestamp-input.v1".to_string(),
             timestamp_event_preprocessed_schema_version: "timestamp-preprocessed.v1".to_string(),
-            intraday_estimate_schema_version: "intraday.v1".to_string(),
-            day_of_week_estimate_schema_version: "day-of-week.v1".to_string(),
-            hour_of_week_estimate_schema_version: "hour-of-week.v1".to_string(),
-            day_of_year_estimate_schema_version: "day-of-year.v1".to_string(),
-            composition_schema_version: "composition.v1".to_string(),
+            clock_model_schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION
+                .to_string(),
             source_record_positions: vec![0, 1, 2],
             timestamp_utc_nanos: vec![0, 1_000_000_000, 3_000_000_000],
-            exchange_local_minute_of_day: vec![570, 571, 573],
-            exchange_local_day_of_week: vec![1, 1, 1],
-            exchange_local_day_of_year: vec![120, 120, 120],
+            exchange_local_minute_of_week: vec![570, 571, 573],
             market_state_codes: vec![1, 1, 1],
-            intraday_minutes_per_bin: 60,
-            intraday_factor_by_bin: vec![1.0],
-            day_of_week_factor: vec![1.0; 7],
-            hour_of_week_factor: vec![1.0; 168],
-            day_of_year_factor: vec![1.0; 366],
-            normalized_combined_log_component_by_event: vec![0.0, 0.0, 0.0],
-            normalized_combined_factor_by_event: vec![1.0, 2.0, 1.0],
-            normalization_metadata: SeasonalityStageNormalizationMetadata {
-                normalization_policy: "mean_factor_anchor.v1".to_string(),
-                fit_window_event_count: 3,
-                target_mean_factor: 1.0,
-                pre_normalization_mean_factor: 1.0,
-                normalization_constant: 1.0,
-                normalization_log_offset: 0.0,
-                post_normalization_mean_factor: 1.0,
-                mean_anchor_tolerance: 1.0e-12,
-            },
-            overlay_metadata: SeasonalityStageOverlayMetadata {
-                overlays_enabled: false,
-                configured_overlay_count: 0,
-                enabled_overlay_count: 0,
-                active_overlay_event_count: 0,
-                precedence_policy: "highest_precedence_wins.v1".to_string(),
-                merge_policy: "equal_precedence_additive.v1".to_string(),
-                window_boundary_policy: "start_inclusive_end_exclusive.v1".to_string(),
-                configured_overlay_ids_in_order: Vec::new(),
-                applied_overlay_ids_in_order: Vec::new(),
-                overlay_source_labels_in_order: Vec::new(),
-            },
-            diagnostics_report: SeasonalityDiagnosticsReportOutput {
-                schema_version: "seasonality.diagnostics.report.v1",
-                dataset_id: "dataset".to_string(),
-                intraday_component_summary: test_component_diagnostics_summary("intraday"),
-                day_of_week_component_summary: test_component_diagnostics_summary("day_of_week"),
-                day_of_year_component_summary: test_component_diagnostics_summary("day_of_year"),
-                overlay_component_summary: None,
-                fit_quality_metrics: SeasonalityFitQualityMetrics {
-                    weighted_mean_absolute_factor_error: 0.0,
-                    weighted_root_mean_squared_factor_error: 0.0,
-                    normalization_anchor_error: 0.0,
-                    combined_factor_mean: 1.0,
-                    combined_factor_standard_deviation: 0.0,
-                    combined_factor_min: 1.0,
-                    combined_factor_max: 2.0,
-                    overlay_active_event_ratio: 0.0,
-                },
-                reproducibility_metadata: SeasonalityReproducibilityMetadata {
-                    estimator_version: "test-estimator".to_string(),
-                    input_snapshot: SeasonalityInputSnapshotMetadata {
-                        input_schema_version: "timestamp-input.v1".to_string(),
-                        preprocessed_schema_version: "timestamp-preprocessed.v1".to_string(),
-                        exchange_code: "XNYS".to_string(),
-                        exchange_timezone_name: "America/New_York".to_string(),
-                        input_event_count: 3,
-                        first_event_timestamp_utc_nanos: 0,
-                        last_event_timestamp_utc_nanos: 3_000_000_000,
-                        snapshot_fingerprint_algorithm: "fnv1a64.v1",
-                        snapshot_fingerprint_hex: "0000000000000000".to_string(),
-                    },
-                    estimator_configuration: SeasonalityEstimatorConfigurationMetadata {
-                        intraday_schema_version: "intraday.v1".to_string(),
-                        day_of_week_schema_version: "day-of-week.v1".to_string(),
-                        day_of_year_schema_version: "day-of-year.v1".to_string(),
-                        composition_schema_version: "composition.v1".to_string(),
-                        intraday_minutes_per_bin: 60,
-                        intraday_smoothing_kernel: "gaussian".to_string(),
-                        intraday_smoothing_bandwidth_bins: 1.0,
-                        intraday_minimum_bin_events: 1,
-                        intraday_pseudocount: 1.0,
-                        day_of_week_minimum_bucket_events: 1,
-                        day_of_week_pseudocount: 1.0,
-                        day_of_year_minimum_bucket_events: 1,
-                        day_of_year_pseudocount: 1.0,
-                        normalization_policy: "mean_factor_anchor.v1".to_string(),
-                        overlay_precedence_policy: "highest_precedence_wins.v1".to_string(),
-                        overlay_merge_policy: "equal_precedence_additive.v1".to_string(),
-                        overlay_window_boundary_policy: "start_inclusive_end_exclusive.v1"
-                            .to_string(),
-                    },
-                },
-            },
-        }
-    }
-
-    fn test_component_diagnostics_summary(
-        component_name: &'static str,
-    ) -> SeasonalityComponentDiagnosticsSummary {
-        SeasonalityComponentDiagnosticsSummary {
-            component_name,
-            component_schema_version: format!("{component_name}.v1"),
-            input_event_count: 3,
-            bucket_count: 1,
-            zero_bucket_count: 0,
-            sparse_bucket_count: 0,
-            fallback_bucket_count: 0,
-            zero_bucket_ratio: 0.0,
-            sparse_bucket_ratio: 0.0,
-            fallback_bucket_ratio: 0.0,
-            mean_factor: 1.0,
-            min_factor: 1.0,
-            max_factor: 1.0,
-            mean_absolute_factor_error: 0.0,
-            root_mean_squared_factor_error: 0.0,
+            business_time_rate_by_event: vec![1.0, 2.0, 1.0],
+            clock_model: flat_business_time_clock_model(),
         }
     }
 }

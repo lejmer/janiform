@@ -121,17 +121,11 @@ fn stage_solver_geometry(
                 .timestamp_event_records
                 .len();
 
-            let overlay_count = loading_output
-                .preprocessing_output
-                .seasonality_stage_input
-                .scheduled_event_overlays
-                .len();
-
             StageSolverGeometry {
-                parameter_dimension: 3,
-                objective_term_count: 3,
+                parameter_dimension: 2,
+                objective_term_count: 1,
                 support_count: timestamp_record_count,
-                candidate_geometry_count: overlay_count,
+                candidate_geometry_count: 0,
                 scale_reference: 1.0,
             }
         }
@@ -497,7 +491,6 @@ mod tests {
     };
     use crate::{
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-        CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsKnownNewsCalendarInput,
         CalibrationReturnComponentsObjectiveMetricWeights,
@@ -567,25 +560,12 @@ mod tests {
             preprocessing_output: MarketDataTranslationPreprocessingOutput {
                 seasonality_stage_input: CalibrationSeasonalityStageExecutionInput {
                     timestamp_event_records: Vec::new(),
-                    scheduled_event_overlays: Vec::new(),
                     settings: Some(CalibrationSeasonalityStageExecutionSettings {
                         session_filter: CalibrationTimestampEventSessionFilter::OpenOnly,
                         sparse_hour_event_threshold: 1,
-                        intraday_settings: CalibrationIntradaySeasonalityEstimatorSettings {
-                            minutes_per_bin: 1,
-                            smoothing_kernel: CalibrationIntradaySmoothingKernel::Gaussian,
-                            smoothing_bandwidth_bins: 1.0,
-                            minimum_bin_events: 1,
-                            pseudocount: 1.0,
-                        },
-                        day_of_week_settings: crate::CalibrationDayOfWeekSeasonalityEstimatorSettings {
-                            minimum_bucket_events: 1,
-                            pseudocount: 1.0,
-                        },
-                        day_of_year_settings: crate::CalibrationDayOfYearSeasonalityEstimatorSettings {
-                            minimum_bucket_events: 1,
-                            pseudocount: 1.0,
-                        },
+                        maximum_intraday_harmonic_order: None,
+                        maximum_weekly_harmonic_order: None,
+                        maximum_annual_harmonic_order: None,
                     }),
                     dataset_id_override: None,
                     estimator_version_override: None,

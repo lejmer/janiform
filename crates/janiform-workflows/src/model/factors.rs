@@ -8,6 +8,7 @@ use janiform::model::factors::hourly::{
 };
 use janiform_calibration_runtime::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use janiform_foundations::time::parse_utc_datetime;
+use janiform_market_time::business_time_clock::FourierBusinessTimeClockModel;
 use serde_json::Value;
 
 use crate::error::WorkflowError;
@@ -17,7 +18,6 @@ use super::context::{
 };
 
 const SURPRISE_MULTIPLIER_HOURS_PER_WEEK: usize = 168;
-const MINUTES_PER_DAY: usize = 1_440;
 
 pub(crate) fn build_hourly_factor_contract(
     context: &FittedModelContext,
@@ -95,26 +95,7 @@ fn materialize_runtime_seasonality_grid(
         )
     })?;
 
-    let intraday_factor_by_bin = numeric_sequence(
-        seasonality_parameters,
-        "intraday_factor_by_bin",
-        "seasonality.intraday_factor_by_bin",
-    )?;
-
-    let day_of_week_factor = numeric_sequence(
-        seasonality_parameters,
-        "day_of_week_factor",
-        "seasonality.day_of_week_factor",
-    )?;
-
-    let day_of_year_factor = numeric_sequence(
-        seasonality_parameters,
-        "day_of_year_factor",
-        "seasonality.day_of_year_factor",
-    )?;
-
-    let intraday_minutes_per_bin =
-        intraday_minutes_per_bin(seasonality_parameters, intraday_factor_by_bin.len())?;
+    let clock_model = seasonality_clock_model(seasonality_parameters)?;
 
     let output = materialize_runtime_structural_seasonality(
         &context.calendar_registry,
@@ -134,10 +115,7 @@ fn materialize_runtime_seasonality_grid(
                 )
             })?,
             interval_duration_nanos,
-            intraday_minutes_per_bin,
-            intraday_factor_by_bin,
-            day_of_week_factor,
-            day_of_year_factor,
+            clock_model,
         },
     )
     .map_err(|source| validation_error("seasonality", source.to_string()))?;
@@ -177,64 +155,18 @@ fn hourly_seasonality_source(
     }
 }
 
-fn numeric_sequence(
-    payload: &Value,
-    field_name: &str,
-    field_path: &'static str,
-) -> Result<Vec<f64>, WorkflowError> {
-    let values = payload
-        .get(field_name)
-        .and_then(Value::as_array)
-        .ok_or_else(|| validation_error(field_path, "must be a sequence"))?;
-    if values.is_empty() {
-        return Err(validation_error(field_path, "must not be empty"));
-    }
-
-    values
-        .iter()
-        .enumerate()
-        .map(|(value_index, value)| {
-            value.as_f64().ok_or_else(|| {
-                validation_error(
-                    field_path,
-                    format!("entry at position {value_index} must be numeric"),
-                )
-            })
-        })
-        .collect()
-}
-
-fn intraday_minutes_per_bin(
+fn seasonality_clock_model(
     seasonality_parameters: &Value,
-    intraday_factor_count: usize,
-) -> Result<u16, WorkflowError> {
-    if let Some(raw_value) = seasonality_parameters
-        .get("intraday_minutes_per_bin")
-        .and_then(Value::as_u64)
-    {
-        return u16::try_from(raw_value).map_err(|_| {
-            validation_error(
-                "seasonality.intraday_minutes_per_bin",
-                "must fit in an unsigned 32-bit integer",
-            )
-        });
-    }
+) -> Result<FourierBusinessTimeClockModel, WorkflowError> {
+    let clock_model_value = seasonality_parameters
+        .get("clock_model")
+        .ok_or_else(|| validation_error("seasonality.clock_model", "must be present"))?;
 
-    let (minutes_per_bin, remainder) = (
-        MINUTES_PER_DAY / intraday_factor_count,
-        MINUTES_PER_DAY % intraday_factor_count,
-    );
-    if remainder != 0 {
-        return Err(validation_error(
-            "seasonality.intraday_minutes_per_bin",
-            "must be present when intraday_factor_by_bin does not evenly partition a day",
-        ));
-    }
-
-    u16::try_from(minutes_per_bin).map_err(|_| {
+    // Intentional copy because serde_json deserialization owns its input value.
+    serde_json::from_value(clock_model_value.clone()).map_err(|source| {
         validation_error(
-            "seasonality.intraday_minutes_per_bin",
-            "must fit in an unsigned 32-bit integer",
+            "seasonality.clock_model",
+            format!("failed to deserialize clock model: {source}"),
         )
     })
 }

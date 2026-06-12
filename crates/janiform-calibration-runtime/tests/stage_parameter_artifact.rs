@@ -193,16 +193,20 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
         ) => {
             assert_eq!(loaded_payload.dataset_id, expected_payload.dataset_id);
             assert_eq!(
-                loaded_payload.intraday_factor_by_bin.len(),
-                expected_payload.intraday_factor_by_bin.len()
+                loaded_payload.clock_model_schema_version,
+                expected_payload.clock_model_schema_version
             );
             assert_eq!(
-                loaded_payload.day_of_week_factor.len(),
-                expected_payload.day_of_week_factor.len()
+                loaded_payload.clock_model.intraday_harmonic_order,
+                expected_payload.clock_model.intraday_harmonic_order
             );
             assert_eq!(
-                loaded_payload.day_of_year_factor.len(),
-                expected_payload.day_of_year_factor.len()
+                loaded_payload.clock_model.weekly_harmonic_order,
+                expected_payload.clock_model.weekly_harmonic_order
+            );
+            assert_eq!(
+                loaded_payload.clock_model.annual_harmonic_order,
+                expected_payload.clock_model.annual_harmonic_order
             );
         }
         _ => panic!("expected seasonality payload"),

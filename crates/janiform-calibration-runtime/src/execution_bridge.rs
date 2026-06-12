@@ -16,10 +16,6 @@ use janiform_foundations::cancellation::CancellationToken;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
 };
-use janiform_market_time::seasonality::{
-    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
-};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
@@ -136,22 +132,6 @@ impl From<CalibrationTimestampEventSessionFilter> for TimestampEventSessionFilte
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CalibrationIntradaySmoothingKernel {
-    Gaussian,
-    Uniform,
-}
-
-impl From<CalibrationIntradaySmoothingKernel> for IntradaySmoothingKernel {
-    fn from(value: CalibrationIntradaySmoothingKernel) -> Self {
-        match value {
-            CalibrationIntradaySmoothingKernel::Gaussian => Self::Gaussian,
-            CalibrationIntradaySmoothingKernel::Uniform => Self::Uniform,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationTimestampEventRecord {
     pub source_record_position: u64,
@@ -160,84 +140,15 @@ pub struct CalibrationTimestampEventRecord {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationScheduledEventOverlay {
-    pub overlay_id: String,
-    pub start_timestamp_utc_nanos: i64,
-    pub end_timestamp_utc_nanos: i64,
-    pub log_adjustment: f64,
-    pub precedence: u16,
-    pub enabled: bool,
-    pub source_label: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CalibrationIntradaySeasonalityEstimatorSettings {
-    pub minutes_per_bin: u16,
-    pub smoothing_kernel: CalibrationIntradaySmoothingKernel,
-    pub smoothing_bandwidth_bins: f64,
-    pub minimum_bin_events: usize,
-    pub pseudocount: f64,
-}
-
-impl From<CalibrationIntradaySeasonalityEstimatorSettings>
-    for IntradaySeasonalityEstimatorSettings
-{
-    fn from(value: CalibrationIntradaySeasonalityEstimatorSettings) -> Self {
-        Self {
-            minutes_per_bin: value.minutes_per_bin,
-            smoothing_kernel: value.smoothing_kernel.into(),
-            smoothing_bandwidth_bins: value.smoothing_bandwidth_bins,
-            minimum_bin_events: value.minimum_bin_events,
-            pseudocount: value.pseudocount,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CalibrationDayOfWeekSeasonalityEstimatorSettings {
-    pub minimum_bucket_events: usize,
-    pub pseudocount: f64,
-}
-
-impl From<CalibrationDayOfWeekSeasonalityEstimatorSettings>
-    for DayOfWeekSeasonalityEstimatorSettings
-{
-    fn from(value: CalibrationDayOfWeekSeasonalityEstimatorSettings) -> Self {
-        Self {
-            minimum_bucket_events: value.minimum_bucket_events,
-            pseudocount: value.pseudocount,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CalibrationDayOfYearSeasonalityEstimatorSettings {
-    pub minimum_bucket_events: usize,
-    pub pseudocount: f64,
-}
-
-impl From<CalibrationDayOfYearSeasonalityEstimatorSettings>
-    for DayOfYearSeasonalityEstimatorSettings
-{
-    fn from(value: CalibrationDayOfYearSeasonalityEstimatorSettings) -> Self {
-        Self {
-            minimum_bucket_events: value.minimum_bucket_events,
-            pseudocount: value.pseudocount,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CalibrationSeasonalityStageExecutionSettings {
     pub session_filter: CalibrationTimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
-    pub intraday_settings: CalibrationIntradaySeasonalityEstimatorSettings,
-    pub day_of_week_settings: CalibrationDayOfWeekSeasonalityEstimatorSettings,
-    pub day_of_year_settings: CalibrationDayOfYearSeasonalityEstimatorSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_intraday_harmonic_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_weekly_harmonic_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_annual_harmonic_order: Option<usize>,
 }
 
 impl From<CalibrationSeasonalityStageExecutionSettings> for SeasonalityStageExecutionSettings {
@@ -245,9 +156,9 @@ impl From<CalibrationSeasonalityStageExecutionSettings> for SeasonalityStageExec
         Self {
             session_filter: value.session_filter.into(),
             sparse_hour_event_threshold: value.sparse_hour_event_threshold,
-            intraday_settings: value.intraday_settings.into(),
-            day_of_week_settings: value.day_of_week_settings.into(),
-            day_of_year_settings: value.day_of_year_settings.into(),
+            maximum_intraday_harmonic_order: value.maximum_intraday_harmonic_order,
+            maximum_weekly_harmonic_order: value.maximum_weekly_harmonic_order,
+            maximum_annual_harmonic_order: value.maximum_annual_harmonic_order,
         }
     }
 }
@@ -256,8 +167,6 @@ impl From<CalibrationSeasonalityStageExecutionSettings> for SeasonalityStageExec
 #[serde(deny_unknown_fields)]
 pub struct CalibrationSeasonalityStageExecutionInput {
     pub timestamp_event_records: Vec<CalibrationTimestampEventRecord>,
-    #[serde(default)]
-    pub scheduled_event_overlays: Vec<CalibrationScheduledEventOverlay>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<CalibrationSeasonalityStageExecutionSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -931,15 +840,8 @@ impl CalibrationSeasonalityStageExecutionInput {
             .map(|(record_position, record)| record.try_into_core(record_position))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let scheduled_event_overlays = self
-            .scheduled_event_overlays
-            .into_iter()
-            .map(CalibrationScheduledEventOverlay::into_core)
-            .collect();
-
         Ok(SeasonalityStageExecutionInput {
             timestamp_event_records,
-            scheduled_event_overlays,
             settings: self
                 .settings
                 .map(SeasonalityStageExecutionSettings::from)
@@ -959,20 +861,6 @@ impl CalibrationTimestampEventRecord {
             source_record_position: self.source_record_position,
             timestamp_utc: DateTime::<Utc>::from_timestamp_nanos(self.timestamp_utc_nanos),
         })
-    }
-}
-
-impl CalibrationScheduledEventOverlay {
-    fn into_core(self) -> ScheduledEventOverlayDefinition {
-        ScheduledEventOverlayDefinition {
-            overlay_id: self.overlay_id,
-            start_timestamp_utc_nanos: self.start_timestamp_utc_nanos,
-            end_timestamp_utc_nanos: self.end_timestamp_utc_nanos,
-            log_adjustment: self.log_adjustment,
-            precedence: self.precedence,
-            enabled: self.enabled,
-            source_label: self.source_label,
-        }
     }
 }
 
@@ -1392,7 +1280,6 @@ mod tests {
                         timestamp_utc_nanos: 1_770_046_200_000_000_000,
                     },
                 ],
-                scheduled_event_overlays: vec![],
                 settings: None,
                 dataset_id_override: None,
                 estimator_version_override: None,

@@ -1045,6 +1045,7 @@ dependencies = [
  "chrono",
  "janiform-engine-pricing",
  "janiform-foundations",
+ "janiform-market-time",
  "janiform-model-kernels",
  "serde",
  "serde_json",
@@ -1220,6 +1221,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-model-kernels",
  "janiform-test-support",
+ "janiform-work-scheduler",
  "serde",
  "serde_json",
 ]

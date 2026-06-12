@@ -103,6 +103,7 @@ def _parse_interval_duration_nanos(
         interval_duration_nanos = round(interval.total_seconds() * 1_000_000_000)
         if interval_duration_nanos <= 0:
             raise SeasonalityInputValidationError(f"{field_name} must be strictly positive")
+
         return interval_duration_nanos
 
     if not isinstance(interval, str):
@@ -118,6 +119,7 @@ def _parse_interval_duration_nanos(
 
     raw_value = parsed_match.group("value")
     unit = parsed_match.group("unit").lower()
+
     unit_nanos = _INTERVAL_SPEC_NANOS_BY_UNIT.get(unit)
     if unit_nanos is None:
         raise SeasonalityInputValidationError(
@@ -174,22 +176,27 @@ def provide_hourly_factor_contract(
     """
 
     native: ModuleType = native_module()
+
     normalized_range_start_utc = require_datetime_instance_utc(
         range_start_utc,
         "range_start_utc",
         _calendar_invalid_timestamp_error,
     )
+
     normalized_range_end_utc = require_datetime_instance_utc(
         range_end_utc,
         "range_end_utc",
         _calendar_invalid_timestamp_error,
     )
+
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
+
     serialized_seasonality_source = (
         _serialize_seasonality_provider_source(seasonality_source)
         if seasonality_source is not None
         else None
     )
+
     serialized_news_intensity_source = (
         _serialize_news_intensity_provider_source(news_intensity_source)
         if news_intensity_source is not None
@@ -267,16 +274,19 @@ def build_hourly_factor_contract(
     """
 
     native: ModuleType = native_module()
+
     normalized_range_start_utc = require_datetime_instance_utc(
         range_start_utc,
         "range_start_utc",
         _calendar_invalid_timestamp_error,
     )
+
     normalized_range_end_utc = require_datetime_instance_utc(
         range_end_utc,
         "range_end_utc",
         _calendar_invalid_timestamp_error,
     )
+
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
 
     try:
@@ -324,6 +334,7 @@ def _serialize_seasonality_provider_source(
                 )
                 for source_timestamp_utc in seasonality_source.source_timestamps_utc
             ]
+
             return {
                 "source_kind": 'materialized',
                 "source_timestamps_utc": [
@@ -364,6 +375,7 @@ def _serialize_news_intensity_provider_source(
                 )
                 for known_scheduled_event_timestamp_utc in news_intensity_source.known_scheduled_event_timestamps_utc
             ]
+
             surprise_deterministic_time_multiplier_by_interval_index = (
                 dict(news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index)
                 if news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index is not None
@@ -412,17 +424,21 @@ def materialize_hourly_seasonality_factors(
     """
 
     native: ModuleType = native_module()
+
     normalized_range_start_utc = require_datetime_instance_utc(
         range_start_utc,
         "range_start_utc",
         _calendar_invalid_timestamp_error,
     )
+
     normalized_range_end_utc = require_datetime_instance_utc(
         range_end_utc,
         "range_end_utc",
         _calendar_invalid_timestamp_error,
     )
+
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
+
     normalized_source_timestamps_utc = [
         require_datetime_instance_utc(
             source_timestamp_utc,
@@ -478,9 +494,9 @@ def build_runtime_hourly_seasonality_source_from_calibration_payload(
     """
     Build runtime-ready hourly seasonality from the normalized seasonality stage payload.
 
-    The helper materializes the calibrated event-level normalized seasonality signal onto the
-    requested fixed-width UTC interval grid. Mean renormalization is enabled by default so `lambda_bar` stays
-    responsible for average event-rate level while `s_h` redistributes that level across time.
+    The helper materializes calibrated event-level business-time rates onto the requested
+    fixed-width UTC interval grid. Mean renormalization is enabled by default so `lambda_bar`
+    stays responsible for average event-rate level while `s_h` redistributes that level across time.
     """
 
     exchange_code = require_non_empty_string(
@@ -495,17 +511,17 @@ def build_runtime_hourly_seasonality_source_from_calibration_payload(
         "seasonality_stage_payload.timestamp_utc_nanos",
         _seasonality_error_factory,
     )
-    normalized_combined_factor_by_event = require_finite_number_sequence(
+    business_time_rate_by_event = require_finite_number_sequence(
         seasonality_stage_payload,
-        "normalized_combined_factor_by_event",
-        "seasonality_stage_payload.normalized_combined_factor_by_event",
+        "business_time_rate_by_event",
+        "seasonality_stage_payload.business_time_rate_by_event",
         _seasonality_error_factory,
     )
 
-    if len(timestamp_utc_nanos) != len(normalized_combined_factor_by_event):
+    if len(timestamp_utc_nanos) != len(business_time_rate_by_event):
         raise SeasonalityInputValidationError(
             "seasonality_stage_payload.timestamp_utc_nanos and "
-            "seasonality_stage_payload.normalized_combined_factor_by_event must have the same length",
+            "seasonality_stage_payload.business_time_rate_by_event must have the same length",
         )
 
     materialization = materialize_hourly_seasonality_factors(
@@ -518,7 +534,7 @@ def build_runtime_hourly_seasonality_source_from_calibration_payload(
             _utc_datetime_from_nanos(timestamp_utc_nanos_value)
             for timestamp_utc_nanos_value in timestamp_utc_nanos
         ],
-        source_seasonality_factors=normalized_combined_factor_by_event,
+        source_seasonality_factors=business_time_rate_by_event,
         settings=settings,
     )
 
@@ -554,17 +570,21 @@ def materialize_hourly_news_intensity_factors(
     """
 
     native: ModuleType = native_module()
+
     normalized_range_start_utc = require_datetime_instance_utc(
         range_start_utc,
         "range_start_utc",
         _calendar_invalid_timestamp_error,
     )
+
     normalized_range_end_utc = require_datetime_instance_utc(
         range_end_utc,
         "range_end_utc",
         _calendar_invalid_timestamp_error,
     )
+
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
+
     normalized_known_scheduled_event_timestamps_utc = [
         require_datetime_instance_utc(
             known_scheduled_event_timestamp_utc,

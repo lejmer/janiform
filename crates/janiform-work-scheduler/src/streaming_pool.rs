@@ -66,8 +66,8 @@ impl<Progress, Output> StreamingWorkContext<Progress, Output> {
         self.cancellation_token.shared_handle()
     }
 
-    /// Send a progress update to the caller.
-    pub fn send_progress(&self, progress: Progress) -> bool {
+    /// Emit a progress update to the caller.
+    pub fn emit_progress(&self, progress: Progress) -> bool {
         if self.cancellation_token.is_cancelled() {
             return false;
         }
@@ -303,7 +303,7 @@ mod tests {
             |value, context: StreamingWorkContext<i32, i32>| {
                 assert!(context.worker_index() < 2);
                 assert!(!context.cancellation_token().is_cancelled());
-                assert!(context.send_progress(value));
+                assert!(context.emit_progress(value));
 
                 value * 10
             },
@@ -398,7 +398,7 @@ mod tests {
             vec![1],
             1,
             |value, context: StreamingWorkContext<i32, i32>| {
-                assert!(context.send_progress(value));
+                assert!(context.emit_progress(value));
 
                 value
             },

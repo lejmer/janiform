@@ -78,7 +78,7 @@ pub(super) fn build_hawkes_likelihood_tape(
         .copied()
         .zip(
             seasonality_payload
-                .normalized_combined_factor_by_event
+                .business_time_rate_by_event
                 .iter()
                 .copied(),
         )
@@ -232,16 +232,10 @@ fn validate_likelihood_tape_input_lengths(
         ));
     }
 
-    if seasonality_payload
-        .normalized_combined_factor_by_event
-        .len()
-        != expected_event_count
-    {
+    if seasonality_payload.business_time_rate_by_event.len() != expected_event_count {
         return Err(format!(
-            "seasonality normalized_combined_factor_by_event length {} must match timestamp event count {}",
-            seasonality_payload
-                .normalized_combined_factor_by_event
-                .len(),
+            "seasonality business_time_rate_by_event length {} must match timestamp event count {}",
+            seasonality_payload.business_time_rate_by_event.len(),
             expected_event_count
         ));
     }
@@ -600,7 +594,7 @@ fn emit_likelihood_worker_progress(
     context: &StreamingWorkContext<HawkesLikelihoodWorkerProgress, HawkesLikelihoodCandidateOutput>,
     progress: HawkesLikelihoodWorkerProgress,
 ) -> bool {
-    context.send_progress(progress)
+    context.emit_progress(progress)
 }
 
 fn record_likelihood_worker_progress(

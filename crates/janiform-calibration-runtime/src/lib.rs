@@ -37,11 +37,8 @@ pub use current_state::{
 pub use diagnostics::types::{CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind};
 pub use execution_bridge::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-    CalibrationDayOfWeekSeasonalityEstimatorSettings,
-    CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
-    CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
-    CalibrationJointRefinementCurrentStateEstimationInput,
+    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+    CalibrationJointRefinementCarryInput, CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
     CalibrationMeanReversionStageObservation,
@@ -56,7 +53,7 @@ pub use execution_bridge::{
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
-    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationScheduledEventOverlay,
+    CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
     CalibrationSharedNewsMarkLawConfiguration, CalibrationStagedExecutionBridgeError,
     CalibrationStagedExecutionInput, CalibrationStagedExecutionPlan,
@@ -252,5 +249,6 @@ pub use stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
     SeasonalityStageExecutionReport, SeasonalityStageExecutionSettings,
     SeasonalityStageHandoffOutput, SeasonalityStageNormalizedPayload,
-    SeasonalityStageOverlayMetadata, run_seasonality_calibration_stage,
+    SeasonalityStageProgressPhase, SeasonalityStageProgressUpdate,
+    run_seasonality_calibration_stage,
 };

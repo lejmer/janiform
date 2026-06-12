@@ -15,18 +15,6 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SeasonalityStageNormalizationMetadata {
-    pub normalization_policy: String,
-    pub fit_window_event_count: usize,
-    pub target_mean_factor: f64,
-    pub pre_normalization_mean_factor: f64,
-    pub normalization_constant: f64,
-    pub normalization_log_offset: f64,
-    pub post_normalization_mean_factor: f64,
-    pub mean_anchor_tolerance: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HawkesStageFittedParameters {
     pub kernel_parameters: HawkesKernelParameters,
     pub structured_alpha: HawkesStructuredAlphaParameterization,

@@ -41,8 +41,6 @@ fn janiform_exposes_representative_semantic_facade_imports() {
     let _ = std::mem::size_of::<model::returns::ReturnDecompositionInput>();
     let _ = std::mem::size_of::<model::sufficient_statistics::SufficientStatisticsRunRequest>();
     let _ = std::mem::size_of::<model::risk_neutral::NigEsscherTransformationInput>();
-    let _ =
-        std::mem::size_of::<model::factors::seasonality::IntradaySeasonalityEstimatorSettings>();
     let _ = std::mem::size_of::<simulation::CoarseSimulationRunRequest>();
     let _ = std::mem::size_of::<
         validation::stylized_facts::StylizedFactHorizonComparisonReportGeneratorRequest,
@@ -53,7 +51,6 @@ fn janiform_exposes_representative_semantic_facade_imports() {
     let _ = model::factors::hourly::provide_hourly_factor_contract;
     let _ = pricing::run_vanilla_option_pricing;
     let _ = model::sufficient_statistics::solve_sufficient_statistics_transform_slices;
-    let _ = model::factors::seasonality::estimate_intraday_seasonality;
     let _ = simulation::run_coarse_simulation;
     let _ = simulation::run_seeded_tick_event_simulation;
     let _ = governance::deterministic_regression::run_deterministic_regression_harness;

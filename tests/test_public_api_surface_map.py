@@ -443,12 +443,9 @@ def test_seasonality_public_module_is_a_package_with_curated_exports() -> None:
     assert hasattr(seasonality_module, "__path__")
 
     expected_exports = {
-        "IntradaySmoothingKernel",
         "SessionFilter",
-        "ScheduledEventOverlayDefinition",
         "preprocess_timestamp_events",
-        "estimate_intraday_seasonality",
-        "generate_seasonality_diagnostics_report",
+        "TimestampEventPreprocessingResult",
     }
 
     assert expected_exports <= set(seasonality_module.__all__)
@@ -459,9 +456,6 @@ def test_seasonality_contract_submodule_is_supported_domain_import() -> None:
     seasonality_contracts_module = import_module("janiform.seasonality.contracts")
 
     expected_exports = {
-        "IntradaySeasonalityEstimatorSettings",
-        "IntradaySmoothingKernel",
-        "ScheduledEventOverlayDefinition",
         "SessionFilter",
         "TimestampEventInputSchema",
     }

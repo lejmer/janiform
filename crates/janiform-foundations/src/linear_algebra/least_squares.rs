@@ -169,6 +169,60 @@ pub fn non_negative_least_squares_2(rows: &[[f64; 2]], response: &[f64]) -> Opti
         })
 }
 
+/// Solve regularized normal equations for a weighted least-squares fit.
+///
+/// The caller owns construction of `X'WX` and `X'Wy`, which keeps hot paths
+/// from materializing large design matrices when sufficient statistics are
+/// already available.
+pub fn weighted_ridge_least_squares_from_normal_equations(
+    normal_matrix_rows: &[Vec<f64>],
+    normal_rhs: &[f64],
+    diagonal_penalties: &[f64],
+) -> Option<Vec<f64>> {
+    let parameter_count = normal_rhs.len();
+    if parameter_count == 0
+        || normal_matrix_rows.len() != parameter_count
+        || diagonal_penalties.len() != parameter_count
+    {
+        return None;
+    }
+
+    let mut normal_matrix = DMatrix::<f64>::zeros(parameter_count, parameter_count);
+    let mut rhs = DVector::<f64>::zeros(parameter_count);
+
+    for (row_position, row) in normal_matrix_rows.iter().enumerate() {
+        if row.len() != parameter_count {
+            return None;
+        }
+
+        for (column_position, value) in row.iter().enumerate() {
+            if !value.is_finite() {
+                return None;
+            }
+
+            normal_matrix[(row_position, column_position)] = *value;
+        }
+    }
+
+    for (position, (rhs_value, diagonal_penalty)) in
+        normal_rhs.iter().zip(diagonal_penalties.iter()).enumerate()
+    {
+        if !rhs_value.is_finite() || !diagonal_penalty.is_finite() || *diagonal_penalty < 0.0 {
+            return None;
+        }
+
+        normal_matrix[(position, position)] += *diagonal_penalty;
+        rhs[position] = *rhs_value;
+    }
+
+    let solution = normal_matrix.cholesky()?.solve(&rhs);
+
+    solution
+        .iter()
+        .all(|value| value.is_finite())
+        .then(|| solution.iter().copied().collect())
+}
+
 fn mean_matrix_diagonal(matrix: &DMatrix<f64>) -> f64 {
     let diagonal_sum = (0..matrix.nrows())
         .map(|position| matrix[(position, position)])
@@ -217,7 +271,7 @@ fn squared_residual_norm_2(rows: &[[f64; 2]], response: &[f64], coefficients: &[
 mod tests {
     use super::{
         mean_diagonal_damped_least_squares_step, mean_diagonal_damped_least_squares_step_4,
-        non_negative_least_squares_2,
+        non_negative_least_squares_2, weighted_ridge_least_squares_from_normal_equations,
     };
 
     #[test]
@@ -277,6 +331,22 @@ mod tests {
         );
 
         assert!(stepped_norm < baseline_norm);
+    }
+
+    #[test]
+    fn normal_equation_solver_solves_weighted_fit() {
+        let normal_matrix_rows = vec![vec![2.0, 0.0], vec![0.0, 4.0]];
+        let normal_rhs = vec![6.0, 8.0];
+        let diagonal_penalties = vec![0.0, 0.0];
+
+        let solution = weighted_ridge_least_squares_from_normal_equations(
+            normal_matrix_rows.as_slice(),
+            normal_rhs.as_slice(),
+            diagonal_penalties.as_slice(),
+        )
+        .expect("positive definite normal equations should solve");
+
+        assert_eq!(solution, vec![3.0, 2.0]);
     }
 
     #[test]

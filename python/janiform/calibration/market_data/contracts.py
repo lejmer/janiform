@@ -5,13 +5,6 @@ from enum import StrEnum
 from math import isfinite
 from typing import Any, Optional
 
-from ...seasonality import IntradaySmoothingKernel, SessionFilter
-from ..errors import calibration_error
-from ..staged.contracts import (
-    DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
-    CalibrationExecutionMode,
-    _parse_calibration_execution_mode,
-)
 from ...contracts import ContractModel
 from ...contracts.base import (
     require_boolean,
@@ -20,10 +13,18 @@ from ...contracts.base import (
     require_mapping,
     require_non_empty_string,
     require_only_supported_fields,
+    require_optional_non_negative_integer_value,
     require_positive_finite_number,
     require_positive_integer,
     require_str_enum_value,
     require_string,
+)
+from ...seasonality import SessionFilter
+from ..errors import calibration_error
+from ..staged.contracts import (
+    DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
+    CalibrationExecutionMode,
+    _parse_calibration_execution_mode,
 )
 
 
@@ -204,49 +205,39 @@ class CalibrationMeanReversionConfiguration(ContractModel):
 class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
     session_filter: SessionFilter = SessionFilter.OPEN_ONLY
     sparse_hour_event_threshold: int = 1
-    known_news_overlay_log_adjustment: float = 0.0
-    intraday_minutes_per_bin: int = 1
-    intraday_smoothing_kernel: IntradaySmoothingKernel = IntradaySmoothingKernel.GAUSSIAN
-    intraday_smoothing_bandwidth_bins: float = 3.0
-    intraday_minimum_bin_events: int = 1
-    day_of_week_minimum_bucket_events: int = 1
-    day_of_year_minimum_bucket_events: int = 1
+    maximum_intraday_harmonic_order: Optional[int] = None
+    maximum_weekly_harmonic_order: Optional[int] = None
+    maximum_annual_harmonic_order: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.sparse_hour_event_threshold < 1:
             raise calibration_error("sparse_hour_event_threshold", "must be at least 1")
 
-        if self.intraday_minutes_per_bin < 1:
-            raise calibration_error("intraday_minutes_per_bin", "must be at least 1")
-
-        if not isfinite(self.known_news_overlay_log_adjustment):
+        if (
+            self.maximum_intraday_harmonic_order is not None
+            and self.maximum_intraday_harmonic_order < 0
+        ):
             raise calibration_error(
-                "known_news_overlay_log_adjustment",
-                "must be finite",
+                "maximum_intraday_harmonic_order",
+                "must be non-negative",
             )
 
         if (
-            not isfinite(self.intraday_smoothing_bandwidth_bins)
-            or self.intraday_smoothing_bandwidth_bins <= 0.0
+            self.maximum_weekly_harmonic_order is not None
+            and self.maximum_weekly_harmonic_order < 0
         ):
             raise calibration_error(
-                "intraday_smoothing_bandwidth_bins",
-                "must be finite and strictly positive",
+                "maximum_weekly_harmonic_order",
+                "must be non-negative",
             )
 
-        if self.intraday_minimum_bin_events < 1:
-            raise calibration_error("intraday_minimum_bin_events", "must be at least 1")
-
-        if self.day_of_week_minimum_bucket_events < 1:
+        if (
+            self.maximum_annual_harmonic_order is not None
+            and self.maximum_annual_harmonic_order < 0
+        ):
             raise calibration_error(
-                "day_of_week_minimum_bucket_events",
-                "must be at least 1",
-            )
-
-        if self.day_of_year_minimum_bucket_events < 1:
-            raise calibration_error(
-                "day_of_year_minimum_bucket_events",
-                "must be at least 1",
+                "maximum_annual_harmonic_order",
+                "must be non-negative",
             )
 
     @staticmethod
@@ -260,66 +251,34 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
 
         return CalibrationMarketDataSeasonalityPreprocessingSettings(
             session_filter=SessionFilter(
-                require_string(
-                    raw_payload,
+                raw_payload.get(
                     "session_filter",
-                    f"{field_path}.session_filter",
-                    calibration_error,
+                    SessionFilter.OPEN_ONLY.value,
                 )
             ),
-            sparse_hour_event_threshold=require_positive_integer(
-                raw_payload,
-                "sparse_hour_event_threshold",
-                f"{field_path}.sparse_hour_event_threshold",
-                calibration_error,
-            ),
-            known_news_overlay_log_adjustment=(
-                require_finite_number(
+            sparse_hour_event_threshold=(
+                require_positive_integer(
                     raw_payload,
-                    "known_news_overlay_log_adjustment",
-                    f"{field_path}.known_news_overlay_log_adjustment",
+                    "sparse_hour_event_threshold",
+                    f"{field_path}.sparse_hour_event_threshold",
                     calibration_error,
                 )
-                if "known_news_overlay_log_adjustment" in raw_payload
-                and raw_payload["known_news_overlay_log_adjustment"] is not None
-                else 0.0
+                if raw_payload.get("sparse_hour_event_threshold") is not None
+                else 1
             ),
-            intraday_minutes_per_bin=require_positive_integer(
-                raw_payload,
-                "intraday_minutes_per_bin",
-                f"{field_path}.intraday_minutes_per_bin",
+            maximum_intraday_harmonic_order=require_optional_non_negative_integer_value(
+                raw_payload.get("maximum_intraday_harmonic_order"),
+                f"{field_path}.maximum_intraday_harmonic_order",
                 calibration_error,
             ),
-            intraday_smoothing_kernel=IntradaySmoothingKernel(
-                require_string(
-                    raw_payload,
-                    "intraday_smoothing_kernel",
-                    f"{field_path}.intraday_smoothing_kernel",
-                    calibration_error,
-                )
-            ),
-            intraday_smoothing_bandwidth_bins=require_positive_finite_number(
-                raw_payload,
-                "intraday_smoothing_bandwidth_bins",
-                f"{field_path}.intraday_smoothing_bandwidth_bins",
+            maximum_weekly_harmonic_order=require_optional_non_negative_integer_value(
+                raw_payload.get("maximum_weekly_harmonic_order"),
+                f"{field_path}.maximum_weekly_harmonic_order",
                 calibration_error,
             ),
-            intraday_minimum_bin_events=require_positive_integer(
-                raw_payload,
-                "intraday_minimum_bin_events",
-                f"{field_path}.intraday_minimum_bin_events",
-                calibration_error,
-            ),
-            day_of_week_minimum_bucket_events=require_positive_integer(
-                raw_payload,
-                "day_of_week_minimum_bucket_events",
-                f"{field_path}.day_of_week_minimum_bucket_events",
-                calibration_error,
-            ),
-            day_of_year_minimum_bucket_events=require_positive_integer(
-                raw_payload,
-                "day_of_year_minimum_bucket_events",
-                f"{field_path}.day_of_year_minimum_bucket_events",
+            maximum_annual_harmonic_order=require_optional_non_negative_integer_value(
+                raw_payload.get("maximum_annual_harmonic_order"),
+                f"{field_path}.maximum_annual_harmonic_order",
                 calibration_error,
             ),
         )

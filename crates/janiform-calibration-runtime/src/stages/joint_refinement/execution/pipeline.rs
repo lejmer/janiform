@@ -1125,22 +1125,8 @@ fn materialize_runtime_state(
         build_runtime_hourly_seasonality_factors_from_components(
             RuntimeHourlySeasonalityFactorsBuildInput {
                 calendar_registry,
-                exchange_code: run_spec.data_inputs.exchange_code.as_str(),
-                intraday_minutes_per_bin: stage_input
-                    .seasonality_factors_input
-                    .intraday_minutes_per_bin,
-                intraday_factor_by_bin: stage_input
-                    .seasonality_factors_input
-                    .intraday_factor_by_bin
-                    .as_slice(),
-                day_of_week_factor: stage_input
-                    .seasonality_factors_input
-                    .day_of_week_factor
-                    .as_slice(),
-                day_of_year_factor: stage_input
-                    .seasonality_factors_input
-                    .day_of_year_factor
-                    .as_slice(),
+                exchange_code: stage_input.seasonality_factors_input.exchange_code.as_str(),
+                clock_model: &stage_input.seasonality_factors_input.clock_model,
                 range_start_utc_nanos: runtime_range.0,
                 range_end_utc_nanos: runtime_range.1,
                 interval_duration_nanos: NANOS_PER_HOUR,

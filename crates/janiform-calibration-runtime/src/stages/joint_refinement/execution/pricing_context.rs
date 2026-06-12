@@ -484,22 +484,10 @@ fn build_option_hourly_factor_contract(
         build_runtime_hourly_seasonality_factors_from_components(
             RuntimeHourlySeasonalityFactorsBuildInput {
                 calendar_registry,
-                exchange_code: run_spec.data_inputs.exchange_code.as_str(),
-                intraday_minutes_per_bin: stage_input
+                exchange_code: stage_input.seasonality_factors_input.exchange_code.as_str(),
+                clock_model: &stage_input
                     .seasonality_factors_input
-                    .intraday_minutes_per_bin,
-                intraday_factor_by_bin: stage_input
-                    .seasonality_factors_input
-                    .intraday_factor_by_bin
-                    .as_slice(),
-                day_of_week_factor: stage_input
-                    .seasonality_factors_input
-                    .day_of_week_factor
-                    .as_slice(),
-                day_of_year_factor: stage_input
-                    .seasonality_factors_input
-                    .day_of_year_factor
-                    .as_slice(),
+                    .clock_model,
                 range_start_utc_nanos: horizon.hourly_coverage_start_utc_nanos,
                 range_end_utc_nanos: horizon.hourly_coverage_end_utc_nanos,
                 interval_duration_nanos: NANOS_PER_HOUR,
@@ -1989,6 +1977,7 @@ mod tests {
         build_runtime_hourly_seasonality_factors_from_components,
     };
     use janiform_calibration_artifacts::CalibrationStageHandoffTransport;
+    use janiform_market_time::business_time_clock::FourierBusinessTimeClockModel;
     use janiform_market_time::hourly_factors::{
         HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
         HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
@@ -2630,11 +2619,8 @@ mod tests {
 
     #[derive(Debug, Deserialize)]
     struct SeasonalityFactorsFixture {
-        intraday_minutes_per_bin: u16,
-        intraday_factor_by_bin: Vec<f64>,
-        day_of_week_factor: Vec<f64>,
-        hour_of_week_factor: Vec<f64>,
-        day_of_year_factor: Vec<f64>,
+        exchange_code: String,
+        clock_model: FourierBusinessTimeClockModel,
     }
 
     #[derive(Debug, Deserialize)]
@@ -2817,11 +2803,8 @@ mod tests {
         .expect("mean-reversion diagnostics should deserialize");
 
         let seasonality_factors_input = JointRefinementStageSeasonalityFactorsInput {
-            intraday_minutes_per_bin: seasonality_fixture.intraday_minutes_per_bin,
-            intraday_factor_by_bin: seasonality_fixture.intraday_factor_by_bin,
-            day_of_week_factor: seasonality_fixture.day_of_week_factor,
-            hour_of_week_factor: seasonality_fixture.hour_of_week_factor,
-            day_of_year_factor: seasonality_fixture.day_of_year_factor,
+            exchange_code: seasonality_fixture.exchange_code,
+            clock_model: seasonality_fixture.clock_model,
         };
 
         let option_pricing_input = JointRefinementStageOptionPricingInput {
@@ -2955,13 +2938,8 @@ mod tests {
             build_runtime_hourly_seasonality_factors_from_components(
                 RuntimeHourlySeasonalityFactorsBuildInput {
                     calendar_registry: &calendar_registry,
-                    exchange_code: run_spec.data_inputs.exchange_code.as_str(),
-                    intraday_minutes_per_bin: seasonality_factors_input.intraday_minutes_per_bin,
-                    intraday_factor_by_bin: seasonality_factors_input
-                        .intraday_factor_by_bin
-                        .as_slice(),
-                    day_of_week_factor: seasonality_factors_input.day_of_week_factor.as_slice(),
-                    day_of_year_factor: seasonality_factors_input.day_of_year_factor.as_slice(),
+                    exchange_code: seasonality_factors_input.exchange_code.as_str(),
+                    clock_model: &seasonality_factors_input.clock_model,
                     range_start_utc_nanos: hourly_coverage_start_utc_nanos,
                     range_end_utc_nanos: hourly_coverage_end_utc_nanos,
                     interval_duration_nanos: NANOS_PER_HOUR,

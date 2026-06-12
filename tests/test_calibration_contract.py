@@ -60,7 +60,7 @@ from janiform.mean_reversion import (
     MeanReversionFittedParameters,
 )
 from janiform.pricing import AutoActivityCompressedPricingIntervalSchedulePolicy
-from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
+from janiform.seasonality import SessionFilter
 
 
 def test_market_data_calibration_request_defaults_python_execution_mode_to_memory() -> None:
@@ -332,13 +332,9 @@ def test_market_data_calibration_request_roundtrip_preserves_preprocessing_setti
             seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
                 session_filter=SessionFilter.ALL,
                 sparse_hour_event_threshold=2,
-                known_news_overlay_log_adjustment=-0.25,
-                intraday_minutes_per_bin=5,
-                intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
-                intraday_smoothing_bandwidth_bins=2.5,
-                intraday_minimum_bin_events=3,
-                day_of_week_minimum_bucket_events=4,
-                day_of_year_minimum_bucket_events=5,
+                maximum_intraday_harmonic_order=11,
+                maximum_weekly_harmonic_order=3,
+                maximum_annual_harmonic_order=5,
             ),
             return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
                 intraday_jump_threshold_multiplier=6.0,

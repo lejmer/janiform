@@ -1552,12 +1552,7 @@ pub(crate) mod tests {
                     RuntimeHourlySeasonalityFactorsBuildInput {
                         calendar_registry: &calendar_registry,
                         exchange_code: "XNYS",
-                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: seasonality_payload
-                            .intraday_factor_by_bin
-                            .as_slice(),
-                        day_of_week_factor: seasonality_payload.day_of_week_factor.as_slice(),
-                        day_of_year_factor: seasonality_payload.day_of_year_factor.as_slice(),
+                        clock_model: &seasonality_payload.clock_model,
                         range_start_utc_nanos: observed_data
                             .hourly_simulation_start_utc
                             .timestamp_nanos_opt()

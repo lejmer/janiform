@@ -141,7 +141,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
                     )
                 })?;
 
-            if !context.send_progress(SurfacePricingMessage::Started {
+            if !context.emit_progress(SurfacePricingMessage::Started {
                 worker_index,
                 task_position,
                 valuation_time_utc_nanos,
@@ -161,7 +161,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
                     return;
                 }
 
-                let _ = context.send_progress(SurfacePricingMessage::Progress {
+                let _ = context.emit_progress(SurfacePricingMessage::Progress {
                     worker_index,
                     event: Box::new(event),
                 });

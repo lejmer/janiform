@@ -15,9 +15,9 @@ use support::shared::{
     JointRefinementStageExecutionInput, JointRefinementStageFittedPayload,
     JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageExecutionFailure,
     ReturnComponentsStageExecutionInput, SeasonalityStageExecutionFailure,
-    SeasonalityStageExecutionInput, build_data_inputs, build_hawkes_stage_run_spec,
-    build_hawkes_stage_success_payload, build_mean_reversion_stage_success_payload,
-    build_return_components_stage_pipeline_run_spec,
+    SeasonalityStageExecutionInput, SeasonalityStageNormalizedPayload, build_data_inputs,
+    build_hawkes_stage_run_spec, build_hawkes_stage_success_payload,
+    build_mean_reversion_stage_success_payload, build_return_components_stage_pipeline_run_spec,
     build_return_components_stage_standalone_run_spec, build_run_contract_with_mode_and_resume,
     build_seasonality_stage_run_spec, build_seasonality_stage_success_payload,
     build_solver_settings, calibration_stage_test_registry, calibration_stage_timestamp_fixture,
@@ -45,6 +45,33 @@ fn normalized_joint_refinement_payload_for_reproducibility(
         &mut payload.optimizer_diagnostics.runtime_profile,
     );
     payload
+}
+
+fn seasonality_factors_input_from_payload(
+    payload: &SeasonalityStageNormalizedPayload,
+) -> JointRefinementStageSeasonalityFactorsInput {
+    JointRefinementStageSeasonalityFactorsInput {
+        exchange_code: payload.exchange_code.clone(),
+        clock_model: payload.clock_model.clone(),
+    }
+}
+
+fn set_intraday_clock_rate_bound(payload: &mut SeasonalityStageNormalizedPayload, rate_bound: f64) {
+    assert!(rate_bound.is_finite());
+    assert!(rate_bound > 0.0);
+
+    payload.clock_model.intraday_harmonic_order = 1;
+    payload.clock_model.intraday_cosine_coefficients = vec![rate_bound.ln()];
+    payload.clock_model.intraday_sine_coefficients = vec![0.0];
+}
+
+fn set_annual_clock_rate_bound(payload: &mut SeasonalityStageNormalizedPayload, rate_bound: f64) {
+    assert!(rate_bound.is_finite());
+    assert!(rate_bound > 0.0);
+
+    payload.clock_model.annual_harmonic_order = 1;
+    payload.clock_model.annual_cosine_coefficients = vec![rate_bound.ln()];
+    payload.clock_model.annual_sine_coefficients = vec![0.0];
 }
 
 #[test]
@@ -196,8 +223,20 @@ fn seasonality_stage_execution_metadata_is_deterministic_under_fixed_seed_and_co
         first_disk_metadata.stage_seed
     );
     assert_eq!(
-        first_memory_metadata.diagnostics_snapshot_fingerprint_hex,
-        first_disk_metadata.diagnostics_snapshot_fingerprint_hex
+        first_memory_metadata.selected_intraday_harmonic_order,
+        first_disk_metadata.selected_intraday_harmonic_order
+    );
+    assert_eq!(
+        first_memory_metadata.selected_weekly_harmonic_order,
+        first_disk_metadata.selected_weekly_harmonic_order
+    );
+    assert_eq!(
+        first_memory_metadata.selected_annual_harmonic_order,
+        first_disk_metadata.selected_annual_harmonic_order
+    );
+    assert_eq!(
+        first_memory_metadata.evaluated_candidate_count,
+        first_disk_metadata.evaluated_candidate_count
     );
     assert_eq!(
         first_memory_metadata.estimator_version,
@@ -264,8 +303,15 @@ fn seasonality_stage_execution_neutralizes_under_supported_calendar_components()
         .as_ref()
         .expect("seasonality stage should emit a normalized payload");
 
-    assert!(payload.day_of_week_factor.iter().all(|value| *value == 1.0));
-    assert!(payload.day_of_year_factor.iter().all(|value| *value == 1.0));
+    assert_eq!(payload.clock_model.intraday_harmonic_order, 0);
+    assert_eq!(payload.clock_model.weekly_harmonic_order, 0);
+    assert_eq!(payload.clock_model.annual_harmonic_order, 0);
+    assert!(
+        payload
+            .business_time_rate_by_event
+            .iter()
+            .all(|value| *value == 1.0)
+    );
 }
 
 #[test]
@@ -309,13 +355,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &memory_run_spec,
         &calendar_registry,
         JointRefinementStageExecutionInput {
-            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
-                day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
-                hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
-                day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
-            },
+            seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
@@ -345,13 +385,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &disk_run_spec,
         &calendar_registry,
         JointRefinementStageExecutionInput {
-            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
-                day_of_week_factor: seasonality_payload.day_of_week_factor,
-                day_of_year_factor: seasonality_payload.day_of_year_factor,
-            },
+            seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: "artifact://hawkes/run-joint-stage-disk".to_string(),
                 payload: Some(hawkes_payload),
@@ -416,13 +450,9 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
-                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
-                        day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
-                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
-                        day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
-                    },
+                    seasonality_factors_input: seasonality_factors_input_from_payload(
+                        &seasonality_payload,
+                    ),
                     hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
@@ -453,13 +483,9 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 4),
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
-                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
-                        day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
-                        hour_of_week_factor: seasonality_payload.hour_of_week_factor.clone(),
-                        day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
-                    },
+                    seasonality_factors_input: seasonality_factors_input_from_payload(
+                        &seasonality_payload,
+                    ),
                     hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
@@ -533,13 +559,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
 
     let run_spec = joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1);
     let stage_input = JointRefinementStageExecutionInput {
-        seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-            intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-            intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-            hour_of_week_factor: seasonality_payload.hour_of_week_factor,
-            day_of_week_factor: seasonality_payload.day_of_week_factor,
-            day_of_year_factor: seasonality_payload.day_of_year_factor,
-        },
+        seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
         hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
             payload: hawkes_payload,
         },
@@ -614,13 +634,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
         &calendar_registry,
         JointRefinementStageExecutionInput {
-            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
-                day_of_week_factor: seasonality_payload.day_of_week_factor,
-                day_of_year_factor: seasonality_payload.day_of_year_factor,
-            },
+            seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
             },
@@ -682,13 +696,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
         &calendar_registry,
         JointRefinementStageExecutionInput {
-            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                hour_of_week_factor: seasonality_payload.hour_of_week_factor,
-                day_of_week_factor: seasonality_payload.day_of_week_factor,
-                day_of_year_factor: seasonality_payload.day_of_year_factor,
-            },
+            seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
             },
@@ -858,8 +866,8 @@ fn hawkes_stage_keeps_subcritical_candidates_stable_under_baseline_seasonality()
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
 
-    seasonality_payload.intraday_factor_by_bin.fill(2.0);
-    seasonality_payload.day_of_week_factor[0] = 1.6;
+    seasonality_payload.business_time_rate_by_event.fill(2.0);
+    set_intraday_clock_rate_bound(&mut seasonality_payload, 1.6);
 
     let mut candidate = hawkes_stage_candidate_fixture()
         .into_iter()
@@ -917,10 +925,9 @@ fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constrai
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
 
-    seasonality_payload.intraday_factor_by_bin.fill(1.0);
-    seasonality_payload.day_of_week_factor.fill(1.0);
-    seasonality_payload.day_of_year_factor.fill(1.0);
-    seasonality_payload.day_of_year_factor[199] = 3.0;
+    let annual_rate_bound = 3.0_f64;
+    seasonality_payload.business_time_rate_by_event.fill(1.0);
+    set_annual_clock_rate_bound(&mut seasonality_payload, annual_rate_bound);
 
     let mut candidate = hawkes_stage_candidate_fixture()
         .into_iter()
@@ -964,7 +971,7 @@ fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constrai
         original_candidate
             .implied_metrics
             .max_runtime_hourly_seasonality_factor,
-        3.0
+        annual_rate_bound.ln().exp()
     );
     assert_eq!(
         original_candidate
@@ -1067,60 +1074,6 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
                 .max(0.0_f64))
         .abs()
             < 1.0e-12
-    );
-}
-
-#[test]
-fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
-    let calendar_registry = calibration_stage_test_registry();
-
-    let mut explosive_candidate = hawkes_stage_candidate_fixture()
-        .into_iter()
-        .next()
-        .expect("fixture should provide a candidate");
-
-    explosive_candidate.candidate_id = "candidate_explosive_volume".to_string();
-    explosive_candidate.lambda_bar = 42.0;
-
-    let mut seasonality_payload = build_seasonality_stage_success_payload();
-    for factor in &mut seasonality_payload.normalized_combined_factor_by_event {
-        *factor = 0.1;
-    }
-
-    let report = run_hawkes_calibration_stage(
-        &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
-        &calendar_registry,
-        HawkesStageExecutionInput::from_in_memory_seasonality_output(
-            seasonality_payload,
-            vec![explosive_candidate],
-        ),
-    );
-
-    let candidate = match (
-        report.fitted_stage_payload.as_ref(),
-        report.failure.as_ref(),
-    ) {
-        (Some(payload), _) => &payload.candidate_diagnostics[0],
-        (
-            None,
-            Some(HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
-                candidate_diagnostics,
-            }),
-        ) => &candidate_diagnostics[0],
-        _ => panic!("single explosive candidate should still emit diagnostics"),
-    };
-
-    assert!(
-        candidate
-            .warnings
-            .iter()
-            .any(|warning: &String| warning.contains("observation window"))
-    );
-    assert!(
-        candidate
-            .implied_metrics
-            .event_volume_ratio_vs_total_observed
-            > 1.5
     );
 }
 

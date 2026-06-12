@@ -377,116 +377,32 @@ fn model_warnings(model: &Value) -> Option<WarningBlock> {
 
 fn seasonality_samples(model: &Value) -> Option<String> {
     let seasonality = nested_value(model, &["parameters", "seasonality"])?;
+    let clock_model = seasonality.get("clock_model")?;
 
-    let mut sections = Vec::new();
+    let weekly_order = clock_model.get("weekly_harmonic_order")?.as_u64()?;
+    let annual_order = clock_model.get("annual_harmonic_order")?.as_u64()?;
 
-    if let Some(intraday) = seasonality
-        .get("intraday_factor_by_bin")
-        .and_then(Value::as_array)
-    {
-        sections.push(format!(
-            "Intraday:\n{}",
-            hourly_samples(intraday.as_slice()).join("\n")
-        ));
-    }
+    let selected_objective = clock_model
+        .get("selected_objective_value")
+        .and_then(Value::as_f64)?;
 
-    if let Some(day_of_week) = seasonality
-        .get("day_of_week_factor")
-        .and_then(Value::as_array)
-    {
-        sections.push(format!(
-            "Day of week:\n{}",
-            day_of_week_samples(day_of_week)
-        ));
-    }
+    let candidate_count = clock_model
+        .get("evaluated_candidate_count")
+        .and_then(Value::as_u64)?;
 
-    if let Some(day_of_year) = seasonality
-        .get("day_of_year_factor")
-        .and_then(Value::as_array)
-    {
-        sections.push(format!(
-            "Day of year:\n{}",
-            day_of_year_samples(day_of_year)
-        ));
-    }
+    let open_minute_count = clock_model
+        .get("fit_open_minute_count")
+        .and_then(Value::as_u64)?;
 
-    if sections.is_empty() {
-        return None;
-    }
+    let open_event_count = clock_model
+        .get("fit_open_event_count")
+        .and_then(Value::as_u64)?;
 
-    Some(sections.join("\n"))
-}
-
-fn hourly_samples(values: &[Value]) -> Vec<String> {
-    let samples = sample_slots(values, 24);
-
-    samples
-        .chunks(6)
-        .map(|chunk| {
-            chunk
-                .iter()
-                .map(|(position, value)| format!("{position:02} {}", format_sample_value(*value)))
-                .collect::<Vec<_>>()
-                .join("  ")
-        })
-        .collect()
-}
-
-fn day_of_week_samples(values: &[Value]) -> String {
-    let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-    labels
-        .iter()
-        .enumerate()
-        .filter_map(|(position, label)| {
-            values
-                .get(position)
-                .and_then(Value::as_f64)
-                .map(|value| format!("{label} {}", format_sample_value(value)))
-        })
-        .collect::<Vec<_>>()
-        .join("  ")
-}
-
-fn day_of_year_samples(values: &[Value]) -> String {
-    let samples = values
-        .iter()
-        .step_by(15)
-        .take(24)
-        .enumerate()
-        .filter_map(|(sample_position, value)| {
-            let day_of_year = sample_position * 15 + 1;
-            value
-                .as_f64()
-                .map(|value| format!("{day_of_year:03} {}", format_sample_value(value)))
-        })
-        .collect::<Vec<_>>();
-
-    samples
-        .chunks(6)
-        .map(|chunk| chunk.join("  "))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn sample_slots(values: &[Value], sample_count: usize) -> Vec<(usize, f64)> {
-    if values.is_empty() {
-        return Vec::new();
-    }
-
-    (0..sample_count)
-        .filter_map(|sample_position| {
-            let position = sample_position * values.len() / sample_count;
-            values
-                .get(position)
-                .and_then(Value::as_f64)
-                .map(|value| (sample_position, value))
-        })
-        .collect()
-}
-
-fn format_sample_value(value: f64) -> String {
-    format!("{value:.6}")
+    Some(format!(
+        "Clock model:\nweekly harmonics {weekly_order}  annual harmonics {annual_order}\n\
+         candidates {candidate_count}  open minutes {open_minute_count}  open events {open_event_count}\n\
+         selected objective {selected_objective:.6}"
+    ))
 }
 
 fn find_object_with_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {

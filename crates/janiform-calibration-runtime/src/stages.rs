@@ -12,5 +12,4 @@ pub(crate) mod progress;
 pub(crate) mod return_backfit;
 pub(crate) mod return_components;
 pub(crate) mod seasonality;
-pub(crate) mod seasonality_runtime;
 pub(crate) mod tick_objective_data;

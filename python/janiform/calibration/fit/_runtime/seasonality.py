@@ -17,7 +17,6 @@ from ...errors import calibration_error
 from .payloads import (
     raise_invalid_weekly_surprise_multiplier,
     require_payload_mapping,
-    require_payload_numeric_sequence,
     return_components_fitted_parameters_payload,
     seasonality_parameters_payload,
 )
@@ -47,37 +46,16 @@ def build_runtime_hourly_seasonality_source_from_model(
             "JaniformModel does not contain structural seasonality parameters required for runtime materialization"
         )
 
-    intraday_minutes_per_bin = int(seasonality_intraday_minutes_per_bin(seasonality_parameters))
-    if intraday_minutes_per_bin <= 0:
-        raise RuntimeError("JaniformModel seasonality.intraday_minutes_per_bin must be a positive integer")
-
-    intraday_factors = require_payload_numeric_sequence(
-        seasonality_parameters,
-        "intraday_factor_by_bin",
-        "seasonality.intraday_factor_by_bin",
-    )
-    day_of_week_factors = require_payload_numeric_sequence(
-        seasonality_parameters,
-        "day_of_week_factor",
-        "seasonality.day_of_week_factor",
-    )
-    day_of_year_factors = require_payload_numeric_sequence(
-        seasonality_parameters,
-        "day_of_year_factor",
-        "seasonality.day_of_year_factor",
-    )
-
+    clock_model = seasonality_clock_model(seasonality_parameters)
     interval_duration_nanos = _parse_interval_duration_nanos(interval, field_name="interval")
+
     seasonality_grid = materialize_runtime_structural_seasonality_grid(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
         range_start_utc=range_start_utc,
         range_end_utc=range_end_utc,
         interval_duration_nanos=interval_duration_nanos,
-        intraday_minutes_per_bin=intraday_minutes_per_bin,
-        intraday_factors=intraday_factors,
-        day_of_week_factors=day_of_week_factors,
-        day_of_year_factors=day_of_year_factors,
+        clock_model=clock_model,
     )
 
     if not seasonality_grid.seasonality_factors:
@@ -116,25 +94,32 @@ def surprise_deterministic_time_multiplier_by_interval_index(
     interval_duration_nanos: int,
 ) -> dict[int, float]:
     weekly_hour_utc_multipliers = surprise_weekly_hour_utc_multipliers(model)
+
     normalized_range_start_utc = normalize_runtime_utc_timestamp(range_start_utc, field_name="range_start_utc")
     normalized_range_end_utc = normalize_runtime_utc_timestamp(range_end_utc, field_name="range_end_utc")
+
     if normalized_range_end_utc <= normalized_range_start_utc:
         return {}
 
     interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+
     interval_count = int(
         (normalized_range_end_utc - normalized_range_start_utc).total_seconds()
         / interval_duration.total_seconds()
     )
+
     multiplier_by_interval: dict[int, float] = {}
+
     for interval_index in range(interval_count):
         interval_start_utc = normalized_range_start_utc + interval_duration * interval_index
         interval_end_utc = min(interval_start_utc + interval_duration, normalized_range_end_utc)
+
         interval_multiplier = average_weekly_hour_multiplier_over_interval(
             interval_start_utc=interval_start_utc,
             interval_end_utc=interval_end_utc,
             weekly_hour_utc_multipliers=weekly_hour_utc_multipliers,
         )
+
         if abs(interval_multiplier - 1.0) > 1.0e-12:
             multiplier_by_interval[interval_index] = interval_multiplier
 
@@ -143,11 +128,13 @@ def surprise_deterministic_time_multiplier_by_interval_index(
 
 def surprise_weekly_hour_utc_multipliers(model: JaniformModel) -> tuple[float, ...]:
     fitted_parameters = return_components_fitted_parameters_payload(model)
+
     profile = require_payload_mapping(
         fitted_parameters,
         "surprise_deterministic_intensity_profile",
         "return_components.fitted_parameters.surprise_deterministic_intensity_profile",
     )
+
     raw_weekly_hour_utc_multipliers = profile.get("weekly_hour_utc_multipliers")
     if not isinstance(raw_weekly_hour_utc_multipliers, list):
         raise RuntimeError(
@@ -160,10 +147,12 @@ def surprise_weekly_hour_utc_multipliers(model: JaniformModel) -> tuple[float, .
         else raise_invalid_weekly_surprise_multiplier(bucket_index)
         for bucket_index, raw_multiplier in enumerate(raw_weekly_hour_utc_multipliers)
     )
+
     if len(weekly_hour_utc_multipliers) != 168:
         raise RuntimeError(
             "JaniformModel weekly surprise intensity profile must contain exactly 168 hourly multipliers"
         )
+
     return weekly_hour_utc_multipliers
 
 
@@ -186,10 +175,7 @@ def materialize_runtime_structural_seasonality_grid(
     range_start_utc: datetime,
     range_end_utc: datetime,
     interval_duration_nanos: int,
-    intraday_minutes_per_bin: int,
-    intraday_factors: tuple[float, ...],
-    day_of_week_factors: tuple[float, ...],
-    day_of_year_factors: tuple[float, ...],
+    clock_model: Mapping[str, Any],
 ) -> RuntimeStructuralSeasonalityGrid:
     native_payload = native_module().materialize_runtime_structural_seasonality(
         calendar_registry._native_registry,
@@ -197,11 +183,9 @@ def materialize_runtime_structural_seasonality_grid(
         range_start_utc.isoformat(),
         range_end_utc.isoformat(),
         interval_duration_nanos,
-        intraday_minutes_per_bin,
-        intraday_factors,
-        day_of_week_factors,
-        day_of_year_factors,
+        dict(clock_model),
     )
+
     payload_mapping = cast(Mapping[str, Any], native_payload)
 
     return RuntimeStructuralSeasonalityGrid(
@@ -215,24 +199,15 @@ def materialize_runtime_structural_seasonality_grid(
 
 
 def contains_structural_seasonality_parameters(seasonality_parameters: Mapping[str, Any]) -> bool:
-    intraday_factor_by_bin = seasonality_parameters.get("intraday_factor_by_bin")
-    day_of_week_factor = seasonality_parameters.get("day_of_week_factor")
-    day_of_year_factor = seasonality_parameters.get("day_of_year_factor")
-    has_structural_factor_sequences = (
-        isinstance(intraday_factor_by_bin, tuple | list)
-        and isinstance(day_of_week_factor, tuple | list)
-        and isinstance(day_of_year_factor, tuple | list)
-        and len(intraday_factor_by_bin) > 0
-        and len(day_of_week_factor) > 0
-        and len(day_of_year_factor) > 0
+    return isinstance(seasonality_parameters.get("clock_model"), Mapping)
+
+
+def seasonality_clock_model(seasonality_parameters: Mapping[str, Any]) -> Mapping[str, Any]:
+    return require_payload_mapping(
+        seasonality_parameters,
+        "clock_model",
+        "seasonality.clock_model",
     )
-    if not has_structural_factor_sequences:
-        return False
-    try:
-        seasonality_intraday_minutes_per_bin(seasonality_parameters)
-    except RuntimeError:
-        return False
-    return True
 
 
 def average_weekly_hour_multiplier_over_interval(
@@ -246,24 +221,31 @@ def average_weekly_hour_multiplier_over_interval(
 
     weighted_multiplier_sum = 0.0
     weighted_duration_seconds = 0.0
+
     current = interval_start_utc
     while current < interval_end_utc:
         hour_start_utc = current.replace(minute=0, second=0, microsecond=0)
+
         next_hour_boundary_utc = (
             current + timedelta(hours=1)
             if current == hour_start_utc
             else hour_start_utc + timedelta(hours=1)
         )
+
         segment_end_utc = min(next_hour_boundary_utc, interval_end_utc)
         segment_duration_seconds = (segment_end_utc - current).total_seconds()
+
         weighted_multiplier_sum += (
             weekly_hour_utc_multipliers[weekly_hour_bucket_index(current)] * segment_duration_seconds
         )
+
         weighted_duration_seconds += segment_duration_seconds
+
         current = segment_end_utc
 
     if weighted_duration_seconds <= 0.0:
         return 1.0
+
     return weighted_multiplier_sum / weighted_duration_seconds
 
 
@@ -275,23 +257,5 @@ def weekly_hour_bucket_index(timestamp_utc: datetime) -> int:
 def normalize_runtime_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> datetime:
     if timestamp_utc.tzinfo is None:
         raise calibration_error(field_name, "must be timezone-aware")
+
     return timestamp_utc.astimezone(UTC)
-
-
-def seasonality_intraday_minutes_per_bin(seasonality_parameters: Mapping[str, Any]) -> float:
-    raw_value = seasonality_parameters.get("intraday_minutes_per_bin")
-    if isinstance(raw_value, int | float) and not isinstance(raw_value, bool):
-        return float(raw_value)
-
-    intraday_factors = require_payload_numeric_sequence(
-        seasonality_parameters,
-        "intraday_factor_by_bin",
-        "seasonality.intraday_factor_by_bin",
-    )
-    inferred_minutes_per_bin, remainder = divmod(1440, len(intraday_factors))
-    if remainder != 0:
-        raise RuntimeError(
-            "JaniformModel seasonality parameters must include intraday_minutes_per_bin when "
-            "intraday_factor_by_bin does not evenly partition a day"
-        )
-    return float(inferred_minutes_per_bin)

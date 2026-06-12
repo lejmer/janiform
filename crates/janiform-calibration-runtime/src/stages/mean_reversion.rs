@@ -38,8 +38,9 @@ use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_gri
 use crate::stages::progress::{StageProgressUpdate, emit_stage_progress};
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::{
-    CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
-    SeasonalityStageNormalizedPayload, build_runtime_hourly_seasonality_factors_from_components,
+    CalibrationStageExecutionStatus, FourierBusinessTimeClockModel,
+    RuntimeHourlySeasonalityFactorsBuildInput, SeasonalityStageNormalizedPayload,
+    build_runtime_hourly_seasonality_factors_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -109,22 +110,14 @@ pub struct MeanReversionStageObservation {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeanReversionStageSeasonalityInput {
     pub exchange_code: String,
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_factor_by_bin: Vec<f64>,
-    pub day_of_week_factor: Vec<f64>,
-    pub hour_of_week_factor: Vec<f64>,
-    pub day_of_year_factor: Vec<f64>,
+    pub clock_model: FourierBusinessTimeClockModel,
 }
 
 impl MeanReversionStageSeasonalityInput {
     pub fn from_seasonality_stage_payload(payload: &SeasonalityStageNormalizedPayload) -> Self {
         Self {
             exchange_code: payload.exchange_code.clone(),
-            intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-            intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
-            day_of_week_factor: payload.day_of_week_factor.clone(),
-            hour_of_week_factor: payload.hour_of_week_factor.clone(),
-            day_of_year_factor: payload.day_of_year_factor.clone(),
+            clock_model: payload.clock_model.clone(),
         }
     }
 }
@@ -925,10 +918,7 @@ fn build_endogenous_mean_reversion_calibration_context(
             RuntimeHourlySeasonalityFactorsBuildInput {
                 calendar_registry,
                 exchange_code: seasonality_input.exchange_code.as_str(),
-                intraday_minutes_per_bin: seasonality_input.intraday_minutes_per_bin,
-                intraday_factor_by_bin: seasonality_input.intraday_factor_by_bin.as_slice(),
-                day_of_week_factor: seasonality_input.day_of_week_factor.as_slice(),
-                day_of_year_factor: seasonality_input.day_of_year_factor.as_slice(),
+                clock_model: &seasonality_input.clock_model,
                 range_start_utc_nanos: runtime_hourly_seasonality_range_start_utc_nanos,
                 range_end_utc_nanos: runtime_hourly_seasonality_range_end_utc_nanos,
                 interval_duration_nanos: NANOS_PER_HOUR,

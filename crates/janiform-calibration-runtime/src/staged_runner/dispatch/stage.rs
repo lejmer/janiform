@@ -30,6 +30,8 @@ use super::joint_refinement::{
     JointRefinementLikeStageRunInput, forward_joint_refinement_like_stage_progress,
     joint_refinement_like_stage_input, run_joint_refinement_like_stage,
 };
+use crate::SeasonalityStageProgressUpdate;
+use crate::stages::seasonality::run_seasonality_calibration_stage_with_progress_observer;
 
 pub(in crate::staged_runner) fn run_stage_for_staged_execution(
     input: RunStageForStagedExecutionInput<'_, '_>,
@@ -65,11 +67,46 @@ fn run_seasonality_staged_execution_stage(
         });
     };
 
+    if input.observer.is_none() {
+        return Ok(CalibrationStagedRunStageReport::Seasonality(Box::new(
+            run_seasonality_calibration_stage(
+                input.run_spec,
+                input.calendar_registry,
+                seasonality_stage_input,
+            ),
+        )));
+    }
+
+    let mut progress_forwarder = |progress_update: SeasonalityStageProgressUpdate| {
+        forward_simple_stage_progress(
+            input.observer,
+            SimpleStageProgressForwardInput {
+                run_spec: input.run_spec,
+                stage: CalibrationStage::Seasonality,
+                stage_index: input.stage_index,
+                stage_count: input.stage_count,
+                progress_phase: progress_update.phase,
+                completed_units: progress_update.completed_units,
+                total_units: progress_update.total_units,
+                stage_progress_percent: Some(progress_update.stage_progress_percent()),
+                aggregate_progress_percent: progress_update.aggregate_progress_percent,
+                current_item_label: progress_update.current_item_label,
+                current_evaluation_count: progress_update.current_evaluation_count,
+                total_evaluation_budget: progress_update.total_evaluation_budget,
+                evaluation_progress_percent: progress_update.evaluation_progress_percent,
+                current_global_loss: progress_update.current_objective_value,
+                best_global_loss: progress_update.best_objective_value,
+                current_convergence_ratio: None,
+            },
+        );
+    };
+
     Ok(CalibrationStagedRunStageReport::Seasonality(Box::new(
-        run_seasonality_calibration_stage(
+        run_seasonality_calibration_stage_with_progress_observer(
             input.run_spec,
             input.calendar_registry,
             seasonality_stage_input,
+            Some(&mut progress_forwarder),
         ),
     )))
 }

@@ -33,6 +33,21 @@ pub const NANOS_PER_DAY: i64 = 24 * NANOS_PER_HOUR;
 /// Exact nanoseconds per seven-day week.
 pub const NANOS_PER_WEEK: i64 = 7 * NANOS_PER_DAY;
 
+/// Exact minutes per hour.
+pub const MINUTES_PER_HOUR: usize = (NANOS_PER_HOUR / NANOS_PER_MINUTE) as usize;
+/// Exact minutes per day.
+pub const MINUTES_PER_DAY: usize = (NANOS_PER_DAY / NANOS_PER_MINUTE) as usize;
+/// Exact minutes per seven-day week.
+pub const MINUTES_PER_WEEK: usize = (NANOS_PER_WEEK / NANOS_PER_MINUTE) as usize;
+
+/// Exact days per seven-day week.
+pub const DAYS_PER_WEEK: usize = (NANOS_PER_WEEK / NANOS_PER_DAY) as usize;
+
+/// Calendar days in a common civil year.
+pub const DAYS_PER_COMMON_YEAR: usize = 365;
+/// Calendar days in a leap civil year.
+pub const DAYS_PER_LEAP_YEAR: usize = 366;
+
 /// Exact seconds per hour.
 pub const SECONDS_PER_HOUR: f64 = 3_600.0;
 

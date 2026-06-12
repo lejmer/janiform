@@ -44,7 +44,7 @@ from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,
 )
-from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
+from janiform.seasonality import SessionFilter
 
 
 FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
@@ -227,7 +227,6 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert first_translation.staged_request.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
     assert first_translation.diagnostics.known_news_event_count == 2
     assert first_translation.diagnostics.known_news_events_outside_source_window_count == 1
-    assert first_translation.diagnostics.seasonality_overlay_count == 2
     assert first_translation.diagnostics.close_open_boundary_observation_count == 1
     assert first_translation.diagnostics.material_close_open_gap_count == 1
     assert (
@@ -491,13 +490,9 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
             seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
                 session_filter=SessionFilter.ALL,
                 sparse_hour_event_threshold=2,
-                known_news_overlay_log_adjustment=-0.2,
-                intraday_minutes_per_bin=5,
-                intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
-                intraday_smoothing_bandwidth_bins=2.5,
-                intraday_minimum_bin_events=3,
-                day_of_week_minimum_bucket_events=4,
-                day_of_year_minimum_bucket_events=5,
+                maximum_intraday_harmonic_order=11,
+                maximum_weekly_harmonic_order=3,
+                maximum_annual_harmonic_order=5,
             ),
             return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
                 intraday_jump_threshold_multiplier=6.0,
@@ -539,7 +534,6 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
     prepared_payload = _prepared_payload(translation)
     default_prepared_payload = _prepared_payload(default_translation)
     seasonality_settings = prepared_payload["seasonality_stage_input"]["settings"]
-    overlay = prepared_payload["seasonality_stage_input"]["scheduled_event_overlays"][0]
     return_components_input = prepared_payload["return_components_candidate_generation_input"]
     default_return_components_input = default_prepared_payload[
         "return_components_candidate_generation_input"
@@ -547,19 +541,9 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
 
     assert seasonality_settings["session_filter"] == "all"
     assert seasonality_settings["sparse_hour_event_threshold"] == 2
-    assert seasonality_settings["intraday_settings"]["minutes_per_bin"] == 5
-    assert seasonality_settings["intraday_settings"]["smoothing_kernel"] == "uniform"
-    assert seasonality_settings["intraday_settings"]["smoothing_bandwidth_bins"] == pytest.approx(2.5)
-    assert seasonality_settings["intraday_settings"]["minimum_bin_events"] == 3
-    assert seasonality_settings["day_of_week_settings"]["minimum_bucket_events"] == 4
-    assert seasonality_settings["day_of_year_settings"]["minimum_bucket_events"] == 5
-    assert overlay["log_adjustment"] == pytest.approx(-0.2)
-    assert (
-        default_prepared_payload["seasonality_stage_input"]["scheduled_event_overlays"][0][
-            "log_adjustment"
-        ]
-        == pytest.approx(0.0)
-    )
+    assert seasonality_settings["maximum_intraday_harmonic_order"] == 11
+    assert seasonality_settings["maximum_weekly_harmonic_order"] == 3
+    assert seasonality_settings["maximum_annual_harmonic_order"] == 5
     assert (
         return_components_input["close_open_gap_detection_policy"][
             "material_gap_absolute_return_tolerance"
@@ -1228,7 +1212,6 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         "session_state_resolution",
         "workflow_scope_selection",
         "known_news_window_filtering",
-        "known_news_overlay_derivation",
         "hawkes_candidate_generation",
         "return_components_candidate_generation",
     )
