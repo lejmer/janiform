@@ -164,7 +164,8 @@ pub use stages::hawkes::{
     HawkesStageExecutionReport, HawkesStageFittedPayload, HawkesStageHandoffOutput,
     HawkesStageImpliedMetricsDiagnostic, HawkesStageObjectiveTermDiagnostic,
     HawkesStageObservedSourceRegime, HawkesStageObservedSourceRegimeError,
-    HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
+    HawkesStageProgressPhase, HawkesStageProgressUpdate, HawkesStageSeasonalityInput,
+    run_hawkes_calibration_stage,
 };
 pub use stages::joint_refinement::{
     CloseSessionRequest, CloseSessionResponse, InitializeSessionRequest, InitializeSessionResponse,

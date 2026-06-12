@@ -1822,6 +1822,10 @@ fn prepared_market_data_plan_from_loading_output(
             .preprocessing_output
             .hawkes_candidate_inputs
             .clone(),
+        hawkes_event_side_codes: loading_output
+            .preprocessing_output
+            .hawkes_event_side_codes
+            .clone(),
         return_components_candidate_generation_input: loading_output
             .preprocessing_output
             .return_components_candidate_generation_input

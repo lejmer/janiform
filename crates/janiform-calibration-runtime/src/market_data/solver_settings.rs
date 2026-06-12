@@ -633,6 +633,7 @@ mod tests {
                         price_down_inference_count: 5,
                     },
                 }]),
+                hawkes_event_side_codes: None,
                 return_components_candidate_generation_input: Some(
                     CalibrationReturnComponentsStageCandidateGenerationInput {
                         known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {

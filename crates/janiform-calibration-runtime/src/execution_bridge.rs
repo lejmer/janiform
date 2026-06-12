@@ -80,6 +80,8 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_candidate_inputs: Option<Vec<CalibrationHawkesStageCandidateInput>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hawkes_event_side_codes: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -714,6 +716,7 @@ impl CalibrationStagedExecutionInput {
                     .map(CalibrationHawkesStageCandidateInput::into_core)
                     .collect()
             }),
+            hawkes_event_side_codes: self.hawkes_event_side_codes,
             return_components_candidate_generation_input: self
                 .return_components_candidate_generation_input
                 .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core),
@@ -1429,6 +1432,7 @@ mod tests {
                     price_down_inference_count: 30,
                 },
             }]),
+            hawkes_event_side_codes: None,
             return_components_candidate_generation_input: Some(
                 CalibrationReturnComponentsStageCandidateGenerationInput {
                     known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {

@@ -116,6 +116,63 @@ fn basin_optimization_eval_progress_stays_on_phase_line_without_table_row() {
 }
 
 #[test]
+fn hawkes_likelihood_progress_uses_shared_work_item_table() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("hawkes_candidate_07"),
+        Some(40),
+        Some(100),
+        Some(-0.25),
+        None,
+    );
+
+    progress.stage = CalibrationStage::Hawkes;
+    progress.progress_phase = CalibrationStageProgressPhase::Hawkes(
+        HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
+    );
+    progress.current_global_loss = Some(-0.125);
+    progress.evaluation_progress_percent = Some(40);
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("Hawkes likelihood progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            work_item_label,
+            work_item_columns,
+            work_item_metrics,
+            ..
+        }) => {
+            assert_eq!(work_item_label.as_deref(), Some("hawkes_candidate_07"));
+            assert_eq!(
+                work_item_columns
+                    .into_iter()
+                    .map(|column| (column.key, column.label))
+                    .collect::<Vec<_>>(),
+                vec![
+                    ("eval".to_string(), "Evals".to_string()),
+                    ("current_objective".to_string(), "Cur. loss".to_string()),
+                    ("final_objective".to_string(), "Final loss".to_string()),
+                ]
+            );
+            assert_eq!(
+                work_item_metrics
+                    .into_iter()
+                    .map(|metric| (metric.key, metric.value))
+                    .collect::<Vec<_>>(),
+                vec![
+                    ("eval".to_string(), "40/100".to_string()),
+                    ("current_objective".to_string(), "-0.125000".to_string()),
+                ]
+            );
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn zero_total_phase_progress_uses_unbounded_terminal_measure() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,

@@ -13,8 +13,9 @@ pub(super) use crate::diagnostics::types::{
 };
 pub(super) use crate::stages::hawkes::{
     HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionMetadata,
-    HawkesStageExecutionReport, HawkesStageFittedPayload, HawkesStageSeasonalityInput,
-    run_hawkes_calibration_stage,
+    HawkesStageExecutionReport, HawkesStageFittedPayload, HawkesStageProgressPhase,
+    HawkesStageProgressUpdate, HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
+    run_hawkes_calibration_stage_with_progress_observer,
 };
 pub(super) use crate::stages::joint_refinement::{
     FinalizationCalibrationStageEntrypointInput, JointRefinementCalibrationStageEntrypointInput,

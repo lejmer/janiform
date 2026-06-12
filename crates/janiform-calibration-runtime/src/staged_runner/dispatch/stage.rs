@@ -9,12 +9,12 @@ use super::super::{
     CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunStageProgressEvent, CalibrationStagedRunStageReport,
     ExchangeCalendarRegistry, HawkesStageExecutionInput, HawkesStageFittedPayload,
-    HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
+    HawkesStageProgressUpdate, HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
     LongVarianceStageExecutionInput, LongVarianceStageProgressUpdate,
     MeanReversionStageProgressUpdate, NewsShocksStageExecutionInput,
     ReturnBackfitStageExecutionInput, ReturnComponentsStageExecutionInput,
     ReturnComponentsStageProgressUpdate, run_hawkes_calibration_stage,
-    run_long_variance_calibration_stage,
+    run_hawkes_calibration_stage_with_progress_observer, run_long_variance_calibration_stage,
     run_long_variance_calibration_stage_with_progress_observer,
     run_mean_reversion_calibration_stage,
     run_mean_reversion_calibration_stage_with_progress_observer, run_news_shocks_calibration_stage,
@@ -85,14 +85,54 @@ fn run_hawkes_staged_execution_stage(
 
     let seasonality_input = hawkes_seasonality_input(input.run_spec, input.payload_state)?;
 
+    let event_side_codes = input
+        .staged_run_inputs
+        .hawkes_event_side_codes
+        .take()
+        .unwrap_or_default();
+
+    let stage_input = HawkesStageExecutionInput {
+        seasonality_input,
+        candidate_inputs,
+        event_side_codes,
+    };
+
+    if input.observer.is_none() {
+        return Ok(CalibrationStagedRunStageReport::Hawkes(Box::new(
+            run_hawkes_calibration_stage(input.run_spec, input.calendar_registry, stage_input),
+        )));
+    }
+
+    let mut progress_forwarder = |progress_update: HawkesStageProgressUpdate| {
+        forward_simple_stage_progress(
+            input.observer,
+            SimpleStageProgressForwardInput {
+                run_spec: input.run_spec,
+                stage: CalibrationStage::Hawkes,
+                stage_index: input.stage_index,
+                stage_count: input.stage_count,
+                progress_phase: progress_update.phase,
+                completed_units: progress_update.completed_units,
+                total_units: progress_update.total_units,
+                stage_progress_percent: Some(progress_update.stage_progress_percent()),
+                aggregate_progress_percent: progress_update.aggregate_progress_percent,
+                current_item_label: progress_update.current_item_label,
+                current_evaluation_count: progress_update.current_evaluation_count,
+                total_evaluation_budget: progress_update.total_evaluation_budget,
+                evaluation_progress_percent: progress_update.evaluation_progress_percent,
+                current_global_loss: progress_update.current_weighted_objective,
+                best_global_loss: progress_update.best_weighted_objective,
+                current_convergence_ratio: progress_update.current_convergence_ratio,
+            },
+        );
+    };
+
     Ok(CalibrationStagedRunStageReport::Hawkes(Box::new(
-        run_hawkes_calibration_stage(
+        run_hawkes_calibration_stage_with_progress_observer(
             input.run_spec,
             input.calendar_registry,
-            HawkesStageExecutionInput {
-                seasonality_input,
-                candidate_inputs,
-            },
+            stage_input,
+            Some(&mut progress_forwarder),
         ),
     )))
 }
@@ -280,6 +320,9 @@ struct SimpleStageProgressForwardInput<'run_spec, Phase> {
     current_evaluation_count: Option<usize>,
     total_evaluation_budget: Option<usize>,
     evaluation_progress_percent: Option<usize>,
+    current_global_loss: Option<f64>,
+    best_global_loss: Option<f64>,
+    current_convergence_ratio: Option<f64>,
 }
 
 fn forward_simple_stage_progress<Phase>(
@@ -316,18 +359,18 @@ fn forward_simple_stage_progress<Phase>(
                 total_pricing_row_count: None,
                 valid_completed_units: None,
                 cumulative_local_evaluation_count: None,
-                current_global_loss: None,
+                current_global_loss: input.current_global_loss,
                 current_restart_best_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
-                best_global_loss: None,
+                best_global_loss: input.best_global_loss,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
                 restart_evaluation_timing_diagnostic: None,
-                current_convergence_ratio: None,
+                current_convergence_ratio: input.current_convergence_ratio,
             },
         )));
     }
@@ -385,6 +428,9 @@ fn run_long_variance_staged_execution_stage(
                 current_evaluation_count: progress_update.current_evaluation_count,
                 total_evaluation_budget: progress_update.total_evaluation_budget,
                 evaluation_progress_percent: progress_update.evaluation_progress_percent,
+                current_global_loss: None,
+                best_global_loss: None,
+                current_convergence_ratio: None,
             },
         );
     };
@@ -470,6 +516,9 @@ fn run_mean_reversion_staged_execution_stage(
                 current_evaluation_count: progress_update.current_evaluation_count,
                 total_evaluation_budget: progress_update.total_evaluation_budget,
                 evaluation_progress_percent: progress_update.evaluation_progress_percent,
+                current_global_loss: None,
+                best_global_loss: None,
+                current_convergence_ratio: None,
             },
         );
     };

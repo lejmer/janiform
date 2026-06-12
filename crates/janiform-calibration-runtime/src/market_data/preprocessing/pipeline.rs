@@ -4,7 +4,9 @@ use super::contracts::{
     MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
     MarketDataTranslationPreprocessingRequest,
 };
-use super::hawkes_inputs::{HawkesCandidateInputsBuildInput, build_hawkes_candidate_inputs};
+use super::hawkes_inputs::{
+    HawkesCandidateInputsBuildInput, build_hawkes_candidate_inputs, build_hawkes_event_side_codes,
+};
 use super::known_news_samples::resolve_known_news_records;
 use super::return_components_inputs::{
     ReturnComponentsCandidateGenerationInputBuildInput,
@@ -46,21 +48,26 @@ pub fn preprocess_market_data_translation_request(
             .and_then(|settings| settings.seasonality.as_ref()),
     );
 
-    let hawkes_candidate_inputs = if request.require_hawkes {
-        Some(build_hawkes_candidate_inputs(
-            HawkesCandidateInputsBuildInput {
-                resolved_ticks: tick_summary.resolved_ticks.as_slice(),
-                open_price_ticks: tick_summary.open_price_ticks.as_slice(),
-                retained_known_news: retained_known_news.retained_records.as_slice(),
-                session_open_tick_count: tick_summary.session_open_tick_count,
-                session_closed_tick_count: tick_summary.session_closed_tick_count,
-                open_session_buy_tick_count: tick_summary.open_session_buy_tick_count,
-                open_session_sell_tick_count: tick_summary.open_session_sell_tick_count,
-                directional_label_diagnostics: request.directional_label_diagnostics,
-            },
-        )?)
+    let (hawkes_candidate_inputs, hawkes_event_side_codes) = if request.require_hawkes {
+        (
+            Some(build_hawkes_candidate_inputs(
+                HawkesCandidateInputsBuildInput {
+                    resolved_ticks: tick_summary.resolved_ticks.as_slice(),
+                    open_price_ticks: tick_summary.open_price_ticks.as_slice(),
+                    retained_known_news: retained_known_news.retained_records.as_slice(),
+                    session_open_tick_count: tick_summary.session_open_tick_count,
+                    session_closed_tick_count: tick_summary.session_closed_tick_count,
+                    open_session_buy_tick_count: tick_summary.open_session_buy_tick_count,
+                    open_session_sell_tick_count: tick_summary.open_session_sell_tick_count,
+                    directional_label_diagnostics: request.directional_label_diagnostics,
+                },
+            )?),
+            Some(build_hawkes_event_side_codes(
+                tick_summary.resolved_ticks.as_slice(),
+            )?),
+        )
     } else {
-        None
+        (None, None)
     };
 
     let (
@@ -105,6 +112,7 @@ pub fn preprocess_market_data_translation_request(
     Ok(MarketDataTranslationPreprocessingOutput {
         seasonality_stage_input,
         hawkes_candidate_inputs,
+        hawkes_event_side_codes,
         return_components_candidate_generation_input,
         mean_reversion_open_session_price_observations,
         mean_reversion_observed_session_duration_hours,

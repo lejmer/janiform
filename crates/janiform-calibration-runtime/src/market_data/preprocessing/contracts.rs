@@ -134,6 +134,8 @@ pub struct MarketDataTranslationPreprocessingOutput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_candidate_inputs: Option<Vec<CalibrationHawkesStageCandidateInput>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hawkes_event_side_codes: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
