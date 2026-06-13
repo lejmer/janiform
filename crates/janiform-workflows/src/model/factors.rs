@@ -32,7 +32,7 @@ pub(crate) fn build_interval_factor_grid(
         interval_duration_nanos,
     )?;
 
-    let seasonality_source = hourly_seasonality_source(
+    let seasonality_source = interval_seasonality_source(
         range_start_utc,
         range_end_utc,
         interval_duration_nanos,
@@ -123,7 +123,7 @@ fn materialize_runtime_seasonality_grid(
     Ok((output.interval_start_utc_nanos, output.seasonality_factors))
 }
 
-fn hourly_seasonality_source(
+fn interval_seasonality_source(
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
     interval_duration_nanos: i64,
@@ -387,7 +387,7 @@ mod tests {
     use janiform::model::factors::interval_factor_grid::NANOS_PER_HOUR;
     use janiform_foundations::time::NANOS_PER_DAY;
 
-    use super::hourly_seasonality_source;
+    use super::interval_seasonality_source;
 
     #[test]
     fn runtime_seasonality_source_materializes_non_hourly_intervals() {
@@ -410,7 +410,7 @@ mod tests {
             vec![1.0, 1.1],
         );
 
-        let source = hourly_seasonality_source(
+        let source = interval_seasonality_source(
             range_start_utc,
             range_end_utc,
             NANOS_PER_DAY,
@@ -444,7 +444,7 @@ mod tests {
             vec![1.0, 1.1],
         );
 
-        let source = hourly_seasonality_source(
+        let source = interval_seasonality_source(
             range_start_utc,
             range_end_utc,
             NANOS_PER_HOUR,

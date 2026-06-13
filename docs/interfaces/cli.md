@@ -18,7 +18,6 @@ The top-level commands are organized by task:
 | `validate`              | Model validation workflows.                                           |
 | `presets`               | Preset workflows.                                                     |
 | `seasonality`           | Seasonality workflows.                                                |
-| `interval-factor-grids` | Workflows for preparing hourly seasonality and news-intensity inputs. |
 | `dev`                   | Developer-oriented workflows.                                         |
 
 The main workflow starts with `fit`, then moves outward:

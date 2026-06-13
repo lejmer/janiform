@@ -34,7 +34,7 @@ use super::super::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 use super::super::mean_reversion_runtime::{
-    endogenous_interval_factor_grids_from_hourly_contract,
+    endogenous_interval_factor_grids_from_interval_factor_grid,
     materialize_joint_refinement_mean_reversion_runtime_inputs,
 };
 use super::super::objective::root_mean_square;
@@ -603,7 +603,7 @@ pub(crate) fn build_joint_coarse_interval_observations(
 
     let interval_delta = interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
-    let interval_factor_grids = build_coarse_interval_factor_grids_from_hourly_contract(
+    let interval_factor_grids = build_coarse_interval_factor_grids_from_interval_factor_grid(
         &interval_factor_grid,
         fitted_parameters
             .return_components_fitted_parameters
@@ -673,7 +673,7 @@ fn sum_interval_tick_count(intervals: &[JointRefinementAggregatedIntervalObserva
     intervals.iter().map(|interval| interval.tick_count).sum()
 }
 
-fn build_coarse_interval_factor_grids_from_hourly_contract(
+fn build_coarse_interval_factor_grids_from_interval_factor_grid(
     interval_factor_grid: &IntervalFactorGrid,
     known_news_timestamps_utc_nanos: &[i64],
     interval_delta: f64,
@@ -736,12 +736,14 @@ fn build_joint_coarse_model_inputs(
         y_minus_minus: 0.0,
     };
 
-    let endogenous_interval_factor_grids = endogenous_interval_factor_grids_from_hourly_contract(
-        interval_factor_grid,
-    )
-    .map_err(|source| {
-        format!("invalid endogenous anchor interval factors for coarse consistency: {source}")
-    })?;
+    let endogenous_interval_factor_grids =
+        endogenous_interval_factor_grids_from_interval_factor_grid(interval_factor_grid).map_err(
+            |source| {
+                format!(
+                    "invalid endogenous anchor interval factors for coarse consistency: {source}"
+                )
+            },
+        )?;
 
     let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
         materialize_joint_refinement_mean_reversion_runtime_inputs(

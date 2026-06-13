@@ -179,7 +179,7 @@ pub use stages::joint_refinement::{
     JointRefinementSummarySimulationSessionContext, JointRefinementSummarySimulationSessionState,
     JointRefinementSummarySimulationWorkerRequest, JointRefinementSummarySimulationWorkerResponse,
     JointRefinementWorkerRequestedOutput, RunCandidateRequest, RunCandidateResponse,
-    current_process_resident_bytes, endogenous_interval_factor_grids_from_hourly_contract,
+    current_process_resident_bytes, endogenous_interval_factor_grids_from_interval_factor_grid,
     initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
     run_joint_refinement_calibration_stage, run_joint_refinement_candidate_in_session,
     simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,

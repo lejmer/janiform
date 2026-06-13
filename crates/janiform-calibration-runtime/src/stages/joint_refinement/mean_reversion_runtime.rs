@@ -12,7 +12,7 @@ use janiform_model_kernels::mean_reversion::{
 };
 
 /// Convert an interval factor grid contract into endogenous anchor interval factors.
-pub fn endogenous_interval_factor_grids_from_hourly_contract(
+pub fn endogenous_interval_factor_grids_from_interval_factor_grid(
     interval_factor_grid: &IntervalFactorGrid,
 ) -> Result<Vec<EndogenousAnchorIntervalFactors>, String> {
     let interval_count = interval_factor_grid.interval_indices.len();

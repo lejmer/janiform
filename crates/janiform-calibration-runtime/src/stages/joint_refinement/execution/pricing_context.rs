@@ -88,9 +88,10 @@ type OptionGridBatchPricingRequestBuildOutput = (
 );
 
 struct OptionPricingHorizon {
-    hourly_coverage_start_utc_nanos: i64,
-    hourly_coverage_end_utc_nanos: i64,
-    hourly_coverage_interval_count: usize,
+    factor_grid_coverage_start_utc_nanos: i64,
+    factor_grid_coverage_end_utc_nanos: i64,
+    factor_grid_coverage_interval_count: usize,
+    factor_grid_interval_duration_nanos: i64,
 }
 
 pub(crate) struct OptionPricingProgressInput<'a> {
@@ -405,14 +406,16 @@ fn resolve_option_pricing_horizon(
         );
     }
 
-    let hourly_coverage_start_utc_nanos =
+    let factor_grid_coverage_start_utc_nanos =
         floor_to_hour_utc_nanos(option_pricing_input.valuation_time_utc_nanos);
-    let hourly_coverage_end_utc_nanos = ceil_to_hour_utc_nanos(max_expiry_timestamp_utc_nanos);
 
-    let hourly_coverage_interval_count = checked_interval_count_between_utc_nanos(
-        hourly_coverage_start_utc_nanos,
-        hourly_coverage_end_utc_nanos,
-        NANOS_PER_HOUR,
+    let factor_grid_coverage_end_utc_nanos = ceil_to_hour_utc_nanos(max_expiry_timestamp_utc_nanos);
+    let factor_grid_interval_duration_nanos = NANOS_PER_HOUR;
+
+    let factor_grid_coverage_interval_count = checked_interval_count_between_utc_nanos(
+        factor_grid_coverage_start_utc_nanos,
+        factor_grid_coverage_end_utc_nanos,
+        factor_grid_interval_duration_nanos,
     )
     .ok_or_else(
         || JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -422,9 +425,10 @@ fn resolve_option_pricing_horizon(
     )?;
 
     Ok(OptionPricingHorizon {
-        hourly_coverage_start_utc_nanos,
-        hourly_coverage_end_utc_nanos,
-        hourly_coverage_interval_count,
+        factor_grid_coverage_start_utc_nanos,
+        factor_grid_coverage_end_utc_nanos,
+        factor_grid_coverage_interval_count,
+        factor_grid_interval_duration_nanos,
     })
 }
 
@@ -491,9 +495,9 @@ fn build_option_interval_factor_grid(
                 clock_model: &stage_input
                     .seasonality_factors_input
                     .clock_model,
-                range_start_utc_nanos: horizon.hourly_coverage_start_utc_nanos,
-                range_end_utc_nanos: horizon.hourly_coverage_end_utc_nanos,
-                interval_duration_nanos: NANOS_PER_HOUR,
+                range_start_utc_nanos: horizon.factor_grid_coverage_start_utc_nanos,
+                range_end_utc_nanos: horizon.factor_grid_coverage_end_utc_nanos,
+                interval_duration_nanos: horizon.factor_grid_interval_duration_nanos,
             },
         )
         .map_err(|error_message| {
@@ -506,9 +510,9 @@ fn build_option_interval_factor_grid(
 
     let surprise_deterministic_time_multiplier_by_interval_index =
         build_surprise_multipliers_for_interval_grid(
-            DateTime::<Utc>::from_timestamp_nanos(horizon.hourly_coverage_start_utc_nanos),
-            horizon.hourly_coverage_interval_count,
-            NANOS_PER_HOUR,
+            DateTime::<Utc>::from_timestamp_nanos(horizon.factor_grid_coverage_start_utc_nanos),
+            horizon.factor_grid_coverage_interval_count,
+            horizon.factor_grid_interval_duration_nanos,
             return_components_payload
                 .fitted_parameters
                 .surprise_deterministic_intensity_profile
@@ -521,12 +525,12 @@ fn build_option_interval_factor_grid(
         IntervalFactorGridProviderRequest {
             exchange_code: run_spec.data_inputs.exchange_code.as_str(),
             range_start_utc: DateTime::<Utc>::from_timestamp_nanos(
-                horizon.hourly_coverage_start_utc_nanos,
+                horizon.factor_grid_coverage_start_utc_nanos,
             ),
             range_end_utc: DateTime::<Utc>::from_timestamp_nanos(
-                horizon.hourly_coverage_end_utc_nanos,
+                horizon.factor_grid_coverage_end_utc_nanos,
             ),
-            interval_duration_nanos: NANOS_PER_HOUR,
+            interval_duration_nanos: horizon.factor_grid_interval_duration_nanos,
             seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
                 interval_factors: runtime_interval_seasonality_factors.as_slice(),
                 materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,

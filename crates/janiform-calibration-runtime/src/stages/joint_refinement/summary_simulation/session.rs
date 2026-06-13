@@ -34,7 +34,7 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::super::execution::JointRefinementSeedSummary;
 use super::super::mean_reversion_runtime::{
-    endogenous_interval_factor_grids_from_hourly_contract,
+    endogenous_interval_factor_grids_from_interval_factor_grid,
     materialize_joint_refinement_mean_reversion_runtime_inputs,
 };
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
@@ -770,7 +770,7 @@ fn build_seeded_summary_simulation_run_config(
     };
 
     let endogenous_interval_factor_grids =
-        endogenous_interval_factor_grids_from_hourly_contract(&interval_factor_grid)?;
+        endogenous_interval_factor_grids_from_interval_factor_grid(&interval_factor_grid)?;
 
     let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
         materialize_joint_refinement_mean_reversion_runtime_inputs(
@@ -1565,7 +1565,7 @@ pub(crate) mod tests {
                         interval_duration_nanos: NANOS_PER_HOUR,
                     },
                 )
-                .expect("runtime hourly seasonality factors should build");
+                .expect("runtime interval seasonality factors should build");
 
             JointRefinementSummarySimulationFixture {
                 session_context: JointRefinementSummarySimulationSessionContext {

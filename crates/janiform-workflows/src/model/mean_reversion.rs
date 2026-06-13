@@ -30,7 +30,7 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
     WorkflowError,
 > {
     let interval_factor_grids =
-        janiform_calibration_runtime::endogenous_interval_factor_grids_from_hourly_contract(
+        janiform_calibration_runtime::endogenous_interval_factor_grids_from_interval_factor_grid(
             interval_factor_grid,
         )
         .map_err(|source| validation_error("interval_factor_grid", source))?;

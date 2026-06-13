@@ -245,7 +245,7 @@ fn intensity_projection_is_symmetric_when_side_state_components_match() {
 }
 
 #[test]
-fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
+fn interval_factor_projection_reads_seasonality_from_shared_contract() {
     let state = HawkesExcitationState {
         y_plus_plus: 0.2,
         y_plus_minus: 0.1,
@@ -256,8 +256,8 @@ fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
     let interval_factor_grid = build_interval_factor_grid_with_seasonality(vec![0.8, 1.3, 0.6]);
 
     let projection = state
-        .project_intensities_for_hourly_interval(0.5, &interval_factor_grid, 1)
-        .expect("interval 1 must resolve from shared hourly contract");
+        .project_intensities_for_interval_factor(0.5, &interval_factor_grid, 1)
+        .expect("interval 1 must resolve from shared interval factor grid");
 
     assert_within_tolerance(
         projection.deseasonalized.lambda_plus,
@@ -286,7 +286,7 @@ fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
 }
 
 #[test]
-fn hourly_interval_projection_rejects_out_of_range_interval_index() {
+fn interval_factor_projection_rejects_out_of_range_interval_index() {
     let state = HawkesExcitationState {
         y_plus_plus: 0.2,
         y_plus_minus: 0.1,
@@ -297,7 +297,7 @@ fn hourly_interval_projection_rejects_out_of_range_interval_index() {
     let interval_factor_grid = build_interval_factor_grid_with_seasonality(vec![1.0, 0.9]);
 
     let error = state
-        .project_intensities_for_hourly_interval(0.5, &interval_factor_grid, 2)
+        .project_intensities_for_interval_factor(0.5, &interval_factor_grid, 2)
         .expect_err("out-of-range interval index must fail");
 
     assert_eq!(
@@ -309,7 +309,7 @@ fn hourly_interval_projection_rejects_out_of_range_interval_index() {
     );
     assert_eq!(
         error.to_string(),
-        "interval_index 2 is out of range for hourly seasonality factor count 2"
+        "interval_index 2 is out of range for seasonality factor count 2"
     );
 }
 

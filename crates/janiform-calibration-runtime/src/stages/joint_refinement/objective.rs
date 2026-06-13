@@ -2732,7 +2732,9 @@ fn activity_session_block_mean_standard_error(counts: &[f64]) -> Option<f64> {
 
             let session_total = session_counts.iter().sum::<f64>();
 
-            session_total.is_finite().then_some(session_total / session_counts.len() as f64)
+            session_total
+                .is_finite()
+                .then_some(session_total / session_counts.len() as f64)
         })
         .collect::<Vec<_>>();
     if block_rates.len() < 2 {

@@ -24,7 +24,7 @@ pub fn project_hawkes_intensities_simulation_interval(
     interval_factor_grid: &IntervalFactorGrid,
     interval_index: usize,
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
-    state.project_intensities_for_hourly_interval(
+    state.project_intensities_for_interval_factor(
         parameters.lambda_bar,
         &interval_factor_grid.seasonality_factor,
         interval_index,
