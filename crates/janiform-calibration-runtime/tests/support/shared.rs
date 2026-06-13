@@ -2508,21 +2508,22 @@ pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExec
 }
 
 pub(crate) fn temporary_checkpoint_directory(test_name: &str) -> PathBuf {
-    let unique_suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time should be after UNIX epoch")
-        .as_nanos();
-    let checkpoint_directory =
-        std::env::temp_dir().join(format!("janiform-checkpoints-{test_name}-{unique_suffix}"));
+    loop {
+        let unique_suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after UNIX epoch")
+            .as_nanos();
+        let checkpoint_directory =
+            std::env::temp_dir().join(format!("janiform-checkpoints-{test_name}-{unique_suffix}"));
 
-    if checkpoint_directory.exists() {
-        let _ = fs::remove_dir_all(checkpoint_directory.as_path());
+        match fs::create_dir(checkpoint_directory.as_path()) {
+            Ok(()) => return checkpoint_directory,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::thread::yield_now();
+            }
+            Err(error) => panic!("temporary checkpoint directory should be created: {error}"),
+        }
     }
-
-    fs::create_dir_all(checkpoint_directory.as_path())
-        .expect("temporary checkpoint directory should be created");
-
-    checkpoint_directory
 }
 
 pub(crate) fn ensure_joint_refinement_worker_executable() -> PathBuf {
