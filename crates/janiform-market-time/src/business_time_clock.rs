@@ -23,7 +23,7 @@ pub use fit::{
     FourierBusinessTimeClockFitSettings, FourierBusinessTimeClockFitSummary,
     fit_fourier_business_time_clock_model,
 };
-use janiform_foundations::numeric::saturating_positive_exp;
+use janiform_foundations::numeric::{representable_positive_f64_log_span, saturating_positive_exp};
 pub use materialization::{
     FourierBusinessTimeClockMaterializationError, FourierBusinessTimeClockMaterializationInput,
     FourierBusinessTimeClockMaterializationOutput, materialize_fourier_business_time_clock,
@@ -48,7 +48,7 @@ pub const FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY: &str =
 
 /// Candidate-selection policy for fitted clock rates.
 pub const FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY: &str =
-    "aicc_over_open_minute_poisson_exposure_likelihood.v1";
+    "representable_positive_rate_domain_then_aicc_over_open_minute_poisson_exposure_likelihood.v1";
 
 /// Fitted recurring business-time clock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,7 +84,7 @@ impl FourierBusinessTimeClockModel {
 
     /// Return a finite upper bound for the normalized rate over every phase pair.
     pub fn rate_upper_bound(&self) -> Option<f64> {
-        let log_rate_bound = harmonic_log_rate_upper_bound(self.coefficient_slices())?;
+        let log_rate_bound = harmonic_log_rate_bounds(self.coefficient_slices())?.upper;
 
         saturating_positive_exp(log_rate_bound)
     }
@@ -127,6 +127,13 @@ impl FourierBusinessTimeClockModel {
         }
 
         validate_harmonic_series(self.coefficient_slices()).map_err(ToString::to_string)?;
+
+        if !log_rate_envelope_fits_representable_positive_f64_domain(self.coefficient_slices()) {
+            return Err(
+                "business-time clock normalized log-rate envelope exceeds the representable positive f64 domain"
+                    .to_string(),
+            );
+        }
 
         if !self.selected_objective_value.is_finite()
             || !self.selected_negative_log_likelihood.is_finite()
@@ -187,17 +194,51 @@ fn validate_harmonic_series(
     Ok(())
 }
 
-fn harmonic_log_rate_upper_bound(
+fn log_rate_envelope_fits_representable_positive_f64_domain(
+    coefficients: coordinates::FourierCoefficientSlices<'_>,
+) -> bool {
+    let Some(bounds) = harmonic_log_rate_bounds(coefficients) else {
+        return false;
+    };
+
+    if !bounds.lower.is_finite() || !bounds.upper.is_finite() {
+        return false;
+    }
+
+    let upper_log_bound = f64::MAX.ln();
+    let lower_log_bound = upper_log_bound - representable_positive_f64_log_span();
+
+    bounds.lower >= lower_log_bound && bounds.upper <= upper_log_bound
+}
+
+fn harmonic_log_rate_bounds(
+    coefficients: coordinates::FourierCoefficientSlices<'_>,
+) -> Option<HarmonicLogRateBounds> {
+    let intercept = coefficients.intercept;
+    let envelope_radius = harmonic_log_rate_envelope_radius(coefficients)?;
+
+    let lower = intercept - envelope_radius;
+    let upper = intercept + envelope_radius;
+
+    if lower.is_nan() || upper.is_nan() {
+        return None;
+    }
+
+    Some(HarmonicLogRateBounds { lower, upper })
+}
+
+fn harmonic_log_rate_envelope_radius(
     coefficients: coordinates::FourierCoefficientSlices<'_>,
 ) -> Option<f64> {
     if !coefficients.intercept.is_finite() {
         return None;
     }
+
     if coefficients.harmonic_series.len() != FOURIER_BUSINESS_TIME_CLOCK_AXES.len() {
         return None;
     }
 
-    let mut log_rate_bound = coefficients.intercept;
+    let mut envelope_radius = 0.0;
 
     for axis in FOURIER_BUSINESS_TIME_CLOCK_AXES {
         let series = coefficients.series_for_axis(axis)?;
@@ -222,17 +263,23 @@ fn harmonic_log_rate_upper_bound(
                 return Some(f64::INFINITY);
             }
 
-            log_rate_bound += amplitude;
+            envelope_radius += amplitude;
 
-            if log_rate_bound.is_infinite() && log_rate_bound.is_sign_positive() {
+            if envelope_radius.is_infinite() && envelope_radius.is_sign_positive() {
                 return Some(f64::INFINITY);
             }
 
-            if !log_rate_bound.is_finite() {
+            if !envelope_radius.is_finite() {
                 return None;
             }
         }
     }
 
-    Some(log_rate_bound)
+    Some(envelope_radius)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct HarmonicLogRateBounds {
+    lower: f64,
+    upper: f64,
 }

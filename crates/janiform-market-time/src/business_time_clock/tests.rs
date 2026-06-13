@@ -156,3 +156,26 @@ fn rate_upper_bound_saturates_overflowing_log_bound_to_finite_maximum() {
 
     assert_eq!(model.rate_upper_bound(), Some(f64::MAX));
 }
+
+#[test]
+fn validate_rejects_log_rate_envelope_outside_representable_positive_domain() {
+    let mut model = flat_clock_model();
+
+    model.intercept = f64::MAX.ln();
+
+    set_harmonic_series(
+        &mut model,
+        FourierBusinessTimeClockAxis::Intraday,
+        1,
+        vec![f64::MAX.ln()],
+        vec![0.0],
+    );
+
+    assert_eq!(
+        model.validate(),
+        Err(
+            "business-time clock normalized log-rate envelope exceeds the representable positive f64 domain"
+                .to_string()
+        )
+    );
+}

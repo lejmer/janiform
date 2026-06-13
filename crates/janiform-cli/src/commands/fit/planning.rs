@@ -48,6 +48,7 @@ pub(crate) fn run_fit_plan(
                     .stylized_fact_admissibility_z_threshold,
             },
             no_persist: false,
+            keep_terminal_progress_after_preparation: true,
         },
     )?;
 
@@ -77,6 +78,7 @@ pub(crate) fn run_fit_inspect(
             tick_size: command.tick_size.tick_size,
             overrides: FitPreparationOverrides::default(),
             no_persist: false,
+            keep_terminal_progress_after_preparation: true,
         },
     )?;
 
@@ -105,6 +107,7 @@ pub(crate) fn run_fit_staged_plan(
                 ..FitPreparationOverrides::default()
             },
             no_persist: false,
+            keep_terminal_progress_after_preparation: true,
         },
     )?;
 

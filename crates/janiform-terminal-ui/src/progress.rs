@@ -126,8 +126,20 @@ impl ProgressAdapter {
 
                 self.run_started_at = Some(Instant::now());
 
+                self.snapshot.active_stage = None;
+                self.snapshot.stage_number = None;
+                self.snapshot.stage_count = None;
+                self.snapshot.phase = None;
+                self.snapshot.measure = None;
+                self.snapshot.latest_signal = None;
+                self.snapshot.work_items.clear();
+                self.snapshot.work_item_columns.clear();
+                self.snapshot.completed_stage = None;
                 self.snapshot.terminal_status = None;
                 self.snapshot.failure_reason = None;
+
+                self.active_stage_started_at = None;
+                self.active_work_started_at_by_label.clear();
             }
             ProgressEvent::StageStarted {
                 stage,
@@ -517,5 +529,50 @@ fn completed_progress_stage_status(status: &str) -> ProgressStageStatus {
         ProgressStageStatus::CompletedWithWarnings
     } else {
         ProgressStageStatus::Completed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_started_clears_previous_run_progress_details() {
+        let mut adapter = ProgressAdapter::hidden();
+
+        adapter.observe(ProgressEvent::RunStarted {
+            run_id: "prepare".to_string(),
+            scope: "Preparing fit".to_string(),
+            input_count: 1,
+            output_path: None,
+            stage_sequence: Vec::new(),
+            completed_stage_count: 0,
+        });
+
+        adapter.observe(ProgressEvent::RunProgress {
+            phase: "Preparing market data".to_string(),
+            measure: ProgressMeasure::Unbounded,
+            latest_signal: Some("prepared".to_string()),
+        });
+
+        adapter.observe(ProgressEvent::RunCompleted {
+            status: "prepared".to_string(),
+        });
+
+        adapter.observe(ProgressEvent::RunStarted {
+            run_id: "calibrate".to_string(),
+            scope: "Calibrating".to_string(),
+            input_count: 1,
+            output_path: None,
+            stage_sequence: vec!["Fit seasonality".to_string()],
+            completed_stage_count: 0,
+        });
+
+        assert_eq!(adapter.snapshot().scope.as_deref(), Some("Calibrating"));
+        assert_eq!(adapter.snapshot().phase, None);
+        assert_eq!(adapter.snapshot().measure, None);
+        assert_eq!(adapter.snapshot().latest_signal, None);
+        assert_eq!(adapter.snapshot().terminal_status, None);
+        assert!(adapter.snapshot().work_items.is_empty());
     }
 }

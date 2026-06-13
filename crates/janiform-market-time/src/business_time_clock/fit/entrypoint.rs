@@ -13,7 +13,8 @@ use janiform_work_scheduler::{
 };
 
 use super::super::coordinates::{
-    FOURIER_BUSINESS_TIME_CLOCK_AXES, FourierBusinessTimeClockAxis, FourierHarmonicOrders,
+    FOURIER_BUSINESS_TIME_CLOCK_AXES, FourierBusinessTimeClockAxis, FourierCoefficientSlices,
+    FourierHarmonicOrders,
 };
 use super::super::coordinates::{feature_vector, split_coefficients_by_axis};
 use super::super::exposure::{
@@ -24,7 +25,7 @@ use super::super::{
     FOURIER_BUSINESS_TIME_CLOCK_BASIS, FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM,
     FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
     FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY, FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY,
-    FourierBusinessTimeClockModel,
+    FourierBusinessTimeClockModel, log_rate_envelope_fits_representable_positive_f64_domain,
 };
 use super::candidate::{CandidateOrder, candidate_orders};
 use crate::calendar::ExchangeCalendarDefinition;
@@ -451,6 +452,12 @@ fn fit_candidate(
     let coefficients = fit_candidate_coefficients(design, candidate)?;
     let normalization = candidate_normalization(design, candidate, coefficients.as_slice())?;
 
+    candidate_log_rate_envelope_fits_representable_positive_f64_domain(
+        candidate,
+        coefficients.as_slice(),
+        normalization,
+    )?;
+
     let negative_log_likelihood = candidate_negative_log_likelihood(
         design,
         candidate,
@@ -614,6 +621,31 @@ fn candidate_raw_rate(
     (raw_rate.is_finite() && raw_rate > 0.0).then_some(raw_rate)
 }
 
+fn candidate_log_rate_envelope_fits_representable_positive_f64_domain(
+    candidate: CandidateOrder,
+    coefficients: &[f64],
+    normalization: f64,
+) -> Option<()> {
+    let intercept = normalized_candidate_intercept(coefficients, normalization)?;
+    let harmonic_series = split_coefficients_by_axis(coefficients, candidate.orders)?;
+
+    log_rate_envelope_fits_representable_positive_f64_domain(FourierCoefficientSlices {
+        intercept,
+        harmonic_series: &harmonic_series,
+    })
+    .then_some(())
+}
+
+fn normalized_candidate_intercept(coefficients: &[f64], normalization: f64) -> Option<f64> {
+    if !normalization.is_finite() || normalization <= 0.0 {
+        return None;
+    }
+
+    let intercept = *coefficients.first()? - normalization.ln();
+
+    intercept.is_finite().then_some(intercept)
+}
+
 fn aicc_objective_value(
     negative_log_likelihood: f64,
     parameter_count: usize,
@@ -718,7 +750,9 @@ impl CandidateFit {
             return None;
         }
 
-        let intercept = *self.coefficients.first()? - self.normalization.ln();
+        let intercept =
+            normalized_candidate_intercept(self.coefficients.as_slice(), self.normalization)?;
+
         let coefficient_vectors =
             split_coefficients_by_axis(self.coefficients.as_slice(), self.order.orders)?;
 
@@ -750,4 +784,40 @@ struct CandidateSearchState<'a, 'b> {
     total_candidate_count: usize,
     best_candidate: Option<CandidateFit>,
     progress_observer: &'a mut Option<&'b mut dyn FnMut(FourierBusinessTimeClockFitProgress)>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn candidate_rate_domain_validation_rejects_overflowing_envelope() {
+        let mut orders = FourierHarmonicOrders::zeros();
+
+        orders.set_order_for_axis(FourierBusinessTimeClockAxis::Intraday, 1);
+
+        let candidate = CandidateOrder {
+            orders,
+            parameter_count: orders
+                .parameter_count()
+                .expect("test candidate parameter count should fit"),
+        };
+
+        assert_eq!(
+            candidate_log_rate_envelope_fits_representable_positive_f64_domain(
+                candidate,
+                &[0.0, 1.0, 0.0],
+                1.0,
+            ),
+            Some(())
+        );
+        assert_eq!(
+            candidate_log_rate_envelope_fits_representable_positive_f64_domain(
+                candidate,
+                &[f64::MAX.ln(), f64::MAX.ln(), 0.0],
+                1.0,
+            ),
+            None
+        );
+    }
 }

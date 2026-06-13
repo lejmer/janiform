@@ -1475,6 +1475,42 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
 }
 
 #[test]
+fn fit_terminal_replaces_preparation_progress_with_calibration_progress() {
+    let workspace = temporary_run_directory("fit-terminal-progress");
+
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+
+    let tick_data_path = workspace.join("EURUSD_ticks.csv");
+
+    write_fx_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .current_dir(&workspace)
+        .args([
+            "fit",
+            "EURUSD_ticks.csv",
+            "--workflow-scope",
+            "seasonality-only",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(
+        stderr.contains("Calibrating"),
+        "terminal progress should show calibration progress:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("Preparing fit: prepared"),
+        "terminal progress should not keep the completed preparation panel:\n{stderr}"
+    );
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
 fn fit_plan_json_prepares_seasonality_without_running_calibration() {
     let workspace = temporary_run_directory("fit-plan");
 

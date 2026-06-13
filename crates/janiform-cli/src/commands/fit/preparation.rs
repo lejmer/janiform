@@ -65,6 +65,7 @@ pub(crate) struct FitPreviewOptions {
     pub(crate) tick_size: Option<f64>,
     pub(crate) overrides: FitPreparationOverrides,
     pub(crate) no_persist: bool,
+    pub(crate) keep_terminal_progress_after_preparation: bool,
 }
 
 #[derive(Debug)]
@@ -250,6 +251,7 @@ pub(crate) fn prepare_fit_preview(
         request.clone(),
         preview_options.cpu_count,
         paths.output_directory.as_path(),
+        preview_options.keep_terminal_progress_after_preparation,
     )?;
 
     let mut explicit_values = Vec::new();
@@ -467,6 +469,7 @@ fn prepare_market_data_calibration_plan_for_cli(
     request: CalibrationMarketDataPreparationRequest,
     cpu_count: Option<usize>,
     output_directory: &Path,
+    keep_terminal_progress_after_preparation: bool,
 ) -> Result<PreparedMarketDataCalibrationPlan, CliError> {
     let mut progress_adapter = terminal_progress_adapter_for_context(context);
 
@@ -482,9 +485,10 @@ fn prepare_market_data_calibration_plan_for_cli(
 
     if let Some(progress_adapter) = progress_adapter.as_mut() {
         match &plan_result {
-            Ok(_) => progress_adapter
+            Ok(_) if keep_terminal_progress_after_preparation => progress_adapter
                 .finish_and_keep()
                 .map_err(|source| CliError::OutputWrite { source })?,
+            Ok(_) => progress_adapter.finish_and_clear(),
             Err(_) => progress_adapter.finish_and_clear(),
         }
     }
