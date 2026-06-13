@@ -197,16 +197,8 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
                 expected_payload.clock_model_schema_version
             );
             assert_eq!(
-                loaded_payload.clock_model.intraday_harmonic_order,
-                expected_payload.clock_model.intraday_harmonic_order
-            );
-            assert_eq!(
-                loaded_payload.clock_model.weekly_harmonic_order,
-                expected_payload.clock_model.weekly_harmonic_order
-            );
-            assert_eq!(
-                loaded_payload.clock_model.annual_harmonic_order,
-                expected_payload.clock_model.annual_harmonic_order
+                loaded_payload.clock_model.harmonic_orders(),
+                expected_payload.clock_model.harmonic_orders()
             );
         }
         _ => panic!("expected seasonality payload"),

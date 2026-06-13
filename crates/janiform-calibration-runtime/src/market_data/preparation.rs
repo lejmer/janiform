@@ -14,6 +14,7 @@ use janiform_foundations::numeric::coverage_ratio;
 use janiform_foundations::time::{
     NANOS_PER_HOUR_F64, duration_nanos_to_hours, format_utc_nanos, parse_utc_datetime,
 };
+use janiform_market_time::business_time_clock::FOURIER_BUSINESS_TIME_CLOCK_AXES;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -79,12 +80,8 @@ const COARSE_DATA_EVIDENCE_POLICY_ID: &str =
 const DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID: &str = "seasonality.session_filter=open_only";
 const DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID: &str =
     "seasonality.sparse_hour_event_threshold=1";
-const DEFAULT_SEASONALITY_INTRADAY_HARMONIC_POLICY_ID: &str =
-    "seasonality.fourier.maximum_intraday_harmonic_order=data_support_and_solver_budget";
-const DEFAULT_SEASONALITY_WEEKLY_HARMONIC_POLICY_ID: &str =
-    "seasonality.fourier.maximum_weekly_harmonic_order=data_support_and_solver_budget";
-const DEFAULT_SEASONALITY_ANNUAL_HARMONIC_POLICY_ID: &str =
-    "seasonality.fourier.maximum_annual_harmonic_order=data_support_and_solver_budget";
+const DEFAULT_SEASONALITY_HARMONIC_ORDERS_POLICY_ID: &str =
+    "seasonality.fourier.maximum_harmonic_orders=data_support_and_solver_budget_by_axis";
 const DEFAULT_CLOSE_OPEN_GAP_POLICY_ID: &str = "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=3x_median_abs_intraday_return";
 const DEFAULT_INTRADAY_JUMP_POLICY_ID: &str =
     "intraday_jump_detection.material_threshold=4x_median_abs_open_return";
@@ -683,25 +680,16 @@ fn deterministic_defaults_applied(
         applied_defaults.push(DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID.to_string());
     }
 
-    if seasonality_settings
-        .and_then(|settings| settings.maximum_intraday_harmonic_order)
-        .is_none()
-    {
-        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_HARMONIC_POLICY_ID.to_string());
-    }
+    let has_data_derived_harmonic_order = seasonality_settings
+        .map(|settings| {
+            FOURIER_BUSINESS_TIME_CLOCK_AXES
+                .iter()
+                .any(|axis| !settings.maximum_harmonic_orders.contains_key(axis))
+        })
+        .unwrap_or(true);
 
-    if seasonality_settings
-        .and_then(|settings| settings.maximum_weekly_harmonic_order)
-        .is_none()
-    {
-        applied_defaults.push(DEFAULT_SEASONALITY_WEEKLY_HARMONIC_POLICY_ID.to_string());
-    }
-
-    if seasonality_settings
-        .and_then(|settings| settings.maximum_annual_harmonic_order)
-        .is_none()
-    {
-        applied_defaults.push(DEFAULT_SEASONALITY_ANNUAL_HARMONIC_POLICY_ID.to_string());
+    if has_data_derived_harmonic_order {
+        applied_defaults.push(DEFAULT_SEASONALITY_HARMONIC_ORDERS_POLICY_ID.to_string());
     }
 
     if request

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from math import isfinite
-from typing import Any, Optional
+from typing import Any, Final, Optional
 
 from ...contracts import ContractModel
 from ...contracts.base import (
@@ -12,8 +12,8 @@ from ...contracts.base import (
     require_finite_number,
     require_mapping,
     require_non_empty_string,
+    require_non_negative_integer_value,
     require_only_supported_fields,
-    require_optional_non_negative_integer_value,
     require_positive_finite_number,
     require_positive_integer,
     require_str_enum_value,
@@ -30,6 +30,17 @@ from ..staged.contracts import (
 
 CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION = "calibration.market_data.request.v1"
 CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION = "calibration.market_data.preparation.v1"
+FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAME_SEQUENCE: Final[tuple[str, ...]] = (
+    "intraday",
+    "weekly",
+    "annual",
+)
+FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES: Final[frozenset[str]] = frozenset(
+    FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAME_SEQUENCE
+)
+FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES_LABEL: Final[str] = ", ".join(
+    FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAME_SEQUENCE
+)
 
 
 class CalibrationInputFileFormat(StrEnum):
@@ -205,40 +216,23 @@ class CalibrationMeanReversionConfiguration(ContractModel):
 class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
     session_filter: SessionFilter = SessionFilter.OPEN_ONLY
     sparse_hour_event_threshold: int = 1
-    maximum_intraday_harmonic_order: Optional[int] = None
-    maximum_weekly_harmonic_order: Optional[int] = None
-    maximum_annual_harmonic_order: Optional[int] = None
+    maximum_harmonic_orders: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.sparse_hour_event_threshold < 1:
             raise calibration_error("sparse_hour_event_threshold", "must be at least 1")
 
-        if (
-            self.maximum_intraday_harmonic_order is not None
-            and self.maximum_intraday_harmonic_order < 0
-        ):
-            raise calibration_error(
-                "maximum_intraday_harmonic_order",
-                "must be non-negative",
-            )
+        validated_maximum_harmonic_orders = _validate_maximum_harmonic_orders(
+            self.maximum_harmonic_orders,
+            "maximum_harmonic_orders",
+        )
 
-        if (
-            self.maximum_weekly_harmonic_order is not None
-            and self.maximum_weekly_harmonic_order < 0
-        ):
-            raise calibration_error(
-                "maximum_weekly_harmonic_order",
-                "must be non-negative",
-            )
-
-        if (
-            self.maximum_annual_harmonic_order is not None
-            and self.maximum_annual_harmonic_order < 0
-        ):
-            raise calibration_error(
-                "maximum_annual_harmonic_order",
-                "must be non-negative",
-            )
+        # Frozen dataclass fields still allow dict mutation, so store a validated copy.
+        object.__setattr__(
+            self,
+            "maximum_harmonic_orders",
+            validated_maximum_harmonic_orders,
+        )
 
     @staticmethod
     def from_mapping(
@@ -266,22 +260,60 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
                 if raw_payload.get("sparse_hour_event_threshold") is not None
                 else 1
             ),
-            maximum_intraday_harmonic_order=require_optional_non_negative_integer_value(
-                raw_payload.get("maximum_intraday_harmonic_order"),
-                f"{field_path}.maximum_intraday_harmonic_order",
-                calibration_error,
-            ),
-            maximum_weekly_harmonic_order=require_optional_non_negative_integer_value(
-                raw_payload.get("maximum_weekly_harmonic_order"),
-                f"{field_path}.maximum_weekly_harmonic_order",
-                calibration_error,
-            ),
-            maximum_annual_harmonic_order=require_optional_non_negative_integer_value(
-                raw_payload.get("maximum_annual_harmonic_order"),
-                f"{field_path}.maximum_annual_harmonic_order",
-                calibration_error,
+            maximum_harmonic_orders=(
+                _parse_maximum_harmonic_orders(raw_payload, field_path)
+                if raw_payload.get("maximum_harmonic_orders") is not None
+                else {}
             ),
         )
+
+
+def _parse_maximum_harmonic_orders(
+    raw_payload: dict[str, Any],
+    field_path: str,
+) -> dict[str, int]:
+    raw_maximum_harmonic_orders = require_mapping(
+        raw_payload,
+        "maximum_harmonic_orders",
+        f"{field_path}.maximum_harmonic_orders",
+        calibration_error,
+    )
+
+    return _validate_maximum_harmonic_orders(
+        raw_maximum_harmonic_orders,
+        f"{field_path}.maximum_harmonic_orders",
+    )
+
+
+def _validate_maximum_harmonic_orders(
+    raw_maximum_harmonic_orders: dict[str, int] | Any,
+    field_path: str,
+) -> dict[str, int]:
+    if not isinstance(raw_maximum_harmonic_orders, dict):
+        raise calibration_error(field_path, "must be an object")
+
+    maximum_harmonic_orders: dict[str, int] = {}
+
+    for axis, raw_harmonic_order in raw_maximum_harmonic_orders.items():
+        if not isinstance(axis, str):
+            raise calibration_error(
+                field_path,
+                "keys must be Fourier clock axis names",
+            )
+
+        if axis not in FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES:
+            raise calibration_error(
+                f"{field_path}.{axis}",
+                f"must be one of: {FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES_LABEL}",
+            )
+
+        maximum_harmonic_orders[axis] = require_non_negative_integer_value(
+            raw_harmonic_order,
+            f"{field_path}.{axis}",
+            calibration_error,
+        )
+
+    return maximum_harmonic_orders
 
 
 @dataclass(frozen=True, slots=True)

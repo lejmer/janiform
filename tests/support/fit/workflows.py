@@ -21,7 +21,10 @@ from janiform.calibration.market_data import (
 from janiform.calibration.staged import CalibrationStage, StagedCalibrationResponse
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.model import JaniformModel
-from tests.support.calibration import stage_report_by_stage
+from tests.support.calibration import (
+    build_structural_seasonality_parameters_payload,
+    stage_report_by_stage,
+)
 from tests.support.high_level_workflows import successful_full_model_staged_runner_payload
 
 StagedRunner = Callable[..., tuple[StagedCalibrationResponse, dict[str, Any]]]
@@ -661,9 +664,7 @@ def _input_inference_payload(
 def _successful_full_model_parameters_payload() -> dict[str, Any]:
     _, raw_response = successful_full_model_staged_runner_payload("fixture-run")
     stage_reports = cast(list[dict[str, Any]], raw_response["stage_reports"])
-    seasonality_report = stage_report_by_stage(stage_reports, CalibrationStage.SEASONALITY)
     finalization_report = stage_report_by_stage(stage_reports, CalibrationStage.FINALIZATION)
-    seasonality_stage_payload = cast(dict[str, Any], seasonality_report["normalized_stage_payload"])
     finalization_payload = deepcopy(finalization_report["fitted_stage_payload"])
     finalization_payload.pop("baseline_hawkes_fitted_parameters", None)
     finalization_payload.pop("baseline_return_components_fitted_parameters", None)
@@ -675,14 +676,7 @@ def _successful_full_model_parameters_payload() -> dict[str, Any]:
     finalization_payload.pop("option_calibration_diagnostics", None)
 
     return {
-        "seasonality": {
-            "schema_version": seasonality_stage_payload["composition_schema_version"],
-            "exchange_code": seasonality_stage_payload["exchange_code"],
-            "intraday_minutes_per_bin": seasonality_stage_payload.get("intraday_minutes_per_bin"),
-            "intraday_factor_by_bin": tuple(seasonality_stage_payload["intraday_factor_by_bin"]),
-            "day_of_week_factor": tuple(seasonality_stage_payload["day_of_week_factor"]),
-            "day_of_year_factor": tuple(seasonality_stage_payload["day_of_year_factor"]),
-        },
+        "seasonality": build_structural_seasonality_parameters_payload(),
         "finalization": finalization_payload,
     }
 

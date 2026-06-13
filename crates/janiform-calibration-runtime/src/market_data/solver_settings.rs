@@ -5,12 +5,12 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::{GOLDEN_RATIO, strictly_positive_machine_value};
 use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
 
-use crate::information_depth::support_information_depth;
 use crate::stages::joint_refinement::pricing_block_search_coordinate_count;
 use crate::stages::long_variance::{
     LONG_VARIANCE_ACTIVE_PARAMETER_COUNT, LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
     LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
 };
+use janiform_foundations::numeric::support_information_depth;
 
 use super::loading::MarketDataLoadingOutput;
 
@@ -482,6 +482,8 @@ fn derived_mean_reversion_iteration_budget(tolerance: f64) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use janiform_calibration_artifacts::CalibrationStage;
 
     use super::{
@@ -563,9 +565,7 @@ mod tests {
                     settings: Some(CalibrationSeasonalityStageExecutionSettings {
                         session_filter: CalibrationTimestampEventSessionFilter::OpenOnly,
                         sparse_hour_event_threshold: 1,
-                        maximum_intraday_harmonic_order: None,
-                        maximum_weekly_harmonic_order: None,
-                        maximum_annual_harmonic_order: None,
+                        maximum_harmonic_orders: BTreeMap::new(),
                     }),
                     dataset_id_override: None,
                     estimator_version_override: None,

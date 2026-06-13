@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::panic;
 use std::sync::mpsc::{self, Sender};
 
@@ -33,9 +34,9 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::cancellation::CancellationToken;
 pub use janiform_market_time::business_time_clock::FourierBusinessTimeClockModel;
 use janiform_market_time::business_time_clock::{
-    FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION, FourierBusinessTimeClockFitInput,
-    FourierBusinessTimeClockFitProgress, FourierBusinessTimeClockFitSummary,
-    fit_fourier_business_time_clock_model,
+    FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION, FourierBusinessTimeClockAxis,
+    FourierBusinessTimeClockFitInput, FourierBusinessTimeClockFitProgress,
+    FourierBusinessTimeClockFitSummary, fit_fourier_business_time_clock_model,
 };
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventPreprocessingOutput,
@@ -43,13 +44,11 @@ use janiform_market_time::calendar::{
 };
 
 /// Configurable knobs for business-time clock stage execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeasonalityStageExecutionSettings {
     pub session_filter: TimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
-    pub maximum_intraday_harmonic_order: Option<usize>,
-    pub maximum_weekly_harmonic_order: Option<usize>,
-    pub maximum_annual_harmonic_order: Option<usize>,
+    pub maximum_harmonic_orders: BTreeMap<FourierBusinessTimeClockAxis, usize>,
 }
 
 impl Default for SeasonalityStageExecutionSettings {
@@ -57,9 +56,7 @@ impl Default for SeasonalityStageExecutionSettings {
         Self {
             session_filter: TimestampEventSessionFilter::OpenOnly,
             sparse_hour_event_threshold: 1,
-            maximum_intraday_harmonic_order: None,
-            maximum_weekly_harmonic_order: None,
-            maximum_annual_harmonic_order: None,
+            maximum_harmonic_orders: BTreeMap::new(),
         }
     }
 }
@@ -231,9 +228,7 @@ pub struct SeasonalityStageExecutionMetadata {
     pub input_record_count: usize,
     pub accepted_record_count: usize,
     pub filtered_record_count: usize,
-    pub selected_intraday_harmonic_order: usize,
-    pub selected_weekly_harmonic_order: usize,
-    pub selected_annual_harmonic_order: usize,
+    pub selected_harmonic_orders: BTreeMap<FourierBusinessTimeClockAxis, usize>,
     pub evaluated_candidate_count: usize,
     pub normalization_policy: String,
     pub selection_policy: String,
@@ -565,7 +560,7 @@ fn fit_business_time_clock(
     })?;
 
     let fit_settings =
-        resolve_clock_fit_settings(stage_input.settings, preprocessed, stage_solver_settings);
+        resolve_clock_fit_settings(&stage_input.settings, preprocessed, stage_solver_settings);
 
     emit_seasonality_progress(
         progress_sender,
@@ -690,9 +685,7 @@ fn build_success_report(
             input_record_count: preflight.input_record_count,
             accepted_record_count: preprocessed.diagnostics.accepted_record_count,
             filtered_record_count: preprocessed.diagnostics.filtered_record_count,
-            selected_intraday_harmonic_order: clock_model.intraday_harmonic_order,
-            selected_weekly_harmonic_order: clock_model.weekly_harmonic_order,
-            selected_annual_harmonic_order: clock_model.annual_harmonic_order,
+            selected_harmonic_orders: clock_model.harmonic_orders(),
             evaluated_candidate_count: clock_fit.evaluated_candidate_count,
             normalization_policy: clock_model.normalization_policy.clone(),
             selection_policy: clock_model.selection_policy.clone(),

@@ -30,6 +30,7 @@ pub(crate) fn run_inspect_model(
 ) -> Result<(), CliError> {
     let model_path = context.paths().resolve_process_path(&command.model_path);
     let model = load_json_artifact(&model_path, "model")?;
+
     require_json_object(&model, "model", &model_path)?;
 
     match context.output_mode() {
@@ -113,9 +114,9 @@ fn render_fitted_components(model: &Value, renderer: &TerminalRenderer) -> Strin
 }
 
 fn render_main_parameters(model: &Value, renderer: &TerminalRenderer) -> String {
-    let hawkes = find_object_with_key(model, "kernel_parameters");
-    let nig = find_object_with_key(model, "nig_shared_plus_shift_configuration");
-    let mean_reversion = find_object_with_key(model, "mean_reversion_fitted_parameters");
+    let hawkes = find_value_by_key(model, "kernel_parameters");
+    let nig = find_value_by_key(model, "nig_shared_plus_shift_configuration");
+    let mean_reversion = find_value_by_key(model, "mean_reversion_fitted_parameters");
 
     let rows = vec![
         parameter_row(hawkes, "Hawkes lambda bar", &["lambda_bar"]),
@@ -142,24 +143,24 @@ fn render_main_parameters(model: &Value, renderer: &TerminalRenderer) -> String 
 fn render_parameter_details(model: &Value, renderer: &TerminalRenderer) -> String {
     let mut rows = Vec::new();
 
-    if let Some(hawkes) = find_object_with_key(model, "hawkes_fitted_parameters")
+    if let Some(hawkes) = find_value_by_key(model, "hawkes_fitted_parameters")
         .or_else(|| nested_value(model, &["parameters", "hawkes", "fitted_parameters"]))
     {
         rows.push(KeyValueRow::block("Hawkes", compact_value_string(hawkes)));
     }
 
-    if let Some(nig) = find_object_with_key(model, "nig_shared_plus_shift_configuration") {
+    if let Some(nig) = find_value_by_key(model, "nig_shared_plus_shift_configuration") {
         rows.push(KeyValueRow::block("NIG", compact_value_string(nig)));
     }
 
-    if let Some(mean_reversion) = find_object_with_key(model, "mean_reversion_fitted_parameters") {
+    if let Some(mean_reversion) = find_value_by_key(model, "mean_reversion_fitted_parameters") {
         rows.push(KeyValueRow::block(
             "Mean reversion",
             compact_value_string(mean_reversion),
         ));
     }
 
-    if let Some(news_process) = find_object_with_key(model, "news_process_configuration") {
+    if let Some(news_process) = find_value_by_key(model, "news_process_configuration") {
         rows.push(KeyValueRow::block(
             "News process",
             compact_value_string(news_process),
@@ -170,7 +171,7 @@ fn render_parameter_details(model: &Value, renderer: &TerminalRenderer) -> Strin
         rows.push(KeyValueRow::block("Seasonality", seasonality));
     }
 
-    if let Some(option_refinement) = find_object_with_key(model, "option_calibration_diagnostics") {
+    if let Some(option_refinement) = find_value_by_key(model, "option_calibration_diagnostics") {
         rows.push(KeyValueRow::block(
             "Option refinement",
             compact_value_string(option_refinement),
@@ -295,12 +296,14 @@ fn fitted_components(model: &Value) -> Vec<String> {
 }
 
 fn capabilities(model: &Value) -> Vec<String> {
-    let has_dynamics = find_object_with_key(model, "hawkes_fitted_parameters").is_some()
+    let has_dynamics = find_value_by_key(model, "hawkes_fitted_parameters").is_some()
         || nested_value(model, &["parameters", "hawkes"]).is_some()
         || nested_value(model, &["parameters", "joint_refinement"]).is_some();
-    let has_return_distribution =
-        find_object_with_key(model, "nig_shared_plus_shift_configuration").is_some()
-            || nested_value(model, &["parameters", "return_components"]).is_some();
+
+    let has_return_distribution = find_value_by_key(model, "nig_shared_plus_shift_configuration")
+        .is_some()
+        || nested_value(model, &["parameters", "return_components"]).is_some();
+
     let has_option_pricing = has_option_refinement(model);
 
     let mut capabilities = Vec::new();
@@ -324,10 +327,12 @@ fn capabilities(model: &Value) -> Vec<String> {
 }
 
 fn has_option_refinement(model: &Value) -> bool {
-    let has_pricing_block = find_object_with_key(model, "pricing_block_fitted_parameters")
+    let has_pricing_block = find_value_by_key(model, "pricing_block_fitted_parameters")
         .is_some_and(|value| !value.is_null());
-    let has_option_diagnostics = find_object_with_key(model, "option_calibration_diagnostics")
+
+    let has_option_diagnostics = find_value_by_key(model, "option_calibration_diagnostics")
         .is_some_and(|value| !value.is_null());
+
     let option_scope = string_field(model, "workflow_scope")
         .or_else(|| nested_string(model, &["metadata", "workflow_scope"]))
         .is_some_and(|scope| {
@@ -350,6 +355,7 @@ fn parameter_row(container: Option<&Value>, label: &str, candidate_keys: &[&str]
 
 fn model_warnings(model: &Value) -> Option<WarningBlock> {
     let diagnostics = nested_value(model, &["metadata", "diagnostics"])?.as_array()?;
+
     let warnings = diagnostics
         .iter()
         .filter_map(|diagnostic| {
@@ -379,8 +385,17 @@ fn seasonality_samples(model: &Value) -> Option<String> {
     let seasonality = nested_value(model, &["parameters", "seasonality"])?;
     let clock_model = seasonality.get("clock_model")?;
 
-    let weekly_order = clock_model.get("weekly_harmonic_order")?.as_u64()?;
-    let annual_order = clock_model.get("annual_harmonic_order")?.as_u64()?;
+    let harmonic_series = clock_model.get("harmonic_series")?.as_object()?;
+
+    let harmonic_order_summary = harmonic_series
+        .iter()
+        .filter_map(|(axis, series)| {
+            let harmonic_order = series.get("harmonic_order")?.as_u64()?;
+
+            Some(format!("{axis} harmonics {harmonic_order}"))
+        })
+        .collect::<Vec<_>>()
+        .join("  ");
 
     let selected_objective = clock_model
         .get("selected_objective_value")
@@ -399,12 +414,8 @@ fn seasonality_samples(model: &Value) -> Option<String> {
         .and_then(Value::as_u64)?;
 
     Some(format!(
-        "Clock model:\nweekly harmonics {weekly_order}  annual harmonics {annual_order}\n\
+        "Clock model:\n{harmonic_order_summary}\n\
          candidates {candidate_count}  open minutes {open_minute_count}  open events {open_event_count}\n\
          selected objective {selected_objective:.6}"
     ))
-}
-
-fn find_object_with_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
-    find_value_by_key(value, key)
 }

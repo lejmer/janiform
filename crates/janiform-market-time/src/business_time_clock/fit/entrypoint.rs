@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -5,15 +6,16 @@ use std::fmt::{Display, Formatter};
 use chrono_tz::Tz;
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::linear_algebra::weighted_ridge_least_squares_from_normal_equations;
-use janiform_foundations::time::{
-    DAYS_PER_WEEK, MINUTES_PER_DAY, NANOS_PER_MINUTE, checked_floor_to_interval_utc_nanos,
-};
+use janiform_foundations::time::{NANOS_PER_MINUTE, checked_floor_to_interval_utc_nanos};
 use janiform_work_scheduler::{
     StreamingWorkContext, StreamingWorkOutput, StreamingWorkPoolInput, StreamingWorkProgress,
     run_streaming_work_pool,
 };
 
-use super::super::coordinates::feature_vector;
+use super::super::coordinates::{
+    FOURIER_BUSINESS_TIME_CLOCK_AXES, FourierBusinessTimeClockAxis, FourierHarmonicOrders,
+};
+use super::super::coordinates::{feature_vector, split_coefficients_by_axis};
 use super::super::exposure::{
     BusinessTimeClockExposureBuildInput, BusinessTimeClockExposureError,
     BusinessTimeClockExposureRow, build_business_time_clock_exposure_rows,
@@ -27,11 +29,9 @@ use super::super::{
 use super::candidate::{CandidateOrder, candidate_orders};
 use crate::calendar::ExchangeCalendarDefinition;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FourierBusinessTimeClockFitSettings {
-    pub maximum_intraday_harmonic_order: usize,
-    pub maximum_weekly_harmonic_order: usize,
-    pub maximum_annual_harmonic_order: usize,
+    pub maximum_harmonic_orders: BTreeMap<FourierBusinessTimeClockAxis, usize>,
     pub maximum_parameter_count: usize,
     pub worker_count: usize,
 }
@@ -132,7 +132,7 @@ pub fn fit_fourier_business_time_clock_model(
     input: FourierBusinessTimeClockFitInput<'_>,
     mut progress_observer: Option<&mut dyn FnMut(FourierBusinessTimeClockFitProgress)>,
 ) -> Result<FourierBusinessTimeClockFitSummary, FourierBusinessTimeClockFitError> {
-    validate_settings(input.settings)?;
+    validate_settings(&input.settings)?;
 
     emit_fit_progress(
         &mut progress_observer,
@@ -160,7 +160,7 @@ pub fn fit_fourier_business_time_clock_model(
         },
     );
 
-    let candidates = candidate_orders(input.settings);
+    let candidates = candidate_orders(&input.settings);
     if candidates.is_empty() {
         return Err(FourierBusinessTimeClockFitError::NoCandidateModels);
     }
@@ -168,7 +168,7 @@ pub fn fit_fourier_business_time_clock_model(
     let selected_candidate = evaluate_candidate_models(
         &design,
         &candidates,
-        input.settings,
+        &input.settings,
         input.cancellation_token.shared_handle(),
         &mut progress_observer,
     )?;
@@ -215,19 +215,33 @@ pub fn fit_fourier_business_time_clock_model(
 }
 
 fn validate_settings(
-    settings: FourierBusinessTimeClockFitSettings,
+    settings: &FourierBusinessTimeClockFitSettings,
 ) -> Result<(), FourierBusinessTimeClockFitError> {
-    if settings.maximum_intraday_harmonic_order > MINUTES_PER_DAY / 2 {
+    let maximum_orders = FourierHarmonicOrders::from_order_map(&settings.maximum_harmonic_orders)
+        .ok_or_else(|| FourierBusinessTimeClockFitError::InvalidSettings {
+        reason: "maximum_harmonic_orders must provide one order for every Fourier clock axis"
+            .to_string(),
+    })?;
+
+    if settings.maximum_harmonic_orders.len() != FOURIER_BUSINESS_TIME_CLOCK_AXES.len() {
         return Err(FourierBusinessTimeClockFitError::InvalidSettings {
-            reason: "maximum_intraday_harmonic_order exceeds the minute-of-day Nyquist limit"
+            reason: "maximum_harmonic_orders must provide one order for every Fourier clock axis"
                 .to_string(),
         });
     }
 
-    if settings.maximum_weekly_harmonic_order > DAYS_PER_WEEK / 2 {
-        return Err(FourierBusinessTimeClockFitError::InvalidSettings {
-            reason: "maximum_weekly_harmonic_order exceeds the weekday Nyquist limit".to_string(),
-        });
+    for (axis, harmonic_order) in maximum_orders.axis_orders() {
+        if let Some(nyquist_limit) = axis.nyquist_harmonic_limit()
+            && harmonic_order > nyquist_limit
+        {
+            return Err(FourierBusinessTimeClockFitError::InvalidSettings {
+                reason: format!(
+                    "{} exceeds the {} Nyquist limit",
+                    axis.maximum_harmonic_order_setting_name(),
+                    axis.coordinate_name()
+                ),
+            });
+        }
     }
 
     if settings.maximum_parameter_count == 0 {
@@ -331,7 +345,7 @@ fn event_counts_by_minute_start_utc_nanos(
 fn evaluate_candidate_models(
     design: &FourierBusinessTimeClockFitDesign,
     candidates: &[CandidateOrder],
-    settings: FourierBusinessTimeClockFitSettings,
+    settings: &FourierBusinessTimeClockFitSettings,
     cancellation_token: CancellationToken,
     progress_observer: &mut Option<&mut dyn FnMut(FourierBusinessTimeClockFitProgress)>,
 ) -> Result<CandidateFit, FourierBusinessTimeClockFitError> {
@@ -488,14 +502,7 @@ fn fit_candidate_coefficients(
 
         let weight = row.event_count as f64;
 
-        let features = feature_vector(
-            candidate.intraday_harmonic_order,
-            candidate.weekly_harmonic_order,
-            candidate.annual_harmonic_order,
-            row.intraday_phase,
-            row.weekly_phase,
-            row.annual_phase,
-        )?;
+        let features = feature_vector(candidate.orders, row.phases)?;
         if features.len() != candidate.parameter_count {
             return None;
         }
@@ -588,14 +595,7 @@ fn candidate_raw_rate(
     coefficients: &[f64],
     row: &BusinessTimeClockExposureRow,
 ) -> Option<f64> {
-    let features = feature_vector(
-        candidate.intraday_harmonic_order,
-        candidate.weekly_harmonic_order,
-        candidate.annual_harmonic_order,
-        row.intraday_phase,
-        row.weekly_phase,
-        row.annual_phase,
-    )?;
+    let features = feature_vector(candidate.orders, row.phases)?;
     if features.len() != coefficients.len() {
         return None;
     }
@@ -643,7 +643,7 @@ fn candidate_is_better(current_best: Option<&CandidateFit>, candidate: &Candidat
         return true;
     };
 
-    candidate
+    let mut ordering = candidate
         .objective_value
         .total_cmp(&current_best.objective_value)
         .then(
@@ -651,26 +651,23 @@ fn candidate_is_better(current_best: Option<&CandidateFit>, candidate: &Candidat
                 .order
                 .parameter_count
                 .cmp(&current_best.order.parameter_count),
-        )
-        .then(
+        );
+
+    for axis in FOURIER_BUSINESS_TIME_CLOCK_AXES {
+        ordering = ordering.then(
             candidate
                 .order
-                .intraday_harmonic_order
-                .cmp(&current_best.order.intraday_harmonic_order),
-        )
-        .then(
-            candidate
-                .order
-                .weekly_harmonic_order
-                .cmp(&current_best.order.weekly_harmonic_order),
-        )
-        .then(
-            candidate
-                .order
-                .annual_harmonic_order
-                .cmp(&current_best.order.annual_harmonic_order),
-        )
-        .is_lt()
+                .orders
+                .order_for_axis(axis)
+                .cmp(&current_best.order.orders.order_for_axis(axis)),
+        );
+
+        if ordering != Ordering::Equal {
+            break;
+        }
+    }
+
+    ordering.is_lt()
 }
 
 fn candidates_progress_label(job_position: usize, total_candidate_count: usize) -> String {
@@ -722,59 +719,8 @@ impl CandidateFit {
         }
 
         let intercept = *self.coefficients.first()? - self.normalization.ln();
-        let intraday_start = 1;
-
-        let weekly_start = intraday_start + 2 * self.order.intraday_harmonic_order;
-        let annual_start = weekly_start + 2 * self.order.weekly_harmonic_order;
-
-        let mut intraday_cosine_coefficients = Vec::with_capacity(self.order.intraday_harmonic_order);
-        let mut intraday_sine_coefficients = Vec::with_capacity(self.order.intraday_harmonic_order);
-        let mut weekly_cosine_coefficients = Vec::with_capacity(self.order.weekly_harmonic_order);
-        let mut weekly_sine_coefficients = Vec::with_capacity(self.order.weekly_harmonic_order);
-        let mut annual_cosine_coefficients = Vec::with_capacity(self.order.annual_harmonic_order);
-        let mut annual_sine_coefficients = Vec::with_capacity(self.order.annual_harmonic_order);
-
-        for harmonic_position in 0..self.order.intraday_harmonic_order {
-            intraday_cosine_coefficients.push(
-                *self
-                    .coefficients
-                    .get(intraday_start + 2 * harmonic_position)?,
-            );
-
-            intraday_sine_coefficients.push(
-                *self
-                    .coefficients
-                    .get(intraday_start + 2 * harmonic_position + 1)?,
-            );
-        }
-
-        for harmonic_position in 0..self.order.weekly_harmonic_order {
-            weekly_cosine_coefficients.push(
-                *self
-                    .coefficients
-                    .get(weekly_start + 2 * harmonic_position)?,
-            );
-
-            weekly_sine_coefficients.push(
-                *self
-                    .coefficients
-                    .get(weekly_start + 2 * harmonic_position + 1)?,
-            );
-        }
-
-        for harmonic_position in 0..self.order.annual_harmonic_order {
-            annual_cosine_coefficients.push(
-                *self
-                    .coefficients
-                    .get(annual_start + 2 * harmonic_position)?,
-            );
-
-            annual_sine_coefficients.push(
-                *self
-                    .coefficients
-                    .get(annual_start + 2 * harmonic_position + 1)?,
-            );
-        }
+        let coefficient_vectors =
+            split_coefficients_by_axis(self.coefficients.as_slice(), self.order.orders)?;
 
         Some(FourierBusinessTimeClockModel {
             schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION.to_string(),
@@ -782,16 +728,8 @@ impl CandidateFit {
             coefficient_basis: FOURIER_BUSINESS_TIME_CLOCK_BASIS.to_string(),
             normalization_policy: FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY.to_string(),
             selection_policy: FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY.to_string(),
-            intraday_harmonic_order: self.order.intraday_harmonic_order,
-            weekly_harmonic_order: self.order.weekly_harmonic_order,
-            annual_harmonic_order: self.order.annual_harmonic_order,
             intercept,
-            intraday_cosine_coefficients,
-            intraday_sine_coefficients,
-            weekly_cosine_coefficients,
-            weekly_sine_coefficients,
-            annual_cosine_coefficients,
-            annual_sine_coefficients,
+            harmonic_series: coefficient_vectors,
             selected_objective_value: self.objective_value,
             selected_negative_log_likelihood: self.negative_log_likelihood,
             evaluated_candidate_count: self.evaluated_candidate_count.max(1),

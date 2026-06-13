@@ -10,7 +10,7 @@
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
-use crate::information_depth::support_information_depth;
+use janiform_foundations::numeric::support_information_depth;
 
 use super::likelihood::average_negative_log_likelihood_resolution;
 use super::types::{BasinSeedFamily, ReturnComponentsStageContinuousReturnCalibrationSample};

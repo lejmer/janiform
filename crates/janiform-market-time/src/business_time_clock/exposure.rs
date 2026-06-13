@@ -6,7 +6,8 @@ use chrono::{DateTime, Datelike, Days, LocalResult, NaiveDate, TimeZone, Utc};
 use chrono_tz::Tz;
 use janiform_foundations::time::{MINUTES_PER_DAY, MINUTES_PER_HOUR, NANOS_PER_SECOND};
 
-use super::coordinates::{annual_phase, intraday_phase, weekly_phase};
+use super::FourierBusinessTimeClockPhases;
+use super::coordinates::phases_for_local_minute;
 use crate::calendar::{CalendarDate, ExchangeCalendarDefinition, SessionTime, TradingWeekday};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15,9 +16,7 @@ pub struct BusinessTimeClockExposureRow {
     pub interval_end_utc_nanos: i64,
     pub exposure_seconds: f64,
     pub event_count: usize,
-    pub intraday_phase: f64,
-    pub weekly_phase: f64,
-    pub annual_phase: f64,
+    pub phases: FourierBusinessTimeClockPhases,
 }
 
 pub struct BusinessTimeClockExposureBuildInput<'a> {
@@ -216,21 +215,7 @@ fn add_session_window_rows(
             return Err(BusinessTimeClockExposureError::ExposureOverflow);
         }
 
-        let intraday_phase = intraday_phase(minute_of_day).ok_or(
-            BusinessTimeClockExposureError::InvalidCoordinate {
-                local_date: input.local_date,
-                minute_of_day,
-            },
-        )?;
-
-        let weekly_phase = weekly_phase(input.local_date).ok_or(
-            BusinessTimeClockExposureError::InvalidCoordinate {
-                local_date: input.local_date,
-                minute_of_day,
-            },
-        )?;
-
-        let annual_phase = annual_phase(input.local_date, minute_of_day).ok_or(
+        let phases = phases_for_local_minute(input.local_date, minute_of_day).ok_or(
             BusinessTimeClockExposureError::InvalidCoordinate {
                 local_date: input.local_date,
                 minute_of_day,
@@ -246,9 +231,7 @@ fn add_session_window_rows(
                 .get(&segment_start_utc_nanos)
                 .copied()
                 .unwrap_or(0),
-            intraday_phase,
-            weekly_phase,
-            annual_phase,
+            phases,
         });
     }
 

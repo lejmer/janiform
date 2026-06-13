@@ -1,5 +1,7 @@
 #![allow(dead_code, unused_imports)]
 
+use std::collections::BTreeMap;
+
 pub(crate) use std::fs;
 pub(crate) use std::path::PathBuf;
 pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
@@ -150,7 +152,7 @@ use janiform_market_time::business_time_clock::{
     FOURIER_BUSINESS_TIME_CLOCK_BASIS, FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM,
     FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
     FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY, FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY,
-    FourierBusinessTimeClockModel,
+    FourierBusinessTimeClockModel, zero_order_harmonic_series_by_axis,
 };
 pub(crate) use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
@@ -171,16 +173,8 @@ pub(crate) fn flat_business_time_clock_model() -> FourierBusinessTimeClockModel 
         coefficient_basis: FOURIER_BUSINESS_TIME_CLOCK_BASIS.to_string(),
         normalization_policy: FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY.to_string(),
         selection_policy: FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY.to_string(),
-        intraday_harmonic_order: 0,
-        weekly_harmonic_order: 0,
-        annual_harmonic_order: 0,
         intercept: 0.0,
-        intraday_cosine_coefficients: Vec::new(),
-        intraday_sine_coefficients: Vec::new(),
-        weekly_cosine_coefficients: Vec::new(),
-        weekly_sine_coefficients: Vec::new(),
-        annual_cosine_coefficients: Vec::new(),
-        annual_sine_coefficients: Vec::new(),
+        harmonic_series: zero_order_harmonic_series_by_axis(),
         selected_objective_value: 0.0,
         selected_negative_log_likelihood: 0.0,
         evaluated_candidate_count: 1,

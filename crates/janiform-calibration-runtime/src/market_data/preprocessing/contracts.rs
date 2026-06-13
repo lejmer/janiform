@@ -1,6 +1,10 @@
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use janiform_market_time::business_time_clock::FourierBusinessTimeClockAxis;
 
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
@@ -46,12 +50,8 @@ pub struct MarketDataTranslationPreprocessingSettings {
 pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
     pub session_filter: CalibrationTimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum_intraday_harmonic_order: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum_weekly_harmonic_order: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum_annual_harmonic_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub maximum_harmonic_orders: BTreeMap<FourierBusinessTimeClockAxis, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

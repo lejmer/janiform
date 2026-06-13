@@ -7,7 +7,6 @@ mod checkpointing;
 mod current_state;
 mod diagnostics;
 mod execution_bridge;
-mod information_depth;
 mod market_data;
 mod objective;
 mod optimizer_adapter;

@@ -490,9 +490,11 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
             seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
                 session_filter=SessionFilter.ALL,
                 sparse_hour_event_threshold=2,
-                maximum_intraday_harmonic_order=11,
-                maximum_weekly_harmonic_order=3,
-                maximum_annual_harmonic_order=5,
+                maximum_harmonic_orders={
+                    "annual": 5,
+                    "intraday": 11,
+                    "weekly": 3,
+                },
             ),
             return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
                 intraday_jump_threshold_multiplier=6.0,
@@ -541,9 +543,11 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
 
     assert seasonality_settings["session_filter"] == "all"
     assert seasonality_settings["sparse_hour_event_threshold"] == 2
-    assert seasonality_settings["maximum_intraday_harmonic_order"] == 11
-    assert seasonality_settings["maximum_weekly_harmonic_order"] == 3
-    assert seasonality_settings["maximum_annual_harmonic_order"] == 5
+    assert seasonality_settings["maximum_harmonic_orders"] == {
+        "annual": 5,
+        "intraday": 11,
+        "weekly": 3,
+    }
     assert (
         return_components_input["close_open_gap_detection_policy"][
             "material_gap_absolute_return_tolerance"

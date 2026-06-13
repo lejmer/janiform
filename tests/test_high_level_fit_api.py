@@ -112,6 +112,7 @@ from tests.support.calibration import (
     build_nominal_tick_grid_observation_model_payload,
     build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
+    build_structural_seasonality_parameters_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
@@ -464,9 +465,11 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
         seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
             session_filter=SessionFilter.ALL,
             sparse_hour_event_threshold=2,
-            maximum_intraday_harmonic_order=11,
-            maximum_weekly_harmonic_order=3,
-            maximum_annual_harmonic_order=5,
+            maximum_harmonic_orders={
+                "annual": 5,
+                "intraday": 11,
+                "weekly": 3,
+            },
         ),
         return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
             intraday_jump_threshold_multiplier=6.0,
@@ -1421,11 +1424,12 @@ def test_high_level_model_load_preserves_rust_model_artifact_metadata(
     assert set(persisted_payload["parameters"]["seasonality"]) == {
         "schema_version",
         "exchange_code",
-        "intraday_minutes_per_bin",
-        "intraday_factor_by_bin",
-        "day_of_week_factor",
-        "day_of_year_factor",
+        "clock_model_schema_version",
+        "clock_model",
     }
+    assert persisted_payload["parameters"]["seasonality"]["clock_model"][
+        "harmonic_series"
+    ] == build_structural_seasonality_parameters_payload()["clock_model"]["harmonic_series"]
     assert model_path.read_text(encoding="utf-8").startswith("{\n  ")
 
 
@@ -1621,7 +1625,7 @@ def test_high_level_model_load_preserves_endogenous_mean_reversion_block(
     )
 
 
-def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
+def test_loaded_high_level_model_runtime_seasonality_uses_structural_clock_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1646,20 +1650,14 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
         range_start_utc: str,
         range_end_utc: str,
         interval_duration_nanos: int,
-        intraday_minutes_per_bin: int,
-        intraday_factor_by_bin: tuple[float, ...],
-        day_of_week_factor: tuple[float, ...],
-        day_of_year_factor: tuple[float, ...],
+        clock_model: dict[str, Any],
     ) -> dict[str, Any]:
         assert native_calendar_registry is calendar_registry._native_registry
         assert exchange_code == loaded_model.session_resolution.exchange_code
         assert range_start_utc == "2026-02-02T14:00:00+00:00"
         assert range_end_utc == "2026-02-02T16:00:00+00:00"
         assert interval_duration_nanos == 3_600_000_000_000
-        assert intraday_minutes_per_bin == 480
-        assert len(intraday_factor_by_bin) == 3
-        assert len(day_of_week_factor) == 7
-        assert len(day_of_year_factor) == 366
+        assert clock_model == loaded_model.parameters["seasonality"]["clock_model"]
         return {
             "interval_start_utc_nanos": [
                 datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
@@ -1690,7 +1688,7 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
     assert seasonality_source.hourly_factors == (1.0, 1.0)
 
 
-def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
+def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clock_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1704,9 +1702,13 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
     _write_rust_model_artifact(model, persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
 
+    clock_model = {
+        **loaded_model.parameters["seasonality"]["clock_model"],
+        "intercept": 0.25,
+    }
     loaded_model.parameters["seasonality"] = {
         **loaded_model.parameters["seasonality"],
-        "intraday_minutes_per_bin": None,
+        "clock_model": clock_model,
     }
 
     calendar_registry = CalendarRegistry(
@@ -1719,20 +1721,14 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
         range_start_utc: str,
         range_end_utc: str,
         interval_duration_nanos: int,
-        intraday_minutes_per_bin: int,
-        intraday_factor_by_bin: tuple[float, ...],
-        day_of_week_factor: tuple[float, ...],
-        day_of_year_factor: tuple[float, ...],
+        clock_model: dict[str, Any],
     ) -> dict[str, Any]:
         assert native_calendar_registry is calendar_registry._native_registry
         assert exchange_code == loaded_model.session_resolution.exchange_code
         assert range_start_utc == "2026-02-02T14:00:00+00:00"
         assert range_end_utc == "2026-02-02T16:00:00+00:00"
         assert interval_duration_nanos == 3_600_000_000_000
-        assert intraday_minutes_per_bin == 480
-        assert len(intraday_factor_by_bin) == 3
-        assert len(day_of_week_factor) == 7
-        assert len(day_of_year_factor) == 366
+        assert clock_model["intercept"] == 0.25
         return {
             "interval_start_utc_nanos": [
                 datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
@@ -5051,14 +5047,7 @@ def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationRes
                 "run_id": run_id,
                 "execution_mode": "memory",
                 "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
-                "normalized_stage_payload": {
-                    "composition_schema_version": "seasonality.deterministic.composition.v1",
-                    "exchange_code": "XNYS",
-                    "intraday_minutes_per_bin": 480,
-                    "intraday_factor_by_bin": [1.0] * 3,
-                    "day_of_week_factor": [1.0] * 7,
-                    "day_of_year_factor": [1.0] * 366,
-                },
+                "normalized_stage_payload": build_structural_seasonality_parameters_payload(),
             }
         ],
         "emitted_checkpoints": [],
@@ -5121,20 +5110,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                 "run_id": run_id,
                 "execution_mode": "memory",
                 "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
-                "normalized_stage_payload": {
-                    "composition_schema_version": "seasonality.deterministic.composition.v1",
-                    "exchange_code": "XNYS",
-                    "timestamp_utc_nanos": [
-                        1770042600000000000,
-                        1770046200000000000,
-                        1770129000000000000,
-                    ],
-                    "normalized_combined_factor_by_event": [0.95, 1.05, 1.0],
-                    "intraday_minutes_per_bin": 480,
-                    "intraday_factor_by_bin": [1.0] * 3,
-                    "day_of_week_factor": [1.0] * 7,
-                    "day_of_year_factor": [1.0] * 366,
-                },
+                "normalized_stage_payload": build_structural_seasonality_parameters_payload(),
             },
             {
                 "stage_report_kind": "hawkes",
@@ -5608,20 +5584,7 @@ def _failed_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCalibra
                 "run_id": run_id,
                 "execution_mode": "memory",
                 "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
-                "normalized_stage_payload": {
-                    "composition_schema_version": "seasonality.deterministic.composition.v1",
-                    "exchange_code": "XNYS",
-                    "timestamp_utc_nanos": [
-                        1770042600000000000,
-                        1770046200000000000,
-                        1770129000000000000,
-                    ],
-                    "normalized_combined_factor_by_event": [0.95, 1.05, 1.0],
-                    "intraday_minutes_per_bin": 480,
-                    "intraday_factor_by_bin": [1.0] * 3,
-                    "day_of_week_factor": [1.0] * 7,
-                    "day_of_year_factor": [1.0] * 366,
-                },
+                "normalized_stage_payload": build_structural_seasonality_parameters_payload(),
             },
             {
                 "stage_report_kind": "hawkes",

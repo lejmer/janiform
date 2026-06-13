@@ -2,6 +2,9 @@ mod support;
 
 use std::sync::{LazyLock, Mutex};
 
+use janiform_market_time::business_time_clock::{
+    FourierBusinessTimeClockAxis, FourierBusinessTimeClockHarmonicSeries,
+};
 use support::shared::{
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -60,18 +63,29 @@ fn set_intraday_clock_rate_bound(payload: &mut SeasonalityStageNormalizedPayload
     assert!(rate_bound.is_finite());
     assert!(rate_bound > 0.0);
 
-    payload.clock_model.intraday_harmonic_order = 1;
-    payload.clock_model.intraday_cosine_coefficients = vec![rate_bound.ln()];
-    payload.clock_model.intraday_sine_coefficients = vec![0.0];
+    set_clock_rate_bound(payload, FourierBusinessTimeClockAxis::Intraday, rate_bound);
 }
 
 fn set_annual_clock_rate_bound(payload: &mut SeasonalityStageNormalizedPayload, rate_bound: f64) {
     assert!(rate_bound.is_finite());
     assert!(rate_bound > 0.0);
 
-    payload.clock_model.annual_harmonic_order = 1;
-    payload.clock_model.annual_cosine_coefficients = vec![rate_bound.ln()];
-    payload.clock_model.annual_sine_coefficients = vec![0.0];
+    set_clock_rate_bound(payload, FourierBusinessTimeClockAxis::Annual, rate_bound);
+}
+
+fn set_clock_rate_bound(
+    payload: &mut SeasonalityStageNormalizedPayload,
+    axis: FourierBusinessTimeClockAxis,
+    rate_bound: f64,
+) {
+    payload.clock_model.harmonic_series.insert(
+        axis,
+        FourierBusinessTimeClockHarmonicSeries {
+            harmonic_order: 1,
+            cosine_coefficients: vec![rate_bound.ln()],
+            sine_coefficients: vec![0.0],
+        },
+    );
 }
 
 #[test]
@@ -223,16 +237,8 @@ fn seasonality_stage_execution_metadata_is_deterministic_under_fixed_seed_and_co
         first_disk_metadata.stage_seed
     );
     assert_eq!(
-        first_memory_metadata.selected_intraday_harmonic_order,
-        first_disk_metadata.selected_intraday_harmonic_order
-    );
-    assert_eq!(
-        first_memory_metadata.selected_weekly_harmonic_order,
-        first_disk_metadata.selected_weekly_harmonic_order
-    );
-    assert_eq!(
-        first_memory_metadata.selected_annual_harmonic_order,
-        first_disk_metadata.selected_annual_harmonic_order
+        first_memory_metadata.selected_harmonic_orders,
+        first_disk_metadata.selected_harmonic_orders
     );
     assert_eq!(
         first_memory_metadata.evaluated_candidate_count,
@@ -303,9 +309,13 @@ fn seasonality_stage_execution_neutralizes_under_supported_calendar_components()
         .as_ref()
         .expect("seasonality stage should emit a normalized payload");
 
-    assert_eq!(payload.clock_model.intraday_harmonic_order, 0);
-    assert_eq!(payload.clock_model.weekly_harmonic_order, 0);
-    assert_eq!(payload.clock_model.annual_harmonic_order, 0);
+    assert!(
+        payload
+            .clock_model
+            .harmonic_orders()
+            .values()
+            .all(|harmonic_order| *harmonic_order == 0)
+    );
     assert!(
         payload
             .business_time_rate_by_event

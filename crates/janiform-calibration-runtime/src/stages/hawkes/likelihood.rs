@@ -535,13 +535,10 @@ fn evaluate_signed_hawkes_likelihood(
                     likelihood_tape.baseline_negative_log_likelihood_per_event,
                 );
 
-            emit_likelihood_worker_progress(
-                &context,
-                HawkesLikelihoodWorkerProgress {
-                    processed_event_count,
-                    current_relative_negative_log_likelihood_per_event,
-                },
-            );
+            let _ = context.emit_progress(HawkesLikelihoodWorkerProgress {
+                processed_event_count,
+                current_relative_negative_log_likelihood_per_event,
+            });
         }
     }
 
@@ -588,13 +585,6 @@ fn current_relative_negative_log_likelihood_per_event(
     current_relative_negative_log_likelihood_per_event
         .is_finite()
         .then_some(current_relative_negative_log_likelihood_per_event)
-}
-
-fn emit_likelihood_worker_progress(
-    context: &StreamingWorkContext<HawkesLikelihoodWorkerProgress, HawkesLikelihoodCandidateOutput>,
-    progress: HawkesLikelihoodWorkerProgress,
-) -> bool {
-    context.emit_progress(progress)
 }
 
 fn record_likelihood_worker_progress(

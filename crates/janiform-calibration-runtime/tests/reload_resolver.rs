@@ -303,16 +303,8 @@ fn assert_stage_artifact_reload_matches(
                     expected_payload.clock_model_schema_version
                 );
                 assert_eq!(
-                    reloaded_payload.clock_model.intraday_harmonic_order,
-                    expected_payload.clock_model.intraday_harmonic_order
-                );
-                assert_eq!(
-                    reloaded_payload.clock_model.weekly_harmonic_order,
-                    expected_payload.clock_model.weekly_harmonic_order
-                );
-                assert_eq!(
-                    reloaded_payload.clock_model.annual_harmonic_order,
-                    expected_payload.clock_model.annual_harmonic_order
+                    reloaded_payload.clock_model.harmonic_orders(),
+                    expected_payload.clock_model.harmonic_orders()
                 );
             }
             (

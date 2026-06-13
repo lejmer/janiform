@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use janiform_calibration_artifacts::{
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_foundations::cancellation::CancellationToken;
+use janiform_market_time::business_time_clock::FourierBusinessTimeClockAxis;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
 };
@@ -143,12 +145,8 @@ pub struct CalibrationTimestampEventRecord {
 pub struct CalibrationSeasonalityStageExecutionSettings {
     pub session_filter: CalibrationTimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum_intraday_harmonic_order: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum_weekly_harmonic_order: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub maximum_annual_harmonic_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub maximum_harmonic_orders: BTreeMap<FourierBusinessTimeClockAxis, usize>,
 }
 
 impl From<CalibrationSeasonalityStageExecutionSettings> for SeasonalityStageExecutionSettings {
@@ -156,9 +154,7 @@ impl From<CalibrationSeasonalityStageExecutionSettings> for SeasonalityStageExec
         Self {
             session_filter: value.session_filter.into(),
             sparse_hour_event_threshold: value.sparse_hour_event_threshold,
-            maximum_intraday_harmonic_order: value.maximum_intraday_harmonic_order,
-            maximum_weekly_harmonic_order: value.maximum_weekly_harmonic_order,
-            maximum_annual_harmonic_order: value.maximum_annual_harmonic_order,
+            maximum_harmonic_orders: value.maximum_harmonic_orders,
         }
     }
 }

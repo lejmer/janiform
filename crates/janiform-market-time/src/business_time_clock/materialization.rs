@@ -168,7 +168,7 @@ fn materialize_interval(
     for row in exposure_rows {
         let rate = input
             .model
-            .rate_at_phases(row.intraday_phase, row.weekly_phase, row.annual_phase)
+            .rate_at_phases(row.phases)
             .ok_or(FourierBusinessTimeClockMaterializationError::InvalidRate)?;
 
         open_exposure_seconds += row.exposure_seconds;

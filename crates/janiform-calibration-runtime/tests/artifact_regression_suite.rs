@@ -1115,21 +1115,9 @@ fn assert_stage_artifact_matches(
                 fixture_id
             );
             assert_eq!(
-                loaded_payload.clock_model.intraday_harmonic_order,
-                expected_payload.clock_model.intraday_harmonic_order,
-                "fixture_id={} seasonality intraday harmonic order drifted",
-                fixture_id
-            );
-            assert_eq!(
-                loaded_payload.clock_model.weekly_harmonic_order,
-                expected_payload.clock_model.weekly_harmonic_order,
-                "fixture_id={} seasonality weekly harmonic order drifted",
-                fixture_id
-            );
-            assert_eq!(
-                loaded_payload.clock_model.annual_harmonic_order,
-                expected_payload.clock_model.annual_harmonic_order,
-                "fixture_id={} seasonality annual harmonic order drifted",
+                loaded_payload.clock_model.harmonic_orders(),
+                expected_payload.clock_model.harmonic_orders(),
+                "fixture_id={} seasonality harmonic orders drifted",
                 fixture_id
             );
         }
