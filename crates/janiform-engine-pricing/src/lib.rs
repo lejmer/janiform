@@ -1,4 +1,4 @@
-//! Pricing-side hourly factor loading through the shared provider interface.
+//! Pricing-side interval factor grid loading through the shared provider interface.
 
 mod black_scholes;
 mod characteristic;
@@ -30,7 +30,7 @@ pub use characteristic::{
     compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode, evolve_hawkes_state,
-    load_hourly_factor_contract, project_hawkes_intensities_coarse_interval,
+    load_interval_factor_grid, project_hawkes_intensities_coarse_interval,
     solve_anchored_local_pricing_tilt,
 };
 pub use constants::{
@@ -93,7 +93,8 @@ pub use interval_schedule::{
     DerivedPricingIntervalSchedule, PricingIntervalSchedule, PricingIntervalScheduleError,
     PricingIntervalScheduleMetadata, PricingIntervalSchedulePolicy,
     derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
-    materialize_schedule_interval_factors, materialize_schedule_interval_factors_with_cpu_count,
+    materialize_schedule_interval_factor_grids,
+    materialize_schedule_interval_factor_grids_with_cpu_count,
 };
 pub use maturity_inputs::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,

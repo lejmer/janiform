@@ -644,7 +644,7 @@ fn solve_transform_slice_value(
         evaluation_point.z_plus,
         evaluation_point.z_minus,
         ComplexScalar::new(0.0, 0.0),
-        context.s_h,
+        context.seasonality_factor,
         context.news_intensity,
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: 1.0,
@@ -876,7 +876,9 @@ fn expected_baseline_business_time_for_context(
     equation_specification: ExponentialAffineTransformEquationSpecification,
     context: SufficientStatisticsTransformSliceContext,
 ) -> f64 {
-    equation_specification.hawkes_kernel_parameters.lambda_bar * context.s_h * context.delta
+    equation_specification.hawkes_kernel_parameters.lambda_bar
+        * context.seasonality_factor
+        * context.delta
 }
 
 fn derive_endogenous_activity_expectation(

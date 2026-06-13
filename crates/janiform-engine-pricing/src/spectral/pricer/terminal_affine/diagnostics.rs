@@ -101,11 +101,11 @@ fn maturity_weighted_news_activity_loading_rate(
             });
         }
 
-        let interval_factors = context.interval_factors[interval_offset];
+        let interval_factor_grids = context.interval_factor_grids[interval_offset];
 
         let interval_activity_loading_rate = expected_news_activity_loading_rate(
-            interval_factors.nu_h_known,
-            interval_factors.nu_h_surprise,
+            interval_factor_grids.known_news_intensity,
+            interval_factor_grids.surprise_news_intensity,
             news_process_configuration.known_component_mark_scales,
             news_process_configuration.surprise_component_mark_scales,
             news_process_configuration.shared_mark_law.gamma_severity_marks,

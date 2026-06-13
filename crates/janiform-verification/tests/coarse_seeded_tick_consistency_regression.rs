@@ -22,13 +22,13 @@ use janiform_market_time::calendar::{
     ExchangeCalendarRegistryArtifact, RegularSessionArtifact, SessionWindowArtifact,
     TradingWeekday,
 };
-use janiform_market_time::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
-    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
+use janiform_market_time::interval_factor_grids::{
+    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD,
+    DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
+    INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY, INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+    INTERVAL_FACTOR_GRID_SCHEMA_VERSION, INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+    INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY, IntervalFactorGrid,
+    IntervalFactorGridDiagnostics, IntervalFactorGridMetadata,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -426,7 +426,7 @@ fn build_paired_path(
             coarse_interval_count,
             coarse_interval_delta,
         ),
-        interval_fixture.coarse_interval_factors,
+        interval_fixture.coarse_interval_factor_grids,
     )
     .expect("coarse run request should construct");
 
@@ -438,7 +438,7 @@ fn build_paired_path(
         DateTime::<Utc>::from_timestamp_nanos(start_time_utc_nanos),
         interval_fixture.fine_interval_count,
         build_seeded_model_inputs(
-            interval_fixture.hourly_factor_contract,
+            interval_fixture.interval_factor_grid,
             known_news_timestamps_utc_nanos,
         ),
         Some(SeededTickSimulationRunOptions {
@@ -470,8 +470,8 @@ fn build_paired_path(
 
 struct IntervalFixture {
     fine_interval_count: usize,
-    hourly_factor_contract: HourlyFactorContractOutput,
-    coarse_interval_factors: SufficientStatisticsIntervalFactors,
+    interval_factor_grid: IntervalFactorGrid,
+    coarse_interval_factor_grids: SufficientStatisticsIntervalFactors,
 }
 
 fn build_interval_fixture(
@@ -514,7 +514,7 @@ fn build_interval_fixture(
 
     let fine_nu_surprise = vec![surprise_intensity; fine_interval_count];
 
-    let combined_fine_nu_h = fine_nu_known
+    let combined_fine_news_intensity = fine_nu_known
         .iter()
         .zip(fine_nu_surprise.iter())
         .map(|(known_intensity, surprise_component)| known_intensity + surprise_component)
@@ -536,8 +536,8 @@ fn build_interval_fixture(
 
     IntervalFixture {
         fine_interval_count,
-        hourly_factor_contract: HourlyFactorContractOutput {
-            schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+        interval_factor_grid: IntervalFactorGrid {
+            schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
             exchange_code: "XNYS".to_string(),
             exchange_timezone_name: "America/New_York".to_string(),
             request_start_utc_nanos: start_time_utc_nanos,
@@ -560,31 +560,31 @@ fn build_interval_fixture(
                     DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
                 })
                 .collect(),
-            s_h: vec![1.0; fine_interval_count],
-            known_component_nu_h: fine_nu_known,
-            surprise_component_nu_h: fine_nu_surprise,
-            nu_h: combined_fine_nu_h,
-            metadata: HourlyFactorMaterializationMetadata {
-                seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
-                    .to_string(),
+            seasonality_factor: vec![1.0; fine_interval_count],
+            known_news_intensity: fine_nu_known,
+            surprise_news_intensity: fine_nu_surprise,
+            news_intensity: combined_fine_news_intensity,
+            metadata: IntervalFactorGridMetadata {
+                seasonality_materialization_method:
+                    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD.to_string(),
                 news_intensity_materialization_method:
                     DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
-                interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-                interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-                timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-                spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-                fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+                interval_boundary_policy: INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+                interval_alignment_policy: INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
+                timezone_transition_policy: INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY,
+                spring_forward_policy: INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+                fall_back_policy: INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
             },
-            diagnostics: HourlyFactorContractDiagnostics {
+            diagnostics: IntervalFactorGridDiagnostics {
                 interval_count: fine_interval_count,
                 interval_duration_nanos: fine_interval_delta_nanos,
                 first_interval_start_utc_nanos: fine_interval_start_utc_nanos[0],
                 last_interval_end_utc_nanos: fine_interval_end_utc_nanos[fine_interval_count - 1],
-                skipped_local_hour_interval_count: 0,
-                repeated_local_hour_interval_count: 0,
+                skipped_exchange_local_interval_count: 0,
+                repeated_exchange_local_interval_count: 0,
             },
         },
-        coarse_interval_factors: SufficientStatisticsIntervalFactors::try_new(
+        coarse_interval_factor_grids: SufficientStatisticsIntervalFactors::try_new(
             vec![1.0; coarse_interval_count],
             coarse_nu_known,
             vec![surprise_intensity; coarse_interval_count],
@@ -619,14 +619,14 @@ fn build_coarse_model_inputs(
 }
 
 fn build_seeded_model_inputs(
-    hourly_factor_contract: HourlyFactorContractOutput,
+    interval_factor_grid: IntervalFactorGrid,
     known_news_timestamps_utc_nanos: Vec<i64>,
 ) -> SeededTickSimulationModelInputs {
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationModelInputs {
         kernel_parameters: build_kernel_parameters(),
@@ -634,7 +634,7 @@ fn build_seeded_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
@@ -655,7 +655,7 @@ fn build_seeded_model_inputs(
 }
 
 fn disabled_mean_reversion_runtime_inputs(
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -665,14 +665,14 @@ fn disabled_mean_reversion_runtime_inputs(
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
-            hourly_factor_contract.metadata.interval_alignment_policy,
+            interval_factor_grid.metadata.interval_alignment_policy,
             0.0,
             0.0,
-            vec![0.0; hourly_factor_contract.interval_indices.len()],
-            vec![0.0; hourly_factor_contract.interval_indices.len()],
+            vec![0.0; interval_factor_grid.interval_indices.len()],
+            vec![0.0; interval_factor_grid.interval_indices.len()],
             vec![
-                hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
-                hourly_factor_contract.interval_indices.len()
+                interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
+                interval_factor_grid.interval_indices.len()
             ],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),

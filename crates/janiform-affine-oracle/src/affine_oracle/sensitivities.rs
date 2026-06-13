@@ -465,7 +465,10 @@ fn evaluate_parameter_sensitivity_ode_rhs(
         ),
         c_value: h_plus_baseline_derivative
             .plus(h_minus_baseline_derivative)
-            .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar)
+            .scale(
+                transform_input.seasonality_factor
+                    * equation_specification.hawkes_kernel_parameters.lambda_bar,
+            )
             .plus(news_derivative),
     }
 }

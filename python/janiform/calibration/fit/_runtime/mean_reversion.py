@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from ...._native_api import native_module
 from ...._timestamps import nanoseconds_to_hours
-from ....hourly_factors import HourlyFactorContract
+from ....interval_factor_grids import IntervalFactorGridContract
 from ....mean_reversion import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
@@ -23,24 +23,27 @@ def prepare_model_mean_reversion_runtime_inputs(
     model: JaniformModel,
     *,
     runtime_factors: PreparedModelRuntimeFactors,
-    hourly_factor_contract: HourlyFactorContract,
+    interval_factor_grid: IntervalFactorGridContract,
     initial_excitation_state: HawkesExcitationState,
     start_anchor_value: float = 0.0,
 ) -> tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]:
     fitted_parameters = mean_reversion_fitted_parameters_for_model(model)
+
     runtime_interval_anchors = materialize_model_mean_reversion_runtime_interval_anchors(
         fitted_parameters=fitted_parameters,
         runtime_factors=runtime_factors,
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid,
         initial_excitation_state=initial_excitation_state,
         start_anchor_value=start_anchor_value,
     )
+
     initial_boundary_state = MeanReversionBoundaryState(
         observed_log_price=runtime_interval_anchors.start_anchor_value,
         anchor_value=runtime_interval_anchors.start_anchor_value,
         pressure_state=runtime_interval_anchors.start_pressure_state,
         deviation=0.0,
     )
+
     return fitted_parameters, runtime_interval_anchors, initial_boundary_state
 
 
@@ -48,16 +51,16 @@ def materialize_model_mean_reversion_runtime_interval_anchors(
     *,
     fitted_parameters: MeanReversionFittedParameters,
     runtime_factors: PreparedModelRuntimeFactors,
-    hourly_factor_contract: HourlyFactorContract,
+    interval_factor_grid: IntervalFactorGridContract,
     initial_excitation_state: HawkesExcitationState,
     start_anchor_value: float,
 ) -> MeanReversionRuntimeIntervalAnchors:
     return materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
         fitted_parameters=fitted_parameters,
         runtime_factors=runtime_factors,
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid,
         initial_excitation_state=initial_excitation_state,
-        interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
+        interval_alignment_policy=interval_factor_grid.interval_alignment_policy,
         start_anchor_value=start_anchor_value,
     )
 
@@ -66,7 +69,7 @@ def materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
     *,
     fitted_parameters: MeanReversionFittedParameters,
     runtime_factors: PreparedModelRuntimeFactors,
-    hourly_factor_contract: HourlyFactorContract,
+    interval_factor_grid: IntervalFactorGridContract,
     initial_excitation_state: HawkesExcitationState,
     interval_alignment_policy: str,
     start_anchor_value: float,
@@ -80,12 +83,12 @@ def materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
         fitted_parameters.to_payload(),
         interval_alignment_policy,
         start_anchor_value,
-        tuple(hourly_factor_contract.s_h),
-        tuple(hourly_factor_contract.known_component_nu_h),
-        tuple(hourly_factor_contract.surprise_component_nu_h),
+        tuple(interval_factor_grid.seasonality_factor),
+        tuple(interval_factor_grid.known_news_intensity),
+        tuple(interval_factor_grid.surprise_news_intensity),
         tuple(
-            nanoseconds_to_hours(hourly_factor_contract.interval_duration_nanos)
-            for _ in range(hourly_factor_contract.interval_count)
+            nanoseconds_to_hours(interval_factor_grid.interval_duration_nanos)
+            for _ in range(interval_factor_grid.interval_count)
         ),
     )
 

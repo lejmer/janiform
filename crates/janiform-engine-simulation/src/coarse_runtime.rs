@@ -244,8 +244,8 @@ where
         let interval_start_utc_nanos = interval_start_utc_nanos[interval_index];
         let interval_end_utc_nanos = interval_end_utc_nanos[interval_index];
 
-        let endogenous_interval_factors = EndogenousAnchorIntervalFactors::try_new(
-            run_request.interval_factors.s_h[interval_index],
+        let endogenous_interval_factor_grids = EndogenousAnchorIntervalFactors::try_new(
+            run_request.interval_factor_grids.seasonality_factor[interval_index],
             0.0,
             0.0,
             run_request.interval_delta,
@@ -264,7 +264,7 @@ where
                     .sufficient_statistics_model_inputs
                     .equation_specification,
                 expected_news_severity_mark,
-                endogenous_interval_factors,
+                endogenous_interval_factor_grids,
                 terminal_state,
             )
             .map_err(|source| {
@@ -320,7 +320,7 @@ where
         validate_known_news_factor_alignment(
             interval_index,
             run_request.interval_delta,
-            run_request.interval_factors.nu_h_known[interval_index],
+            run_request.interval_factor_grids.known_news_intensity[interval_index],
             interval_known_news_timestamp_slice.len(),
         )?;
 
@@ -557,8 +557,8 @@ fn coarse_interval_long_variance_stationary_mean_reversion_level(
     let news_process_configuration = &run_request.model_inputs.news_process_configuration;
 
     let news_activity_loading_rate = expected_news_activity_loading_rate(
-        run_request.interval_factors.nu_h_known[interval_index],
-        run_request.interval_factors.nu_h_surprise[interval_index],
+        run_request.interval_factor_grids.known_news_intensity[interval_index],
+        run_request.interval_factor_grids.surprise_news_intensity[interval_index],
         news_process_configuration.known_component_mark_scales,
         news_process_configuration.surprise_component_mark_scales,
         news_process_configuration
@@ -634,8 +634,8 @@ pub enum CoarseSimulationRunError {
     },
     KnownNewsFactorAlignmentFailure {
         interval_index: usize,
-        expected_known_nu_h: f64,
-        derived_known_nu_h: f64,
+        expected_known_news_intensity: f64,
+        derived_known_news_intensity: f64,
     },
     NewsProcessConfigurationFailure {
         interval_index: usize,
@@ -749,11 +749,11 @@ impl Display for CoarseSimulationRunError {
             ),
             Self::KnownNewsFactorAlignmentFailure {
                 interval_index,
-                expected_known_nu_h,
-                derived_known_nu_h,
+                expected_known_news_intensity,
+                derived_known_news_intensity,
             } => write!(
                 formatter,
-                "interval {interval_index} known-news factor mismatch, expected nu_h_known={expected_known_nu_h} from interval_factors and derived {derived_known_nu_h} from scheduled news timestamps"
+                "interval {interval_index} known-news factor mismatch, expected known_news_intensity={expected_known_news_intensity} from interval_factor_grids and derived {derived_known_news_intensity} from scheduled news timestamps"
             ),
             Self::NewsProcessConfigurationFailure {
                 interval_index,
@@ -965,7 +965,8 @@ where
     }
 
     let interval_surprise_expected_count =
-        run_request.interval_factors.nu_h_surprise[interval_index] * run_request.interval_delta;
+        run_request.interval_factor_grids.surprise_news_intensity[interval_index]
+            * run_request.interval_delta;
 
     let interval_surprise_news_count =
         sample_count_from_expectation(interval_surprise_expected_count, &mut news_count_stream);
@@ -1048,15 +1049,17 @@ fn apply_interval_news_activity_coupling_at_boundary(
 fn validate_known_news_factor_alignment(
     interval_index: usize,
     interval_delta: f64,
-    expected_known_nu_h: f64,
+    expected_known_news_intensity: f64,
     known_news_event_count: usize,
 ) -> Result<(), CoarseSimulationRunError> {
-    let derived_known_nu_h = known_news_event_count as f64 / interval_delta;
-    if (expected_known_nu_h - derived_known_nu_h).abs() > KNOWN_NEWS_INTENSITY_ALIGNMENT_TOLERANCE {
+    let derived_known_news_intensity = known_news_event_count as f64 / interval_delta;
+    if (expected_known_news_intensity - derived_known_news_intensity).abs()
+        > KNOWN_NEWS_INTENSITY_ALIGNMENT_TOLERANCE
+    {
         return Err(CoarseSimulationRunError::KnownNewsFactorAlignmentFailure {
             interval_index,
-            expected_known_nu_h,
-            derived_known_nu_h,
+            expected_known_news_intensity,
+            derived_known_news_intensity,
         });
     }
 

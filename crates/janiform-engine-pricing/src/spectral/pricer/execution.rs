@@ -193,7 +193,7 @@ pub(crate) fn run_single_option_pricing(
         model_parameters: request.model_parameters.clone(),
         runtime_interval_schedule: execution_input.runtime_interval_schedule.clone(),
         interval_delta: request.interval_delta,
-        interval_factors: execution_input.interval_factors.clone(),
+        interval_factor_grids: execution_input.interval_factor_grids.clone(),
         optional_output_selection: execution_input.optional_output_selection,
         spectral_collocation_node_count_override: None,
         cpu_count: None,
@@ -449,7 +449,7 @@ fn solve_terminal_affine_maturity_laws(
                     .runtime_interval_schedule
                     .interval_deltas_hours
                     .as_slice(),
-                interval_factors: solve_input.execution_input.interval_factors.as_slice(),
+                interval_factor_grids: solve_input.execution_input.interval_factor_grids.as_slice(),
                 driver_parameters: solve_input.driver_parameters,
                 include_node_price_sensitivities: solve_input
                     .execution_input
@@ -723,11 +723,13 @@ mod tests {
         let observed_log_price = terminal_anchor_value + terminal_deviation;
         let spot = asset_reference_price * observed_log_price.exp();
         let strike = 0.1 * spot;
+
         let spectral_domain = SpectralDomain {
             deviation_lower_bound: -1.0,
             deviation_upper_bound: 1.0,
             node_count: 4097,
         };
+
         let characteristic_function_values = (0..spectral_domain.node_count)
             .map(|frequency_index| {
                 complex_exponential(ComplexScalar::new(
@@ -736,6 +738,7 @@ mod tests {
                 ))
             })
             .collect::<Vec<_>>();
+
         let solved_maturity = SolvedMaturityLaw {
             maturity_interval: 1.0,
             terminal_anchor_value,
@@ -757,7 +760,9 @@ mod tests {
             &solved_maturity,
         )
         .expect("degenerate COS price should resolve");
+
         let expected_price = spot - strike;
+
         let spectral_resolution_tolerance = expected_price.abs().max(1.0)
             / (spectral_domain.node_count * spectral_domain.node_count) as f64;
 

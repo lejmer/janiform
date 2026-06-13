@@ -331,6 +331,7 @@ impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
         D: serde::Deserializer<'de>,
     {
         let payload = CoarseSimulationModelInputsPayload::deserialize(deserializer)?;
+
         Self::try_new(Self {
             sufficient_statistics_model_inputs: payload.sufficient_statistics_model_inputs,
             news_process_configuration: payload.news_process_configuration,
@@ -355,7 +356,7 @@ pub struct CoarseSimulationRunRequest {
     pub horizon_interval_count: usize,
     pub interval_delta: f64,
     pub model_inputs: CoarseSimulationModelInputs,
-    pub interval_factors: SufficientStatisticsIntervalFactors,
+    pub interval_factor_grids: SufficientStatisticsIntervalFactors,
 }
 
 impl CoarseSimulationRunRequest {
@@ -365,7 +366,7 @@ impl CoarseSimulationRunRequest {
         horizon_interval_count: usize,
         interval_delta: f64,
         model_inputs: CoarseSimulationModelInputs,
-        interval_factors: SufficientStatisticsIntervalFactors,
+        interval_factor_grids: SufficientStatisticsIntervalFactors,
     ) -> Result<Self, CoarseSimulationRunRequestError> {
         let request = Self {
             schema_version: COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION.to_string(),
@@ -374,9 +375,11 @@ impl CoarseSimulationRunRequest {
             horizon_interval_count,
             interval_delta,
             model_inputs,
-            interval_factors,
+            interval_factor_grids,
         };
+
         request.validate()?;
+
         Ok(request)
     }
 
@@ -406,6 +409,7 @@ impl CoarseSimulationRunRequest {
 
         let interval_delta_nanos = interval_delta_to_nanos(self.interval_delta)
             .map_err(|source| CoarseSimulationRunRequestError::InvalidIntervalDelta { source })?;
+
         validate_horizon_end_timestamp(
             self.start_time_utc_nanos,
             interval_delta_nanos,
@@ -417,11 +421,11 @@ impl CoarseSimulationRunRequest {
             .validate()
             .map_err(|source| CoarseSimulationRunRequestError::InvalidModelInputs { source })?;
 
-        self.interval_factors
+        self.interval_factor_grids
             .validate()
             .map_err(|source| CoarseSimulationRunRequestError::InvalidIntervalFactors { source })?;
 
-        let resolved_factor_interval_delta = self.interval_factors.resolved_interval_delta();
+        let resolved_factor_interval_delta = self.interval_factor_grids.resolved_interval_delta();
         if self.interval_delta != resolved_factor_interval_delta {
             return Err(
                 CoarseSimulationRunRequestError::IntervalDeltaFactorMismatch {
@@ -431,7 +435,7 @@ impl CoarseSimulationRunRequest {
             );
         }
 
-        let available_interval_count = self.interval_factors.s_h.len();
+        let available_interval_count = self.interval_factor_grids.seasonality_factor.len();
         if self.horizon_interval_count > available_interval_count {
             return Err(
                 CoarseSimulationRunRequestError::HorizonExceedsAvailableIntervals {
@@ -445,6 +449,7 @@ impl CoarseSimulationRunRequest {
             .model_inputs
             .sufficient_statistics_model_inputs
             .mean_reversion_runtime_interval_anchors;
+
         if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
             return Err(
                 CoarseSimulationRunRequestError::MeanReversionRuntimeAnchorIntervalCountMismatch {
@@ -469,6 +474,7 @@ impl CoarseSimulationRunRequest {
                         observed_interval_delta,
                     }
                 })?;
+
             if observed_interval_delta_nanos != interval_delta_nanos {
                 return Err(
                     CoarseSimulationRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
@@ -507,6 +513,7 @@ impl CoarseSimulationRunRequest {
     pub fn end_time_utc_nanos(&self) -> Result<i64, CoarseSimulationTimeIndexError> {
         let interval_delta_nanos = interval_delta_to_nanos(self.interval_delta)
             .map_err(|source| CoarseSimulationTimeIndexError::InvalidIntervalDelta { source })?;
+
         compute_horizon_end_time_utc_nanos(
             self.start_time_utc_nanos,
             interval_delta_nanos,
@@ -595,21 +602,24 @@ impl Display for CoarseSimulationRunRequestError {
                 write!(formatter, "model_inputs payload is invalid: {source}")
             }
             Self::InvalidIntervalFactors { source } => {
-                write!(formatter, "interval_factors payload is invalid: {source}")
+                write!(
+                    formatter,
+                    "interval_factor_grids payload is invalid: {source}"
+                )
             }
             Self::IntervalDeltaFactorMismatch {
                 requested_interval_delta,
                 available_factor_interval_delta,
             } => write!(
                 formatter,
-                "interval_delta ({requested_interval_delta}) must match interval_factors.interval_delta ({available_factor_interval_delta}) under the coarse simulation factor-alignment policy"
+                "interval_delta ({requested_interval_delta}) must match interval_factor_grids.interval_delta ({available_factor_interval_delta}) under the coarse simulation factor-alignment policy"
             ),
             Self::HorizonExceedsAvailableIntervals {
                 requested_interval_count,
                 available_interval_count,
             } => write!(
                 formatter,
-                "horizon_interval_count ({requested_interval_count}) exceeds available interval_factors entries ({available_interval_count})"
+                "horizon_interval_count ({requested_interval_count}) exceeds available interval_factor_grids entries ({available_interval_count})"
             ),
             Self::MeanReversionRuntimeAnchorIntervalCountMismatch {
                 expected_interval_count,
@@ -723,6 +733,7 @@ impl CoarseSimulationPathRecord {
         self.sufficient_statistics.validate().map_err(|source| {
             CoarseSimulationPathRecordError::InvalidSufficientStatistics { source }
         })?;
+
         self.return_components.validate().map_err(|source| {
             CoarseSimulationPathRecordError::InvalidReturnComponents { source }
         })?;
@@ -922,6 +933,7 @@ impl CoarseSimulationPath {
             simulated_interval_count,
             &records,
         )?;
+
         let diagnostics =
             derive_coarse_simulation_path_diagnostics(simulated_interval_count, &records)?;
 
@@ -953,6 +965,7 @@ impl CoarseSimulationPath {
             COARSE_SIMULATION_PATH_SCHEMA_VERSION,
         )
         .map_err(CoarseSimulationPathError::InvalidSchemaVersion)?;
+
         validate_exact_string(
             "run_request_schema_version",
             &self.run_request_schema_version,
@@ -965,11 +978,13 @@ impl CoarseSimulationPath {
                 value: self.start_time_utc_nanos,
             });
         }
+
         if utc_datetime_from_nanos(self.end_time_utc_nanos).is_none() {
             return Err(CoarseSimulationPathError::InvalidEndTimeUtcNanos {
                 value: self.end_time_utc_nanos,
             });
         }
+
         if self.simulated_interval_count == 0 {
             return Err(CoarseSimulationPathError::InvalidSimulatedIntervalCount { value: 0 });
         }
@@ -987,9 +1002,11 @@ impl CoarseSimulationPath {
         validate_excitation_state(self.initial_excitation_state).map_err(|(field, value)| {
             CoarseSimulationPathError::InvalidInitialState { field, value }
         })?;
+
         validate_excitation_state(self.terminal_excitation_state).map_err(|(field, value)| {
             CoarseSimulationPathError::InvalidTerminalState { field, value }
         })?;
+
         validate_output_schema_metadata(&self.output_schema_metadata)?;
         validate_provenance(&self.provenance)?;
 
@@ -1008,12 +1025,13 @@ impl CoarseSimulationPath {
                 });
             }
 
-            let expected_interval_start_utc_nanos = compute_interval_start_utc_nanos(
+            let expected_interval_start_utc_nanos = compute_horizon_end_time_utc_nanos(
                 self.start_time_utc_nanos,
                 interval_delta_nanos,
                 record_position,
             )
             .map_err(|source| CoarseSimulationPathError::InvalidTimeIndex { source })?;
+
             let expected_interval_end_utc_nanos = expected_interval_start_utc_nanos
                 .checked_add(interval_delta_nanos)
                 .ok_or(CoarseSimulationPathError::InvalidTimeIndex {
@@ -1032,6 +1050,7 @@ impl CoarseSimulationPath {
                     actual: record.interval_start_utc_nanos,
                 });
             }
+
             if record.interval_end_utc_nanos != expected_interval_end_utc_nanos {
                 return Err(CoarseSimulationPathError::IntervalBoundaryMismatch {
                     record_position,
@@ -1048,6 +1067,7 @@ impl CoarseSimulationPath {
             self.simulated_interval_count,
         )
         .map_err(|source| CoarseSimulationPathError::InvalidTimeIndex { source })?;
+
         if self.end_time_utc_nanos != expected_end_time_utc_nanos {
             return Err(CoarseSimulationPathError::InvalidEndTimeAlignment {
                 expected_end_time_utc_nanos,
@@ -1403,6 +1423,7 @@ fn validate_horizon_end_timestamp(
         interval_delta_nanos,
         horizon_interval_count,
     )?;
+
     Ok(())
 }
 
@@ -1416,6 +1437,7 @@ fn compute_horizon_end_time_utc_nanos(
             value: horizon_interval_count,
         }
     })?;
+
     let total_duration_nanos = interval_delta_nanos.checked_mul(interval_count_i64).ok_or(
         CoarseSimulationTimeIndexError::EndTimeOverflow {
             start_time_utc_nanos,
@@ -1423,6 +1445,7 @@ fn compute_horizon_end_time_utc_nanos(
             horizon_interval_count,
         },
     )?;
+
     let end_time_utc_nanos = start_time_utc_nanos
         .checked_add(total_duration_nanos)
         .ok_or(CoarseSimulationTimeIndexError::EndTimeOverflow {
@@ -1440,14 +1463,6 @@ fn compute_horizon_end_time_utc_nanos(
     Ok(end_time_utc_nanos)
 }
 
-fn compute_interval_start_utc_nanos(
-    start_time_utc_nanos: i64,
-    interval_delta_nanos: i64,
-    interval_index: usize,
-) -> Result<i64, CoarseSimulationTimeIndexError> {
-    compute_horizon_end_time_utc_nanos(start_time_utc_nanos, interval_delta_nanos, interval_index)
-}
-
 fn validate_interval_bounds(
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,
@@ -1459,6 +1474,7 @@ fn validate_interval_bounds(
             },
         );
     }
+
     if utc_datetime_from_nanos(interval_end_utc_nanos).is_none() {
         return Err(
             CoarseSimulationIntervalBoundsError::InvalidEndTimeUtcNanos {
@@ -1466,6 +1482,7 @@ fn validate_interval_bounds(
             },
         );
     }
+
     if interval_end_utc_nanos <= interval_start_utc_nanos {
         return Err(CoarseSimulationIntervalBoundsError::NonIncreasingBounds {
             interval_start_utc_nanos,
@@ -1566,6 +1583,7 @@ fn derive_coarse_simulation_path_diagnostics(
             .ok_or(CoarseSimulationPathError::InvalidSimulatedIntervalCount {
                 value: simulated_interval_count,
             })?;
+
     let last_record =
         records
             .last()
@@ -1596,6 +1614,7 @@ fn derive_coarse_simulation_path_diagnostics(
                 expected: "finite cumulative count".to_string(),
                 actual: "overflow".to_string(),
             })?;
+
         cumulative_n_minus = cumulative_n_minus
             .checked_add(record.sufficient_statistics.n_minus)
             .ok_or(CoarseSimulationPathError::InvalidDiagnostics {
@@ -1651,6 +1670,7 @@ fn derive_path_end_time_utc_nanos(
     if simulated_interval_count == 0 {
         return Err(CoarseSimulationPathError::InvalidSimulatedIntervalCount { value: 0 });
     }
+
     if records.len() != simulated_interval_count {
         return Err(CoarseSimulationPathError::RecordCountMismatch {
             simulated_interval_count,
@@ -1685,41 +1705,49 @@ fn validate_output_schema_metadata(
         &metadata.schema_version,
         &expected.schema_version,
     )?;
+
     validate_metadata_field(
         "output_schema_metadata.provenance_schema_version",
         &metadata.provenance_schema_version,
         &expected.provenance_schema_version,
     )?;
+
     validate_metadata_field(
         "output_schema_metadata.diagnostics_schema_version",
         &metadata.diagnostics_schema_version,
         &expected.diagnostics_schema_version,
     )?;
+
     validate_metadata_field(
         "output_schema_metadata.artifact_workflow_policy",
         &metadata.artifact_workflow_policy,
         &expected.artifact_workflow_policy,
     )?;
+
     validate_metadata_field(
         "output_schema_metadata.environment_metadata_policy",
         &metadata.environment_metadata_policy,
         &expected.environment_metadata_policy,
     )?;
+
     validate_metadata_list_field(
         "output_schema_metadata.required_path_fields",
         &metadata.required_path_fields,
         &expected.required_path_fields,
     )?;
+
     validate_metadata_list_field(
         "output_schema_metadata.required_record_fields",
         &metadata.required_record_fields,
         &expected.required_record_fields,
     )?;
+
     validate_metadata_list_field(
         "output_schema_metadata.required_provenance_fields",
         &metadata.required_provenance_fields,
         &expected.required_provenance_fields,
     )?;
+
     validate_metadata_list_field(
         "output_schema_metadata.required_diagnostics_fields",
         &metadata.required_diagnostics_fields,
@@ -1739,61 +1767,73 @@ fn validate_provenance(
         &provenance.schema_version,
         &expected.schema_version,
     )?;
+
     validate_provenance_field(
         "provenance.artifact_workflow_policy",
         &provenance.artifact_workflow_policy,
         &expected.artifact_workflow_policy,
     )?;
+
     validate_provenance_field(
         "provenance.environment_metadata_policy",
         &provenance.environment_metadata_policy,
         &expected.environment_metadata_policy,
     )?;
+
     validate_provenance_field(
         "provenance.interval_timing_policy",
         &provenance.interval_timing_policy,
         &expected.interval_timing_policy,
     )?;
+
     validate_provenance_field(
         "provenance.interval_identifier_policy",
         &provenance.interval_identifier_policy,
         &expected.interval_identifier_policy,
     )?;
+
     validate_provenance_field(
         "provenance.interval_factor_alignment_policy",
         &provenance.interval_factor_alignment_policy,
         &expected.interval_factor_alignment_policy,
     )?;
+
     validate_provenance_field(
         "provenance.compatible_interval_grid_policy",
         &provenance.compatible_interval_grid_policy,
         &expected.compatible_interval_grid_policy,
     )?;
+
     validate_provenance_field(
         "provenance.interval_factor_policy",
         &provenance.interval_factor_policy,
         &expected.interval_factor_policy,
     )?;
+
     validate_provenance_field(
         "provenance.transform_slice_sampling_policy",
         &provenance.transform_slice_sampling_policy,
         &expected.transform_slice_sampling_policy,
     )?;
+
     validate_provenance_field(
         "provenance.boundary_state_update_policy",
         &provenance.boundary_state_update_policy,
         &expected.boundary_state_update_policy,
     )?;
+
     validate_provenance_field(
         "provenance.interval_return_generation_policy",
         &provenance.interval_return_generation_policy,
         &expected.interval_return_generation_policy,
     )?;
+
     validate_provenance_field(
         "provenance.interval_return_component_routing_policy",
         &provenance.interval_return_component_routing_policy,
         &expected.interval_return_component_routing_policy,
     )?;
+
     validate_provenance_field(
         "provenance.batch_seed_partition_policy",
         &provenance.batch_seed_partition_policy,
@@ -1812,91 +1852,109 @@ fn validate_diagnostics(
         &diagnostics.schema_version,
         &expected.schema_version,
     )?;
+
     validate_diagnostics_field(
         "diagnostics.simulated_interval_count",
         &diagnostics.simulated_interval_count.to_string(),
         &expected.simulated_interval_count.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.first_interval_index",
         &diagnostics.first_interval_index.to_string(),
         &expected.first_interval_index.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.last_interval_index",
         &diagnostics.last_interval_index.to_string(),
         &expected.last_interval_index.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.first_interval_start_utc_nanos",
         &diagnostics.first_interval_start_utc_nanos.to_string(),
         &expected.first_interval_start_utc_nanos.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.last_interval_end_utc_nanos",
         &diagnostics.last_interval_end_utc_nanos.to_string(),
         &expected.last_interval_end_utc_nanos.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_a_plus",
         &diagnostics.cumulative_a_plus.to_string(),
         &expected.cumulative_a_plus.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_a_minus",
         &diagnostics.cumulative_a_minus.to_string(),
         &expected.cumulative_a_minus.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_n_plus",
         &diagnostics.cumulative_n_plus.to_string(),
         &expected.cumulative_n_plus.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_n_minus",
         &diagnostics.cumulative_n_minus.to_string(),
         &expected.cumulative_n_minus.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_trading_time_return",
         &diagnostics.cumulative_trading_time_return.to_string(),
         &expected.cumulative_trading_time_return.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_open_jump_return",
         &diagnostics.cumulative_open_jump_return.to_string(),
         &expected.cumulative_open_jump_return.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_closed_gap_return",
         &diagnostics.cumulative_closed_gap_return.to_string(),
         &expected.cumulative_closed_gap_return.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_total_return",
         &diagnostics.cumulative_total_return.to_string(),
         &expected.cumulative_total_return.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.cumulative_observed_return",
         &diagnostics.cumulative_observed_return.to_string(),
         &expected.cumulative_observed_return.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.max_abs_total_return",
         &diagnostics.max_abs_total_return.to_string(),
         &expected.max_abs_total_return.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.max_abs_deviation_from_anchor",
         &diagnostics.max_abs_deviation_from_anchor.to_string(),
         &expected.max_abs_deviation_from_anchor.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.terminal_observed_log_price",
         &diagnostics.terminal_observed_log_price.to_string(),
         &expected.terminal_observed_log_price.to_string(),
     )?;
+
     validate_diagnostics_field(
         "diagnostics.terminal_deviation_from_anchor",
         &diagnostics.terminal_deviation_from_anchor.to_string(),
@@ -2015,12 +2073,14 @@ mod tests {
 
         let serialized =
             serde_json::to_value(&request).expect("coarse simulation request should serialize");
+
         let parsed: CoarseSimulationRunRequest =
             serde_json::from_value(serialized.clone()).expect("serialized request should parse");
 
         parsed
             .validate()
             .expect("deserialized coarse simulation request should remain valid");
+
         assert_eq!(parsed, request);
         assert_eq!(
             serialized["schema_version"],
@@ -2033,7 +2093,7 @@ mod tests {
         assert_eq!(serialized["interval_delta"], json!(1.0));
         assert_eq!(serialized["horizon_interval_count"], json!(2));
         assert_eq!(
-            serialized["interval_factors"]["nu_h_known"],
+            serialized["interval_factor_grids"]["known_news_intensity"],
             json!([0.12, 0.03])
         );
         assert_eq!(serialized["model_inputs"]["exchange_code"], json!("XNYS"));
@@ -2045,12 +2105,14 @@ mod tests {
 
         let serialized =
             serde_json::to_value(&path).expect("coarse simulation path should serialize");
+
         let parsed: CoarseSimulationPath =
             serde_json::from_value(serialized.clone()).expect("serialized path should parse");
 
         parsed
             .validate()
             .expect("deserialized coarse simulation path should remain valid");
+
         assert_eq!(parsed, path);
         assert_eq!(
             serialized["schema_version"],
@@ -2085,6 +2147,7 @@ mod tests {
     #[test]
     fn coarse_path_output_schema_metadata_exposes_required_field_lists() {
         let path = build_valid_path();
+
         let serialized =
             serde_json::to_value(path).expect("coarse simulation path should serialize");
 
@@ -2133,7 +2196,7 @@ mod tests {
             2,
             0.5,
             build_model_inputs(),
-            build_interval_factors(Some(1.0)),
+            build_interval_factor_grids(Some(1.0)),
         )
         .expect_err("interval delta mismatch must fail");
 
@@ -2154,7 +2217,7 @@ mod tests {
             2,
             0.0,
             build_model_inputs(),
-            build_interval_factors(Some(1.0)),
+            build_interval_factor_grids(Some(1.0)),
         )
         .expect_err("non-positive interval delta must fail");
 
@@ -2180,6 +2243,7 @@ mod tests {
     #[test]
     fn interval_delta_to_nanos_rejects_fractional_nanosecond_grid() {
         let interval_delta = 1.0 / 7.0;
+
         let error = interval_delta_to_nanos(interval_delta)
             .expect_err("fractional nanosecond interval should fail");
 
@@ -2192,6 +2256,7 @@ mod tests {
     #[test]
     fn coarse_run_request_accepts_seasonality_scaled_subcritical_hawkes_inputs() {
         let mut model_inputs = build_model_inputs();
+
         model_inputs
             .sufficient_statistics_model_inputs
             .equation_specification
@@ -2213,7 +2278,7 @@ mod tests {
         )
         .expect("supercritical guard fixture should be valid in kernel domain");
 
-        let interval_factors = SufficientStatisticsIntervalFactors::try_new(
+        let interval_factor_grids = SufficientStatisticsIntervalFactors::try_new(
             vec![1.2, 1.2],
             vec![0.12, 0.03],
             vec![0.08, 0.07],
@@ -2227,7 +2292,7 @@ mod tests {
             2,
             1.0,
             model_inputs,
-            interval_factors,
+            interval_factor_grids,
         )
         .expect(
             "raw-subcritical Hawkes inputs should remain valid when seasonality scales baseline",
@@ -2243,7 +2308,7 @@ mod tests {
             "interval_delta": 1.0,
             "model_inputs": serde_json::to_value(build_model_inputs())
                 .expect("model inputs should serialize"),
-            "interval_factors": serde_json::to_value(build_interval_factors(Some(1.0)))
+            "interval_factor_grids": serde_json::to_value(build_interval_factor_grids(Some(1.0)))
                 .expect("interval factors should serialize")
         });
 
@@ -2256,6 +2321,7 @@ mod tests {
     #[test]
     fn coarse_path_rejects_misaligned_interval_boundary_record() {
         let mut path = build_valid_path();
+
         path.records[1].interval_start_utc_nanos += 1;
 
         let error = path
@@ -2279,7 +2345,7 @@ mod tests {
             2,
             1.0,
             build_model_inputs(),
-            build_interval_factors(Some(1.0)),
+            build_interval_factor_grids(Some(1.0)),
         )
         .expect("valid coarse simulation request should construct")
     }
@@ -2301,6 +2367,7 @@ mod tests {
             -0.01,
         )
         .expect("record should be valid");
+
         let second_record = CoarseSimulationPathRecord::try_new(
             1,
             1_704_070_800_000_000_000,
@@ -2409,7 +2476,9 @@ mod tests {
         .expect("coarse model inputs should construct")
     }
 
-    fn build_interval_factors(interval_delta: Option<f64>) -> SufficientStatisticsIntervalFactors {
+    fn build_interval_factor_grids(
+        interval_delta: Option<f64>,
+    ) -> SufficientStatisticsIntervalFactors {
         SufficientStatisticsIntervalFactors::try_new(
             vec![1.1, 0.9],
             vec![0.12, 0.03],

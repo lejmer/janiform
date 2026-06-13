@@ -498,8 +498,8 @@ fn evaluate_schedule_base_rhs(
 
     let long_variance_parameters = equation_specification.long_variance_parameters;
 
-    let baseline_rate =
-        transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar;
+    let baseline_rate = transform_input.seasonality_factor
+        * equation_specification.hawkes_kernel_parameters.lambda_bar;
 
     let long_variance_derivative = base_state
         .long_variance_loading
@@ -597,8 +597,8 @@ fn evaluate_schedule_tangent_rhs(
 
     let direct = direct_tangent.activity_loadings;
 
-    let baseline_rate =
-        transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar;
+    let baseline_rate = transform_input.seasonality_factor
+        * equation_specification.hawkes_kernel_parameters.lambda_bar;
 
     let h_plus_endogenous_derivative = plus_state_derivative
         .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
@@ -744,8 +744,8 @@ fn stationary_long_variance_level(
     let equation_specification = transform_input.equation_specification;
 
     let news_activity_loading_rate = expected_news_activity_loading_rate(
-        transform_input.news_intensity.known_nu_h,
-        transform_input.news_intensity.surprise_nu_h,
+        transform_input.news_intensity.known_news_intensity,
+        transform_input.news_intensity.surprise_news_intensity,
         transform_input.known_news_component_mark_scales,
         transform_input.surprise_news_component_mark_scales,
         equation_specification.gamma_severity_mark_configuration,

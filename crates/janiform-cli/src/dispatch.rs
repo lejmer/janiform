@@ -10,13 +10,10 @@ use crate::commands::fit::execution::run_fit_staged_run_command;
 use crate::commands::fit::planning::run_fit_inspect;
 use crate::commands::fit::planning::run_fit_plan;
 use crate::commands::fit::planning::run_fit_staged_plan;
-use crate::commands::hourly_factors::HourlyFactorsSubcommand;
-use crate::commands::hourly_factors::run_hourly_factor_build_contract;
-use crate::commands::hourly_factors::run_hourly_factor_materialize_news_intensity;
-use crate::commands::hourly_factors::run_hourly_factor_materialize_seasonality;
 use crate::commands::inspection::InspectSubcommand;
 use crate::commands::inspection::run_inspect_model;
 use crate::commands::inspection::run_inspect_run;
+use crate::commands::inspection::run_inspect_seasonality;
 use crate::commands::presets::PresetsSubcommand;
 use crate::commands::presets::run_presets_export;
 use crate::commands::presets::run_presets_list;
@@ -49,6 +46,7 @@ pub(crate) fn dispatch(
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(command) => run_inspect_run(context, command),
             InspectSubcommand::Model(command) => run_inspect_model(context, command),
+            InspectSubcommand::Seasonality(command) => run_inspect_seasonality(context, command),
         },
         RootCommand::Report(command) => match command.command {
             ReportSubcommand::Fit(command) => run_report_fit(context, command),
@@ -75,17 +73,6 @@ pub(crate) fn dispatch(
             PresetsSubcommand::List(command) => run_presets_list(context, command),
             PresetsSubcommand::Show(command) => run_presets_show(context, command),
             PresetsSubcommand::Export(command) => run_presets_export(context, command),
-        },
-        RootCommand::HourlyFactors(command) => match command.command {
-            HourlyFactorsSubcommand::MaterializeSeasonality(command) => {
-                run_hourly_factor_materialize_seasonality(context, command)
-            }
-            HourlyFactorsSubcommand::MaterializeNewsIntensity(command) => {
-                run_hourly_factor_materialize_news_intensity(context, command)
-            }
-            HourlyFactorsSubcommand::BuildContract(command) => {
-                run_hourly_factor_build_contract(context, command)
-            }
         },
         RootCommand::Validate(command) => match command.command {
             ValidateSubcommand::StylizedFacts(command) => {

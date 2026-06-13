@@ -1,5 +1,5 @@
 use janiform::model::affine_oracle::ExponentialAffineTransformEquationSpecification;
-use janiform::model::factors::hourly::HourlyFactorContractOutput;
+use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::model::sufficient_statistics::{
     SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
@@ -18,7 +18,7 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
     initial_excitation_state: HawkesExcitationState,
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
-    hourly_factor_contract: HourlyFactorContractOutput,
+    interval_factor_grid: IntervalFactorGrid,
 ) -> SeededTickSimulationModelInputs {
     SeededTickSimulationModelInputs {
         kernel_parameters: context
@@ -46,7 +46,7 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
             .clone(),
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
@@ -151,15 +151,15 @@ pub(crate) fn build_coarse_simulation_model_inputs(
     .map_err(|source| validation_error("coarse_model_inputs", source.to_string()))
 }
 
-pub(crate) fn build_sufficient_statistics_interval_factors(
+pub(crate) fn build_sufficient_statistics_interval_factor_grids(
     context: &FittedModelContext,
-    hourly_factor_contract: HourlyFactorContractOutput,
+    interval_factor_grid: IntervalFactorGrid,
 ) -> Result<SufficientStatisticsIntervalFactors, WorkflowError> {
     SufficientStatisticsIntervalFactors::try_new(
-        hourly_factor_contract.s_h,
-        hourly_factor_contract.known_component_nu_h,
-        hourly_factor_contract.surprise_component_nu_h,
+        interval_factor_grid.seasonality_factor,
+        interval_factor_grid.known_news_intensity,
+        interval_factor_grid.surprise_news_intensity,
         Some(context.interval_delta),
     )
-    .map_err(|source| validation_error("interval_factors", source.to_string()))
+    .map_err(|source| validation_error("interval_factor_grids", source.to_string()))
 }

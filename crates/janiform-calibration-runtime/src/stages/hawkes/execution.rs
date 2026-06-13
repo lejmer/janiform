@@ -29,7 +29,7 @@ use crate::optimizer_adapter::{
 use crate::stages::parallelism::run_in_stage_thread_pool;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
-    maximum_runtime_hourly_seasonality_factor_from_payload,
+    maximum_runtime_interval_seasonality_factor_from_payload,
 };
 use janiform_calibration_artifacts::{
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -127,7 +127,7 @@ struct HawkesStageSetup {
     stage_solver_settings: CalibrationOptimizerSettings,
     resolved_stage_seed: CalibrationResolvedStageSeed,
     optimizer_adapter_configuration: CalibrationOptimizerAdapterConfiguration,
-    max_runtime_hourly_seasonality_factor: f64,
+    max_runtime_interval_seasonality_factor: f64,
     likelihood_tape: Option<HawkesLikelihoodTape>,
 }
 
@@ -249,8 +249,9 @@ fn resolve_hawkes_stage_setup(
     )?;
 
     let seasonality_payload = stage_input.seasonality_input.payload();
-    let max_runtime_hourly_seasonality_factor =
-        match maximum_runtime_hourly_seasonality_factor_from_payload(
+
+    let max_runtime_interval_seasonality_factor =
+        match maximum_runtime_interval_seasonality_factor_from_payload(
             calendar_registry,
             seasonality_payload,
         ) {
@@ -259,7 +260,7 @@ fn resolve_hawkes_stage_setup(
                 return Err(Box::new(build_hawkes_stage_failure_report(
                     run_spec,
                     HawkesStageExecutionFailure::CandidateConstructionFailed {
-                        candidate_id: "runtime_hourly_seasonality_envelope".to_string(),
+                        candidate_id: "runtime_interval_seasonality_envelope".to_string(),
                         error_message,
                     },
                 )));
@@ -285,7 +286,7 @@ fn resolve_hawkes_stage_setup(
         stage_solver_settings,
         resolved_stage_seed,
         optimizer_adapter_configuration,
-        max_runtime_hourly_seasonality_factor,
+        max_runtime_interval_seasonality_factor,
         likelihood_tape,
     })
 }
@@ -302,6 +303,7 @@ fn validate_hawkes_stage_preflight(
         6,
         Some("run spec"),
     );
+
     if let Err(source) = run_spec.validate() {
         return Err(Box::new(build_hawkes_stage_failure_report(
             run_spec,
@@ -318,6 +320,7 @@ fn validate_hawkes_stage_preflight(
         6,
         Some("stage selection"),
     );
+
     if !run_spec
         .selected_stages
         .iter()
@@ -337,6 +340,7 @@ fn validate_hawkes_stage_preflight(
         6,
         Some("solver settings"),
     );
+
     let Some(stage_solver_settings) =
         stage_solver_settings_for_stage(run_spec, CalibrationStage::Hawkes)
     else {
@@ -353,6 +357,7 @@ fn validate_hawkes_stage_preflight(
         6,
         Some("candidate inputs"),
     );
+
     if stage_input.candidate_inputs.is_empty() {
         return Err(Box::new(build_hawkes_stage_failure_report(
             run_spec,
@@ -367,6 +372,7 @@ fn validate_hawkes_stage_preflight(
         6,
         Some("seasonality handoff"),
     );
+
     validate_hawkes_seasonality_handoff(run_spec, stage_input)?;
 
     emit_hawkes_progress(
@@ -386,12 +392,13 @@ fn validate_hawkes_seasonality_handoff(
 ) -> HawkesStageReportResult<()> {
     let expected_seasonality_handoff =
         run_spec.stage_handoff(CalibrationStage::Seasonality, CalibrationStage::Hawkes);
+
     let expected_transport = run_spec.stage_handoff_transport_or_default(
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
     );
-    let provided_transport = stage_input.seasonality_input.transport();
 
+    let provided_transport = stage_input.seasonality_input.transport();
     if provided_transport != expected_transport {
         return Err(Box::new(build_hawkes_stage_failure_report(
             run_spec,
@@ -504,6 +511,7 @@ fn evaluate_hawkes_candidate_grid(
     progress_sender: Option<&Sender<HawkesStageProgressUpdate>>,
 ) -> HawkesStageReportResult<HawkesCandidateGridEvaluation> {
     let seasonality_payload = stage_input.seasonality_input.payload();
+
     let mut observed_activity_targets_by_regime = BTreeMap::new();
 
     let initial_prepared_candidates = prepare_hawkes_candidate_batch(
@@ -515,6 +523,7 @@ fn evaluate_hawkes_candidate_grid(
         progress_sender,
         "initial grid",
     )?;
+
     let initial_candidate_count = initial_prepared_candidates.len();
 
     let (initial_candidate_diagnostics, initial_optimizer_output) =
@@ -540,6 +549,7 @@ fn evaluate_hawkes_candidate_grid(
     );
 
     let mut all_prepared_candidates = initial_prepared_candidates;
+
     if !refined_candidate_inputs.is_empty() {
         let refined_prepared_candidates = prepare_hawkes_candidate_batch(
             run_spec,
@@ -598,7 +608,7 @@ fn prepare_hawkes_candidate_batch(
         run_spec,
         candidate_inputs,
         seasonality_payload,
-        setup.max_runtime_hourly_seasonality_factor,
+        setup.max_runtime_interval_seasonality_factor,
         setup.stage_solver_settings.cpu_count,
         observed_activity_targets_by_regime,
     )?;
@@ -769,17 +779,21 @@ fn build_hawkes_candidate_selection(
         prepared_candidates.as_slice(),
         selected_candidate_position,
     )?;
+
     let selected_candidate_diagnostic = selected_hawkes_candidate_diagnostic(
         run_spec,
         candidate_diagnostics.as_slice(),
         selected_candidate_position,
     )?;
+
     let kernel_parameters = selected_hawkes_kernel_parameters(
         run_spec,
         &selected_candidate_input,
         selected_candidate_diagnostic,
     )?;
+
     let selected_candidate_raw_objective = selected_candidate_diagnostic.raw_objective_value;
+
     let selected_candidate_penalized_objective =
         selected_candidate_diagnostic.penalized_objective_value;
 
@@ -921,7 +935,7 @@ fn build_hawkes_stage_success_report(
         stage_solver_settings,
         resolved_stage_seed,
         optimizer_adapter_configuration: _,
-        max_runtime_hourly_seasonality_factor: _,
+        max_runtime_interval_seasonality_factor: _,
         likelihood_tape: _,
     } = setup;
 
@@ -996,7 +1010,7 @@ fn build_candidate_objective_terms(
     candidate_input: &HawkesStageCandidateInput,
     observed_activity_targets: HawkesObservedActivityTargets,
     lambda_bar_scaling_ratio_applied: f64,
-    max_runtime_hourly_seasonality_factor: f64,
+    max_runtime_interval_seasonality_factor: f64,
     derived_alpha: Option<HawkesKernelLoadings>,
     derived_rho: Option<HawkesKernelLoadings>,
 ) -> (
@@ -1020,7 +1034,7 @@ fn build_candidate_objective_terms(
         candidate_input,
         observed_activity_targets,
         lambda_bar_scaling_ratio_applied,
-        max_runtime_hourly_seasonality_factor,
+        max_runtime_interval_seasonality_factor,
         derived_alpha,
         derived_rho,
     ) else {
@@ -1131,7 +1145,7 @@ fn prepare_hawkes_candidates(
     run_spec: &CalibrationRunSpec,
     candidate_inputs: &[HawkesStageCandidateInput],
     seasonality_payload: &SeasonalityStageNormalizedPayload,
-    max_runtime_hourly_seasonality_factor: f64,
+    max_runtime_interval_seasonality_factor: f64,
     cpu_count: usize,
     observed_activity_targets_by_regime: &mut BTreeMap<
         HawkesObservedSourceRegimeKey,
@@ -1149,7 +1163,7 @@ fn prepare_hawkes_candidates(
     Ok(prepare_hawkes_candidates_from_validated_inputs(
         validated_candidate_inputs.as_slice(),
         observed_activity_targets_by_regime,
-        max_runtime_hourly_seasonality_factor,
+        max_runtime_interval_seasonality_factor,
         cpu_count,
     ))
 }
@@ -1197,6 +1211,7 @@ fn populate_observed_activity_targets_cache(
 ) {
     for candidate_input in validated_candidate_inputs {
         let regime_key = HawkesObservedSourceRegimeKey::from(&candidate_input.source_regime);
+
         observed_activity_targets_by_regime
             .entry(regime_key)
             .or_insert_with(|| {
@@ -1214,7 +1229,7 @@ fn prepare_hawkes_candidates_from_validated_inputs(
         HawkesObservedSourceRegimeKey,
         HawkesObservedActivityTargets,
     >,
-    max_runtime_hourly_seasonality_factor: f64,
+    max_runtime_interval_seasonality_factor: f64,
     cpu_count: usize,
 ) -> Vec<HawkesPreparedCandidate> {
     run_with_hawkes_stage_thread_pool(cpu_count, || {
@@ -1235,7 +1250,7 @@ fn prepare_hawkes_candidates_from_validated_inputs(
                 prepare_hawkes_candidate(
                     candidate_input,
                     observed_activity_targets,
-                    max_runtime_hourly_seasonality_factor,
+                    max_runtime_interval_seasonality_factor,
                 )
             })
             .collect()
@@ -1245,7 +1260,7 @@ fn prepare_hawkes_candidates_from_validated_inputs(
 fn prepare_hawkes_candidate(
     candidate_input: &HawkesStageCandidateInput,
     observed_activity_targets: HawkesObservedActivityTargets,
-    max_runtime_hourly_seasonality_factor: f64,
+    max_runtime_interval_seasonality_factor: f64,
 ) -> HawkesPreparedCandidate {
     // Intentional copy to keep the immutable candidate grid reusable across CPU schedules.
     let candidate_for_adjustment = candidate_input.clone();
@@ -1272,7 +1287,7 @@ fn prepare_hawkes_candidate(
             &adjusted_candidate_input,
             observed_activity_targets,
             lambda_bar_scaling_ratio_applied,
-            max_runtime_hourly_seasonality_factor,
+            max_runtime_interval_seasonality_factor,
             validation_report.derived_alpha,
             validation_report.derived_rho,
         );
@@ -1437,7 +1452,6 @@ fn generate_refined_hawkes_candidate_inputs(
         .enumerate()
     {
         let seed_candidate = &prepared_candidates[candidate_index].adjusted_candidate_input;
-
         let alpha_scales = refinement_alpha_scales(&candidate_diagnostics[candidate_index]);
 
         for lambda_scale in LAMBDA_SCALES {
@@ -1598,7 +1612,7 @@ fn invalid_candidate_objective_bundle(
             ),
             deseasonalized_open_event_rate_per_hour_target: 0.0,
             lambda_bar_scaling_ratio_applied: 1.0,
-            max_runtime_hourly_seasonality_factor: 1.0,
+            max_runtime_interval_seasonality_factor: 1.0,
             max_runtime_effective_branching_ratio: 0.0,
             runtime_effective_branching_margin: 1.0,
             model_implied_open_event_rate_per_hour: 0.0,
@@ -1700,14 +1714,17 @@ fn derive_observed_activity_targets(
 
     let deseasonalized_mean_interarrival_seconds =
         arithmetic_mean(transformed_open_gaps_seconds.as_slice())
-            .unwrap_or(source_regime.open_session_mean_interarrival_seconds * mean_open_factor)
-            .max(1.0e-6);
+            .unwrap_or(source_regime.open_session_mean_interarrival_seconds * mean_open_factor);
 
     let deseasonalized_interarrival_coefficient_of_variation =
         coefficient_of_variation(transformed_open_gaps_seconds.as_slice());
 
+    let observed_short_gap_threshold_to_mean_ratio = source_regime
+        .open_session_short_gap_threshold_seconds
+        / source_regime.open_session_mean_interarrival_seconds;
+
     let deseasonalized_short_gap_threshold_seconds =
-        (deseasonalized_mean_interarrival_seconds * 0.5).clamp(1.0, 300.0);
+        deseasonalized_mean_interarrival_seconds * observed_short_gap_threshold_to_mean_ratio;
 
     let deseasonalized_short_gap_ratio = short_gap_ratio_from_threshold(
         transformed_open_gaps_seconds.as_slice(),
@@ -1804,7 +1821,7 @@ fn derive_candidate_implied_metrics(
     candidate_input: &HawkesStageCandidateInput,
     observed_activity_targets: HawkesObservedActivityTargets,
     lambda_bar_scaling_ratio_applied: f64,
-    max_runtime_hourly_seasonality_factor: f64,
+    max_runtime_interval_seasonality_factor: f64,
     derived_alpha: HawkesKernelLoadings,
     derived_rho: HawkesKernelLoadings,
 ) -> Option<HawkesStageImpliedMetricsDiagnostic> {
@@ -1895,7 +1912,7 @@ fn derive_candidate_implied_metrics(
         deseasonalized_open_event_rate_per_hour_target: observed_activity_targets
             .deseasonalized_open_event_rate_per_hour,
         lambda_bar_scaling_ratio_applied,
-        max_runtime_hourly_seasonality_factor,
+        max_runtime_interval_seasonality_factor,
         max_runtime_effective_branching_ratio,
         runtime_effective_branching_margin: (1.0 - max_runtime_effective_branching_ratio).max(0.0),
         model_implied_open_event_rate_per_hour: stationary_total_intensity,
@@ -2277,7 +2294,7 @@ mod tests {
                 observed_open_event_rate_per_hour: 1.0,
                 deseasonalized_open_event_rate_per_hour_target: 1.0,
                 lambda_bar_scaling_ratio_applied: 1.0,
-                max_runtime_hourly_seasonality_factor: 10.0,
+                max_runtime_interval_seasonality_factor: 10.0,
                 max_runtime_effective_branching_ratio: 5.0,
                 runtime_effective_branching_margin: 0.0,
                 model_implied_open_event_rate_per_hour: 1.0,

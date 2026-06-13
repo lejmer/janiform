@@ -117,7 +117,7 @@ pub fn materialize_fourier_business_time_clock(
     }
 
     let business_time_factors =
-        open_time_mean_renormalize_interval_factors(interval_contributions.as_slice())?;
+        open_time_mean_renormalize_interval_factor_grids(interval_contributions.as_slice())?;
 
     let interval_start_utc_nanos = interval_contributions
         .iter()
@@ -194,7 +194,7 @@ fn materialize_interval(
     })
 }
 
-fn open_time_mean_renormalize_interval_factors(
+fn open_time_mean_renormalize_interval_factor_grids(
     interval_contributions: &[IntervalContribution],
 ) -> Result<Vec<f64>, FourierBusinessTimeClockMaterializationError> {
     let total_open_exposure_seconds = interval_contributions

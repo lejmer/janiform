@@ -6,7 +6,7 @@ use janiform::calibration::market_data::{
     MarketDataOptionSurfaceColumnMapping, MarketDataTickDataColumnMapping,
     OptionForwardParityWarningPolicy, PriceCoordinatePolicy, ResolvedPriceCoordinateSet,
 };
-use janiform::model::factors::hourly::NANOS_PER_HOUR;
+use janiform::model::factors::interval_factor_grid::NANOS_PER_HOUR;
 use janiform::model::hawkes::HawkesEventSide;
 use janiform::pricing::{
     PricingIntervalSchedulePolicy, VanillaOptionPayoffType,

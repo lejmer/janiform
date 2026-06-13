@@ -2999,7 +2999,7 @@ pub(in crate::stages::joint_refinement) fn observed_activity_log_shift_for_joint
 fn activity_exposure_for_simulation_template(
     joint_context: &JointRefinementContext,
 ) -> Option<f64> {
-    if joint_context.runtime_hourly_seasonality_factors.len()
+    if joint_context.runtime_interval_seasonality_factors.len()
         != joint_context
             .observed_data
             .simulated_hourly_interval_template
@@ -3010,14 +3010,14 @@ fn activity_exposure_for_simulation_template(
 
     let mut exposure = 0.0;
 
-    for (interval, hourly_factor) in joint_context
+    for (interval, interval_factor_grid) in joint_context
         .observed_data
         .simulated_hourly_interval_template
         .iter()
-        .zip(joint_context.runtime_hourly_seasonality_factors.iter())
+        .zip(joint_context.runtime_interval_seasonality_factors.iter())
     {
-        if !hourly_factor.is_finite()
-            || *hourly_factor < 0.0
+        if !interval_factor_grid.is_finite()
+            || *interval_factor_grid < 0.0
             || interval.interval_end_utc_nanos < interval.interval_start_utc_nanos
         {
             return None;
@@ -3027,7 +3027,7 @@ fn activity_exposure_for_simulation_template(
             interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
         );
 
-        exposure += *hourly_factor * duration_hours;
+        exposure += *interval_factor_grid * duration_hours;
     }
 
     (exposure.is_finite() && exposure > 0.0).then_some(exposure)

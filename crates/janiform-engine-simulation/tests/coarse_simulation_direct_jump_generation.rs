@@ -192,8 +192,8 @@ fn coarse_simulation_rejects_known_news_factor_misalignment_at_runner_boundary()
         error,
         CoarseSimulationRunError::KnownNewsFactorAlignmentFailure {
             interval_index: 0,
-            expected_known_nu_h: 0.0,
-            derived_known_nu_h: 2.0,
+            expected_known_news_intensity: 0.0,
+            derived_known_news_intensity: 2.0,
         }
     ));
 }
@@ -368,8 +368,8 @@ fn build_run_request(
     horizon_interval_count: usize,
     interval_delta: f64,
     known_news_timestamps_utc_nanos: Vec<i64>,
-    nu_h_known: Vec<f64>,
-    nu_h_surprise: Vec<f64>,
+    known_news_intensity: Vec<f64>,
+    surprise_news_intensity: Vec<f64>,
 ) -> CoarseSimulationRunRequest {
     build_run_request_with_model_inputs(
         seed,
@@ -382,8 +382,8 @@ fn build_run_request(
         ),
         SufficientStatisticsIntervalFactors::try_new(
             vec![1.0; horizon_interval_count],
-            nu_h_known,
-            nu_h_surprise,
+            known_news_intensity,
+            surprise_news_intensity,
             Some(interval_delta),
         )
         .expect("interval factors should construct"),
@@ -395,15 +395,15 @@ fn build_run_request_with_model_inputs(
     start_time_utc_nanos: i64,
     interval_delta: f64,
     model_inputs: CoarseSimulationModelInputs,
-    interval_factors: SufficientStatisticsIntervalFactors,
+    interval_factor_grids: SufficientStatisticsIntervalFactors,
 ) -> CoarseSimulationRunRequest {
     CoarseSimulationRunRequest::try_new(
         seed,
         start_time_utc_nanos,
-        interval_factors.s_h.len(),
+        interval_factor_grids.seasonality_factor.len(),
         interval_delta,
         model_inputs,
-        interval_factors,
+        interval_factor_grids,
     )
     .expect("run request should construct")
 }

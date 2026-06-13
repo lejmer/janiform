@@ -32,6 +32,14 @@ The command reads the latest status snapshot first, then falls back to the progr
 Use this command when you have a saved model and need to understand what data produced it, which components were fit, and which downstream tasks it supports."
     )]
     Model(InspectModelCommand),
+
+    #[command(
+        about = "Inspect fitted seasonality on a requested interval grid.",
+        long_about = "Inspect fitted seasonality on a requested interval grid.
+
+This command reads a saved model, materializes its Fourier business-time clock over the requested UTC range and interval, and reports the deterministic seasonality factors that downstream runtimes would consume."
+    )]
+    Seasonality(InspectSeasonalityCommand),
 }
 
 #[derive(Debug, Args)]
@@ -62,4 +70,38 @@ pub(crate) struct InspectModelCommand {
 
     #[arg(long, help = "Include detailed parameter summaries.")]
     pub(crate) parameters: bool,
+}
+
+#[derive(Debug, Args)]
+#[command(
+    about = "Inspect fitted seasonality on a requested interval grid.",
+    long_about = "Inspect fitted seasonality on a requested interval grid.
+
+The model artifact must include a fitted Fourier seasonality clock and the resolved session definition used during calibration."
+)]
+pub(crate) struct InspectSeasonalityCommand {
+    #[arg(long, value_name = "MODEL_PATH", help = "Saved model path to inspect.")]
+    pub(crate) model: PathBuf,
+
+    #[arg(
+        long,
+        value_name = "RFC3339_UTC",
+        help = "Inclusive UTC range start, for example 2026-02-02T14:00:00Z."
+    )]
+    pub(crate) range_start_utc: String,
+
+    #[arg(
+        long,
+        value_name = "RFC3339_UTC",
+        help = "Exclusive UTC range end, for example 2026-02-03T14:00:00Z."
+    )]
+    pub(crate) range_end_utc: String,
+
+    #[arg(
+        long,
+        default_value = "1h",
+        value_name = "DURATION",
+        help = "Fixed UTC interval duration such as 5min, 1h, or 1d."
+    )]
+    pub(crate) interval: String,
 }

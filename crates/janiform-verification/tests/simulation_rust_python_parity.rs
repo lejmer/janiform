@@ -13,9 +13,9 @@ use janiform_engine_simulation::{
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
-use janiform_market_time::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HourlyFactorContractBuildInput,
-    build_hourly_factor_contract,
+use janiform_market_time::interval_factor_grids::{
+    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD, IntervalFactorGridBuildInput,
+    build_interval_factor_grid,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -100,8 +100,8 @@ struct SeededTickSimulationParityFixtureCase {
     horizon_interval_count: usize,
     kernel_parameters: SeededTickSimulationParityFixtureKernelParameters,
     initial_excitation_state: SeededTickSimulationParityFixtureInitialExcitationState,
-    seasonality_hourly_factors: Vec<f64>,
-    news_intensity_hourly_factors: Vec<f64>,
+    seasonality_interval_factor_grids: Vec<f64>,
+    news_intensity_interval_factor_grids: Vec<f64>,
     expected_timestamps_utc_nanos: Vec<i64>,
     expected_side_sequence: Vec<String>,
     expected_total_event_count: usize,
@@ -347,15 +347,19 @@ fn validate_seeded_tick_simulation_parity_fixture(
                 fixture_case.fixture_id
             ));
         }
-        if fixture_case.seasonality_hourly_factors.len() != fixture_case.horizon_interval_count {
+        if fixture_case.seasonality_interval_factor_grids.len()
+            != fixture_case.horizon_interval_count
+        {
             return Err(format!(
-                "fixture case {} seasonality_hourly_factors length must match horizon_interval_count",
+                "fixture case {} seasonality_interval_factor_grids length must match horizon_interval_count",
                 fixture_case.fixture_id
             ));
         }
-        if fixture_case.news_intensity_hourly_factors.len() != fixture_case.horizon_interval_count {
+        if fixture_case.news_intensity_interval_factor_grids.len()
+            != fixture_case.horizon_interval_count
+        {
             return Err(format!(
-                "fixture case {} news_intensity_hourly_factors length must match horizon_interval_count",
+                "fixture case {} news_intensity_interval_factor_grids length must match horizon_interval_count",
                 fixture_case.fixture_id
             ));
         }
@@ -483,17 +487,17 @@ fn run_fixture_case(
     let range_start_utc = parse_utc_timestamp(&fixture_case.range_start_utc)?;
     let range_end_utc = parse_utc_timestamp(&fixture_case.range_end_utc)?;
 
-    let hourly_factor_contract = build_hourly_factor_contract(HourlyFactorContractBuildInput {
+    let interval_factor_grid = build_interval_factor_grid(IntervalFactorGridBuildInput {
         calendar_registry,
         exchange_code: &fixture_case.exchange_code,
         range_utc: range_start_utc..range_end_utc,
         interval_duration_nanos: NANOS_PER_HOUR,
-        seasonality_factors: &fixture_case.seasonality_hourly_factors,
-        news_intensity_factors: &fixture_case.news_intensity_hourly_factors,
-        seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
-        news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        seasonality_factors: &fixture_case.seasonality_interval_factor_grids,
+        news_intensity_factors: &fixture_case.news_intensity_interval_factor_grids,
+        seasonality_materialization_method: DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD,
+        news_intensity_materialization_method: DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD,
     })
-    .map_err(|source| format!("failed to build hourly factor contract: {source}"))?;
+    .map_err(|source| format!("failed to build interval factor grid contract: {source}"))?;
 
     let kernel_parameters = HawkesKernelParameters::try_new(
         fixture_case.kernel_parameters.lambda_bar,
@@ -519,13 +523,13 @@ fn run_fixture_case(
                 MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                     .expect("zero-kappa endogenous mean reversion should construct"),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
-                hourly_factor_contract.metadata.interval_alignment_policy,
+                interval_factor_grid.metadata.interval_alignment_policy,
                 0.0,
                 0.0,
                 vec![0.0; fixture_case.horizon_interval_count],
                 vec![0.0; fixture_case.horizon_interval_count],
                 vec![
-                    hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
+                    interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
                     fixture_case.horizon_interval_count
                 ],
             )
@@ -538,7 +542,7 @@ fn run_fixture_case(
             .map_err(|source| {
                 format!("invalid disabled mean-reversion boundary state: {source}")
             })?,
-            hourly_factor_contract,
+            interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),

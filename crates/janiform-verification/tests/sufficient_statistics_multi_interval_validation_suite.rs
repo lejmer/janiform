@@ -311,35 +311,44 @@ fn build_run_request(seed: u64, horizon_interval_count: usize) -> SufficientStat
     })
     .expect("fixture model inputs should construct");
 
-    let (s_h, nu_h_known, nu_h_surprise) = build_interval_factors(horizon_interval_count);
-    let interval_factors =
-        SufficientStatisticsIntervalFactors::try_new(s_h, nu_h_known, nu_h_surprise, Some(1.0))
-            .expect("interval factors should construct");
+    let (seasonality_factor, known_news_intensity, surprise_news_intensity) =
+        build_interval_factor_grids(horizon_interval_count);
+    let interval_factor_grids = SufficientStatisticsIntervalFactors::try_new(
+        seasonality_factor,
+        known_news_intensity,
+        surprise_news_intensity,
+        Some(1.0),
+    )
+    .expect("interval factors should construct");
 
     SufficientStatisticsRunRequest::try_new(
         seed,
         horizon_interval_count,
         1.0,
         model_inputs,
-        interval_factors,
+        interval_factor_grids,
     )
     .expect("fixture run request should construct")
 }
 
-fn build_interval_factors(horizon_interval_count: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
-    let mut s_h: Vec<f64> = Vec::with_capacity(horizon_interval_count);
-    let mut nu_h_known: Vec<f64> = Vec::with_capacity(horizon_interval_count);
-    let mut nu_h_surprise: Vec<f64> = Vec::with_capacity(horizon_interval_count);
+fn build_interval_factor_grids(horizon_interval_count: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let mut seasonality_factor: Vec<f64> = Vec::with_capacity(horizon_interval_count);
+    let mut known_news_intensity: Vec<f64> = Vec::with_capacity(horizon_interval_count);
+    let mut surprise_news_intensity: Vec<f64> = Vec::with_capacity(horizon_interval_count);
 
     for interval_index in 0..horizon_interval_count {
-        s_h.push(0.85 + (interval_index % 5) as f64 * 0.05);
+        seasonality_factor.push(0.85 + (interval_index % 5) as f64 * 0.05);
 
-        let nu_h_total = 0.03 + (interval_index % 4) as f64 * 0.01;
-        let known_nu_h = nu_h_total * 0.6;
+        let total_news_intensity = 0.03 + (interval_index % 4) as f64 * 0.01;
+        let known_interval_news_intensity = total_news_intensity * 0.6;
 
-        nu_h_known.push(known_nu_h);
-        nu_h_surprise.push(nu_h_total - known_nu_h);
+        known_news_intensity.push(known_interval_news_intensity);
+        surprise_news_intensity.push(total_news_intensity - known_interval_news_intensity);
     }
 
-    (s_h, nu_h_known, nu_h_surprise)
+    (
+        seasonality_factor,
+        known_news_intensity,
+        surprise_news_intensity,
+    )
 }

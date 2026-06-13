@@ -72,6 +72,7 @@ pub(crate) fn build_uniform_runtime_interval_schedule(
 ) -> PricingIntervalSchedule {
     let interval_duration_nanos_float = interval_delta * NANOS_PER_HOUR as f64;
     let interval_duration_nanos = interval_duration_nanos_float as i64;
+
     assert_eq!(
         interval_duration_nanos as f64, interval_duration_nanos_float,
         "test runtime interval schedule requires an exact nanosecond interval"
@@ -82,8 +83,9 @@ pub(crate) fn build_uniform_runtime_interval_schedule(
         PricingIntervalScheduleMetadata {
             policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
             derivation_policy: "test_uniform_schedule.v1".to_string(),
-            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
-                .to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_interval_factor_grid_source_intervals.v1"
+                    .to_string(),
         },
         (1..=interval_count)
             .map(|interval_index| interval_index as i64 * interval_duration_nanos)
@@ -270,6 +272,7 @@ pub(super) fn assert_complex_close(
     tolerance: f64,
 ) {
     let difference = observed.subtract(expected).norm();
+
     assert!(
         difference <= tolerance,
         "difference {difference} exceeded tolerance {tolerance} for observed {observed:?} and expected {expected:?}"

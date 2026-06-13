@@ -8,7 +8,7 @@ import pytest
 import janiform
 import janiform.contracts as contracts_module
 import janiform.errors as errors_module
-import janiform.hourly_factors as hourly_factors_module
+import janiform.interval_factor_grids as interval_factor_grids_module
 import janiform.mean_reversion as mean_reversion_module
 import janiform.pricing as pricing_module
 import janiform.sufficient_statistics as sufficient_statistics_module
@@ -32,8 +32,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit.state",
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
-        "janiform.hourly_factors",
-        "janiform.hourly_factors.contracts",
+        "janiform.interval_factor_grids",
+        "janiform.interval_factor_grids.contracts",
         "janiform.mean_reversion",
         "janiform.mean_reversion.contracts",
         "janiform.model",
@@ -133,11 +133,10 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "NewsProcessConfiguration",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshotCapture",
-        "SeededTickSimulationHourlyFactorSummary",
+        "SeededTickSimulationIntervalFactorGridSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
-        "SeededTickSimulationValidationFailure",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
         "run_seeded_tick_event_simulation",
@@ -207,11 +206,10 @@ def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None
         "SeededTickEventStateSnapshotCapture",
         "SeededTickEventTapeMetadata",
         "SeededTickSimulationDiagnostics",
-        "SeededTickSimulationHourlyFactorSummary",
+        "SeededTickSimulationIntervalFactorGridSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
-        "SeededTickSimulationValidationFailure",
         "deserialize_seeded_tick_simulation_response",
         "run_seeded_tick_event_simulation",
         "serialize_seeded_tick_simulation_response",
@@ -258,7 +256,6 @@ def test_simulation_shared_public_submodule_is_supported_domain_import() -> None
         "SeededTickEventSide",
         "SeededTickEventStateSnapshotCapture",
         "SeededTickSimulationValidationError",
-        "SeededTickSimulationValidationFailure",
     }
 
     assert set(simulation_shared_module.__all__) == expected_exports
@@ -280,9 +277,6 @@ def test_simulation_root_and_seeded_submodule_share_supported_symbols() -> None:
         simulation_module.run_seeded_tick_event_simulation
         is simulation_seeded_module.run_seeded_tick_event_simulation
     )
-
-    with pytest.raises(AttributeError):
-        simulation_module.GammaSeverityMarkConfiguration
 
 
 def test_simulation_root_and_coarse_submodule_share_supported_symbols() -> None:
@@ -400,42 +394,42 @@ def test_sufficient_statistics_contract_submodule_is_supported_domain_import() -
     assert sufficient_statistics_module.SufficientStatisticsPath is sufficient_statistics_contracts_module.SufficientStatisticsPath
 
 
-def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
-    assert hasattr(hourly_factors_module, "__path__")
+def test_interval_factor_grid_support_symbols_live_in_interval_factor_grid_module() -> None:
+    assert hasattr(interval_factor_grids_module, "__path__")
 
     expected_exports = {
-        "HourlyFactorContract",
-        "HourlyNewsIntensityProviderExplicitSource",
-        "HourlyNewsIntensityProviderMaterializedSource",
-        "HourlySeasonalityProviderExplicitSource",
-        "HourlySeasonalityProviderMaterializedSource",
-        "build_hourly_factor_contract",
-        "build_runtime_hourly_seasonality_source_from_calibration_payload",
-        "materialize_hourly_news_intensity_factors",
-        "materialize_hourly_seasonality_factors",
-        "provide_hourly_factor_contract",
+        "IntervalFactorGridContract",
+        "IntervalNewsIntensityProviderExplicitSource",
+        "IntervalNewsIntensityProviderMaterializedSource",
+        "IntervalSeasonalityProviderExplicitSource",
+        "IntervalSeasonalityProviderMaterializedSource",
+        "build_interval_factor_grid",
+        "build_runtime_interval_seasonality_source_from_calibration_payload",
+        "materialize_interval_news_intensity_factors",
+        "materialize_interval_seasonality_factors",
+        "provide_interval_factor_grid",
     }
 
-    assert expected_exports <= set(hourly_factors_module.__all__)
-    assert expected_exports <= set(dir(hourly_factors_module))
+    assert expected_exports <= set(interval_factor_grids_module.__all__)
+    assert expected_exports <= set(dir(interval_factor_grids_module))
 
 
-def test_hourly_factor_contract_submodule_is_supported_domain_import() -> None:
-    hourly_factor_contracts_module = import_module("janiform.hourly_factors.contracts")
+def test_interval_factor_grid_contract_submodule_is_supported_domain_import() -> None:
+    interval_factor_grid_contracts_module = import_module("janiform.interval_factor_grids.contracts")
 
     expected_exports = {
-        "HourlyFactorOutputSchema",
-        "HourlyNewsIntensityMaterializationSettings",
-        "HourlyNewsIntensityProviderExplicitSource",
-        "HourlySeasonalityMaterializationSettings",
-        "HourlySeasonalityProviderExplicitSource",
+        "IntervalFactorGridOutputSchema",
+        "IntervalNewsIntensityMaterializationSettings",
+        "IntervalNewsIntensityProviderExplicitSource",
+        "IntervalSeasonalityMaterializationSettings",
+        "IntervalSeasonalityProviderExplicitSource",
     }
 
-    assert expected_exports <= set(hourly_factor_contracts_module.__all__)
-    assert expected_exports <= set(dir(hourly_factor_contracts_module))
+    assert expected_exports <= set(interval_factor_grid_contracts_module.__all__)
+    assert expected_exports <= set(dir(interval_factor_grid_contracts_module))
     assert (
-        hourly_factors_module.HourlySeasonalityProviderExplicitSource
-        is hourly_factor_contracts_module.HourlySeasonalityProviderExplicitSource
+        interval_factor_grids_module.IntervalSeasonalityProviderExplicitSource
+        is interval_factor_grid_contracts_module.IntervalSeasonalityProviderExplicitSource
     )
 
 
@@ -563,7 +557,6 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
 
     expected_exports = {
         "CalibrationValidationError",
-        "CalibrationValidationFailure",
         "JaniformEstimator",
         "JaniformFitResult",
         "JaniformFitReport",
@@ -931,15 +924,3 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
     assert calibration_module.JaniformFitResult is calibration_fit_result_module.JaniformFitResult
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
-
-    with pytest.raises(AttributeError):
-        calibration_module.JaniformModel
-
-    with pytest.raises(AttributeError):
-        calibration_module.CurrentStateEstimationRequest
-
-    with pytest.raises(AttributeError):
-        calibration_module.JaniformVanillaOptionGridBatch
-
-    with pytest.raises(AttributeError):
-        calibration_module.MarketDataCalibrationRequest

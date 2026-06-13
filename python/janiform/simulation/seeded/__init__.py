@@ -13,7 +13,7 @@ from .contracts import (
     SeededTickEventStateSnapshot,
     SeededTickEventTapeMetadata,
     SeededTickSimulationDiagnostics,
-    SeededTickSimulationHourlyFactorSummary,
+    SeededTickSimulationIntervalFactorGridSummary,
     SeededTickSimulationRequest,
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
@@ -34,7 +34,6 @@ from ..shared import (
     SeededTickEventSide,
     SeededTickEventStateSnapshotCapture,
     SeededTickSimulationValidationError,
-    SeededTickSimulationValidationFailure,
 )
 
 __all__ = [
@@ -59,11 +58,10 @@ __all__ = [
     "SeededTickEventTapeMetadata",
     "SeededTickEventTapeView",
     "SeededTickSimulationDiagnostics",
-    "SeededTickSimulationHourlyFactorSummary",
+    "SeededTickSimulationIntervalFactorGridSummary",
     "SeededTickSimulationRequest",
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",
-    "SeededTickSimulationValidationFailure",
     "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "deserialize_seeded_tick_simulation_response",
     "run_seeded_tick_event_simulation",

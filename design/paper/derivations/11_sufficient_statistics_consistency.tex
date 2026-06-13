@@ -28,24 +28,24 @@ mathematical objects.
 
 \section{Setup}
 
-On an interval \(h=[t_h,t_{h+1})\), define the decomposed sufficient-statistics
+On an interval \(k=[t_k,t_{k+1})\), define the decomposed sufficient-statistics
 vector
 \[
-\mathcal S_h
+\mathcal S_k
 =
 \left(
-B_{Z,h}^+,
-E_h^+,
-B_{Z,h}^-,
-E_h^-,
-N_h^+,
-N_h^-,
-Z_{t_{h+1}}
+B_{Z,k}^+,
+E_k^+,
+B_{Z,k}^-,
+E_k^-,
+N_k^+,
+N_k^-,
+Z_{t_{k+1}}
 \right).
 \]
-Here \(B_{Z,h}^\pm\) are long-variance-scaled baseline return-clock exposures,
-\(E_h^\pm\) are endogenous activity exposures, \(N_h^\pm\) are side event
-counts, and \(Z_{t_{h+1}}\) is the terminal long-variance state.
+Here \(B_{Z,k}^\pm\) are long-variance-scaled baseline return-clock exposures,
+\(E_k^\pm\) are endogenous activity exposures, \(N_k^\pm\) are side event
+counts, and \(Z_{t_{k+1}}\) is the terminal long-variance state.
 
 Open-news and closed-gap return increments are additional additive return
 components. They are conditionally independent of the NIG trading-time draws
@@ -58,14 +58,14 @@ activity through their Hawkes news excitation.
 \toprule
 Symbol & Meaning & Units or domain\\
 \midrule
-\(\mathcal S_h\) & Decomposed interval sufficient statistics & Non-negative clocks and counts, positive terminal \(Z\)\\
-\(B_{Z,h}^\pm\) & Baseline return-clock exposure scaled by long variance & Non-negative business time\\
-\(E_h^\pm\) & Endogenous side activity exposure & Non-negative business time\\
-\(A_h^\pm\) & Effective NIG return clock & \(B_{Z,h}^\pm+\eta_\pm E_h^\pm\)\\
-\(N_h^\pm\) & Buy and sell event counts & Non-negative integers\\
-\(Z_{t_{h+1}}\) & Terminal long-variance state & Positive\\
-\(\mathbf Y_{t_h}\) & Hawkes excitation state at interval start & Non-negative vector\\
-\(\Delta M_h,\Delta G_h\) & Open-news and closed-gap return increments & Finite log returns\\
+\(\mathcal S_k\) & Decomposed interval sufficient statistics & Non-negative clocks and counts, positive terminal \(Z\)\\
+\(B_{Z,k}^\pm\) & Baseline return-clock exposure scaled by long variance & Non-negative business time\\
+\(E_k^\pm\) & Endogenous side activity exposure & Non-negative business time\\
+\(A_k^\pm\) & Effective NIG return clock & \(B_{Z,k}^\pm+\eta_\pm E_k^\pm\)\\
+\(N_k^\pm\) & Buy and sell event counts & Non-negative integers\\
+\(Z_{t_{k+1}}\) & Terminal long-variance state & Positive\\
+\(\mathbf Y_{t_k}\) & Hawkes excitation state at interval start & Non-negative vector\\
+\(\Delta M_k,\Delta G_k\) & Open-news and closed-gap return increments & Finite log returns\\
 \bottomrule
 \end{tabularx}
 
@@ -76,26 +76,26 @@ Symbol & Meaning & Units or domain\\
 Assumption & Where it is used & Why it is needed\\
 \midrule
 The NIG trading drivers are conditionally independent of the event-state path after conditioning on return clocks.
-& Generating or transforming interval trading returns from \(A_h^\pm\).
+& Generating or transforming interval trading returns from \(A_k^\pm\).
 & The return law depends on activity only through the side return clocks.\\
 The Hawkes boundary update depends on elapsed time and side event counts.
-& Propagating \(\mathbf Y_{t_h}\) to \(\mathbf Y_{t_{h+1}}\).
+& Propagating \(\mathbf Y_{t_k}\) to \(\mathbf Y_{t_{k+1}}\).
 & Tick aggregation and coarse state updates must produce the same terminal excitation state when counts match.\\
 Long variance affects baseline return clocks and has its own terminal state.
-& Including \(B_{Z,h}^\pm\) and \(Z_{t_{h+1}}\) in \(\mathcal S_h\).
+& Including \(B_{Z,k}^\pm\) and \(Z_{t_{k+1}}\) in \(\mathcal S_k\).
 & Pricing and multi-interval simulation need both realized exposure and terminal variance memory.\\
 Baseline and endogenous activity are kept separate.
 & Defining \(B_Z^\pm\) and \(E^\pm\) rather than only \(A^\pm\).
 & Pricing and diagnostic queries need different loadings for predictable and excitation-driven activity.\\
 Open news and closed gaps are additive return components with explicit routing.
-& Adding \(\Delta M_h+\Delta G_h\) outside the trading-time NIG block.
+& Adding \(\Delta M_k+\Delta G_k\) outside the trading-time NIG block.
 & The same return decomposition can be used by tick, coarse, and sufficient-statistics paths.\\
 \bottomrule
 \end{tabularx}
 
 \section{Result}
 
-\noindent\textbf{Proposition.} Conditional on \(\mathcal S_h\), realized news
+\noindent\textbf{Proposition.} Conditional on \(\mathcal S_k\), realized news
 and gap return components, and the interval boundary state, the interval
 return law and the next structural boundary state are determined by the same
 objects for seeded tick aggregation, direct coarse generation,
@@ -105,25 +105,25 @@ The trading-time return law is
 \[
 X_{\mathrm{tr},h}
 =
-\left(L_{A_h^+}^+-A_h^+m_+\right)
+\left(L_{A_k^+}^+-A_k^+m_+\right)
 -
-\left(L_{A_h^-}^--A_h^-m_-\right),
+\left(L_{A_k^-}^--A_k^-m_-\right),
 \qquad
-A_h^\pm=B_{Z,h}^\pm+\eta_\pm E_h^\pm.
+A_k^\pm=B_{Z,k}^\pm+\eta_\pm E_k^\pm.
 \]
 The full interval core return is
 \[
-X_h
+X_k
 =
 X_{\mathrm{tr},h}
-+\Delta M_h+\Delta G_h.
++\Delta M_k+\Delta G_k.
 \]
 The Hawkes boundary state is propagated by elapsed decay and side event
 counts:
 \[
-\mathbf Y_{t_{h+1}}
+\mathbf Y_{t_{k+1}}
 =
-\Phi_\Delta(\mathbf Y_{t_h};N_h^+,N_h^-,\Delta_h,\text{news shocks}),
+\Phi_\Delta(\mathbf Y_{t_k};N_k^+,N_k^-,\Delta_k,\text{news shocks}),
 \]
 where \(\Phi_\Delta\) denotes the shared Hawkes transition map.
 
@@ -131,43 +131,43 @@ where \(\Phi_\Delta\) denotes the shared Hawkes transition map.
 
 Start from the Janiform interval return decomposition:
 \[
-X_h
+X_k
 =
-\left(L_{A_h^+}^+-A_h^+m_+\right)
+\left(L_{A_k^+}^+-A_k^+m_+\right)
 -
-\left(L_{A_h^-}^--A_h^-m_-\right)
-+\Delta M_h+\Delta G_h.
+\left(L_{A_k^-}^--A_k^-m_-\right)
++\Delta M_k+\Delta G_k.
 \]
-Given \(\mathcal S_h\), the side return clocks are fixed:
+Given \(\mathcal S_k\), the side return clocks are fixed:
 \[
-A_h^+=B_{Z,h}^++\eta_+E_h^+,
+A_k^+=B_{Z,k}^++\eta_+E_k^+,
 \qquad
-A_h^-=B_{Z,h}^-+\eta_-E_h^-.
+A_k^-=B_{Z,k}^-+\eta_-E_k^-.
 \]
 By the conditional CF/MGF derivation, the NIG trading block depends on the
-interval path only through \(A_h^+\) and \(A_h^-\). Thus any construction that
-preserves \(B_{Z,h}^\pm\) and \(E_h^\pm\) preserves the conditional
+interval path only through \(A_k^+\) and \(A_k^-\). Thus any construction that
+preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\) preserves the conditional
 trading-time law.
 
 The jump and gap components enter additively:
 \[
-X_h=X_{\mathrm{tr},h}+\Delta M_h+\Delta G_h.
+X_k=X_{\mathrm{tr},h}+\Delta M_k+\Delta G_k.
 \]
-Open-window news returns are routed through \(\Delta M_h\), while closed-window
-returns are stored as \(\Delta G_h\) until reopening. Once these components
+Open-window news returns are routed through \(\Delta M_k\), while closed-window
+returns are stored as \(\Delta G_k\) until reopening. Once these components
 are fixed, the total return is fixed up to the same trading-time NIG draw.
 
 For the Hawkes state, the continuous part over the interval is deterministic
 decay between jumps. Side events add fixed excitation increments. Therefore,
-conditional on \(\mathbf Y_{t_h}\), \(\Delta_h\), and the side event counts
+conditional on \(\mathbf Y_{t_k}\), \(\Delta_k\), and the side event counts
 with their news excitation inputs, the terminal state is determined by the
 same transition map:
 \[
-\mathbf Y_{t_{h+1}}
+\mathbf Y_{t_{k+1}}
 =
-e^{-\beta\Delta_h}\mathbf Y_{t_h}
-+\sum_{m=1}^{N_h^+}\mathbf k_+
-+\sum_{m=1}^{N_h^-}\mathbf k_-
+e^{-\beta\Delta_k}\mathbf Y_{t_k}
++\sum_{m=1}^{N_k^+}\mathbf k_+
++\sum_{m=1}^{N_k^-}\mathbf k_-
 +\text{news-excitation contribution}.
 \]
 Seeded tick aggregation obtains these quantities by summing over generated
@@ -185,7 +185,7 @@ terminal cumulant adapter in \texttt{07\_terminal\_cumulant\_adapter.tex}
 maps pricing arguments into those same activity and count loadings.
 
 Therefore the four paths are consistent at the level of the transition law
-whenever they preserve \(\mathcal S_h\), the routed news/gap return
+whenever they preserve \(\mathcal S_k\), the routed news/gap return
 components, and the shared boundary-state transition.
 
 \section{Domain and validity}
@@ -196,7 +196,7 @@ non-negative finite activity clocks, non-negative integer counts, positive
 long-variance boundary and terminal states, finite routed news and gap returns,
 valid Hawkes state updates, and finite NIG side-driver transforms or samples.
 
-The statistic \(\mathcal S_h\) is sufficient for the trading-time return law
+The statistic \(\mathcal S_k\) is sufficient for the trading-time return law
 and the structural transition pieces listed above. It is not a claim that all
 diagnostic paths use identical random-number streams or identical numerical
 approximations. Distributional equality between seeded aggregation and direct

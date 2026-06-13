@@ -41,14 +41,14 @@ pub(crate) fn is_valid_observed_price_tick_size(tick_size: f64) -> bool {
     tick_size.is_finite() && tick_size > 0.0
 }
 
-pub(crate) fn validate_hourly_factor_field_length(
+pub(crate) fn validate_interval_factor_grid_field_length(
     field_name: &'static str,
     expected_interval_count: usize,
     observed_interval_count: usize,
 ) -> Result<(), SeededTickSimulationRunError> {
     if observed_interval_count != expected_interval_count {
         return Err(
-            SeededTickSimulationRunError::HourlyFactorFieldLengthMismatch {
+            SeededTickSimulationRunError::IntervalFactorGridFieldLengthMismatch {
                 field_name,
                 expected_interval_count,
                 observed_interval_count,
@@ -59,7 +59,7 @@ pub(crate) fn validate_hourly_factor_field_length(
     Ok(())
 }
 
-pub(crate) fn validate_hourly_factor_interval_coverage(
+pub(crate) fn validate_interval_factor_grid_interval_coverage(
     interval_start_utc_nanos: &[i64],
     interval_end_utc_nanos: &[i64],
     simulated_interval_count: usize,
@@ -70,7 +70,7 @@ pub(crate) fn validate_hourly_factor_interval_coverage(
 
         if current_interval_end_utc_nanos <= current_interval_start_utc_nanos {
             return Err(
-                SeededTickSimulationRunError::InvalidHourlyFactorIntervalBounds {
+                SeededTickSimulationRunError::InvalidIntervalFactorGridIntervalBounds {
                     interval_index,
                     interval_start_utc_nanos: current_interval_start_utc_nanos,
                     interval_end_utc_nanos: current_interval_end_utc_nanos,
@@ -86,7 +86,7 @@ pub(crate) fn validate_hourly_factor_interval_coverage(
         let previous_interval_end_utc_nanos = interval_end_utc_nanos[previous_interval_index];
         if current_interval_start_utc_nanos != previous_interval_end_utc_nanos {
             return Err(
-                SeededTickSimulationRunError::NonConsecutiveHourlyFactorCoverage {
+                SeededTickSimulationRunError::NonConsecutiveIntervalFactorGridCoverage {
                     previous_interval_index,
                     previous_interval_end_utc_nanos,
                     current_interval_index: interval_index,

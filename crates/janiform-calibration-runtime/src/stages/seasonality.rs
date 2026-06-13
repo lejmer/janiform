@@ -12,9 +12,9 @@ mod runtime;
 use policy::resolve_clock_fit_settings;
 use progress::{emit_seasonality_progress, forward_clock_fit_progress};
 pub(crate) use runtime::{
-    RuntimeHourlySeasonalityFactorsBuildInput,
-    build_runtime_hourly_seasonality_factors_from_components,
-    maximum_runtime_hourly_seasonality_factor_from_payload,
+    RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
+    maximum_runtime_interval_seasonality_factor_from_payload,
 };
 use runtime::{
     exchange_local_minute_of_week, materialize_event_rates, parse_preprocessed_timezone,

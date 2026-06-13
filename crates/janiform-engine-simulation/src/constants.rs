@@ -39,11 +39,10 @@ pub const SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY: &str = "lowercase_buy_or_sell.
 pub const SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY: &str =
     "post_event_transition_pre_following_same_timestamp_updates.v1";
 pub const SEEDED_TICK_EVENT_INTERVAL_BOUNDARY_POLICY: &str =
-    "hourly_factor_start_inclusive_end_exclusive_with_strict_consecutive_coverage.v1";
+    "interval_factor_grid_start_inclusive_end_exclusive_with_strict_consecutive_coverage.v1";
 pub const SEEDED_TICK_EVENT_STATE_CARRYOVER_POLICY: &str =
     "full_4d_hawkes_excitation_state_carryover_across_interval_boundaries.v1";
-pub const SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY: &str =
-    "interval_aligned_s_h_nu_h_control_intensity_only_without_intra_interval_grid.v1";
+pub const SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY: &str = "interval_aligned_seasonality_factor_news_intensity_control_intensity_only_without_intra_interval_grid.v1";
 pub const SEEDED_TICK_EVENT_INTRA_INTERVAL_SCHEDULING_POLICY: &str =
     "event_time_updates_with_sequential_hawkes_transition_composition.v1";
 pub const SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY: &str = "calendar_resolve_market_state_at_utc_routes_open_news_return_jump_to_open_m_channel_and_closed_news_return_jump_to_closed_g_channel.v1";

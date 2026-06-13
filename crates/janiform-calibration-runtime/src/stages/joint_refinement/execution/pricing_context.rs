@@ -15,17 +15,18 @@ use janiform_engine_pricing::{
     VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
-    materialize_schedule_interval_factors_with_cpu_count, pricing_progress_phase_label,
+    materialize_schedule_interval_factor_grids_with_cpu_count, pricing_progress_phase_label,
 };
 use janiform_foundations::time::{
     NANOS_PER_HOUR, ceil_to_hour_utc_nanos, checked_interval_count_between_utc_nanos,
     floor_to_hour_utc_nanos,
 };
-use janiform_market_time::hourly_factors::{
-    HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
+use janiform_market_time::interval_factor_grids::{
+    IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
+    IntervalSeasonalityFactorSource,
 };
 
-use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::adapters::load_interval_factor_grid_for_calibration;
 use crate::current_state::{
     CurrentStateEstimationInput, estimate_current_state_from_observed_data,
 };
@@ -40,8 +41,8 @@ use crate::stages::joint_refinement::option_surface_tiering::{
 };
 use crate::stages::progress::progress_percent;
 use crate::stages::seasonality::{
-    RuntimeHourlySeasonalityFactorsBuildInput,
-    build_runtime_hourly_seasonality_factors_from_components,
+    RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
 };
 use janiform_calibration_artifacts::{
     CalibrationObjectivePolicy, JointRefinementStageOptionAggregateDiagnostic,
@@ -219,7 +220,7 @@ pub(crate) fn build_option_pricing_context(
 
     let option_spot = validate_option_spot(&cleaned_option_pricing_input)?;
 
-    let hourly_factor_contract = build_option_hourly_factor_contract(
+    let interval_factor_grid = build_option_interval_factor_grid(
         run_spec,
         calendar_registry,
         stage_input,
@@ -229,13 +230,13 @@ pub(crate) fn build_option_pricing_context(
 
     let runtime_interval_schedule = resolve_option_runtime_interval_schedule(
         &cleaned_option_pricing_input,
-        &hourly_factor_contract,
+        &interval_factor_grid,
         false,
     )?;
 
-    let interval_factors = materialize_schedule_interval_factors_with_cpu_count(
+    let interval_factor_grids = materialize_schedule_interval_factor_grids_with_cpu_count(
         &runtime_interval_schedule,
-        &hourly_factor_contract,
+        &interval_factor_grid,
         Some(cpu_count.max(1)),
     )
     .map_err(|source| {
@@ -254,16 +255,18 @@ pub(crate) fn build_option_pricing_context(
 
     let audit_runtime_interval_schedule = resolve_option_runtime_interval_schedule(
         &cleaned_option_pricing_input,
-        &hourly_factor_contract,
+        &interval_factor_grid,
         true,
     )?;
 
-    let audit_interval_factors = if audit_runtime_interval_schedule == runtime_interval_schedule {
-        interval_factors.clone()
+    let audit_interval_factor_grids = if audit_runtime_interval_schedule
+        == runtime_interval_schedule
+    {
+        interval_factor_grids.clone()
     } else {
-        materialize_schedule_interval_factors_with_cpu_count(
+        materialize_schedule_interval_factor_grids_with_cpu_count(
             &audit_runtime_interval_schedule,
-            &hourly_factor_contract,
+            &interval_factor_grid,
             Some(cpu_count.max(1)),
         )
         .map_err(|source| {
@@ -293,9 +296,9 @@ pub(crate) fn build_option_pricing_context(
         &cleaned_option_pricing_input.carry_input,
         &option_surface_tiers,
         &runtime_interval_schedule,
-        interval_factors.as_slice(),
+        interval_factor_grids.as_slice(),
         &audit_runtime_interval_schedule,
-        audit_interval_factors.as_slice(),
+        audit_interval_factor_grids.as_slice(),
     )
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
@@ -427,7 +430,7 @@ fn resolve_option_pricing_horizon(
 
 fn resolve_option_runtime_interval_schedule(
     option_pricing_input: &JointRefinementStageOptionPricingInput,
-    hourly_factor_contract: &janiform_market_time::hourly_factors::HourlyFactorContractOutput,
+    interval_factor_grid: &janiform_market_time::interval_factor_grids::IntervalFactorGrid,
     force_exact_sparse: bool,
 ) -> Result<PricingIntervalSchedule, JointRefinementStageExecutionFailure> {
     let expiry_timestamps_utc_nanos = option_pricing_input
@@ -448,7 +451,7 @@ fn resolve_option_runtime_interval_schedule(
                 derive_activity_compressed_pricing_interval_schedule(
                     option_pricing_input.valuation_time_utc_nanos,
                     expiry_timestamps_utc_nanos.as_slice(),
-                    hourly_factor_contract,
+                    interval_factor_grid,
                 )
             }
             policy => derive_pricing_interval_schedule(
@@ -470,19 +473,19 @@ fn resolve_option_runtime_interval_schedule(
         )
 }
 
-fn build_option_hourly_factor_contract(
+fn build_option_interval_factor_grid(
     run_spec: &janiform_calibration_artifacts::CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: &crate::stages::joint_refinement::JointRefinementStageExecutionInput,
     return_components_payload: &crate::stages::return_components::ReturnComponentsStageFittedPayload,
     horizon: &OptionPricingHorizon,
 ) -> Result<
-    janiform_market_time::hourly_factors::HourlyFactorContractOutput,
+    janiform_market_time::interval_factor_grids::IntervalFactorGrid,
     JointRefinementStageExecutionFailure,
 > {
-    let runtime_hourly_seasonality_factors =
-        build_runtime_hourly_seasonality_factors_from_components(
-            RuntimeHourlySeasonalityFactorsBuildInput {
+    let runtime_interval_seasonality_factors =
+        build_runtime_interval_seasonality_factors_from_components(
+            RuntimeIntervalSeasonalityFactorsBuildInput {
                 calendar_registry,
                 exchange_code: stage_input.seasonality_factors_input.exchange_code.as_str(),
                 clock_model: &stage_input
@@ -513,9 +516,9 @@ fn build_option_hourly_factor_contract(
                 .as_slice(),
         );
 
-    load_hourly_factor_contract_for_calibration(
+    load_interval_factor_grid_for_calibration(
         calendar_registry,
-        HourlyFactorProviderRequest {
+        IntervalFactorGridProviderRequest {
             exchange_code: run_spec.data_inputs.exchange_code.as_str(),
             range_start_utc: DateTime::<Utc>::from_timestamp_nanos(
                 horizon.hourly_coverage_start_utc_nanos,
@@ -524,11 +527,11 @@ fn build_option_hourly_factor_contract(
                 horizon.hourly_coverage_end_utc_nanos,
             ),
             interval_duration_nanos: NANOS_PER_HOUR,
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
+            seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
+                interval_factors: runtime_interval_seasonality_factors.as_slice(),
                 materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+            news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: return_components_payload
                     .fitted_parameters
                     .news_process_configuration
@@ -556,7 +559,7 @@ fn build_option_hourly_factor_contract(
     .map_err(
         |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             error_message: format!(
-                "joint option calibration hourly factor materialization failed: {source}"
+                "joint option calibration interval factor grid materialization failed: {source}"
             ),
         },
     )
@@ -831,7 +834,7 @@ fn run_option_grid_batch_pricing(
         ),
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
         interval_delta: tier_inputs.runtime_interval_schedule.interval_deltas_hours[0],
-        interval_factors: tier_inputs.interval_factors.clone(),
+        interval_factor_grids: tier_inputs.interval_factor_grids.clone(),
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
             include_transform_diagnostics: false,
             include_integration_quality_diagnostics: false,
@@ -1022,9 +1025,9 @@ fn build_option_surface_tier_pricing_input_set(
     carry_input: &janiform_calibration_artifacts::JointRefinementStageCarryInput,
     option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
     primary_runtime_interval_schedule: &PricingIntervalSchedule,
-    primary_interval_factors: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
+    primary_interval_factor_grids: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
     audit_runtime_interval_schedule: &PricingIntervalSchedule,
-    audit_interval_factors: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
+    audit_interval_factor_grids: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
 ) -> Result<JointRefinementOptionTierPricingInputSet, String> {
     Ok(JointRefinementOptionTierPricingInputSet {
         search: build_option_surface_tier_pricing_inputs(
@@ -1033,7 +1036,7 @@ fn build_option_surface_tier_pricing_input_set(
             option_surface_tiers,
             JointRefinementOptionSurfaceTierKind::Search,
             primary_runtime_interval_schedule,
-            primary_interval_factors,
+            primary_interval_factor_grids,
         )?,
         selection: build_option_surface_tier_pricing_inputs(
             spot,
@@ -1041,7 +1044,7 @@ fn build_option_surface_tier_pricing_input_set(
             option_surface_tiers,
             JointRefinementOptionSurfaceTierKind::Selection,
             primary_runtime_interval_schedule,
-            primary_interval_factors,
+            primary_interval_factor_grids,
         )?,
         audit: build_option_surface_tier_pricing_inputs(
             spot,
@@ -1049,7 +1052,7 @@ fn build_option_surface_tier_pricing_input_set(
             option_surface_tiers,
             JointRefinementOptionSurfaceTierKind::Audit,
             audit_runtime_interval_schedule,
-            audit_interval_factors,
+            audit_interval_factor_grids,
         )?,
     })
 }
@@ -1060,7 +1063,7 @@ fn build_option_surface_tier_pricing_inputs(
     option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
     tier_kind: JointRefinementOptionSurfaceTierKind,
     runtime_interval_schedule: &PricingIntervalSchedule,
-    interval_factors: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
+    interval_factor_grids: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
 ) -> Result<JointRefinementOptionTierPricingInputs, String> {
     let tier = option_surface_tier_by_kind(option_surface_tiers, tier_kind);
 
@@ -1133,7 +1136,7 @@ fn build_option_surface_tier_pricing_inputs(
 
     Ok(JointRefinementOptionTierPricingInputs {
         runtime_interval_schedule: runtime_interval_schedule.clone(),
-        interval_factors: interval_factors.to_vec(),
+        interval_factor_grids: interval_factor_grids.to_vec(),
         grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest { spot, grids },
         spectral_collocation_node_count_override: None,
         observed_nodes,
@@ -1940,7 +1943,7 @@ mod tests {
         VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
         VanillaOptionGridRequest, VanillaOptionMaturitySummary, VanillaOptionPayoffType,
         VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-        VanillaOptionPricingStatus, materialize_schedule_interval_factors,
+        VanillaOptionPricingStatus, materialize_schedule_interval_factor_grids,
         run_vanilla_option_grid_batch_pricing,
     };
     use janiform_foundations::time::NANOS_PER_HOUR;
@@ -1959,7 +1962,7 @@ mod tests {
         pricing_progress_interval_value, resolve_option_runtime_interval_schedule,
         validate_option_spot,
     };
-    use crate::adapters::load_hourly_factor_contract_for_calibration;
+    use crate::adapters::load_interval_factor_grid_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
     use crate::stages::joint_refinement::contracts::{
         JointRefinementStageCurrentStateEstimationInput, JointRefinementStageOptionPricingInput,
@@ -1973,16 +1976,15 @@ mod tests {
     use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
     use crate::stages::return_components::ReturnComponentsStageFittedPayload;
     use crate::stages::seasonality::{
-        RuntimeHourlySeasonalityFactorsBuildInput,
-        build_runtime_hourly_seasonality_factors_from_components,
+        RuntimeIntervalSeasonalityFactorsBuildInput,
+        build_runtime_interval_seasonality_factors_from_components,
     };
     use janiform_calibration_artifacts::CalibrationStageHandoffTransport;
     use janiform_market_time::business_time_clock::FourierBusinessTimeClockModel;
-    use janiform_market_time::hourly_factors::{
-        HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
-        HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
-        HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-        HourlySeasonalityFactorSource,
+    use janiform_market_time::interval_factor_grids::{
+        INTERVAL_FACTOR_GRID_SCHEMA_VERSION, IntervalFactorGrid, IntervalFactorGridDiagnostics,
+        IntervalFactorGridMetadata, IntervalFactorGridProviderRequest,
+        IntervalNewsIntensityFactorSource, IntervalSeasonalityFactorSource,
     };
 
     fn sample_option_pricing_input() -> JointRefinementStageOptionPricingInput {
@@ -2178,10 +2180,10 @@ mod tests {
         .schedule
     }
 
-    fn build_test_hourly_factor_contract(
+    fn build_test_interval_factor_grid(
         request_start_utc_nanos: i64,
         open_hour_flags: &[bool],
-    ) -> HourlyFactorContractOutput {
+    ) -> IntervalFactorGrid {
         let interval_count = open_hour_flags.len();
 
         let interval_start_utc_nanos = (0..interval_count)
@@ -2195,8 +2197,8 @@ mod tests {
 
         let last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
 
-        HourlyFactorContractOutput {
-            schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+        IntervalFactorGrid {
+            schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
             exchange_code: "XCME".to_string(),
             exchange_timezone_name: "UTC".to_string(),
             request_start_utc_nanos,
@@ -2207,14 +2209,14 @@ mod tests {
             interval_end_utc_nanos,
             interval_start_exchange_local: vec![String::new(); interval_count],
             interval_end_exchange_local: vec![String::new(); interval_count],
-            s_h: open_hour_flags
+            seasonality_factor: open_hour_flags
                 .iter()
                 .map(|is_open| if *is_open { 1.0 } else { 0.0 })
                 .collect(),
-            known_component_nu_h: vec![0.0; interval_count],
-            surprise_component_nu_h: vec![0.0; interval_count],
-            nu_h: vec![0.0; interval_count],
-            metadata: HourlyFactorMaterializationMetadata {
+            known_news_intensity: vec![0.0; interval_count],
+            surprise_news_intensity: vec![0.0; interval_count],
+            news_intensity: vec![0.0; interval_count],
+            metadata: IntervalFactorGridMetadata {
                 seasonality_materialization_method: "explicit".to_string(),
                 news_intensity_materialization_method: "explicit".to_string(),
                 interval_boundary_policy: "x",
@@ -2223,13 +2225,13 @@ mod tests {
                 spring_forward_policy: "x",
                 fall_back_policy: "x",
             },
-            diagnostics: HourlyFactorContractDiagnostics {
+            diagnostics: IntervalFactorGridDiagnostics {
                 interval_count,
                 interval_duration_nanos: NANOS_PER_HOUR,
                 first_interval_start_utc_nanos: request_start_utc_nanos,
                 last_interval_end_utc_nanos,
-                skipped_local_hour_interval_count: 0,
-                repeated_local_hour_interval_count: 0,
+                skipped_exchange_local_interval_count: 0,
+                repeated_exchange_local_interval_count: 0,
             },
         }
     }
@@ -2240,21 +2242,21 @@ mod tests {
             PricingIntervalSchedulePolicy::AutoActivityCompressed,
         );
 
-        let hourly_factor_contract = build_test_hourly_factor_contract(
+        let interval_factor_grid = build_test_interval_factor_grid(
             option_pricing_input.valuation_time_utc_nanos,
             &[true, true, true],
         );
 
         let compressed_schedule = resolve_option_runtime_interval_schedule(
             &option_pricing_input,
-            &hourly_factor_contract,
+            &interval_factor_grid,
             false,
         )
         .expect("compressed runtime schedule should resolve");
 
         let exact_schedule = resolve_option_runtime_interval_schedule(
             &option_pricing_input,
-            &hourly_factor_contract,
+            &interval_factor_grid,
             true,
         )
         .expect("audit runtime schedule should resolve");
@@ -2344,7 +2346,7 @@ mod tests {
 
         let tier_inputs = JointRefinementOptionTierPricingInputs {
             runtime_interval_schedule: runtime_interval_schedule.clone(),
-            interval_factors: Vec::new(),
+            interval_factor_grids: Vec::new(),
             grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest {
                 spot: 100.0,
                 grids: vec![
@@ -2934,9 +2936,9 @@ mod tests {
 
         let calendar_registry = debug_xcme_calendar_registry();
 
-        let runtime_hourly_seasonality_factors =
-            build_runtime_hourly_seasonality_factors_from_components(
-                RuntimeHourlySeasonalityFactorsBuildInput {
+        let runtime_interval_seasonality_factors =
+            build_runtime_interval_seasonality_factors_from_components(
+                RuntimeIntervalSeasonalityFactorsBuildInput {
                     calendar_registry: &calendar_registry,
                     exchange_code: seasonality_factors_input.exchange_code.as_str(),
                     clock_model: &seasonality_factors_input.clock_model,
@@ -2969,9 +2971,9 @@ mod tests {
                     .as_slice(),
             );
 
-        let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
+        let interval_factor_grid = load_interval_factor_grid_for_calibration(
             &calendar_registry,
-            HourlyFactorProviderRequest {
+            IntervalFactorGridProviderRequest {
                 exchange_code: run_spec.data_inputs.exchange_code.as_str(),
                 range_start_utc: chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(
                     hourly_coverage_start_utc_nanos,
@@ -2980,11 +2982,11 @@ mod tests {
                     hourly_coverage_end_utc_nanos,
                 ),
                 interval_duration_nanos: NANOS_PER_HOUR,
-                seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                    hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
+                seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
+                    interval_factors: runtime_interval_seasonality_factors.as_slice(),
                     materialization_method: crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
                 }),
-                news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+                news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                     known_scheduled_event_timestamps_utc_nanos: return_components_payload
                         .fitted_parameters
                         .news_process_configuration
@@ -3009,15 +3011,15 @@ mod tests {
                 }),
             },
         )
-        .expect("hourly factor contract should materialize");
+        .expect("interval factor grid contract should materialize");
 
-        let interval_factors =
-            materialize_schedule_interval_factors(&horizon, &hourly_factor_contract)
+        let interval_factor_grids =
+            materialize_schedule_interval_factor_grids(&horizon, &interval_factor_grid)
                 .expect("interval factors should materialize");
 
-        let zero_seasonality_interval_count = interval_factors
+        let zero_seasonality_interval_count = interval_factor_grids
             .iter()
-            .filter(|factors| factors.s_h == 0.0)
+            .filter(|factors| factors.seasonality_factor == 0.0)
             .count();
 
         let option_spot =
@@ -3055,7 +3057,7 @@ mod tests {
             ),
             runtime_interval_schedule: horizon,
             interval_delta: boundary_input.interval_delta,
-            interval_factors,
+            interval_factor_grids,
             optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
                 include_transform_diagnostics: false,
                 include_integration_quality_diagnostics: false,
@@ -3093,19 +3095,20 @@ mod tests {
         let mut max_closed_form_loading_known = 0.0;
         let mut max_closed_form_loading_surprise = 0.0;
 
-        for (interval_index, interval_factor) in execution_input.interval_factors.iter().enumerate()
+        for (interval_index, interval_factor) in
+            execution_input.interval_factor_grids.iter().enumerate()
         {
             let interval_delta = execution_input
                 .runtime_interval_schedule
                 .interval_delta_hours(interval_index)
                 .expect("runtime interval delta should exist");
 
-            let expected_known_loading = interval_factor.nu_h_known
+            let expected_known_loading = interval_factor.known_news_intensity
                 * interval_delta
                 * known_activity_coupling_scale
                 * expected_severity_mark;
 
-            let expected_surprise_loading = interval_factor.nu_h_surprise
+            let expected_surprise_loading = interval_factor.surprise_news_intensity
                 * interval_delta
                 * surprise_activity_coupling_scale
                 * expected_severity_mark;
@@ -3119,8 +3122,8 @@ mod tests {
                 first_nonfinite_loading = Some((
                     interval_index,
                     interval_delta,
-                    interval_factor.nu_h_known,
-                    interval_factor.nu_h_surprise,
+                    interval_factor.known_news_intensity,
+                    interval_factor.surprise_news_intensity,
                     expected_known_loading,
                     expected_surprise_loading,
                     total_expected_loading,
@@ -3171,7 +3174,7 @@ mod tests {
                 model_parameters: execution_input.model_parameters.clone(),
                 runtime_interval_schedule: execution_input.runtime_interval_schedule.clone(),
                 interval_delta: execution_input.interval_delta,
-                interval_factors: execution_input.interval_factors.clone(),
+                interval_factor_grids: execution_input.interval_factor_grids.clone(),
                 optional_output_selection: execution_input.optional_output_selection,
                 spectral_collocation_node_count_override: None,
                 cpu_count: Some(1),

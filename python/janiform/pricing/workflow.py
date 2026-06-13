@@ -26,12 +26,13 @@ from .errors import (
 def run_vanilla_option_pricing(
     execution_input: VanillaOptionPricingExecutionInput,
 ) -> VanillaOptionPricingRunResult:
-    """Run vanilla option pricing from the explicit execution contract.
+    """
+    Run vanilla option pricing from the explicit execution contract.
 
     Example:
         run_result = run_vanilla_option_pricing(execution_input)
 
-    The execution input keeps `nu_h_known` and `nu_h_surprise` separate so the
+    The execution input keeps `known_news_intensity` and `surprise_news_intensity` separate so the
     pricing path does not collapse corrected known-surprise news semantics.
     """
 
@@ -177,7 +178,7 @@ def _surface_pricing_native_execution_input(
         "model_parameters": request.model_parameters.to_payload(),
         "runtime_interval_schedule": execution_input.runtime_interval_schedule.to_payload(),
         "interval_delta": request.interval_delta,
-        "hourly_factor_contract": execution_input.hourly_factor_contract.to_payload(),
+        "interval_factor_grid": execution_input.interval_factor_grid.to_payload(),
         "optional_output_selection": execution_input.optional_output_selection.to_payload(),
         "cpu_count": execution_input.cpu_count,
     }

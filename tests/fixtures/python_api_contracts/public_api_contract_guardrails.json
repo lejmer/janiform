@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e51085c95f918a3a32a33fef0ef2b83661eac24acc25263bba67119a47e65809",
+  "approved_snapshot_sha256": "bb5e9d0291ff2122693e91cdf0d120ac157ecb19cdf79e44d5f4965ae7858af7",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1647,6 +1647,24 @@
       "updated_surfaces": [
         "janiform.pricing",
         "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The interval factor grid is now the public contract for deterministic interval-aligned seasonality and news intensity materialization, replacing the removed hourly-factor package, hourly-specific field names, and the legacy seasonality-factor shorthand policy label.",
+      "snapshot_sha256": "bb5e9d0291ff2122693e91cdf0d120ac157ecb19cdf79e44d5f4965ae7858af7",
+      "summary": "Replace the public hourly-factor Python surface with interval factor grids.",
+      "updated_surfaces": [
+        "janiform.interval_factor_grids",
+        "janiform.interval_factor_grids.contracts",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.simulation.seeded",
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts"
       ]
     }
   ],

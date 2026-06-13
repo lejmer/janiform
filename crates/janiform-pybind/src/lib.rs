@@ -8,6 +8,6 @@ mod types;
 pub(crate) use module_definition::{
     CalendarInvalidTimezoneError, CalendarMissingExchangeError, CalendarRegistryLoadError,
     CalendarTimestampParseError, CalibrationExecutionError, CalibrationValidationError,
-    HourlyFactorProviderMissingInputError, HourlyFactorProviderUnsupportedRangeError,
+    IntervalFactorGridProviderMissingInputError, IntervalFactorGridProviderUnsupportedRangeError,
     PricingExecutionError, SeasonalityInputValidationError, SimulationExecutionError,
 };

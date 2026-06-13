@@ -1,4 +1,4 @@
-//! Deterministic fixture-driven regression harness for calendar state and hourly factors.
+//! Deterministic fixture-driven regression harness for calendar state and interval factor grids.
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -6,9 +6,10 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Utc};
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
-use janiform_market_time::hourly_factors::{
-    HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-    HourlySeasonalityFactorSource, provide_hourly_factor_contract,
+use janiform_market_time::interval_factor_grids::{
+    IntervalFactorGridProviderError, IntervalFactorGridProviderRequest,
+    IntervalNewsIntensityFactorSource, IntervalSeasonalityFactorSource,
+    provide_interval_factor_grid,
 };
 use janiform_verification::RegressionCaseStatus;
 use serde::Serialize;
@@ -49,21 +50,21 @@ pub struct CalendarStateRegressionCase {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HourlyFactorRegressionCase {
+pub struct IntervalFactorGridRegressionCase {
     pub fixture_id: String,
     pub exchange_code: String,
     pub range_start_utc: DateTime<Utc>,
     pub range_end_utc: DateTime<Utc>,
-    pub seasonality_source: HourlySeasonalityRegressionSource,
-    pub news_intensity_source: HourlyNewsIntensityRegressionSource,
-    pub expected_s_h: Vec<f64>,
-    pub expected_nu_h: Vec<f64>,
+    pub seasonality_source: IntervalSeasonalityRegressionSource,
+    pub news_intensity_source: IntervalNewsIntensityRegressionSource,
+    pub expected_seasonality_factor: Vec<f64>,
+    pub expected_news_intensity: Vec<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum HourlySeasonalityRegressionSource {
+pub enum IntervalSeasonalityRegressionSource {
     Explicit {
-        hourly_factors: Vec<f64>,
+        interval_factors: Vec<f64>,
         materialization_method: String,
     },
     Materialized {
@@ -72,14 +73,14 @@ pub enum HourlySeasonalityRegressionSource {
         interpolation_method: String,
         aggregation_method: String,
         sparse_fallback_policy: String,
-        sparse_hour_minimum_observation_count: usize,
+        sparse_interval_minimum_observation_count: usize,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum HourlyNewsIntensityRegressionSource {
+pub enum IntervalNewsIntensityRegressionSource {
     Explicit {
-        hourly_factors: Vec<f64>,
+        interval_factors: Vec<f64>,
         materialization_method: String,
     },
     Materialized {
@@ -94,7 +95,7 @@ pub enum HourlyNewsIntensityRegressionSource {
 #[serde(rename_all = "snake_case")]
 pub enum RegressionCaseKind {
     CalendarMarketState,
-    HourlyFactorOutput,
+    IntervalFactorGridOutput,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -111,7 +112,7 @@ pub enum RegressionCaseFailure {
         expected_state: String,
         observed_state: String,
     },
-    HourlyFactorResolutionError {
+    IntervalFactorGridResolutionError {
         error_message: String,
     },
     FactorLengthMismatch {
@@ -189,22 +190,22 @@ impl Error for RegressionHarnessError {}
 pub fn run_deterministic_regression_harness(
     calendar_registry: &ExchangeCalendarRegistry,
     calendar_cases: &[CalendarStateRegressionCase],
-    hourly_factor_cases: &[HourlyFactorRegressionCase],
+    interval_factor_grid_cases: &[IntervalFactorGridRegressionCase],
     tolerance_config: RegressionHarnessToleranceConfig,
 ) -> Result<RegressionHarnessReport, RegressionHarnessError> {
     validate_tolerance_config(&tolerance_config)?;
 
     let mut case_reports: Vec<RegressionCaseReport> =
-        Vec::with_capacity(calendar_cases.len() + hourly_factor_cases.len());
+        Vec::with_capacity(calendar_cases.len() + interval_factor_grid_cases.len());
 
     for calendar_case in calendar_cases {
         case_reports.push(evaluate_calendar_case(calendar_registry, calendar_case));
     }
 
-    for hourly_factor_case in hourly_factor_cases {
-        case_reports.push(evaluate_hourly_factor_case(
+    for interval_factor_grid_case in interval_factor_grid_cases {
+        case_reports.push(evaluate_interval_factor_grid_case(
             calendar_registry,
-            hourly_factor_case,
+            interval_factor_grid_case,
             &tolerance_config,
         ));
     }
@@ -213,6 +214,7 @@ pub fn run_deterministic_regression_harness(
         .iter()
         .filter(|case_report| case_report.status == RegressionCaseStatus::Pass)
         .count();
+
     let total_case_count = case_reports.len();
     let failed_case_count = total_case_count - passed_case_count;
 
@@ -315,21 +317,23 @@ fn evaluate_calendar_case(
     }
 }
 
-fn evaluate_hourly_factor_case(
+fn evaluate_interval_factor_grid_case(
     calendar_registry: &ExchangeCalendarRegistry,
-    hourly_factor_case: &HourlyFactorRegressionCase,
+    interval_factor_grid_case: &IntervalFactorGridRegressionCase,
     tolerance_config: &RegressionHarnessToleranceConfig,
 ) -> RegressionCaseReport {
-    let contract_output = resolve_hourly_factor_contract(calendar_registry, hourly_factor_case);
+    let contract_output =
+        resolve_interval_factor_grid(calendar_registry, interval_factor_grid_case);
+
     let contract_output = match contract_output {
         Ok(output) => output,
         Err(error) => {
             return RegressionCaseReport {
-                fixture_id: hourly_factor_case.fixture_id.clone(),
-                case_kind: RegressionCaseKind::HourlyFactorOutput,
+                fixture_id: interval_factor_grid_case.fixture_id.clone(),
+                case_kind: RegressionCaseKind::IntervalFactorGridOutput,
                 status: RegressionCaseStatus::Fail,
-                summary: format!("failed to resolve hourly factor output: {error}"),
-                failure: Some(RegressionCaseFailure::HourlyFactorResolutionError {
+                summary: format!("failed to resolve interval factor grid output: {error}"),
+                failure: Some(RegressionCaseFailure::IntervalFactorGridResolutionError {
                     error_message: error.to_string(),
                 }),
             };
@@ -337,14 +341,14 @@ fn evaluate_hourly_factor_case(
     };
 
     if let Some(failure) = compare_factor_vectors(
-        "s_h",
-        &hourly_factor_case.expected_s_h,
-        &contract_output.s_h,
+        "seasonality_factor",
+        &interval_factor_grid_case.expected_seasonality_factor,
+        &contract_output.seasonality_factor,
         tolerance_config.seasonality_absolute_tolerance,
     ) {
         return RegressionCaseReport {
-            fixture_id: hourly_factor_case.fixture_id.clone(),
-            case_kind: RegressionCaseKind::HourlyFactorOutput,
+            fixture_id: interval_factor_grid_case.fixture_id.clone(),
+            case_kind: RegressionCaseKind::IntervalFactorGridOutput,
             status: RegressionCaseStatus::Fail,
             summary: "seasonality factor output mismatch".to_string(),
             failure: Some(failure),
@@ -352,14 +356,14 @@ fn evaluate_hourly_factor_case(
     }
 
     if let Some(failure) = compare_factor_vectors(
-        "nu_h",
-        &hourly_factor_case.expected_nu_h,
-        &contract_output.nu_h,
+        "news_intensity",
+        &interval_factor_grid_case.expected_news_intensity,
+        &contract_output.news_intensity,
         tolerance_config.news_intensity_absolute_tolerance,
     ) {
         return RegressionCaseReport {
-            fixture_id: hourly_factor_case.fixture_id.clone(),
-            case_kind: RegressionCaseKind::HourlyFactorOutput,
+            fixture_id: interval_factor_grid_case.fixture_id.clone(),
+            case_kind: RegressionCaseKind::IntervalFactorGridOutput,
             status: RegressionCaseStatus::Fail,
             summary: "news intensity factor output mismatch".to_string(),
             failure: Some(failure),
@@ -367,59 +371,59 @@ fn evaluate_hourly_factor_case(
     }
 
     RegressionCaseReport {
-        fixture_id: hourly_factor_case.fixture_id.clone(),
-        case_kind: RegressionCaseKind::HourlyFactorOutput,
+        fixture_id: interval_factor_grid_case.fixture_id.clone(),
+        case_kind: RegressionCaseKind::IntervalFactorGridOutput,
         status: RegressionCaseStatus::Pass,
-        summary: "hourly factor outputs matched expected vectors".to_string(),
+        summary: "interval factor grid outputs matched expected vectors".to_string(),
         failure: None,
     }
 }
-fn resolve_hourly_factor_contract(
+fn resolve_interval_factor_grid(
     calendar_registry: &ExchangeCalendarRegistry,
-    hourly_factor_case: &HourlyFactorRegressionCase,
+    interval_factor_grid_case: &IntervalFactorGridRegressionCase,
 ) -> Result<
-    janiform_market_time::hourly_factors::HourlyFactorContractOutput,
-    HourlyFactorProviderError,
+    janiform_market_time::interval_factor_grids::IntervalFactorGrid,
+    IntervalFactorGridProviderError,
 > {
-    let seasonality_source = match &hourly_factor_case.seasonality_source {
-        HourlySeasonalityRegressionSource::Explicit {
-            hourly_factors,
+    let seasonality_source = match &interval_factor_grid_case.seasonality_source {
+        IntervalSeasonalityRegressionSource::Explicit {
+            interval_factors,
             materialization_method,
-        } => HourlySeasonalityFactorSource::Explicit {
-            hourly_factors,
+        } => IntervalSeasonalityFactorSource::Explicit {
+            interval_factors,
             materialization_method,
         },
-        HourlySeasonalityRegressionSource::Materialized {
+        IntervalSeasonalityRegressionSource::Materialized {
             source_timestamp_utc_nanos,
             source_seasonality_factors,
             interpolation_method,
             aggregation_method,
             sparse_fallback_policy,
-            sparse_hour_minimum_observation_count,
-        } => HourlySeasonalityFactorSource::Materialized {
+            sparse_interval_minimum_observation_count,
+        } => IntervalSeasonalityFactorSource::Materialized {
             source_timestamp_utc_nanos,
             source_seasonality_factors,
             interpolation_method,
             aggregation_method,
             sparse_fallback_policy,
-            sparse_hour_minimum_observation_count: *sparse_hour_minimum_observation_count,
+            sparse_interval_minimum_observation_count: *sparse_interval_minimum_observation_count,
         },
     };
 
-    let news_intensity_source = match &hourly_factor_case.news_intensity_source {
-        HourlyNewsIntensityRegressionSource::Explicit {
-            hourly_factors,
+    let news_intensity_source = match &interval_factor_grid_case.news_intensity_source {
+        IntervalNewsIntensityRegressionSource::Explicit {
+            interval_factors,
             materialization_method,
-        } => HourlyNewsIntensityFactorSource::Explicit {
-            hourly_factors,
+        } => IntervalNewsIntensityFactorSource::Explicit {
+            interval_factors,
             materialization_method,
         },
-        HourlyNewsIntensityRegressionSource::Materialized {
+        IntervalNewsIntensityRegressionSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
             surprise_open_baseline_intensity,
             surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
-        } => HourlyNewsIntensityFactorSource::Materialized {
+        } => IntervalNewsIntensityFactorSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
             surprise_open_baseline_intensity: *surprise_open_baseline_intensity,
             surprise_closed_baseline_intensity: *surprise_closed_baseline_intensity,
@@ -427,12 +431,12 @@ fn resolve_hourly_factor_contract(
         },
     };
 
-    provide_hourly_factor_contract(
+    provide_interval_factor_grid(
         calendar_registry,
-        HourlyFactorProviderRequest {
-            exchange_code: &hourly_factor_case.exchange_code,
-            range_start_utc: hourly_factor_case.range_start_utc,
-            range_end_utc: hourly_factor_case.range_end_utc,
+        IntervalFactorGridProviderRequest {
+            exchange_code: &interval_factor_grid_case.exchange_code,
+            range_start_utc: interval_factor_grid_case.range_start_utc,
+            range_end_utc: interval_factor_grid_case.range_end_utc,
             interval_duration_nanos: NANOS_PER_HOUR,
             seasonality_source: Some(seasonality_source),
             news_intensity_source: Some(news_intensity_source),

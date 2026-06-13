@@ -52,7 +52,7 @@ pub(super) struct TerminalAffineMaturityContext<'a> {
     pub(super) spectral_domain: SpectralDomain,
     pub(super) mean_reversion_path: TerminalAffineMeanReversionPath,
     pub(super) interval_deltas: &'a [f64],
-    pub(super) interval_factors: &'a [VanillaOptionPricingIntervalFactors],
+    pub(super) interval_factor_grids: &'a [VanillaOptionPricingIntervalFactors],
     pub(super) driver_parameters: NigBuySellDriverParameters,
 }
 
@@ -64,7 +64,8 @@ pub(in crate::spectral::pricer) struct TerminalAffineMaturitySolveInput<'a> {
     pub(in crate::spectral::pricer) payoff_types: &'a [VanillaOptionPayoffType],
     pub(in crate::spectral::pricer) collocation_node_count_override: Option<usize>,
     pub(in crate::spectral::pricer) interval_deltas: &'a [f64],
-    pub(in crate::spectral::pricer) interval_factors: &'a [VanillaOptionPricingIntervalFactors],
+    pub(in crate::spectral::pricer) interval_factor_grids:
+        &'a [VanillaOptionPricingIntervalFactors],
     pub(in crate::spectral::pricer) driver_parameters: NigBuySellDriverParameters,
     pub(in crate::spectral::pricer) include_node_price_sensitivities: bool,
     pub(in crate::spectral::pricer) pricing_thread_pool: Option<&'a rayon::ThreadPool>,
@@ -79,14 +80,14 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
     validate_terminal_affine_inputs(
         solve_input.maturity_count,
         solve_input.interval_deltas,
-        solve_input.interval_factors,
+        solve_input.interval_factor_grids,
     )?;
 
     let mean_reversion_path = build_terminal_affine_mean_reversion_path(
         solve_input.pricing_request,
         solve_input.maturity_count,
         solve_input.interval_deltas,
-        solve_input.interval_factors,
+        solve_input.interval_factor_grids,
         solve_input.driver_parameters,
     )?;
 
@@ -106,7 +107,7 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
         spectral_domain,
         mean_reversion_path,
         interval_deltas: solve_input.interval_deltas,
-        interval_factors: solve_input.interval_factors,
+        interval_factor_grids: solve_input.interval_factor_grids,
         driver_parameters: solve_input.driver_parameters,
     };
 
@@ -178,10 +179,10 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
 fn validate_terminal_affine_inputs(
     maturity_count: usize,
     interval_deltas: &[f64],
-    interval_factors: &[VanillaOptionPricingIntervalFactors],
+    interval_factor_grids: &[VanillaOptionPricingIntervalFactors],
 ) -> Result<(), VanillaOptionPricingRunError> {
     if maturity_count == 0
-        || maturity_count > interval_factors.len()
+        || maturity_count > interval_factor_grids.len()
         || maturity_count > interval_deltas.len()
     {
         return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
@@ -555,22 +556,26 @@ mod tests {
         let solved_maturity = solve_test_maturity_law(pricing_request);
 
         let zero_frequency_characteristic = solved_maturity.characteristic_function_values[0];
+
         assert!((zero_frequency_characteristic.real - 1.0).abs() <= square_root_machine_epsilon());
         assert!(zero_frequency_characteristic.imaginary.abs() <= square_root_machine_epsilon());
 
         let measure_change = solved_maturity
             .terminal_affine_measure_change
             .expect("terminal affine measure-change diagnostics should be present");
+
         assert!(measure_change.absolute_martingale_residual <= measure_change.martingale_tolerance);
     }
 
     #[test]
     fn long_variance_state_changes_terminal_affine_characteristic_function() {
         let mut unit_state_request = build_valid_vanilla_option_request();
+
         unit_state_request.model_parameters =
             model_parameters_with_long_variance(active_long_variance_parameters());
 
         let mut elevated_state_request = unit_state_request.clone();
+
         elevated_state_request
             .boundary_input
             .long_variance_boundary_state =
@@ -588,15 +593,18 @@ mod tests {
     fn solve_test_maturity_law(
         pricing_request: crate::VanillaOptionPricingRequest,
     ) -> super::SolvedMaturityLaw {
-        let interval_factors = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+        let interval_factor_grids = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("interval factors should construct")];
+
         let interval_deltas = [1.0_f64];
         let payoff_types = [VanillaOptionPayoffType::Call];
+
         let driver_parameters = pricing_request
             .model_parameters
             .nig_shared_plus_shift_configuration
             .derive_driver_parameters()
             .expect("NIG driver parameters should derive");
+
         let mut progress_observer = None;
 
         solve_terminal_affine_maturity_law(
@@ -608,7 +616,7 @@ mod tests {
                 payoff_types: &payoff_types,
                 collocation_node_count_override: Some(257),
                 interval_deltas: &interval_deltas,
-                interval_factors: &interval_factors,
+                interval_factor_grids: &interval_factor_grids,
                 driver_parameters,
                 include_node_price_sensitivities: false,
                 pricing_thread_pool: None,

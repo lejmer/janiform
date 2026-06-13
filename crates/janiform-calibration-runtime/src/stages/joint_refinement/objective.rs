@@ -1090,7 +1090,7 @@ fn expected_hourly_tick_counts(
 ) -> Option<Vec<f64>> {
     if !modeled_open_event_rate_per_hour.is_finite()
         || modeled_open_event_rate_per_hour < 0.0
-        || context.runtime_hourly_seasonality_factors.len()
+        || context.runtime_interval_seasonality_factors.len()
             != context
                 .observed_data
                 .simulated_hourly_interval_template
@@ -1103,10 +1103,10 @@ fn expected_hourly_tick_counts(
         .observed_data
         .simulated_hourly_interval_template
         .iter()
-        .zip(context.runtime_hourly_seasonality_factors.iter())
-        .map(|(interval, hourly_factor)| {
-            if !hourly_factor.is_finite()
-                || *hourly_factor < 0.0
+        .zip(context.runtime_interval_seasonality_factors.iter())
+        .map(|(interval, interval_factor_grid)| {
+            if !interval_factor_grid.is_finite()
+                || *interval_factor_grid < 0.0
                 || interval.interval_end_utc_nanos < interval.interval_start_utc_nanos
             {
                 return None;
@@ -1116,7 +1116,8 @@ fn expected_hourly_tick_counts(
                 interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
             );
 
-            let expected_count = modeled_open_event_rate_per_hour * hourly_factor * duration_hours;
+            let expected_count =
+                modeled_open_event_rate_per_hour * interval_factor_grid * duration_hours;
 
             expected_count.is_finite().then_some(expected_count)
         })
@@ -2730,7 +2731,8 @@ fn activity_session_block_mean_standard_error(counts: &[f64]) -> Option<f64> {
             }
 
             let session_total = session_counts.iter().sum::<f64>();
-            (session_total.is_finite()).then_some(session_total / session_counts.len() as f64)
+
+            session_total.is_finite().then_some(session_total / session_counts.len() as f64)
         })
         .collect::<Vec<_>>();
     if block_rates.len() < 2 {

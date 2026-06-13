@@ -16,6 +16,7 @@ This document contains the help content for the `janiform` command-line program.
 * [`janiform inspect`↴](#janiform-inspect)
 * [`janiform inspect run`↴](#janiform-inspect-run)
 * [`janiform inspect model`↴](#janiform-inspect-model)
+* [`janiform inspect seasonality`↴](#janiform-inspect-seasonality)
 * [`janiform report`↴](#janiform-report)
 * [`janiform report fit`↴](#janiform-report-fit)
 * [`janiform price`↴](#janiform-price)
@@ -31,13 +32,6 @@ This document contains the help content for the `janiform` command-line program.
 * [`janiform presets show session`↴](#janiform-presets-show-session)
 * [`janiform presets show known-news`↴](#janiform-presets-show-known-news)
 * [`janiform presets export`↴](#janiform-presets-export)
-* [`janiform seasonality`↴](#janiform-seasonality)
-* [`janiform seasonality preprocess-timestamps`↴](#janiform-seasonality-preprocess-timestamps)
-* [`janiform seasonality diagnostics`↴](#janiform-seasonality-diagnostics)
-* [`janiform hourly-factors`↴](#janiform-hourly-factors)
-* [`janiform hourly-factors materialize-seasonality`↴](#janiform-hourly-factors-materialize-seasonality)
-* [`janiform hourly-factors materialize-news-intensity`↴](#janiform-hourly-factors-materialize-news-intensity)
-* [`janiform hourly-factors build-contract`↴](#janiform-hourly-factors-build-contract)
 * [`janiform validate`↴](#janiform-validate)
 * [`janiform validate stylized-facts`↴](#janiform-validate-stylized-facts)
 * [`janiform validate stylized-facts plan`↴](#janiform-validate-stylized-facts-plan)
@@ -78,8 +72,6 @@ See also:
 * `price` — Price derivatives with a fitted Janiform model.
 * `simulate` — Simulate paths from a fitted Janiform model.
 * `presets` — Inspect bundled and user-registered presets.
-* `seasonality` — Prepare and diagnose seasonality inputs.
-* `hourly-factors` — Prepare hourly seasonality and news-intensity factors.
 * `validate` — Validate fitted models against empirical behavior.
 * `dev` — Janiform workflows for developers.
 
@@ -1032,6 +1024,7 @@ Use inspect run to read run status, calibration stages, output paths, checkpoint
 
 * `run` — Inspect run status, outputs, checkpoints, and progress-log health.
 * `model` — Inspect model identity, provenance, fitted components, and capabilities.
+* `seasonality` — Inspect fitted seasonality on a requested interval grid.
 
 
 
@@ -1068,6 +1061,25 @@ Use this command when you have a saved model and need to understand what data pr
 ###### **Options:**
 
 * `--parameters` — Include detailed parameter summaries.
+
+
+
+## `janiform inspect seasonality`
+
+Inspect fitted seasonality on a requested interval grid.
+
+This command reads a saved model, materializes its Fourier business-time clock over the requested UTC range and interval, and reports the deterministic seasonality factors that downstream runtimes would consume.
+
+**Usage:** `janiform inspect seasonality [OPTIONS] --model <MODEL_PATH> --range-start-utc <RFC3339_UTC> --range-end-utc <RFC3339_UTC>`
+
+###### **Options:**
+
+* `--model <MODEL_PATH>` — Saved model path to inspect.
+* `--range-start-utc <RFC3339_UTC>` — Inclusive UTC range start, for example 2026-02-02T14:00:00Z.
+* `--range-end-utc <RFC3339_UTC>` — Exclusive UTC range end, for example 2026-02-03T14:00:00Z.
+* `--interval <DURATION>` — Fixed UTC interval duration such as 5min, 1h, or 1d.
+
+  Default value: `1h`
 
 
 
@@ -1445,7 +1457,7 @@ Use this when another tool has already prepared the seeded-tick simulation input
 ###### **Options:**
 
 * `--request-json <PATH>` — Prepared seeded-tick simulation input file.
-* `--calendar-registry-json <PATH>` — Calendar file used to recover hourly factors.
+* `--calendar-registry-json <PATH>` — Calendar file used to recover interval factor grids.
 * `--output-path <PATH>` — Primary output path.
 
    When omitted, Janiform chooses a default output path for the command.
@@ -1681,258 +1693,6 @@ Export writes the selected resolved preset and the nested preset dependencies ne
 * `--output-path <PATH>` — Export output path.
 * `--preset-registry <PATH>` — User preset registry manifest path.
 * `--user-preset <PATH>` — User preset file path.
-
-
-
-## `janiform seasonality`
-
-Prepare and diagnose seasonality inputs.
-
-Seasonality commands read timestamp-event data and an exchange calendar, then produce preprocessing diagnostics or a full seasonality diagnostics report. These commands are useful before fitting and for auditing calendar-aligned event density.
-
-**Usage:** `janiform seasonality <COMMAND>`
-
-###### **Subcommands:**
-
-* `preprocess-timestamps` — Preprocess timestamp data for seasonality workflows.
-* `diagnostics` — Build seasonality diagnostics from timestamp data.
-
-
-
-## `janiform seasonality preprocess-timestamps`
-
-Preprocess timestamp data for seasonality workflows.
-
-This command loads CSV, Parquet, or JSONL timestamp events, resolves market sessions from the exchange calendar, applies the requested session filter, and writes preprocessed timestamp diagnostics.
-
-**Usage:** `janiform seasonality preprocess-timestamps [OPTIONS]`
-
-###### **Options:**
-
-* `--event-records <PATH>` — Timestamp-event source file.
-* `--event-records-format <FORMAT>` — Timestamp-event source format.
-
-  Possible values:
-  - `csv`:
-    Read comma-separated values.
-  - `parquet`:
-    Read Apache Parquet.
-  - `jsonl`:
-    Read newline-delimited JSON records.
-
-* `--calendar-registry-json <PATH>` — Exchange calendar JSON file.
-* `--exchange-code <CODE>` — Exchange code.
-* `--timestamp-column <NAME>` — Timestamp column or JSONL field name inside the timestamp-event source.
-
-  Default value: `timestamp`
-* `--timestamp-unit <TIMESTAMP_UNIT>` — Timestamp value unit.
-
-  Default value: `rfc3339`
-
-  Possible values:
-  - `rfc3339`:
-    Parse RFC 3339 timestamps.
-  - `seconds`:
-    Parse Unix timestamps in seconds.
-  - `milliseconds`:
-    Parse Unix timestamps in milliseconds.
-  - `microseconds`:
-    Parse Unix timestamps in microseconds.
-  - `nanoseconds`:
-    Parse Unix timestamps in nanoseconds.
-
-* `--session-filter <FILTER>` — Session filter. Use all, open_only, or closed_only.
-
-  Default value: `open_only`
-* `--sparse-hour-event-threshold <COUNT>` — Minimum accepted events per hour before a bucket is flagged as sparse.
-
-  Default value: `1`
-* `--output-path <PATH>` — Primary output path.
-
-   When omitted, Janiform chooses a default output path for the command.
-
-
-
-## `janiform seasonality diagnostics`
-
-Build seasonality diagnostics from timestamp data.
-
-This command runs timestamp preprocessing, intraday estimation, day-of-week estimation, day-of-year estimation, deterministic signal composition, and diagnostics report generation.
-
-**Usage:** `janiform seasonality diagnostics [OPTIONS]`
-
-###### **Options:**
-
-* `--event-records <PATH>` — Timestamp-event source file.
-* `--event-records-format <FORMAT>` — Timestamp-event source format.
-
-  Possible values:
-  - `csv`:
-    Read comma-separated values.
-  - `parquet`:
-    Read Apache Parquet.
-  - `jsonl`:
-    Read newline-delimited JSON records.
-
-* `--calendar-registry-json <PATH>` — Exchange calendar JSON file.
-* `--dataset-id <ID>` — Stable dataset identifier.
-* `--exchange-code <CODE>` — Exchange code.
-* `--timestamp-column <NAME>` — Timestamp column or JSONL field name inside the timestamp-event source.
-
-  Default value: `timestamp`
-* `--timestamp-unit <TIMESTAMP_UNIT>` — Timestamp value unit.
-
-  Default value: `rfc3339`
-
-  Possible values:
-  - `rfc3339`:
-    Parse RFC 3339 timestamps.
-  - `seconds`:
-    Parse Unix timestamps in seconds.
-  - `milliseconds`:
-    Parse Unix timestamps in milliseconds.
-  - `microseconds`:
-    Parse Unix timestamps in microseconds.
-  - `nanoseconds`:
-    Parse Unix timestamps in nanoseconds.
-
-* `--session-filter <FILTER>` — Session filter. Use all, open_only, or closed_only.
-
-  Default value: `open_only`
-* `--sparse-hour-event-threshold <COUNT>` — Minimum accepted events per hour before a bucket is flagged as sparse.
-
-  Default value: `1`
-* `--intraday-minutes-per-bin <MINUTES>` — Intraday estimator bin size in minutes.
-
-  Default value: `1`
-* `--intraday-smoothing-kernel <INTRADAY_SMOOTHING_KERNEL>` — Intraday smoothing kernel.
-
-  Default value: `gaussian`
-
-  Possible values:
-  - `gaussian`:
-    Use Gaussian smoothing across intraday bins.
-  - `uniform`:
-    Use uniform smoothing across intraday bins.
-
-* `--intraday-smoothing-bandwidth-bins <BINS>` — Intraday smoothing bandwidth measured in bins.
-
-  Default value: `3`
-* `--intraday-minimum-bin-events <COUNT>` — Minimum events per intraday bin before the bin is flagged as sparse.
-
-  Default value: `1`
-* `--intraday-pseudocount <VALUE>` — Intraday estimator pseudocount added before normalization.
-
-  Default value: `0.000001`
-* `--day-of-week-minimum-bucket-events <COUNT>` — Minimum events per day-of-week bucket before the bucket is flagged as sparse.
-
-  Default value: `1`
-* `--day-of-week-pseudocount <VALUE>` — Day-of-week estimator pseudocount added before normalization.
-
-  Default value: `0.000001`
-* `--day-of-year-minimum-bucket-events <COUNT>` — Minimum events per day-of-year bucket before the bucket is flagged as sparse.
-
-  Default value: `1`
-* `--day-of-year-pseudocount <VALUE>` — Day-of-year estimator pseudocount added before normalization.
-
-  Default value: `0.000001`
-* `--estimator-version <VERSION>` — Estimator version label recorded in reproducibility metadata.
-
-  Default value: `seasonality_estimator.v1`
-* `--output-path <PATH>` — Primary output path.
-
-   When omitted, Janiform chooses a default output path for the command.
-
-
-
-## `janiform hourly-factors`
-
-Prepare hourly seasonality and news-intensity factors.
-
-These commands align seasonality and scheduled-news effects to the interval grid used by Janiform simulations. They read a calendar, exchange code, UTC range, interval, and factor inputs.
-
-**Usage:** `janiform hourly-factors <COMMAND>`
-
-###### **Subcommands:**
-
-* `materialize-seasonality` — Build hourly seasonality factors.
-* `materialize-news-intensity` — Build hourly news-intensity factors.
-* `build-contract` — Combine hourly factors for model use.
-
-
-
-## `janiform hourly-factors materialize-seasonality`
-
-Build hourly seasonality factors.
-
-This command converts seasonality observations into interval-aligned s_h factors over the requested UTC range. It writes a factor report that can be passed to build-contract.
-
-**Usage:** `janiform hourly-factors materialize-seasonality [OPTIONS]`
-
-###### **Options:**
-
-* `--calendar-registry-json <PATH>` — Exchange calendar JSON file.
-* `--exchange-code <CODE>` — Exchange code.
-* `--range-start-utc <UTC>` — Inclusive UTC range start.
-* `--range-end-utc <UTC>` — Exclusive UTC range end.
-* `--interval <DURATION>` — Exact positive fixed-width UTC interval, for example 1h or 15min.
-
-  Default value: `1h`
-* `--materialization-input-json <PATH>` — Hourly seasonality materialization input JSON document.
-* `--output-path <PATH>` — Primary output path.
-
-   When omitted, Janiform chooses a default output path for the command.
-
-
-
-## `janiform hourly-factors materialize-news-intensity`
-
-Build hourly news-intensity factors.
-
-This command converts scheduled news timestamps and surprise-intensity settings into interval-aligned nu_h factors over the requested UTC range. It writes a factor report that can be passed to build-contract.
-
-**Usage:** `janiform hourly-factors materialize-news-intensity [OPTIONS]`
-
-###### **Options:**
-
-* `--calendar-registry-json <PATH>` — Exchange calendar JSON file.
-* `--exchange-code <CODE>` — Exchange code.
-* `--range-start-utc <UTC>` — Inclusive UTC range start.
-* `--range-end-utc <UTC>` — Exclusive UTC range end.
-* `--interval <DURATION>` — Exact positive fixed-width UTC interval, for example 1h or 15min.
-
-  Default value: `1h`
-* `--materialization-input-json <PATH>` — Hourly news-intensity materialization input JSON document.
-* `--output-path <PATH>` — Primary output path.
-
-   When omitted, Janiform chooses a default output path for the command.
-
-
-
-## `janiform hourly-factors build-contract`
-
-Combine hourly factors for model use.
-
-This command combines one seasonality input and one news-intensity input into the hourly factors used by downstream model workflows. Each input may be explicit JSON or a materialization report.
-
-**Usage:** `janiform hourly-factors build-contract [OPTIONS] <--seasonality-explicit-source-json <PATH>|--seasonality-materialized-source-json <PATH>> <--news-intensity-explicit-source-json <PATH>|--news-intensity-materialized-source-json <PATH>>`
-
-###### **Options:**
-
-* `--calendar-registry-json <PATH>` — Exchange calendar JSON file.
-* `--exchange-code <CODE>` — Exchange code.
-* `--range-start-utc <UTC>` — Inclusive UTC range start.
-* `--range-end-utc <UTC>` — Exclusive UTC range end.
-* `--interval <DURATION>` — Exact positive fixed-width UTC interval, for example 1h or 15min.
-
-  Default value: `1h`
-* `--seasonality-explicit-source-json <PATH>` — Explicit seasonality JSON file.
-* `--seasonality-materialized-source-json <PATH>` — Materialized seasonality JSON file.
-* `--news-intensity-explicit-source-json <PATH>` — Explicit news-intensity JSON file.
-* `--news-intensity-materialized-source-json <PATH>` — Materialized news-intensity JSON file.
-* `--output-path <PATH>` — Primary output path.
-
-   When omitted, Janiform chooses a default output path for the command.
 
 
 
@@ -2188,7 +1948,7 @@ Regression commands compare deterministic fixtures and semantic validation fixtu
 
 Run deterministic regression checks.
 
-This command checks calendar and hourly-factor regression cases against the native deterministic harness.
+This command checks calendar cases and optional interval-factor-grid cases against the native deterministic harness.
 
 **Usage:** `janiform dev regression deterministic [OPTIONS]`
 
@@ -2196,7 +1956,7 @@ This command checks calendar and hourly-factor regression cases against the nati
 
 * `--calendar-registry-json <PATH>` — Calendar registry JSON document.
 * `--calendar-cases-json <PATH>` — Calendar regression cases JSON document.
-* `--seasonality-cases-json <PATH>` — Hourly-factor regression cases JSON document.
+* `--seasonality-cases-json <PATH>` — Optional interval-factor-grid regression cases JSON document.
 * `--seasonality-absolute-tolerance <SEASONALITY_ABSOLUTE_TOLERANCE>` — Absolute tolerance for seasonality factor mismatches.
 
   Default value: `0.000000000001`

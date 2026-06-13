@@ -75,7 +75,7 @@ def test_simulation_request_model_validates_construction() -> None:
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-        hourly_factor_summary=_valid_hourly_factor_summary(),
+        interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.POST_EVENT_TRANSITION,
     )
@@ -104,7 +104,7 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-            hourly_factor_summary=_valid_hourly_factor_summary(),
+            interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
             sample_every_nth_transition=0,
         )
@@ -168,7 +168,7 @@ def test_simulation_response_rejects_invalid_side_with_structured_error() -> Non
     assert "must be one of: buy, sell" in captured_error.value.failure.message
 
 
-def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_handle() -> None:
+def test_simulation_entrypoint_rejects_request_without_runtime_interval_factor_grid_handle() -> None:
     (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
@@ -188,15 +188,15 @@ def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_han
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-        hourly_factor_summary=_valid_hourly_factor_summary(),
+        interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
     )
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         run_seeded_tick_event_simulation(request)
 
-    assert captured_error.value.failure.field_path == "hourly_factor_summary"
-    assert "runtime hourly factor contract handle is unavailable" in captured_error.value.failure.message
+    assert captured_error.value.failure.field_path == "interval_factor_grid_summary"
+    assert "runtime interval factor grid contract handle is unavailable" in captured_error.value.failure.message
 
 
 def _valid_kernel_parameters() -> HawkesKernelParameters:
@@ -227,18 +227,18 @@ def _valid_excitation_state() -> HawkesExcitationState:
     )
 
 
-def _valid_hourly_factor_summary():
-    from janiform.simulation.seeded import SeededTickSimulationHourlyFactorSummary
+def _valid_interval_factor_grid_summary():
+    from janiform.simulation.seeded import SeededTickSimulationIntervalFactorGridSummary
 
-    return SeededTickSimulationHourlyFactorSummary(
-        schema_version="seasonality.hourly_factor.contract.v1",
+    return SeededTickSimulationIntervalFactorGridSummary(
+        schema_version="seasonality.interval_factor_grid.contract.v1",
         exchange_code="XNYS",
         interval_count=2,
         interval_duration_nanos=1,
         interval_start_utc_nanos=(1, 2),
         interval_end_utc_nanos=(2, 3),
-        s_h=(1.0, 1.1),
-        nu_h=(0.2, 0.1),
+        seasonality_factor=(1.0, 1.1),
+        news_intensity=(0.2, 0.1),
     )
 
 

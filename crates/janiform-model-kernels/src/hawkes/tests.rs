@@ -22,7 +22,7 @@ fn assert_within_tolerance(actual: f64, expected: f64, tolerance: f64, field_nam
     );
 }
 
-fn build_hourly_factor_contract_with_seasonality(seasonality_factors: Vec<f64>) -> Vec<f64> {
+fn build_interval_factor_grid_with_seasonality(seasonality_factors: Vec<f64>) -> Vec<f64> {
     seasonality_factors
 }
 
@@ -253,10 +253,10 @@ fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
         y_minus_minus: 0.3,
     };
 
-    let hourly_factor_contract = build_hourly_factor_contract_with_seasonality(vec![0.8, 1.3, 0.6]);
+    let interval_factor_grid = build_interval_factor_grid_with_seasonality(vec![0.8, 1.3, 0.6]);
 
     let projection = state
-        .project_intensities_for_hourly_interval(0.5, &hourly_factor_contract, 1)
+        .project_intensities_for_hourly_interval(0.5, &interval_factor_grid, 1)
         .expect("interval 1 must resolve from shared hourly contract");
 
     assert_within_tolerance(
@@ -294,10 +294,10 @@ fn hourly_interval_projection_rejects_out_of_range_interval_index() {
         y_minus_minus: 0.3,
     };
 
-    let hourly_factor_contract = build_hourly_factor_contract_with_seasonality(vec![1.0, 0.9]);
+    let interval_factor_grid = build_interval_factor_grid_with_seasonality(vec![1.0, 0.9]);
 
     let error = state
-        .project_intensities_for_hourly_interval(0.5, &hourly_factor_contract, 2)
+        .project_intensities_for_hourly_interval(0.5, &interval_factor_grid, 2)
         .expect_err("out-of-range interval index must fail");
 
     assert_eq!(

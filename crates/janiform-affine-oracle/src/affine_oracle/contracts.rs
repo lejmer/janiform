@@ -149,51 +149,54 @@ impl Error for ExponentialAffineTransformEquationSpecificationError {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExponentialAffineTransformNewsIntensityInput {
-    pub known_nu_h: f64,
-    pub surprise_nu_h: f64,
+    pub known_news_intensity: f64,
+    pub surprise_news_intensity: f64,
 }
 
 impl ExponentialAffineTransformNewsIntensityInput {
     pub const fn zero() -> Self {
         Self {
-            known_nu_h: 0.0,
-            surprise_nu_h: 0.0,
+            known_news_intensity: 0.0,
+            surprise_news_intensity: 0.0,
         }
     }
 
     pub fn try_new(
-        known_nu_h: f64,
-        surprise_nu_h: f64,
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
     ) -> Result<Self, ExponentialAffineTransformNewsIntensityInputError> {
         let input = Self {
-            known_nu_h,
-            surprise_nu_h,
+            known_news_intensity,
+            surprise_news_intensity,
         };
+
         input.validate()?;
+
         Ok(input)
     }
 
     pub fn validate(self) -> Result<(), ExponentialAffineTransformNewsIntensityInputError> {
-        if !self.known_nu_h.is_finite() || self.known_nu_h < 0.0 {
+        if !self.known_news_intensity.is_finite() || self.known_news_intensity < 0.0 {
             return Err(
                 ExponentialAffineTransformNewsIntensityInputError::InvalidKnownNewsIntensity {
-                    value: self.known_nu_h,
-                },
-            );
-        }
-        if !self.surprise_nu_h.is_finite() || self.surprise_nu_h < 0.0 {
-            return Err(
-                ExponentialAffineTransformNewsIntensityInputError::InvalidSurpriseNewsIntensity {
-                    value: self.surprise_nu_h,
+                    value: self.known_news_intensity,
                 },
             );
         }
 
-        if !self.total_nu_h().is_finite() {
+        if !self.surprise_news_intensity.is_finite() || self.surprise_news_intensity < 0.0 {
+            return Err(
+                ExponentialAffineTransformNewsIntensityInputError::InvalidSurpriseNewsIntensity {
+                    value: self.surprise_news_intensity,
+                },
+            );
+        }
+
+        if !self.total_news_intensity().is_finite() {
             return Err(
                 ExponentialAffineTransformNewsIntensityInputError::NonFiniteAggregateNewsIntensity {
-                    known_nu_h: self.known_nu_h,
-                    surprise_nu_h: self.surprise_nu_h,
+                    known_news_intensity: self.known_news_intensity,
+                    surprise_news_intensity: self.surprise_news_intensity,
                 },
             );
         }
@@ -201,16 +204,23 @@ impl ExponentialAffineTransformNewsIntensityInput {
         Ok(())
     }
 
-    pub fn total_nu_h(self) -> f64 {
-        self.known_nu_h + self.surprise_nu_h
+    pub fn total_news_intensity(self) -> f64 {
+        self.known_news_intensity + self.surprise_news_intensity
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExponentialAffineTransformNewsIntensityInputError {
-    InvalidKnownNewsIntensity { value: f64 },
-    InvalidSurpriseNewsIntensity { value: f64 },
-    NonFiniteAggregateNewsIntensity { known_nu_h: f64, surprise_nu_h: f64 },
+    InvalidKnownNewsIntensity {
+        value: f64,
+    },
+    InvalidSurpriseNewsIntensity {
+        value: f64,
+    },
+    NonFiniteAggregateNewsIntensity {
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
+    },
 }
 
 impl Display for ExponentialAffineTransformNewsIntensityInputError {
@@ -218,18 +228,18 @@ impl Display for ExponentialAffineTransformNewsIntensityInputError {
         match self {
             Self::InvalidKnownNewsIntensity { value } => write!(
                 formatter,
-                "known_nu_h must be finite and non-negative, found {value}"
+                "known_news_intensity must be finite and non-negative, found {value}"
             ),
             Self::InvalidSurpriseNewsIntensity { value } => write!(
                 formatter,
-                "surprise_nu_h must be finite and non-negative, found {value}"
+                "surprise_news_intensity must be finite and non-negative, found {value}"
             ),
             Self::NonFiniteAggregateNewsIntensity {
-                known_nu_h,
-                surprise_nu_h,
+                known_news_intensity,
+                surprise_news_intensity,
             } => write!(
                 formatter,
-                "known_nu_h + surprise_nu_h must be finite, found known_nu_h={known_nu_h}, surprise_nu_h={surprise_nu_h}"
+                "known_news_intensity + surprise_news_intensity must be finite, found known_news_intensity={known_news_intensity}, surprise_news_intensity={surprise_news_intensity}"
             ),
         }
     }
@@ -335,7 +345,7 @@ pub struct ExponentialAffineTransformInput {
     pub z_plus: ComplexScalar,
     pub z_minus: ComplexScalar,
     pub news_return_loading: ComplexScalar,
-    pub s_h: f64,
+    pub seasonality_factor: f64,
     pub news_intensity: ExponentialAffineTransformNewsIntensityInput,
     pub known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
     pub surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
@@ -351,7 +361,7 @@ impl ExponentialAffineTransformInput {
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
         news_return_loading: ComplexScalar,
-        s_h: f64,
+        seasonality_factor: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
         known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
         surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
@@ -364,7 +374,7 @@ impl ExponentialAffineTransformInput {
             z_plus,
             z_minus,
             news_return_loading,
-            s_h,
+            seasonality_factor,
             news_intensity,
             known_news_component_mark_scales,
             surprise_news_component_mark_scales,
@@ -380,7 +390,7 @@ impl ExponentialAffineTransformInput {
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
         news_return_loading: ComplexScalar,
-        s_h: f64,
+        seasonality_factor: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
         known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
         surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
@@ -393,7 +403,7 @@ impl ExponentialAffineTransformInput {
             z_plus,
             z_minus,
             news_return_loading,
-            s_h,
+            seasonality_factor,
             news_intensity,
             known_news_component_mark_scales,
             surprise_news_component_mark_scales,
@@ -419,9 +429,11 @@ impl ExponentialAffineTransformInput {
         ensure_finite_complex_input("z_minus", self.z_minus)?;
         ensure_finite_complex_input("news_return_loading", self.news_return_loading)?;
 
-        if !self.s_h.is_finite() || self.s_h < 0.0 {
+        if !self.seasonality_factor.is_finite() || self.seasonality_factor < 0.0 {
             return Err(
-                ExponentialAffineTransformInputError::InvalidSeasonalityFactor { value: self.s_h },
+                ExponentialAffineTransformInputError::InvalidSeasonalityFactor {
+                    value: self.seasonality_factor,
+                },
             );
         }
 
@@ -528,7 +540,7 @@ impl Display for ExponentialAffineTransformInputError {
             ),
             Self::InvalidSeasonalityFactor { value } => write!(
                 formatter,
-                "s_h must be finite and non-negative, found {value}"
+                "seasonality_factor must be finite and non-negative, found {value}"
             ),
             Self::InvalidDelta { value } => write!(
                 formatter,

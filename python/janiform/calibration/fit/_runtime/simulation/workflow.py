@@ -64,7 +64,6 @@ def simulate_model(
     simulation_kind = SimulationKind.COARSE_INTERVAL if coarse else SimulationKind.SEEDED_TICK
 
     preferences = simulation_output_preferences_from_model(model)
-
     simulation_run_id = generate_workflow_run_id(f"{model.run_id}_simulate")
 
     resolved_output_path = _resolve_native_output_path(
@@ -191,6 +190,7 @@ def _build_simulation_from_model_artifact_request(
     state_snapshot_capture: SeededTickEventStateSnapshotCapture,
 ) -> dict[str, Any]:
     preferences = simulation_output_preferences_from_model(model)
+
     side_column = (
         None
         if simulation_kind == SimulationKind.COARSE_INTERVAL
@@ -243,6 +243,7 @@ def _build_continuation_data_payload(
         model,
         request=continuation_data,
     )
+
     (
         observed_timestamps_utc,
         observed_trade_prices,
@@ -278,6 +279,7 @@ def _adapt_native_simulation_output(
             python_response_construction_seconds=0.0,
             chunk_record_count=max_records_per_chunk,
         )
+
         response.diagnostics.python_response_construction_seconds = perf_counter() - response_build_started
 
         return response
@@ -306,6 +308,6 @@ def _resolve_native_output_path(
 
 
 def _interval_duration_nanos(interval: str | timedelta) -> int:
-    from .....hourly_factors.workflow import _parse_interval_duration_nanos
+    from .....interval_factor_grids.workflow import _parse_interval_duration_nanos
 
     return _parse_interval_duration_nanos(interval, field_name="interval")

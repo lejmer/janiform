@@ -64,10 +64,10 @@ from janiform.calibration.staged import (
 )
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.errors import JaniformExecutionError
-from janiform.hourly_factors import (
-    HourlyFactorContract,
-    HourlySeasonalityProviderExplicitSource,
-    HourlySeasonalityProviderMaterializedSource,
+from janiform.interval_factor_grids import (
+    IntervalFactorGridContract,
+    IntervalSeasonalityProviderExplicitSource,
+    IntervalSeasonalityProviderMaterializedSource,
 )
 from janiform.long_variance import LongVarianceState
 from janiform.mean_reversion import (
@@ -497,7 +497,7 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
     assert request.preprocessing_settings == preprocessing_settings
 
 
-def test_prepare_fit_workflow_passes_high_level_tick_size_to_native_payload() -> None:
+def test_prepare_fit_workflow_passeseasonality_factorigh_level_tick_size_to_native_payload() -> None:
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
         tick_size=0.00001,
@@ -1676,7 +1676,7 @@ def test_loaded_high_level_model_runtime_seasonality_uses_structural_clock_model
         ),
     )
 
-    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_interval_seasonality_source_from_model(
         loaded_model,
         calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
@@ -1685,7 +1685,7 @@ def test_loaded_high_level_model_runtime_seasonality_uses_structural_clock_model
         interval="1h",
     )
 
-    assert seasonality_source.hourly_factors == (1.0, 1.0)
+    assert seasonality_source.interval_factor_grids == (1.0, 1.0)
 
 
 def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clock_model(
@@ -1747,7 +1747,7 @@ def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clo
         ),
     )
 
-    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_interval_seasonality_source_from_model(
         loaded_model,
         calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
@@ -1756,7 +1756,7 @@ def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clo
         interval="1h",
     )
 
-    assert seasonality_source.hourly_factors == (1.0, 1.0)
+    assert seasonality_source.interval_factor_grids == (1.0, 1.0)
 
 
 def test_loaded_high_level_model_runtime_seasonality_requires_structural_parameters(
@@ -1787,7 +1787,7 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
         RuntimeError,
         match="JaniformModel does not contain structural seasonality parameters required for runtime materialization",
     ):
-        fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+        fit_seasonality_runtime_module.build_runtime_interval_seasonality_source_from_model(
             loaded_model,
             calendar_registry=registry,
             exchange_code=loaded_model.session_resolution.exchange_code,
@@ -2161,7 +2161,7 @@ def test_high_level_model_simulate_sends_continuation_data_to_native_workflow(
         assert request["initial_mean_reversion_boundary_state"] is None
 
 
-def test_high_level_model_simulate_sends_hawkes_override_to_native_workflow(
+def test_high_level_model_simulate_sendseasonality_factorawkes_override_to_native_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3887,7 +3887,7 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
         interval="1h",
     )
 
-    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_interval_seasonality_source_from_model(
         model,
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
@@ -3898,7 +3898,7 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
 
     assert isinstance(
         seasonality_source,
-        HourlySeasonalityProviderMaterializedSource,
+        IntervalSeasonalityProviderMaterializedSource,
     )
     assert seasonality_source.source_timestamps_utc == (
         datetime(2026, 2, 2, 15, 34, tzinfo=UTC),
@@ -3906,7 +3906,7 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
     )
 
 
-def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hour_aligned_windows(
+def test_runtime_pricing_seasonality_source_uses_explicit_interval_factor_grids_for_hour_aligned_windows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3925,7 +3925,7 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
         interval="1h",
     )
 
-    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_interval_seasonality_source_from_model(
         model,
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
@@ -3936,9 +3936,9 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
 
     assert isinstance(
         seasonality_source,
-        HourlySeasonalityProviderExplicitSource,
+        IntervalSeasonalityProviderExplicitSource,
     )
-    assert tuple(seasonality_source.hourly_factors) == (1.0, 1.0)
+    assert tuple(seasonality_source.interval_factor_grids) == (1.0, 1.0)
 
 
 def test_runtime_pricing_factors_use_pricing_kernel_when_requested(
@@ -4718,11 +4718,11 @@ def _write_rust_model_artifact(model: JaniformModel, path: Path) -> None:
     )
 
 
-def _build_test_hourly_factor_contract(
+def _build_test_interval_factor_grid_contract(
     *,
     start_time_utc: datetime,
     interval_end_times_utc: tuple[datetime, ...],
-) -> HourlyFactorContract:
+) -> IntervalFactorGridContract:
     interval_start_utc_nanos = [
         datetime_to_utc_nanos(start_time_utc),
         *[
@@ -4738,9 +4738,9 @@ def _build_test_hourly_factor_contract(
 
     interval_duration_nanos = interval_end_utc_nanos[0] - interval_start_utc_nanos[0]
 
-    return HourlyFactorContract(
+    return IntervalFactorGridContract(
         SimpleNamespace(
-            schema_version="seasonality.hourly_factor.contract.v1",
+            schema_version="seasonality.interval_factor_grid.contract.v1",
             exchange_code="XNYS",
             exchange_timezone_name="America/New_York",
             request_start_utc_nanos=interval_start_utc_nanos[0],
@@ -4757,15 +4757,15 @@ def _build_test_hourly_factor_contract(
                 f"end_{interval_index}"
                 for interval_index in range(len(interval_end_times_utc))
             ],
-            s_h=[1.0 for _ in interval_end_times_utc],
-            known_component_nu_h=[0.0 for _ in interval_end_times_utc],
-            surprise_component_nu_h=[0.0 for _ in interval_end_times_utc],
-            nu_h=[0.0 for _ in interval_end_times_utc],
+            seasonality_factor=[1.0 for _ in interval_end_times_utc],
+            known_news_intensity=[0.0 for _ in interval_end_times_utc],
+            surprise_news_intensity=[0.0 for _ in interval_end_times_utc],
+            news_intensity=[0.0 for _ in interval_end_times_utc],
             interval_count=len(interval_end_times_utc),
             first_interval_start_utc_nanos=interval_start_utc_nanos[0],
             last_interval_end_utc_nanos=interval_end_utc_nanos[-1],
-            skipped_local_hour_interval_count=0,
-            repeated_local_hour_interval_count=0,
+            skipped_exchange_local_interval_count=0,
+            repeated_exchange_local_interval_count=0,
             interval_boundary_policy="start_time_utc_anchor_plus_fixed_interval_delta_half_open_utc_boundaries.v1",
             interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
             timezone_transition_policy="utc_monotonic_without_local_gap_backfill.v1",

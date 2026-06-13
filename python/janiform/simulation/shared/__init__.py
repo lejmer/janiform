@@ -15,7 +15,7 @@ from ...mean_reversion import (
 )
 from .errors import (
     SeededTickSimulationValidationError,
-    SeededTickSimulationValidationFailure,
+    ContractValidationFailure,
 )
 
 
@@ -30,5 +30,4 @@ __all__ = [
     "SeededTickEventSide",
     "SeededTickEventStateSnapshotCapture",
     "SeededTickSimulationValidationError",
-    "SeededTickSimulationValidationFailure",
 ]

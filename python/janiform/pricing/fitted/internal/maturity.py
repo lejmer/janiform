@@ -46,7 +46,7 @@ class ResolvedPricingMaturityInputs:
 def finalize_runtime_pricing_schedule(
     *,
     resolved_maturity_inputs: ResolvedPricingMaturityInputs,
-    hourly_factor_contract: Any,
+    interval_factor_grid: Any,
     pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
     field_path: str,
 ) -> ResolvedPricingMaturityInputs:
@@ -78,7 +78,7 @@ def finalize_runtime_pricing_schedule(
             datetime_to_utc_nanos(expiry_timestamp)
             for expiry_timestamp in resolved_maturity_inputs.resolved_expiry_timestamps_utc
         ],
-        "hourly_factor_contract": hourly_factor_contract.to_payload(),
+        "interval_factor_grid": interval_factor_grid.to_payload(),
     }
 
     try:
@@ -100,6 +100,7 @@ def finalize_runtime_pricing_schedule(
         )
 
     pricing_interval_schedule = raw_resolution.get("schedule")
+
     maturity_terminal_interval_indices = raw_resolution.get(
         "maturity_terminal_interval_indices"
     )

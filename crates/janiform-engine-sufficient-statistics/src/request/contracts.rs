@@ -16,7 +16,7 @@ pub struct SufficientStatisticsRunRequest {
     pub horizon_interval_count: usize,
     pub interval_delta: f64,
     pub model_inputs: SufficientStatisticsModelInputs,
-    pub interval_factors: SufficientStatisticsIntervalFactors,
+    pub interval_factor_grids: SufficientStatisticsIntervalFactors,
 }
 
 impl SufficientStatisticsRunRequest {
@@ -25,16 +25,18 @@ impl SufficientStatisticsRunRequest {
         horizon_interval_count: usize,
         interval_delta: f64,
         model_inputs: SufficientStatisticsModelInputs,
-        interval_factors: SufficientStatisticsIntervalFactors,
+        interval_factor_grids: SufficientStatisticsIntervalFactors,
     ) -> Result<Self, SufficientStatisticsRunRequestError> {
         let run_request = Self {
             seed,
             horizon_interval_count,
             interval_delta,
             model_inputs,
-            interval_factors,
+            interval_factor_grids,
         };
+
         run_request.validate()?;
+
         Ok(run_request)
     }
 
@@ -55,11 +57,11 @@ impl SufficientStatisticsRunRequest {
             .validate()
             .map_err(|source| SufficientStatisticsRunRequestError::InvalidModelInputs { source })?;
 
-        self.interval_factors.validate().map_err(|source| {
+        self.interval_factor_grids.validate().map_err(|source| {
             SufficientStatisticsRunRequestError::InvalidIntervalFactors { source }
         })?;
 
-        let resolved_factor_interval_delta = self.interval_factors.resolved_interval_delta();
+        let resolved_factor_interval_delta = self.interval_factor_grids.resolved_interval_delta();
         if duration_hours_to_nanos(resolved_factor_interval_delta) != Ok(interval_delta_nanos) {
             return Err(
                 SufficientStatisticsRunRequestError::IntervalDeltaFactorMismatch {
@@ -69,7 +71,7 @@ impl SufficientStatisticsRunRequest {
             );
         }
 
-        let available_interval_count = self.interval_factors.s_h.len();
+        let available_interval_count = self.interval_factor_grids.seasonality_factor.len();
         if self.horizon_interval_count > available_interval_count {
             return Err(
                 SufficientStatisticsRunRequestError::HorizonExceedsAvailableIntervals {

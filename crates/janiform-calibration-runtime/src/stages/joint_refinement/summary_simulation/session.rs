@@ -4,7 +4,7 @@ use std::mem::size_of;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::adapters::load_interval_factor_grid_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
     JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY, JointRefinementAggregatedIntervalObservation,
@@ -26,15 +26,15 @@ use janiform_engine_simulation::{
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR};
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
-use janiform_market_time::hourly_factors::{
-    HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-    HourlySeasonalityFactorSource,
+use janiform_market_time::interval_factor_grids::{
+    IntervalFactorGrid, IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
+    IntervalSeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::super::execution::JointRefinementSeedSummary;
 use super::super::mean_reversion_runtime::{
-    endogenous_interval_factors_from_hourly_contract,
+    endogenous_interval_factor_grids_from_hourly_contract,
     materialize_joint_refinement_mean_reversion_runtime_inputs,
 };
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
@@ -64,7 +64,7 @@ pub struct JointRefinementSummarySimulationSessionContext {
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
     pub known_scheduled_event_timestamps_utc_nanos: Vec<i64>,
-    pub runtime_hourly_seasonality_factors: Vec<f64>,
+    pub runtime_interval_seasonality_factors: Vec<f64>,
     pub hourly_simulation_start_utc_nanos: i64,
     pub hourly_simulation_interval_count: usize,
     pub surprise_weekly_hour_utc_multipliers: Vec<f64>,
@@ -175,7 +175,7 @@ pub struct JointRefinementSummarySimulationSessionState {
     hourly_simulation_start_utc: DateTime<Utc>,
     hourly_simulation_interval_count: usize,
     surprise_deterministic_time_multipliers: Vec<f64>,
-    hourly_factor_contract_template: HourlyFactorContractOutput,
+    interval_factor_grid_template: IntervalFactorGrid,
     simulated_5m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_15m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_hourly_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
@@ -530,20 +530,20 @@ pub fn initialize_joint_refinement_summary_simulation_session(
             "joint refinement hourly simulation end timestamp is out of range".to_string()
         })?;
 
-    let hourly_factor_contract_template = load_hourly_factor_contract_for_calibration(
+    let interval_factor_grid_template = load_interval_factor_grid_for_calibration(
         &calendar_registry,
-        HourlyFactorProviderRequest {
+        IntervalFactorGridProviderRequest {
             exchange_code: session_context.exchange_code.as_str(),
             range_start_utc: hourly_simulation_start_utc,
             range_end_utc: hourly_simulation_end_utc,
             interval_duration_nanos: NANOS_PER_HOUR,
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: session_context
-                    .runtime_hourly_seasonality_factors
+            seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
+                interval_factors: session_context
+                    .runtime_interval_seasonality_factors
                     .as_slice(),
                 materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+            news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: session_context
                     .known_scheduled_event_timestamps_utc_nanos
                     .as_slice(),
@@ -562,7 +562,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
         hourly_simulation_start_utc,
         hourly_simulation_interval_count: session_context.hourly_simulation_interval_count,
         surprise_deterministic_time_multipliers,
-        hourly_factor_contract_template,
+        interval_factor_grid_template,
         simulated_5m_interval_template: session_context.simulated_5m_interval_template.clone(),
         simulated_15m_interval_template: session_context.simulated_15m_interval_template.clone(),
         simulated_hourly_interval_template: session_context
@@ -721,7 +721,7 @@ fn build_seeded_summary_simulation_run_config(
         .arrivals
         .surprise;
 
-    let surprise_component_nu_h = session_state
+    let surprise_news_intensity = session_state
         .surprise_deterministic_time_multipliers
         .iter()
         .enumerate()
@@ -731,10 +731,10 @@ fn build_seeded_summary_simulation_run_config(
                 .resolve_market_state_exposure_in_utc_interval(
                     session_state.exchange_code.as_str(),
                     session_state
-                        .hourly_factor_contract_template
+                        .interval_factor_grid_template
                         .interval_start_utc_nanos[interval_position],
                     session_state
-                        .hourly_factor_contract_template
+                        .interval_factor_grid_template
                         .interval_end_utc_nanos[interval_position],
                 )
                 .map_err(|source| source.to_string())?;
@@ -747,20 +747,20 @@ fn build_seeded_summary_simulation_run_config(
         })
         .collect::<Result<Vec<_>, String>>()?;
 
-    let nu_h = session_state
-        .hourly_factor_contract_template
-        .known_component_nu_h
+    let news_intensity = session_state
+        .interval_factor_grid_template
+        .known_news_intensity
         .iter()
-        .zip(surprise_component_nu_h.iter())
-        .map(|(known_component_nu_h, surprise_component_nu_h)| {
-            known_component_nu_h + surprise_component_nu_h
+        .zip(surprise_news_intensity.iter())
+        .map(|(known_news_intensity, surprise_news_intensity)| {
+            known_news_intensity + surprise_news_intensity
         })
         .collect::<Vec<_>>();
 
-    let mut hourly_factor_contract = session_state.hourly_factor_contract_template.clone();
+    let mut interval_factor_grid = session_state.interval_factor_grid_template.clone();
 
-    hourly_factor_contract.surprise_component_nu_h = surprise_component_nu_h;
-    hourly_factor_contract.nu_h = nu_h;
+    interval_factor_grid.surprise_news_intensity = surprise_news_intensity;
+    interval_factor_grid.news_intensity = news_intensity;
 
     let initial_excitation_state = HawkesExcitationState {
         y_plus_plus: 0.0,
@@ -769,15 +769,15 @@ fn build_seeded_summary_simulation_run_config(
         y_minus_minus: 0.0,
     };
 
-    let endogenous_interval_factors =
-        endogenous_interval_factors_from_hourly_contract(&hourly_factor_contract)?;
+    let endogenous_interval_factor_grids =
+        endogenous_interval_factor_grids_from_hourly_contract(&interval_factor_grid)?;
 
     let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
         materialize_joint_refinement_mean_reversion_runtime_inputs(
-            hourly_factor_contract.metadata.interval_alignment_policy,
+            interval_factor_grid.metadata.interval_alignment_policy,
             fitted_parameters,
             initial_excitation_state,
-            endogenous_interval_factors.as_slice(),
+            endogenous_interval_factor_grids.as_slice(),
         )?;
 
     janiform_engine_simulation::SeededTickSimulationRunConfig::try_new(
@@ -800,7 +800,7 @@ fn build_seeded_summary_simulation_run_config(
                 .clone(),
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
-            hourly_factor_contract,
+            interval_factor_grid,
             return_clock_exposure_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .return_clock_exposure_parameters,
@@ -899,7 +899,7 @@ pub(crate) mod tests {
         serialize_joint_refinement_worker_payload,
         simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
     };
-    use crate::load_hourly_factor_contract_for_calibration;
+    use crate::load_interval_factor_grid_for_calibration;
     use crate::stages::hawkes::{
         HawkesStageCandidateInput, HawkesStageDirectionalLabelDiagnostics,
         HawkesStageExecutionInput, HawkesStageFittedPayload, HawkesStageObservedSourceRegime,
@@ -927,9 +927,9 @@ pub(crate) mod tests {
         run_return_components_calibration_stage,
     };
     use crate::stages::seasonality::{
-        CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
+        CalibrationStageExecutionStatus, RuntimeIntervalSeasonalityFactorsBuildInput,
         SeasonalityStageExecutionInput, SeasonalityStageNormalizedPayload,
-        build_runtime_hourly_seasonality_factors_from_components,
+        build_runtime_interval_seasonality_factors_from_components,
         run_seasonality_calibration_stage,
     };
     use crate::stages::{
@@ -950,8 +950,9 @@ pub(crate) mod tests {
     use janiform_market_time::calendar::{
         ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
     };
-    use janiform_market_time::hourly_factors::{
-        HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
+    use janiform_market_time::interval_factor_grids::{
+        IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
+        IntervalSeasonalityFactorSource,
     };
     use janiform_model_kernels::hawkes::{
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
@@ -1087,7 +1088,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn run_config_hourly_factor_contract_matches_materialized_provider_output() {
+    fn run_config_interval_factor_grid_matches_materialized_provider_output() {
         let fixture = joint_refinement_summary_fixture();
 
         let session_state =
@@ -1117,21 +1118,21 @@ pub(crate) mod tests {
             .map(|(interval_index, multiplier)| (interval_index as u64, multiplier))
             .collect::<Vec<_>>();
 
-        let expected_hourly_factor_contract = load_hourly_factor_contract_for_calibration(
+        let expected_interval_factor_grid = load_interval_factor_grid_for_calibration(
             &session_state.calendar_registry,
-            HourlyFactorProviderRequest {
+            IntervalFactorGridProviderRequest {
                 exchange_code: fixture.session_context.exchange_code.as_str(),
                 range_start_utc: session_state.hourly_simulation_start_utc,
                 range_end_utc: hourly_simulation_end_utc,
                 interval_duration_nanos: NANOS_PER_HOUR,
-                seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                    hourly_factors: fixture
+                seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
+                    interval_factors: fixture
                         .session_context
-                        .runtime_hourly_seasonality_factors
+                        .runtime_interval_seasonality_factors
                         .as_slice(),
                     materialization_method: crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
                 }),
-                news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+                news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                     known_scheduled_event_timestamps_utc_nanos: fixture
                         .session_context
                         .known_scheduled_event_timestamps_utc_nanos
@@ -1155,11 +1156,11 @@ pub(crate) mod tests {
                 }),
             },
         )
-        .expect("expected hourly factor contract should build");
+        .expect("expected interval factor grid contract should build");
 
         assert_eq!(
-            run_config.model_inputs.hourly_factor_contract,
-            expected_hourly_factor_contract,
+            run_config.model_inputs.interval_factor_grid,
+            expected_interval_factor_grid,
         );
     }
 
@@ -1547,9 +1548,9 @@ pub(crate) mod tests {
             })
             .expect("joint refinement observed data should build");
 
-            let runtime_hourly_seasonality_factors =
-                build_runtime_hourly_seasonality_factors_from_components(
-                    RuntimeHourlySeasonalityFactorsBuildInput {
+            let runtime_interval_seasonality_factors =
+                build_runtime_interval_seasonality_factors_from_components(
+                    RuntimeIntervalSeasonalityFactorsBuildInput {
                         calendar_registry: &calendar_registry,
                         exchange_code: "XNYS",
                         clock_model: &seasonality_payload.clock_model,
@@ -1582,7 +1583,7 @@ pub(crate) mod tests {
                         .known
                         .scheduled_event_timestamps_utc_nanos
                         .clone(),
-                    runtime_hourly_seasonality_factors,
+                    runtime_interval_seasonality_factors,
                     hourly_simulation_start_utc_nanos: observed_data
                         .hourly_simulation_start_utc
                         .timestamp_nanos_opt()

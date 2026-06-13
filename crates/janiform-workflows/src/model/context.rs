@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use janiform::calibration::current_state::{
     CurrentStateEstimationInput, estimate_current_state_from_observed_data,
 };
-use janiform::model::factors::hourly::duration_nanos_to_hours;
+use janiform::model::factors::interval_factor_grid::duration_nanos_to_hours;
 use janiform::model::hawkes::HawkesEventSide;
 use janiform::time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform_calibration_artifacts::JointRefinementStageFittedParameters;

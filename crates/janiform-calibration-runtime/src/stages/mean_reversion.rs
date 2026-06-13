@@ -20,9 +20,10 @@ use janiform_calibration_artifacts::{
     MeanReversionStagePredictiveEvidenceDiagnostics, MeanReversionStageSeriesSummary,
 };
 use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
-use janiform_foundations::time::{NANOS_PER_HOUR, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
-use janiform_market_time::hourly_factors::{
-    HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
+use janiform_foundations::time::NANOS_PER_HOUR;
+use janiform_market_time::interval_factor_grids::{
+    IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
+    IntervalSeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
@@ -31,7 +32,7 @@ use janiform_model_kernels::mean_reversion::{
 };
 use nalgebra::{Matrix2, Vector2};
 
-use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::adapters::load_interval_factor_grid_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
@@ -39,8 +40,8 @@ use crate::stages::progress::{StageProgressUpdate, emit_stage_progress};
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, FourierBusinessTimeClockModel,
-    RuntimeHourlySeasonalityFactorsBuildInput, SeasonalityStageNormalizedPayload,
-    build_runtime_hourly_seasonality_factors_from_components,
+    RuntimeIntervalSeasonalityFactorsBuildInput, SeasonalityStageNormalizedPayload,
+    build_runtime_interval_seasonality_factors_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -177,7 +178,7 @@ pub enum MeanReversionStageExecutionFailure {
     MissingHawkesStagePayload,
     MissingReturnComponentsStagePayload,
     InvalidObservationTimestampGrid { error_message: String },
-    HourlyFactorMaterializationFailed { error_message: String },
+    IntervalFactorGridMaterializationFailed { error_message: String },
     EndogenousAnchorMaterializationFailed { error_message: String },
 }
 
@@ -907,25 +908,21 @@ fn build_endogenous_mean_reversion_calibration_context(
     let range_end_utc =
         DateTime::<Utc>::from_timestamp_nanos(last_observation.observation_timestamp_utc_nanos);
 
-    let runtime_hourly_seasonality_range_start_utc_nanos =
-        floor_to_hour_utc_nanos(first_observation.observation_timestamp_utc_nanos);
-
-    let runtime_hourly_seasonality_range_end_utc_nanos =
-        ceil_to_hour_utc_nanos(last_observation.observation_timestamp_utc_nanos);
-
-    let runtime_hourly_seasonality_factors =
-        build_runtime_hourly_seasonality_factors_from_components(
-            RuntimeHourlySeasonalityFactorsBuildInput {
+    let runtime_interval_seasonality_factors =
+        build_runtime_interval_seasonality_factors_from_components(
+            RuntimeIntervalSeasonalityFactorsBuildInput {
                 calendar_registry,
                 exchange_code: seasonality_input.exchange_code.as_str(),
                 clock_model: &seasonality_input.clock_model,
-                range_start_utc_nanos: runtime_hourly_seasonality_range_start_utc_nanos,
-                range_end_utc_nanos: runtime_hourly_seasonality_range_end_utc_nanos,
-                interval_duration_nanos: NANOS_PER_HOUR,
+                range_start_utc_nanos: first_observation.observation_timestamp_utc_nanos,
+                range_end_utc_nanos: last_observation.observation_timestamp_utc_nanos,
+                interval_duration_nanos,
             },
         )
         .map_err(|error_message| {
-            MeanReversionStageExecutionFailure::HourlyFactorMaterializationFailed { error_message }
+            MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
+                error_message,
+            }
         })?;
 
     let interval_count = grid_candidate.observations.len().saturating_sub(1);
@@ -942,18 +939,18 @@ fn build_endogenous_mean_reversion_calibration_context(
                 .as_slice(),
         );
 
-    let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
+    let interval_factor_grid = load_interval_factor_grid_for_calibration(
         calendar_registry,
-        HourlyFactorProviderRequest {
+        IntervalFactorGridProviderRequest {
             exchange_code: seasonality_input.exchange_code.as_str(),
             range_start_utc,
             range_end_utc,
             interval_duration_nanos,
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: runtime_hourly_seasonality_factors.as_slice(),
+            seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
+                interval_factors: runtime_interval_seasonality_factors.as_slice(),
                 materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+            news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: return_components_payload
                     .fitted_parameters
                     .news_process_configuration
@@ -979,17 +976,17 @@ fn build_endogenous_mean_reversion_calibration_context(
         },
     )
     .map_err(|source| {
-        MeanReversionStageExecutionFailure::HourlyFactorMaterializationFailed {
+        MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
             error_message: source.to_string(),
         }
     })?;
 
-    if hourly_factor_contract.diagnostics.interval_count != interval_count {
+    if interval_factor_grid.diagnostics.interval_count != interval_count {
         return Err(
-            MeanReversionStageExecutionFailure::HourlyFactorMaterializationFailed {
+            MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
                 error_message: format!(
                     "mean-reversion endogenous calibration expected {interval_count} interval factors from the observation grid, found {}",
-                    hourly_factor_contract.diagnostics.interval_count
+                    interval_factor_grid.diagnostics.interval_count
                 ),
             },
         );
@@ -997,22 +994,23 @@ fn build_endogenous_mean_reversion_calibration_context(
 
     let interval_delta = interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
-    let interval_factors: Result<Vec<EndogenousAnchorIntervalFactors>, _> = hourly_factor_contract
-        .s_h
-        .iter()
-        .zip(hourly_factor_contract.known_component_nu_h.iter())
-        .zip(hourly_factor_contract.surprise_component_nu_h.iter())
-        .map(
-            |((seasonality_factor, known_intensity), surprise_intensity)| {
-                EndogenousAnchorIntervalFactors::try_new(
-                    *seasonality_factor,
-                    *known_intensity,
-                    *surprise_intensity,
-                    interval_delta,
-                )
-            },
-        )
-        .collect();
+    let interval_factor_grids: Result<Vec<EndogenousAnchorIntervalFactors>, _> =
+        interval_factor_grid
+            .seasonality_factor
+            .iter()
+            .zip(interval_factor_grid.known_news_intensity.iter())
+            .zip(interval_factor_grid.surprise_news_intensity.iter())
+            .map(
+                |((seasonality_factor, known_intensity), surprise_intensity)| {
+                    EndogenousAnchorIntervalFactors::try_new(
+                        *seasonality_factor,
+                        *known_intensity,
+                        *surprise_intensity,
+                        interval_delta,
+                    )
+                },
+            )
+            .collect();
 
     let Some(initial_observation_level) = observation_levels.first().copied() else {
         return Err(
@@ -1050,7 +1048,7 @@ fn build_endogenous_mean_reversion_calibration_context(
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
-        interval_factors
+        interval_factor_grids
             .map_err(|source| {
                 MeanReversionStageExecutionFailure::EndogenousAnchorMaterializationFailed {
                     error_message: source.to_string(),

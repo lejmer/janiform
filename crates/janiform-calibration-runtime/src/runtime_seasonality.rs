@@ -4,8 +4,8 @@ use std::fmt::{Display, Formatter};
 use serde::Serialize;
 
 use crate::stages::seasonality::{
-    FourierBusinessTimeClockModel, RuntimeHourlySeasonalityFactorsBuildInput,
-    build_runtime_hourly_seasonality_factors_from_components,
+    FourierBusinessTimeClockModel, RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -67,8 +67,8 @@ pub fn materialize_runtime_structural_seasonality(
     RuntimeStructuralSeasonalityMaterializationOutput,
     RuntimeStructuralSeasonalityMaterializationError,
 > {
-    let seasonality_factors = build_runtime_hourly_seasonality_factors_from_components(
-        RuntimeHourlySeasonalityFactorsBuildInput {
+    let seasonality_factors = build_runtime_interval_seasonality_factors_from_components(
+        RuntimeIntervalSeasonalityFactorsBuildInput {
             calendar_registry,
             exchange_code: input.exchange_code.as_str(),
             clock_model: &input.clock_model,

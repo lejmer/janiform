@@ -1,7 +1,7 @@
 //! Public simulation adapters bridging shared factor, Hawkes, and NIG APIs.
 
 use janiform_foundations::randomness::SimulationRandomnessStream;
-use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
+use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError,
@@ -14,19 +14,19 @@ use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode,
 };
 
-/// Resolve interval-aligned hourly factors for the simulation path.
-pub use janiform_market_time::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
+/// Resolve interval-aligned interval factor grids for the simulation path.
+pub use janiform_market_time::interval_factor_grids::provide_interval_factor_grid as load_interval_factor_grid;
 
 /// Project state to interval intensities for the fine-scale simulation path.
 pub fn project_hawkes_intensities_simulation_interval(
     state: HawkesExcitationState,
     parameters: HawkesKernelParameters,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
     interval_index: usize,
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
         parameters.lambda_bar,
-        &hourly_factor_contract.s_h,
+        &interval_factor_grid.seasonality_factor,
         interval_index,
     )
 }
@@ -40,7 +40,7 @@ pub fn sample_nig_trading_time_increment<R>(
 where
     R: SimulationRandomnessStream,
 {
-    janiform_model_kernels::return_decomposition::sample_nig_trading_time_increment_with_edge_mode(
+    sample_nig_trading_time_increment_with_edge_mode(
         driver_parameters,
         return_decomposition,
         ReturnDecompositionEdgeMode::Disabled,

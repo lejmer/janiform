@@ -548,7 +548,7 @@ fn build_parameter_set(
     ScaleConsistencyExperimentParameterSet {
         parameter_set_id: parameter_set_id.to_string(),
         model_inputs: build_model_inputs(),
-        fine_interval_factors: SufficientStatisticsIntervalFactors::try_new(
+        fine_interval_factor_grids: SufficientStatisticsIntervalFactors::try_new(
             vec![1.0, 1.1, 0.9, 1.05, 1.0, 1.2, 0.95, 1.1],
             vec![0.20, 0.18, 0.17, 0.21, 0.22, 0.19, 0.18, 0.20],
             vec![0.04, 0.03, 0.05, 0.04, 0.03, 0.05, 0.04, 0.03],

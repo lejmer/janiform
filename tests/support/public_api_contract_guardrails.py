@@ -19,8 +19,8 @@ PUBLIC_PACKAGE_ROOT_MODULE_NAME = "janiform"
 PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.errors",
     "janiform.calendar",
-    "janiform.hourly_factors",
-    "janiform.hourly_factors.contracts",
+    "janiform.interval_factor_grids",
+    "janiform.interval_factor_grids.contracts",
     "janiform.contracts",
     "janiform.return_clock",
     "janiform.mean_reversion",

@@ -19,7 +19,7 @@ use crate::commands::dev::args::{
     DeterministicRegressionCommand, OpenClosedGapLeakageRegressionCommand,
 };
 use crate::commands::shared::artifacts::{load_calendar_registry_artifact, load_json_artifact};
-use crate::commands::shared::inputs::required_input_file;
+use crate::commands::shared::inputs::{optional_input_file, required_input_file};
 use crate::context::CommandContext;
 use crate::error::{CliError, CliExitCode};
 
@@ -36,6 +36,7 @@ pub(crate) fn run_deterministic_regression(
         "--seasonality-absolute-tolerance",
         command.seasonality_absolute_tolerance,
     )?;
+
     validate_non_negative_finite_tolerance(
         "--news-intensity-absolute-tolerance",
         command.news_intensity_absolute_tolerance,
@@ -46,25 +47,30 @@ pub(crate) fn run_deterministic_regression(
         "--calendar-registry-json",
         &command.calendar_registry_json,
     )?;
+
     let calendar_cases_path = required_input_file(
         context,
         "--calendar-cases-json",
         &command.calendar_cases_json,
     )?;
-    let seasonality_cases_path = required_input_file(
+
+    let seasonality_cases_path = optional_input_file(
         context,
         "--seasonality-cases-json",
-        &command.seasonality_cases_json,
+        command.seasonality_cases_json.as_ref(),
     )?;
 
     let calendar_cases_document = load_json_artifact(&calendar_cases_path, "calendar cases")?;
-    let seasonality_cases_document =
-        load_json_artifact(&seasonality_cases_path, "seasonality cases")?;
-
     let calendar_registry = load_calendar_registry_artifact(&calendar_registry_path)?;
     let calendar_cases = extract_calendar_cases(&calendar_cases_path, &calendar_cases_document)?;
-    let seasonality_cases =
-        extract_seasonality_cases(&seasonality_cases_path, &seasonality_cases_document)?;
+
+    let seasonality_cases = match seasonality_cases_path {
+        Some(path) => {
+            let seasonality_cases_document = load_json_artifact(&path, "seasonality cases")?;
+            extract_seasonality_cases(&path, &seasonality_cases_document)?
+        }
+        None => Vec::new(),
+    };
 
     let report = run_deterministic_regression_harness(
         &calendar_registry,
@@ -103,6 +109,7 @@ pub(crate) fn run_open_closed_gap_leakage_regression(
         command.calendar_fixture_path,
         DEFAULT_CALENDAR_FIXTURE_PATH,
     )?;
+
     let gap_behavior_fixture_path = optional_or_default_input_file(
         context,
         "--gap-behavior-fixture-path",
@@ -116,6 +123,7 @@ pub(crate) fn run_open_closed_gap_leakage_regression(
     )?;
 
     let calendar_registry = load_calendar_registry_artifact(&calendar_fixture_path)?;
+
     let gap_behavior_cases =
         extract_gap_behavior_cases(&gap_behavior_fixture_path, &gap_behavior_fixture_document)?;
 
@@ -161,6 +169,7 @@ fn optional_or_default_input_file(
         Some(path) => context.paths().input_file(argument_name, &path),
         None => {
             let path = PathBuf::from(default_fixture_path);
+
             let Some(development_fixture_root) =
                 discover_development_fixture_root(context.paths().process_cwd(), &path)
             else {
@@ -171,6 +180,7 @@ fn optional_or_default_input_file(
                     ),
                 });
             };
+
             let resolved_path = development_fixture_root.join(&path);
 
             if resolved_path.is_file() {

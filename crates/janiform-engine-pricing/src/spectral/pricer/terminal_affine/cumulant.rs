@@ -111,7 +111,7 @@ fn evaluate_terminal_affine_cumulant(
         .map(|interval_offset| {
             build_terminal_affine_schedule_interval_input(
                 context,
-                context.interval_factors[interval_offset],
+                context.interval_factor_grids[interval_offset],
                 context.interval_deltas[interval_offset],
                 context.mean_reversion_path.interval_return_weights[interval_offset],
                 argument,
@@ -169,7 +169,7 @@ fn cumulant_evaluation_from_schedule_output(
 
 fn build_terminal_affine_schedule_interval_input(
     context: &TerminalAffineMaturityContext<'_>,
-    interval_factors: VanillaOptionPricingIntervalFactors,
+    interval_factor_grids: VanillaOptionPricingIntervalFactors,
     interval_delta: f64,
     interval_return_weight: f64,
     argument: TerminalAffineCumulantArgument,
@@ -226,11 +226,13 @@ fn build_terminal_affine_schedule_interval_input(
         interval_return_weight,
     );
 
-    let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
-        VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: format!("terminal affine interval factors are invalid: {source}"),
-        }
-    })?;
+    let news_intensity = interval_factor_grids
+        .news_intensity_input()
+        .map_err(
+            |source| VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: format!("terminal affine interval factors are invalid: {source}"),
+            },
+        )?;
 
     let transform_input =
         janiform_affine_oracle::affine_oracle::ExponentialAffineTransformInput::new(
@@ -239,7 +241,7 @@ fn build_terminal_affine_schedule_interval_input(
             activity_transform_inputs.z_plus,
             activity_transform_inputs.z_minus,
             argument.return_loading(interval_return_weight),
-            interval_factors.s_h,
+            interval_factor_grids.seasonality_factor,
             news_intensity,
             context
                 .pricing_request

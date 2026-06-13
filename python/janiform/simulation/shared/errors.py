@@ -15,9 +15,7 @@ SIMULATION_VALIDATION_ERROR_ID = "simulation.validation.contract"
 SIMULATION_EXECUTION_ERROR_ID = "simulation.execution.run_failed"
 SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID = "simulation.integration.native_module_unavailable"
 SIMULATION_INTEGRATION_RESPONSE_ERROR_ID = "simulation.integration.invalid_native_response"
-SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID = "simulation.integration.hourly_factor_contract_unavailable"
-
-SeededTickSimulationValidationFailure = ContractValidationFailure
+SIMULATION_INTEGRATION_INTERVAL_FACTOR_GRID_ERROR_ID = "simulation.integration.interval_factor_grid_unavailable"
 
 
 class SeededTickSimulationValidationError(JaniformValidationError):
@@ -31,8 +29,8 @@ def _simulation_failure(
     entrypoint: str = "contract",
     error_id: str = SIMULATION_VALIDATION_ERROR_ID,
     context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> SeededTickSimulationValidationFailure:
-    return SeededTickSimulationValidationFailure.from_context(
+) -> ContractValidationFailure:
+    return ContractValidationFailure.from_context(
         error_id=error_id,
         workflow="simulation",
         entrypoint=entrypoint,
@@ -49,8 +47,8 @@ def _simulation_error(
     entrypoint: str = "contract",
     error_id: str = SIMULATION_VALIDATION_ERROR_ID,
     context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> SeededTickSimulationValidationError:
-    return SeededTickSimulationValidationError(
+) -> ContractValidationFailure:
+    return ContractValidationFailure(
         _simulation_failure(
             field_path,
             message,
@@ -105,11 +103,10 @@ SIMULATION_ERROR_FACTORY: ValidationErrorFactory = _simulation_error
 
 __all__ = [
     "SeededTickSimulationValidationError",
-    "SeededTickSimulationValidationFailure",
     "SIMULATION_ERROR_FACTORY",
     "SIMULATION_EXECUTION_ERROR_ID",
     "SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID",
     "SIMULATION_INTEGRATION_RESPONSE_ERROR_ID",
-    "SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID",
+    "SIMULATION_INTEGRATION_INTERVAL_FACTOR_GRID_ERROR_ID",
     "SIMULATION_VALIDATION_ERROR_ID",
 ]

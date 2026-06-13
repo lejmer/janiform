@@ -915,7 +915,7 @@ def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magn
     assert return_components_input["open_session_sell_share_proxy"] == pytest.approx(0.4)
 
 
-def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_dense_ticks(
+def test_translate_market_data_request_applieseasonality_factorourly_nig_shape_mass_floor_for_dense_ticks(
     tmp_path: Path,
     calendar_registry_json: str,
 ) -> None:

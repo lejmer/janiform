@@ -48,10 +48,10 @@ from ...contracts.base import (
 from ..._timestamps import datetime_to_utc_nanos
 from ..._native_api import native_error_parts, native_exception_matches, native_module
 from ...calendar import CalendarRegistry
-from ...hourly_factors import (
-    HourlyFactorContract,
+from ...interval_factor_grids import (
+    IntervalFactorGridContract,
     SeasonalityInputValidationError,
-    load_hourly_factor_contract_payload,
+    load_interval_factor_grid_payload,
 )
 
 
@@ -223,7 +223,7 @@ class CoarseSimulationRunRequest(ContractModel):
     horizon_interval_count: int
     interval_delta: float
     model_inputs: CoarseSimulationModelInputs
-    hourly_factor_contract: HourlyFactorContract
+    interval_factor_grid: IntervalFactorGridContract
 
     def __post_init__(self) -> None:
         if self.schema_version != COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION:
@@ -243,34 +243,34 @@ class CoarseSimulationRunRequest(ContractModel):
 
         interval_delta_nanos = _interval_delta_to_nanos(self.interval_delta, field_path="interval_delta")
 
-        if self.horizon_interval_count > self.hourly_factor_contract.interval_count:
+        if self.horizon_interval_count > self.interval_factor_grid.interval_count:
             raise _simulation_error(
                 "horizon_interval_count",
                 (
-                    "must not exceed available hourly factor interval count "
-                    f"({self.hourly_factor_contract.interval_count})"
+                    "must not exceed available interval factor grid interval count "
+                    f"({self.interval_factor_grid.interval_count})"
                 ),
             )
 
-        if self.hourly_factor_contract.interval_duration_nanos != interval_delta_nanos:
+        if self.interval_factor_grid.interval_duration_nanos != interval_delta_nanos:
             raise _simulation_error(
-                "hourly_factor_contract.interval_duration_nanos",
+                "interval_factor_grid.interval_duration_nanos",
                 (
                     "must match interval_delta exactly under explicit factor alignment without implicit "
                     f"resampling (interval_delta={self.interval_delta}, "
-                    "hourly_factor_contract.interval_duration_nanos="
-                    f"{self.hourly_factor_contract.interval_duration_nanos})"
+                    "interval_factor_grid.interval_duration_nanos="
+                    f"{self.interval_factor_grid.interval_duration_nanos})"
                 ),
             )
 
-        if self.hourly_factor_contract.first_interval_start_utc_nanos != self.start_time_utc_nanos:
+        if self.interval_factor_grid.first_interval_start_utc_nanos != self.start_time_utc_nanos:
             raise _simulation_error(
-                "hourly_factor_contract.first_interval_start_utc_nanos",
+                "interval_factor_grid.first_interval_start_utc_nanos",
                 (
                     "must match start_time_utc_nanos exactly under explicit factor alignment "
                     f"(start_time_utc_nanos={self.start_time_utc_nanos}, "
-                    "hourly_factor_contract.first_interval_start_utc_nanos="
-                    f"{self.hourly_factor_contract.first_interval_start_utc_nanos})"
+                    "interval_factor_grid.first_interval_start_utc_nanos="
+                    f"{self.interval_factor_grid.first_interval_start_utc_nanos})"
                 ),
             )
 
@@ -291,10 +291,12 @@ class CoarseSimulationRunRequest(ContractModel):
                 ".mean_reversion_runtime_interval_anchors"
                 f".interval_deltas[{interval_index}]"
             )
+
             observed_interval_delta_nanos = _interval_delta_to_nanos(
                 observed_interval_delta,
                 field_path=field_path,
             )
+
             if observed_interval_delta_nanos != interval_delta_nanos:
                 raise _simulation_error(
                     field_path,
@@ -312,7 +314,7 @@ class CoarseSimulationRunRequest(ContractModel):
         horizon_interval_count: int,
         interval_delta: float,
         sufficient_statistics_model_inputs: Any,
-        hourly_factor_contract: HourlyFactorContract,
+        interval_factor_grid: IntervalFactorGridContract,
         news_process_configuration: NewsProcessConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
@@ -343,7 +345,7 @@ class CoarseSimulationRunRequest(ContractModel):
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,
             ),
-            hourly_factor_contract=hourly_factor_contract,
+            interval_factor_grid=interval_factor_grid,
         )
 
     @staticmethod
@@ -359,16 +361,16 @@ class CoarseSimulationRunRequest(ContractModel):
         )
 
         try:
-            hourly_factor_contract = load_hourly_factor_contract_payload(
+            interval_factor_grid = load_interval_factor_grid_payload(
                 require_mapping(
                     raw_payload,
-                    "hourly_factor_contract",
-                    "hourly_factor_contract",
+                    "interval_factor_grid",
+                    "interval_factor_grid",
                     SIMULATION_ERROR_FACTORY,
                 )
             )
         except SeasonalityInputValidationError as e:
-            raise _simulation_error("hourly_factor_contract", str(e)) from e
+            raise _simulation_error("interval_factor_grid", str(e)) from e
 
         return CoarseSimulationRunRequest(
             schema_version=require_string(
@@ -394,7 +396,7 @@ class CoarseSimulationRunRequest(ContractModel):
             model_inputs=CoarseSimulationModelInputs.from_mapping(
                 require_mapping(raw_payload, "model_inputs", "model_inputs", SIMULATION_ERROR_FACTORY)
             ),
-            hourly_factor_contract=hourly_factor_contract,
+            interval_factor_grid=interval_factor_grid,
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -405,7 +407,7 @@ class CoarseSimulationRunRequest(ContractModel):
             "horizon_interval_count": self.horizon_interval_count,
             "interval_delta": self.interval_delta,
             "model_inputs": self.model_inputs.to_payload(),
-            "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
+            "interval_factor_grid": self.interval_factor_grid.to_payload(),
         }
 
 
@@ -491,6 +493,7 @@ class CoarseSimulationPathRecord(ContractModel):
                 ),
                 field_path=f"{field_path}.sufficient_statistics",
             )
+
             return_components = SufficientStatisticsReturnComponents.from_mapping(
                 require_mapping(
                     raw_payload,

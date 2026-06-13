@@ -628,25 +628,25 @@ fn precheck_deterministic_intensity_scales(
         ));
     }
 
-    if context.runtime_hourly_seasonality_factors.is_empty() {
-        return Err("runtime_hourly_seasonality_factors_empty".to_string());
+    if context.runtime_interval_seasonality_factors.is_empty() {
+        return Err("runtime_interval_seasonality_factors_empty".to_string());
     }
 
-    for (hour_index, factor) in context
-        .runtime_hourly_seasonality_factors
+    for (interval_index, factor) in context
+        .runtime_interval_seasonality_factors
         .iter()
         .enumerate()
     {
         if !factor.is_finite() || *factor < 0.0 {
             return Err(format!(
-                "runtime_hourly_seasonality_factor_invalid hour_index={hour_index} value={factor}"
+                "runtime_interval_seasonality_factor_invalid interval_index={interval_index} value={factor}"
             ));
         }
 
-        let hourly_activity_scale = modeled_open_event_rate_per_hour * *factor;
-        if !hourly_activity_scale.is_finite() || hourly_activity_scale < 0.0 {
+        let interval_activity_scale = modeled_open_event_rate_per_hour * *factor;
+        if !interval_activity_scale.is_finite() || interval_activity_scale < 0.0 {
             return Err(format!(
-                "runtime_hourly_activity_scale_invalid hour_index={hour_index} value={hourly_activity_scale}"
+                "runtime_interval_activity_scale_invalid interval_index={interval_index} value={interval_activity_scale}"
             ));
         }
     }

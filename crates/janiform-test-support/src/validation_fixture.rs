@@ -16,8 +16,6 @@ use serde::Deserialize;
 pub const VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: &str = "validation.fixture.manifest.v1";
 pub const CALENDAR_REGRESSION_FIXTURE_SCHEMA_VERSION: &str = "calendar.service.regression.v1";
 pub const CALENDAR_REGRESSION_FIXTURE_SET_ID: &str = "calendar_service_regression_matrix_v1";
-pub const HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: &str = "hourly.factor.regression.v1";
-pub const HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: &str = "hourly_factor_regression_matrix_v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SCHEMA_VERSION: &str =
     "gap.behavior.open_closed.scenario_fixture.v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID: &str =
@@ -31,9 +29,6 @@ pub const CALENDAR_SCHEMA_GENERATION: &str = "v0.x";
 pub const CALENDAR_FORWARD_EXTENSION_POLICY: &str = "additive_fields_only.v1";
 pub const CALENDAR_CASE_ORDER_POLICY: &str = "preserve_declared_case_order.v1";
 pub const CALENDAR_CONTENT_HASH_SCOPE_POLICY: &str = "document_payload_bytes.v1";
-pub const HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: &str =
-    "validation.hourly_factor.thresholds.v1";
-pub const STATE_CLASSIFICATION_STRICTNESS_POLICY: &str = "exact_match_required.v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY: &str = "validation.gap_behavior.open_closed";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: &str = "v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY: &str = "additive_fields_only.v1";
@@ -74,7 +69,7 @@ pub struct ValidationFixtureDeterminismPolicy {
 pub enum ValidationFixtureDomain {
     Calendar,
     Seasonality,
-    HourlyFactors,
+    IntervalFactorGrids,
     GapBehavior,
     ScaleConsistency,
     StylizedFacts,
@@ -137,149 +132,6 @@ pub struct CalendarRegressionCaseFixture {
     pub expected_state: String,
     pub tags: Vec<String>,
     pub description: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorRegressionFixtureDocument {
-    pub schema_version: String,
-    pub fixture_set_id: String,
-    pub calendar_fixture_set_id: String,
-    pub threshold_configuration: HourlyFactorRegressionThresholdConfiguration,
-    pub canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata,
-    pub canonical_output_cases: Vec<HourlyFactorCanonicalOutputCaseFixture>,
-    pub missing_data_guard_cases: Vec<HourlyFactorMissingDataGuardCaseFixture>,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorRegressionToleranceConfig {
-    pub s_h_absolute_tolerance: f64,
-    pub nu_h_absolute_tolerance: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorRegressionFactorRangePolicy {
-    pub s_h_min: f64,
-    pub s_h_max: f64,
-    pub nu_h_min: f64,
-    pub nu_h_max: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorThresholdChangeLogEntry {
-    pub policy_version: String,
-    pub recorded_at_utc: String,
-    pub rationale: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorRegressionThresholdConfiguration {
-    pub schema_version: String,
-    pub policy_version: String,
-    pub state_classification_strictness: String,
-    pub tolerance_config: HourlyFactorRegressionToleranceConfig,
-    pub factor_range_by_fixture_class: BTreeMap<String, HourlyFactorRegressionFactorRangePolicy>,
-    pub change_log: Vec<HourlyFactorThresholdChangeLogEntry>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorRegressionCanonicalMetadata {
-    pub required_tags: Vec<String>,
-    pub stable_canonical_output_fixture_ids: Vec<String>,
-    pub stable_missing_data_guard_fixture_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorCanonicalOutputCaseFixture {
-    pub fixture_id: String,
-    pub exchange_code: String,
-    pub range_start_utc: String,
-    pub range_end_utc: String,
-    pub seasonality_source: HourlySeasonalitySourceFixture,
-    pub news_intensity_source: HourlyNewsIntensitySourceFixture,
-    pub expected_s_h: Vec<f64>,
-    pub expected_nu_h: Vec<f64>,
-    pub expected_skipped_local_hour_interval_count: usize,
-    pub expected_repeated_local_hour_interval_count: usize,
-    pub tags: Vec<String>,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlyFactorMissingDataGuardCaseFixture {
-    pub fixture_id: String,
-    pub exchange_code: String,
-    pub range_start_utc: String,
-    pub range_end_utc: String,
-    pub source_timestamps_utc: Vec<String>,
-    pub source_seasonality_factors: Vec<f64>,
-    pub settings: HourlySeasonalitySettingsFixture,
-    pub expected_outcome: HourlyMissingDataGuardExpectedOutcomeFixture,
-    pub tags: Vec<String>,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HourlySeasonalitySettingsFixture {
-    pub interpolation_method: String,
-    pub aggregation_method: String,
-    pub sparse_fallback_policy: String,
-    pub sparse_hour_minimum_observation_count: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(tag = "source_kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum HourlySeasonalitySourceFixture {
-    Explicit {
-        hourly_factors: Vec<f64>,
-        materialization_method: String,
-    },
-    Materialized {
-        source_timestamps_utc: Vec<String>,
-        source_seasonality_factors: Vec<f64>,
-        interpolation_method: String,
-        aggregation_method: String,
-        sparse_fallback_policy: String,
-        sparse_hour_minimum_observation_count: usize,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(tag = "source_kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum HourlyNewsIntensitySourceFixture {
-    Explicit {
-        hourly_factors: Vec<f64>,
-        materialization_method: String,
-    },
-    Materialized {
-        known_scheduled_event_timestamps_utc: Vec<String>,
-        surprise_open_baseline_intensity: f64,
-        surprise_closed_baseline_intensity: f64,
-        surprise_deterministic_time_multiplier_by_interval_index: BTreeMap<String, f64>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(tag = "outcome_kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum HourlyMissingDataGuardExpectedOutcomeFixture {
-    Success {
-        expected_s_h: Vec<f64>,
-        expected_sparse_interval_count: usize,
-        expected_interpolated_interval_count: usize,
-        expected_fallback_interval_count: usize,
-    },
-    Failure {
-        expected_error_variant: String,
-        expected_error_message_substring: String,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -431,14 +283,6 @@ pub struct LoadedCalendarRegressionFixture {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LoadedHourlyFactorRegressionFixture {
-    pub manifest: ValidationFixtureManifestDocument,
-    pub manifest_entry: ValidationFixtureManifestEntry,
-    pub loaded_payload: LoadedFixturePayload,
-    pub fixture_document: HourlyFactorRegressionFixtureDocument,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct LoadedOpenClosedGapBehaviorScenarioFixture {
     pub manifest: ValidationFixtureManifestDocument,
     pub manifest_entry: ValidationFixtureManifestEntry,
@@ -504,12 +348,14 @@ impl Error for OpenClosedGapBehaviorScenarioLoaderError {}
 pub fn load_validation_fixture_manifest_document()
 -> Result<ValidationFixtureManifestDocument, String> {
     let manifest_path = validation_fixture_manifest_path();
+
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
             "failed to read validation fixture manifest `{}`: {source}",
             manifest_path.display()
         )
     })?;
+
     let manifest = serde_json::from_str::<ValidationFixtureManifestDocument>(&manifest_raw)
         .map_err(|source| {
             format!(
@@ -569,6 +415,7 @@ pub fn validate_validation_fixture_manifest_document(
     }
 
     let mut observed_fixture_ids: BTreeSet<String> = BTreeSet::new();
+
     for manifest_entry in &manifest.fixtures {
         validate_manifest_entry(manifest_entry)?;
         if !observed_fixture_ids.insert(manifest_entry.fixture_id.clone()) {
@@ -586,6 +433,7 @@ pub fn sorted_manifest_entries(
     manifest: &ValidationFixtureManifestDocument,
 ) -> Vec<ValidationFixtureManifestEntry> {
     let mut sorted_entries = manifest.fixtures.clone();
+
     sorted_entries
         .sort_by(|left_entry, right_entry| left_entry.fixture_id.cmp(&right_entry.fixture_id));
 
@@ -597,6 +445,7 @@ pub fn load_manifest_entry_payload(
     manifest_entry: &ValidationFixtureManifestEntry,
 ) -> Result<LoadedFixturePayload, String> {
     let payload_path = fixtures_root.join(&manifest_entry.relative_path);
+
     let payload_bytes = fs::read(&payload_path).map_err(|source| {
         format!(
             "failed to read fixture payload for {} at `{}`: {source}",
@@ -626,6 +475,7 @@ pub fn load_manifest_entry_payload(
 pub fn load_calendar_regression_fixture_from_manifest()
 -> Result<LoadedCalendarRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
+
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
 
@@ -637,6 +487,7 @@ pub fn load_calendar_regression_fixture_from_manifest()
     }
 
     let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)?;
+
     let fixture_document =
         parse_calendar_regression_fixture_document(&loaded_payload.payload_bytes)?;
 
@@ -650,37 +501,11 @@ pub fn load_calendar_regression_fixture_from_manifest()
     })
 }
 
-pub fn load_hourly_factor_regression_fixture_from_manifest()
--> Result<LoadedHourlyFactorRegressionFixture, String> {
-    let manifest = load_validation_fixture_manifest_document()?;
-    let manifest_entry =
-        find_manifest_entry_by_fixture_id(&manifest, HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID)?;
-
-    if manifest_entry.fixture_schema_version != HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION {
-        return Err(format!(
-            "unexpected hourly factor fixture schema version in manifest: {}",
-            manifest_entry.fixture_schema_version
-        ));
-    }
-
-    let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)?;
-    let fixture_document =
-        parse_hourly_factor_regression_fixture_document(&loaded_payload.payload_bytes)?;
-
-    validate_hourly_factor_regression_fixture_document(&fixture_document)?;
-
-    Ok(LoadedHourlyFactorRegressionFixture {
-        manifest,
-        manifest_entry,
-        loaded_payload,
-        fixture_document,
-    })
-}
-
 pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest()
 -> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
     let manifest = load_validation_fixture_manifest_document()
         .map_err(OpenClosedGapBehaviorScenarioLoaderError::Manifest)?;
+
     let manifest_entry = find_manifest_entry_by_fixture_id(
         &manifest,
         OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID,
@@ -701,6 +526,7 @@ pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest()
 
     let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)
         .map_err(OpenClosedGapBehaviorScenarioLoaderError::PayloadLoad)?;
+
     let fixture_document =
         parse_open_closed_gap_behavior_scenario_fixture_document(&loaded_payload.payload_bytes)?;
 
@@ -720,14 +546,6 @@ pub fn parse_calendar_regression_fixture_document(
 ) -> Result<CalendarRegressionFixtureDocument, String> {
     serde_json::from_slice::<CalendarRegressionFixtureDocument>(payload_bytes)
         .map_err(|source| format!("failed to parse calendar regression fixture document: {source}"))
-}
-
-pub fn parse_hourly_factor_regression_fixture_document(
-    payload_bytes: &[u8],
-) -> Result<HourlyFactorRegressionFixtureDocument, String> {
-    serde_json::from_slice::<HourlyFactorRegressionFixtureDocument>(payload_bytes).map_err(
-        |source| format!("failed to parse hourly factor regression fixture document: {source}"),
-    )
 }
 
 pub fn parse_open_closed_gap_behavior_scenario_fixture_document(
@@ -845,6 +663,7 @@ pub fn validate_calendar_regression_fixture_document(
             fixture_case.exchange_code.clone(),
             fixture_case.timestamp_utc.clone(),
         );
+
         if !observed_exchange_timestamp_pairs.insert(exchange_timestamp_pair.clone()) {
             return Err(format!(
                 "duplicate fixture case exchange_code/timestamp_utc pair: {} at {}",
@@ -886,142 +705,6 @@ pub fn validate_calendar_regression_fixture_document(
     Ok(())
 }
 
-pub fn validate_hourly_factor_regression_fixture_document(
-    fixture_document: &HourlyFactorRegressionFixtureDocument,
-) -> Result<(), String> {
-    if fixture_document.schema_version != HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION {
-        return Err(format!(
-            "unsupported hourly factor regression fixture schema version: {}",
-            fixture_document.schema_version
-        ));
-    }
-
-    if fixture_document.fixture_set_id != HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID {
-        return Err(format!(
-            "unexpected hourly factor regression fixture set id: {}",
-            fixture_document.fixture_set_id
-        ));
-    }
-
-    if fixture_document.calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID {
-        return Err(format!(
-            "unexpected hourly factor regression calendar_fixture_set_id: {}",
-            fixture_document.calendar_fixture_set_id
-        ));
-    }
-
-    validate_threshold_configuration(&fixture_document.threshold_configuration)?;
-
-    if fixture_document.canonical_output_cases.is_empty() {
-        return Err(
-            "hourly factor regression fixture must include canonical_output_cases".to_string(),
-        );
-    }
-
-    if fixture_document.missing_data_guard_cases.is_empty() {
-        return Err(
-            "hourly factor regression fixture must include missing_data_guard_cases".to_string(),
-        );
-    }
-
-    let mut observed_canonical_fixture_ids: BTreeSet<String> = BTreeSet::new();
-    let mut observed_missing_fixture_ids: BTreeSet<String> = BTreeSet::new();
-    let mut observed_tags: BTreeSet<String> = BTreeSet::new();
-
-    for fixture_case in &fixture_document.canonical_output_cases {
-        validate_hourly_canonical_output_case(fixture_case)?;
-
-        if !observed_canonical_fixture_ids.insert(fixture_case.fixture_id.clone()) {
-            return Err(format!(
-                "duplicate canonical_output_cases fixture_id: {}",
-                fixture_case.fixture_id
-            ));
-        }
-
-        for case_tag in &fixture_case.tags {
-            observed_tags.insert(case_tag.clone());
-        }
-    }
-
-    for fixture_case in &fixture_document.missing_data_guard_cases {
-        validate_hourly_missing_data_guard_case(fixture_case)?;
-
-        if !observed_missing_fixture_ids.insert(fixture_case.fixture_id.clone()) {
-            return Err(format!(
-                "duplicate missing_data_guard_cases fixture_id: {}",
-                fixture_case.fixture_id
-            ));
-        }
-
-        for case_tag in &fixture_case.tags {
-            observed_tags.insert(case_tag.clone());
-        }
-    }
-
-    let required_tags = &fixture_document.canonical_regression_metadata.required_tags;
-    if required_tags.is_empty() {
-        return Err(
-            "hourly canonical_regression_metadata.required_tags must not be empty".to_string(),
-        );
-    }
-
-    for required_tag in required_tags {
-        require_non_empty(required_tag, "canonical_regression_metadata.required_tags")?;
-    }
-
-    let expected_canonical_fixture_ids: BTreeSet<String> = fixture_document
-        .canonical_regression_metadata
-        .stable_canonical_output_fixture_ids
-        .iter()
-        .map(|fixture_id| fixture_id.to_string())
-        .collect();
-    if expected_canonical_fixture_ids.is_empty() {
-        return Err(
-            "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids must not be empty"
-                .to_string(),
-        );
-    }
-
-    let expected_missing_fixture_ids: BTreeSet<String> = fixture_document
-        .canonical_regression_metadata
-        .stable_missing_data_guard_fixture_ids
-        .iter()
-        .map(|fixture_id| fixture_id.to_string())
-        .collect();
-    if expected_missing_fixture_ids.is_empty() {
-        return Err(
-            "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids must not be empty"
-                .to_string(),
-        );
-    }
-
-    if !required_tags
-        .iter()
-        .all(|required_tag| observed_tags.contains(required_tag))
-    {
-        return Err(
-            "hourly canonical_regression_metadata.required_tags must be present in fixture cases"
-                .to_string(),
-        );
-    }
-
-    if observed_canonical_fixture_ids != expected_canonical_fixture_ids {
-        return Err(
-            "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids does not match observed fixture ids"
-                .to_string(),
-        );
-    }
-
-    if observed_missing_fixture_ids != expected_missing_fixture_ids {
-        return Err(
-            "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids does not match observed fixture ids"
-                .to_string(),
-        );
-    }
-
-    Ok(())
-}
-
 pub fn validate_open_closed_gap_behavior_scenario_fixture_document(
     fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
 ) -> Result<(), Vec<OpenClosedGapBehaviorScenarioValidationError>> {
@@ -1057,6 +740,7 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
     calendar_fixture_document: &CalendarRegressionFixtureDocument,
 ) -> Result<(), Vec<OpenClosedGapBehaviorScenarioValidationError>> {
     let mut errors: Vec<OpenClosedGapBehaviorScenarioValidationError> = Vec::new();
+
     let calendar_case_ids: BTreeSet<&str> = calendar_fixture_document
         .cases
         .iter()
@@ -1465,6 +1149,7 @@ fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
     }
 
     let mut required_tag_set: BTreeSet<String> = BTreeSet::new();
+
     for (required_tag_index, required_tag) in fixture_document
         .canonical_regression_metadata
         .required_tags
@@ -1476,6 +1161,7 @@ fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
             &format!("canonical_regression_metadata.required_tags[{required_tag_index}]"),
             errors,
         );
+
         if !required_tag_set.insert(required_tag.clone()) {
             add_open_closed_gap_behavior_validation_error(
                 errors,
@@ -1500,6 +1186,7 @@ fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
     }
 
     let mut required_scenario_class_set: BTreeSet<&str> = BTreeSet::new();
+
     for (scenario_class_index, required_scenario_class) in fixture_document
         .canonical_regression_metadata
         .required_scenario_classes
@@ -1513,6 +1200,7 @@ fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
             ),
             errors,
         );
+
         if !matches!(
             required_scenario_class.as_str(),
             "known_only" | "surprise_only" | "mixed_news"
@@ -1528,6 +1216,7 @@ fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
                 ),
             );
         }
+
         if !required_scenario_class_set.insert(required_scenario_class.as_str()) {
             add_open_closed_gap_behavior_validation_error(
                 errors,
@@ -1571,6 +1260,7 @@ fn validate_open_closed_gap_behavior_cases_and_collect_coverage(
 
     let mut observed_case_ids: BTreeSet<String> = BTreeSet::new();
     let mut observed_coverage = OpenClosedGapBehaviorObservedCoverage::default();
+
     for (case_index, fixture_case) in fixture_document.cases.iter().enumerate() {
         validate_open_closed_gap_behavior_case(
             fixture_case,
@@ -1592,21 +1282,25 @@ fn validate_open_closed_gap_behavior_case(
     errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
 ) {
     let case_field_path_prefix = format!("cases[{case_index}]");
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.fixture_id,
         &format!("{case_field_path_prefix}.fixture_id"),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.exchange_code,
         &format!("{case_field_path_prefix}.exchange_code"),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.scenario_class,
         &format!("{case_field_path_prefix}.scenario_class"),
         errors,
     );
+
     match fixture_case.scenario_class.as_str() {
         "known_only" => {
             observed_coverage.known_only_case_count =
@@ -1632,6 +1326,7 @@ fn validate_open_closed_gap_behavior_case(
             );
         }
     }
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case
             .deterministic_replay_metadata
@@ -1639,6 +1334,7 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.deterministic_replay_metadata.replay_baseline_id"),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case
             .deterministic_replay_metadata
@@ -1648,6 +1344,7 @@ fn validate_open_closed_gap_behavior_case(
         ),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case
             .deterministic_replay_metadata
@@ -1657,6 +1354,7 @@ fn validate_open_closed_gap_behavior_case(
         ),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case
             .deterministic_replay_metadata
@@ -1666,6 +1364,7 @@ fn validate_open_closed_gap_behavior_case(
         ),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case
             .deterministic_replay_metadata
@@ -1675,11 +1374,13 @@ fn validate_open_closed_gap_behavior_case(
         ),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.issue_traceability.issue_id,
         &format!("{case_field_path_prefix}.issue_traceability.issue_id"),
         errors,
     );
+
     if fixture_case
         .issue_traceability
         .semantic_focus_tags
@@ -1692,6 +1393,7 @@ fn validate_open_closed_gap_behavior_case(
             "must include at least one semantic focus tag",
         );
     }
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.calendar_fixture_set_id,
         &format!("{case_field_path_prefix}.calendar_fixture_set_id"),
@@ -1739,11 +1441,13 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.range_start_utc"),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.range_end_utc,
         &format!("{case_field_path_prefix}.range_end_utc"),
         errors,
     );
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.description,
         &format!("{case_field_path_prefix}.description"),
@@ -1776,11 +1480,13 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.initial_accumulator_state.j_t"),
         errors,
     );
+
     validate_open_closed_gap_behavior_finite(
         fixture_case.initial_accumulator_state.m_t,
         &format!("{case_field_path_prefix}.initial_accumulator_state.m_t"),
         errors,
     );
+
     validate_open_closed_gap_behavior_finite(
         fixture_case.initial_accumulator_state.g_t,
         &format!("{case_field_path_prefix}.initial_accumulator_state.g_t"),
@@ -1811,7 +1517,9 @@ fn validate_open_closed_gap_behavior_case(
             &format!("{case_field_path_prefix}.tags[{tag_index}]"),
             errors,
         );
+
         observed_coverage.observed_tags.insert(case_tag.clone());
+
         observed_coverage
             .observed_case_ids_by_tag
             .entry(case_tag.clone())
@@ -1820,8 +1528,10 @@ fn validate_open_closed_gap_behavior_case(
     }
 
     let mut injected_event_ids: BTreeSet<String> = BTreeSet::new();
+
     let mut known_event_count = 0usize;
     let mut surprise_event_count = 0usize;
+
     for (event_index, injected_event) in fixture_case.injected_events.iter().enumerate() {
         let injected_event_field_path_prefix =
             format!("{case_field_path_prefix}.injected_events[{event_index}]");
@@ -1831,16 +1541,19 @@ fn validate_open_closed_gap_behavior_case(
             &format!("{injected_event_field_path_prefix}.event_id"),
             errors,
         );
+
         validate_open_closed_gap_behavior_non_empty(
             &injected_event.timestamp_utc,
             &format!("{injected_event_field_path_prefix}.timestamp_utc"),
             errors,
         );
+
         validate_open_closed_gap_behavior_non_empty(
             &injected_event.news_arrival_component,
             &format!("{injected_event_field_path_prefix}.news_arrival_component"),
             errors,
         );
+
         match injected_event.news_arrival_component.as_str() {
             "known" => {
                 known_event_count = known_event_count.saturating_add(1);
@@ -1860,11 +1573,13 @@ fn validate_open_closed_gap_behavior_case(
                 );
             }
         }
+
         validate_open_closed_gap_behavior_finite_non_negative(
             injected_event.shared_severity_mark,
             &format!("{injected_event_field_path_prefix}.shared_severity_mark"),
             errors,
         );
+
         validate_open_closed_gap_behavior_finite(
             injected_event.coupled_return_jump_mark,
             &format!("{injected_event_field_path_prefix}.coupled_return_jump_mark"),
@@ -1929,8 +1644,10 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
     }
 
     let mut expected_event_ids: BTreeSet<String> = BTreeSet::new();
+
     let mut expected_open_event_count = 0_usize;
     let mut expected_closed_event_count = 0_usize;
+
     let mut expected_total_activity_coupling_j_t_increment = 0.0_f64;
     let mut expected_total_open_jump_m_t_increment = 0.0_f64;
     let mut expected_total_closed_gap_g_t_increment = 0.0_f64;
@@ -1969,16 +1686,19 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
             &format!("{expected_event_field_path_prefix}.expected_activity_coupling_j_t_increment"),
             errors,
         );
+
         validate_open_closed_gap_behavior_finite(
             event_expectation.expected_open_jump_m_t_increment,
             &format!("{expected_event_field_path_prefix}.expected_open_jump_m_t_increment"),
             errors,
         );
+
         validate_open_closed_gap_behavior_finite(
             event_expectation.expected_closed_gap_g_t_increment,
             &format!("{expected_event_field_path_prefix}.expected_closed_gap_g_t_increment"),
             errors,
         );
+
         validate_open_closed_gap_behavior_finite(
             event_expectation.expected_trading_return_increment,
             &format!("{expected_event_field_path_prefix}.expected_trading_return_increment"),
@@ -2125,6 +1845,7 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
             ),
         );
     }
+
     if !open_closed_gap_behavior_float_close(
         expected_summary.expected_total_closed_gap_g_t_increment,
         expected_total_closed_gap_g_t_increment,
@@ -2142,6 +1863,7 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
             ),
         );
     }
+
     if !open_closed_gap_behavior_float_close(
         expected_summary.expected_total_trading_return_increment,
         expected_total_trading_return_increment,
@@ -2177,6 +1899,7 @@ fn validate_open_closed_gap_behavior_canonical_coverage(
             );
         }
     }
+
     for (scenario_class_index, required_scenario_class) in fixture_document
         .canonical_regression_metadata
         .required_scenario_classes
@@ -2224,6 +1947,7 @@ fn validate_open_closed_gap_behavior_canonical_coverage(
         }
 
         let mut stable_fixture_id_set: BTreeSet<String> = BTreeSet::new();
+
         for (fixture_id_index, fixture_id) in stable_fixture_ids.iter().enumerate() {
             validate_open_closed_gap_behavior_non_empty(
                 fixture_id,
@@ -2232,6 +1956,7 @@ fn validate_open_closed_gap_behavior_canonical_coverage(
                 ),
                 errors,
             );
+
             if !stable_fixture_id_set.insert(fixture_id.clone()) {
                 add_open_closed_gap_behavior_validation_error(
                     errors,
@@ -2261,134 +1986,6 @@ fn validate_open_closed_gap_behavior_canonical_coverage(
             );
         }
     }
-}
-
-fn validate_threshold_configuration(
-    threshold_configuration: &HourlyFactorRegressionThresholdConfiguration,
-) -> Result<(), String> {
-    if threshold_configuration.schema_version
-        != HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION
-    {
-        return Err(format!(
-            "unsupported threshold configuration schema version: {}",
-            threshold_configuration.schema_version
-        ));
-    }
-
-    require_non_empty(
-        &threshold_configuration.policy_version,
-        "threshold_configuration.policy_version",
-    )?;
-
-    if threshold_configuration.state_classification_strictness
-        != STATE_CLASSIFICATION_STRICTNESS_POLICY
-    {
-        return Err(format!(
-            "unsupported state classification strictness policy: {}",
-            threshold_configuration.state_classification_strictness
-        ));
-    }
-
-    validate_finite_non_negative(
-        threshold_configuration
-            .tolerance_config
-            .s_h_absolute_tolerance,
-        "threshold_configuration.tolerance_config.s_h_absolute_tolerance",
-    )?;
-    validate_finite_non_negative(
-        threshold_configuration
-            .tolerance_config
-            .nu_h_absolute_tolerance,
-        "threshold_configuration.tolerance_config.nu_h_absolute_tolerance",
-    )?;
-
-    if threshold_configuration
-        .factor_range_by_fixture_class
-        .is_empty()
-    {
-        return Err(
-            "threshold_configuration.factor_range_by_fixture_class must not be empty".to_string(),
-        );
-    }
-    for (fixture_class, factor_range_policy) in
-        &threshold_configuration.factor_range_by_fixture_class
-    {
-        require_non_empty(
-            fixture_class,
-            "threshold_configuration.factor_range_by_fixture_class.key",
-        )?;
-
-        validate_finite_non_negative(
-            factor_range_policy.s_h_min,
-            "threshold_configuration.factor_range_by_fixture_class.s_h_min",
-        )?;
-        validate_finite_non_negative(
-            factor_range_policy.s_h_max,
-            "threshold_configuration.factor_range_by_fixture_class.s_h_max",
-        )?;
-        validate_finite_non_negative(
-            factor_range_policy.nu_h_min,
-            "threshold_configuration.factor_range_by_fixture_class.nu_h_min",
-        )?;
-        validate_finite_non_negative(
-            factor_range_policy.nu_h_max,
-            "threshold_configuration.factor_range_by_fixture_class.nu_h_max",
-        )?;
-
-        if factor_range_policy.s_h_min > factor_range_policy.s_h_max {
-            return Err(format!(
-                "threshold_configuration.factor_range_by_fixture_class.{fixture_class} has s_h_min greater than s_h_max"
-            ));
-        }
-
-        if factor_range_policy.nu_h_min > factor_range_policy.nu_h_max {
-            return Err(format!(
-                "threshold_configuration.factor_range_by_fixture_class.{fixture_class} has nu_h_min greater than nu_h_max"
-            ));
-        }
-    }
-
-    if threshold_configuration.change_log.is_empty() {
-        return Err("threshold_configuration.change_log must not be empty".to_string());
-    }
-
-    let mut observed_policy_versions: BTreeSet<String> = BTreeSet::new();
-    let mut has_current_policy_version_entry = false;
-
-    for change_log_entry in &threshold_configuration.change_log {
-        require_non_empty(
-            &change_log_entry.policy_version,
-            "threshold_configuration.change_log.policy_version",
-        )?;
-        require_non_empty(
-            &change_log_entry.recorded_at_utc,
-            "threshold_configuration.change_log.recorded_at_utc",
-        )?;
-        require_non_empty(
-            &change_log_entry.rationale,
-            "threshold_configuration.change_log.rationale",
-        )?;
-
-        if !observed_policy_versions.insert(change_log_entry.policy_version.clone()) {
-            return Err(format!(
-                "threshold_configuration.change_log contains duplicate policy_version: {}",
-                change_log_entry.policy_version
-            ));
-        }
-
-        if change_log_entry.policy_version == threshold_configuration.policy_version {
-            has_current_policy_version_entry = true;
-        }
-    }
-
-    if !has_current_policy_version_entry {
-        return Err(format!(
-            "threshold_configuration.change_log must include an entry for policy_version '{}'",
-            threshold_configuration.policy_version
-        ));
-    }
-
-    Ok(())
 }
 
 pub fn compute_content_hash_hex(payload_bytes: &[u8]) -> String {
@@ -2433,10 +2030,12 @@ fn find_manifest_entry_by_fixture_id(
 
 fn validate_manifest_entry(manifest_entry: &ValidationFixtureManifestEntry) -> Result<(), String> {
     require_non_empty(&manifest_entry.fixture_id, "fixtures.fixture_id")?;
+
     require_non_empty(
         &manifest_entry.fixture_schema_version,
         "fixtures.fixture_schema_version",
     )?;
+
     require_non_empty(&manifest_entry.relative_path, "fixtures.relative_path")?;
 
     if manifest_entry.exchange_codes.is_empty() {
@@ -2511,6 +2110,7 @@ fn validate_calendar_canonical_regression_metadata(
                 Ok(fixture_id.to_string())
             })
             .collect::<Result<BTreeSet<String>, String>>()?;
+
         let observed_fixture_id_set: BTreeSet<String> = fixture_document
             .cases
             .iter()
@@ -2550,270 +2150,6 @@ fn validate_calendar_canonical_regression_metadata(
             case_tag,
             "canonical_regression_metadata.historical_holiday_expected_intraday_tags",
         )?;
-    }
-
-    Ok(())
-}
-
-fn validate_hourly_canonical_output_case(
-    fixture_case: &HourlyFactorCanonicalOutputCaseFixture,
-) -> Result<(), String> {
-    require_non_empty(
-        &fixture_case.fixture_id,
-        "canonical_output_cases.fixture_id",
-    )?;
-    require_non_empty(
-        &fixture_case.exchange_code,
-        "canonical_output_cases.exchange_code",
-    )?;
-    require_non_empty(
-        &fixture_case.range_start_utc,
-        "canonical_output_cases.range_start_utc",
-    )?;
-    require_non_empty(
-        &fixture_case.range_end_utc,
-        "canonical_output_cases.range_end_utc",
-    )?;
-    require_non_empty(
-        &fixture_case.description,
-        "canonical_output_cases.description",
-    )?;
-
-    if fixture_case.tags.is_empty() {
-        return Err(format!(
-            "hourly canonical_output_case {} must include at least one tag",
-            fixture_case.fixture_id
-        ));
-    }
-
-    for case_tag in &fixture_case.tags {
-        require_non_empty(case_tag, "canonical_output_cases.tags")?;
-    }
-
-    if fixture_case.expected_s_h.is_empty() {
-        return Err(format!(
-            "hourly canonical_output_case {} expected_s_h must not be empty",
-            fixture_case.fixture_id
-        ));
-    }
-
-    if fixture_case.expected_nu_h.is_empty() {
-        return Err(format!(
-            "hourly canonical_output_case {} expected_nu_h must not be empty",
-            fixture_case.fixture_id
-        ));
-    }
-
-    for value in &fixture_case.expected_s_h {
-        validate_finite_non_negative(*value, "canonical_output_cases.expected_s_h")?;
-    }
-    for value in &fixture_case.expected_nu_h {
-        validate_finite_non_negative(*value, "canonical_output_cases.expected_nu_h")?;
-    }
-
-    match &fixture_case.seasonality_source {
-        HourlySeasonalitySourceFixture::Explicit {
-            hourly_factors,
-            materialization_method,
-        } => {
-            if hourly_factors.is_empty() {
-                return Err(format!(
-                    "hourly canonical_output_case {} explicit seasonality hourly_factors must not be empty",
-                    fixture_case.fixture_id
-                ));
-            }
-
-            require_non_empty(
-                materialization_method,
-                "canonical_output_cases.seasonality_source.materialization_method",
-            )?;
-        }
-        HourlySeasonalitySourceFixture::Materialized {
-            source_timestamps_utc,
-            source_seasonality_factors,
-            interpolation_method,
-            aggregation_method,
-            sparse_fallback_policy,
-            ..
-        } => {
-            if source_timestamps_utc.is_empty() {
-                return Err(format!(
-                    "hourly canonical_output_case {} materialized source_timestamps_utc must not be empty",
-                    fixture_case.fixture_id
-                ));
-            }
-
-            if source_seasonality_factors.is_empty() {
-                return Err(format!(
-                    "hourly canonical_output_case {} materialized source_seasonality_factors must not be empty",
-                    fixture_case.fixture_id
-                ));
-            }
-
-            for timestamp in source_timestamps_utc {
-                require_non_empty(
-                    timestamp,
-                    "canonical_output_cases.seasonality_source.source_timestamps_utc",
-                )?;
-            }
-
-            require_non_empty(
-                interpolation_method,
-                "canonical_output_cases.seasonality_source.interpolation_method",
-            )?;
-            require_non_empty(
-                aggregation_method,
-                "canonical_output_cases.seasonality_source.aggregation_method",
-            )?;
-            require_non_empty(
-                sparse_fallback_policy,
-                "canonical_output_cases.seasonality_source.sparse_fallback_policy",
-            )?;
-        }
-    }
-
-    match &fixture_case.news_intensity_source {
-        HourlyNewsIntensitySourceFixture::Explicit {
-            hourly_factors,
-            materialization_method,
-        } => {
-            if hourly_factors.is_empty() {
-                return Err(format!(
-                    "hourly canonical_output_case {} explicit news_intensity hourly_factors must not be empty",
-                    fixture_case.fixture_id
-                ));
-            }
-
-            require_non_empty(
-                materialization_method,
-                "canonical_output_cases.news_intensity_source.materialization_method",
-            )?;
-        }
-        HourlyNewsIntensitySourceFixture::Materialized {
-            known_scheduled_event_timestamps_utc,
-            surprise_open_baseline_intensity,
-            surprise_closed_baseline_intensity,
-            surprise_deterministic_time_multiplier_by_interval_index,
-        } => {
-            validate_finite_non_negative(
-                *surprise_open_baseline_intensity,
-                "canonical_output_cases.news_intensity_source.surprise_open_baseline_intensity",
-            )?;
-
-            validate_finite_non_negative(
-                *surprise_closed_baseline_intensity,
-                "canonical_output_cases.news_intensity_source.surprise_closed_baseline_intensity",
-            )?;
-
-            for known_timestamp_utc in known_scheduled_event_timestamps_utc {
-                require_non_empty(
-                    known_timestamp_utc,
-                    "canonical_output_cases.news_intensity_source.known_scheduled_event_timestamps_utc",
-                )?;
-            }
-
-            for raw_interval_index in
-                surprise_deterministic_time_multiplier_by_interval_index.keys()
-            {
-                require_non_empty(
-                    raw_interval_index,
-                    "canonical_output_cases.news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index",
-                )?;
-
-                if raw_interval_index.parse::<u64>().is_err() {
-                    return Err(format!(
-                        "surprise_deterministic_time_multiplier_by_interval_index key `{raw_interval_index}` must parse as u64"
-                    ));
-                }
-            }
-
-            for surprise_multiplier in
-                surprise_deterministic_time_multiplier_by_interval_index.values()
-            {
-                validate_finite_non_negative(
-                    *surprise_multiplier,
-                    "canonical_output_cases.news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index",
-                )?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_hourly_missing_data_guard_case(
-    fixture_case: &HourlyFactorMissingDataGuardCaseFixture,
-) -> Result<(), String> {
-    require_non_empty(
-        &fixture_case.fixture_id,
-        "missing_data_guard_cases.fixture_id",
-    )?;
-    require_non_empty(
-        &fixture_case.exchange_code,
-        "missing_data_guard_cases.exchange_code",
-    )?;
-    require_non_empty(
-        &fixture_case.range_start_utc,
-        "missing_data_guard_cases.range_start_utc",
-    )?;
-    require_non_empty(
-        &fixture_case.range_end_utc,
-        "missing_data_guard_cases.range_end_utc",
-    )?;
-    require_non_empty(
-        &fixture_case.description,
-        "missing_data_guard_cases.description",
-    )?;
-
-    if fixture_case.tags.is_empty() {
-        return Err(format!(
-            "hourly missing_data_guard_case {} must include at least one tag",
-            fixture_case.fixture_id
-        ));
-    }
-
-    for case_tag in &fixture_case.tags {
-        require_non_empty(case_tag, "missing_data_guard_cases.tags")?;
-    }
-    for timestamp in &fixture_case.source_timestamps_utc {
-        require_non_empty(timestamp, "missing_data_guard_cases.source_timestamps_utc")?;
-    }
-
-    require_non_empty(
-        &fixture_case.settings.interpolation_method,
-        "missing_data_guard_cases.settings.interpolation_method",
-    )?;
-    require_non_empty(
-        &fixture_case.settings.aggregation_method,
-        "missing_data_guard_cases.settings.aggregation_method",
-    )?;
-    require_non_empty(
-        &fixture_case.settings.sparse_fallback_policy,
-        "missing_data_guard_cases.settings.sparse_fallback_policy",
-    )?;
-
-    match &fixture_case.expected_outcome {
-        HourlyMissingDataGuardExpectedOutcomeFixture::Success { expected_s_h, .. } => {
-            if expected_s_h.is_empty() {
-                return Err(format!(
-                    "hourly missing_data_guard_case {} success expected_s_h must not be empty",
-                    fixture_case.fixture_id
-                ));
-            }
-        }
-        HourlyMissingDataGuardExpectedOutcomeFixture::Failure {
-            expected_error_variant,
-            expected_error_message_substring,
-        } => {
-            require_non_empty(
-                expected_error_variant,
-                "missing_data_guard_cases.expected_outcome.expected_error_variant",
-            )?;
-            require_non_empty(
-                expected_error_message_substring,
-                "missing_data_guard_cases.expected_outcome.expected_error_message_substring",
-            )?;
-        }
     }
 
     Ok(())
@@ -2876,6 +2212,7 @@ fn validate_open_closed_gap_behavior_finite_non_negative(
         );
         return;
     }
+
     if value < 0.0 {
         add_open_closed_gap_behavior_validation_error(
             errors,
@@ -2895,6 +2232,7 @@ fn validate_finite_non_negative(value: f64, field_name: &str) -> Result<(), Stri
     if !value.is_finite() {
         return Err(format!("field `{field_name}` must be finite"));
     }
+
     if value < 0.0 {
         return Err(format!("field `{field_name}` must be non-negative"));
     }

@@ -1,4 +1,4 @@
-use janiform::model::factors::hourly::HourlyFactorContractOutput;
+use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::model::long_variance::LongVarianceState;
 use janiform::simulation::MeanReversionBoundaryState;
@@ -20,13 +20,13 @@ pub(super) struct PricingBoundaryState {
 pub(super) fn resolve_pricing_boundary_state(
     request: &FittedModelSingleOptionPricingRequest,
     context: &FittedModelContext,
-    boundary_hourly_factor_contract: &HourlyFactorContractOutput,
+    boundary_interval_factor_grid: &IntervalFactorGrid,
     observed_log_return: f64,
 ) -> Result<PricingBoundaryState, WorkflowError> {
     if let Some(excitation_state) = request.initial_excitation_state {
         let (_anchors, mean_reversion_boundary_state) = materialize_mean_reversion_runtime_inputs(
             context,
-            boundary_hourly_factor_contract,
+            boundary_interval_factor_grid,
             excitation_state,
             observed_log_return,
             context.interval_delta,
@@ -63,7 +63,7 @@ pub(super) fn resolve_pricing_boundary_state(
 
     let (_anchors, mean_reversion_boundary_state) = materialize_mean_reversion_runtime_inputs(
         context,
-        boundary_hourly_factor_contract,
+        boundary_interval_factor_grid,
         excitation_state,
         observed_log_return,
         context.interval_delta,

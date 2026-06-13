@@ -137,7 +137,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         payoff_type: VanillaOptionPayoffType::Call,
     };
 
-    let interval_factors = vec![
+    let interval_factor_grids = vec![
         VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("interval factors should construct"),
     ];
@@ -190,7 +190,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         VanillaOptionPricingExecutionInput::try_new(
             zero_anchor_request,
             build_uniform_runtime_interval_schedule(1, 1.0),
-            interval_factors.clone(),
+            interval_factor_grids.clone(),
             optional_output_selection,
         )
         .expect("zero-anchor execution input should construct"),
@@ -201,7 +201,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         VanillaOptionPricingExecutionInput::try_new(
             flat_anchor_request,
             build_uniform_runtime_interval_schedule(1, 1.0),
-            interval_factors,
+            interval_factor_grids,
             optional_output_selection,
         )
         .expect("flat-anchor execution input should construct"),
@@ -273,7 +273,7 @@ fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
             model_parameters: model_parameters.clone(),
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
-            interval_factors: vec![
+            interval_factor_grids: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
@@ -347,7 +347,7 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
             model_parameters: model_parameters.clone(),
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(2, 1.0),
             interval_delta: 1.0,
-            interval_factors: vec![
+            interval_factor_grids: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
@@ -426,7 +426,7 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
                 maturity_interval,
             ),
             interval_delta: maturity_interval,
-            interval_factors: vec![
+            interval_factor_grids: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
@@ -487,7 +487,7 @@ fn vanilla_option_grid_batch_pricing_reuses_one_terminal_measure_change_per_matu
             model_parameters: valid_model_parameters(),
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
-            interval_factors: vec![
+            interval_factor_grids: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
@@ -552,7 +552,7 @@ fn vanilla_option_surface_pricing_populates_shared_grid() {
             model_parameters: model_parameters.clone(),
             runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
-            interval_factors: vec![
+            interval_factor_grids: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
@@ -640,8 +640,9 @@ fn build_uniform_runtime_interval_schedule(
         PricingIntervalScheduleMetadata {
             policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
             derivation_policy: "test_uniform_schedule.v1".to_string(),
-            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
-                .to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_interval_factor_grid_source_intervals.v1"
+                    .to_string(),
         },
         (1..=interval_count)
             .map(|interval_index| interval_index as i64 * interval_duration_nanos)

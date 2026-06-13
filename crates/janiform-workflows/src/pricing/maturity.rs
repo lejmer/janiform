@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use janiform::model::factors::hourly::HourlyFactorContractOutput;
+use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::pricing::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
     PricingIntervalSchedule, PricingIntervalSchedulePolicy,
@@ -46,19 +46,19 @@ pub(super) fn resolve_single_maturity(
 pub(super) fn finalize_single_maturity_resolution(
     request: &FittedModelSingleOptionPricingRequest,
     maturity_resolution: HighLevelPricingMaturityResolution,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> Result<HighLevelPricingMaturityResolution, WorkflowError> {
     finalize_maturity_resolution(
         &request.pricing_interval_schedule_policy,
         maturity_resolution,
-        hourly_factor_contract,
+        interval_factor_grid,
     )
 }
 
 pub(super) fn finalize_maturity_resolution(
     pricing_interval_schedule_policy: &PricingIntervalSchedulePolicy,
     maturity_resolution: HighLevelPricingMaturityResolution,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> Result<HighLevelPricingMaturityResolution, WorkflowError> {
     if !matches!(
         pricing_interval_schedule_policy,
@@ -74,20 +74,12 @@ pub(super) fn finalize_maturity_resolution(
             .pricing_interval_schedule
             .valuation_time_utc_nanos,
         &expiry_timestamps_utc_nanos,
-        hourly_factor_contract,
+        interval_factor_grid,
     )
     .map_err(|source| pricing_validation_error("maturity_input", source.to_string()))?;
 
     let maturity_intervals = derived_schedule
-        .maturity_terminal_interval_indices
-        .iter()
-        .copied()
-        .map(|terminal_interval_index| {
-            derived_schedule
-                .schedule
-                .maturity_interval_hours(terminal_interval_index)
-        })
-        .collect::<Result<Vec<_>, _>>()
+        .maturity_intervals()
         .map_err(|source| pricing_validation_error("maturity_input", source.to_string()))?;
 
     Ok(HighLevelPricingMaturityResolution {
@@ -98,7 +90,7 @@ pub(super) fn finalize_maturity_resolution(
     })
 }
 
-pub(super) fn runtime_schedule_hourly_factor_contract_coverage(
+pub(super) fn runtime_schedule_interval_factor_grid_coverage(
     valuation_time_utc: DateTime<Utc>,
     runtime_interval_schedule: &PricingIntervalSchedule,
 ) -> Result<(DateTime<Utc>, DateTime<Utc>), WorkflowError> {

@@ -11,15 +11,15 @@ from ._errors import VALIDATION_ERROR_FACTORY, validation_error
 
 class DeterministicRegressionCaseKind(StrEnum):
     CALENDAR_MARKET_STATE = 'calendar_market_state'
-    HOURLY_FACTOR_OUTPUT = 'hourly_factor_output'
+    INTERVAL_FACTOR_GRID_OUTPUT = 'interval_factor_grid_output'
 
 
-class HourlySourceKind(StrEnum):
+class IntervalFactorGridSourceKind(StrEnum):
     EXPLICIT = 'explicit'
     MATERIALIZED = 'materialized'
 
 
-class HourlyValidationOutcomeKind(StrEnum):
+class IntervalFactorGridValidationOutcomeKind(StrEnum):
     SUCCESS = 'success'
     FAILURE = 'failure'
 
@@ -55,7 +55,7 @@ class RegressionStatus(StrEnum):
 class ValidationFixtureDomain(StrEnum):
     CALENDAR = 'calendar'
     SEASONALITY = 'seasonality'
-    HOURLY_FACTORS = 'hourly_factors'
+    INTERVAL_FACTOR_GRIDS = 'interval_factor_grids'
     GAP_BEHAVIOR = 'gap_behavior'
     SCALE_CONSISTENCY = 'scale_consistency'
     STYLIZED_FACTS = 'stylized_facts'
@@ -208,8 +208,8 @@ def require_enum_members_list[T: StrEnum](
 
 __all__ = [
     "DeterministicRegressionCaseKind",
-    "HourlySourceKind",
-    "HourlyValidationOutcomeKind",
+    "IntervalFactorGridSourceKind",
+    "IntervalFactorGridValidationOutcomeKind",
     "MarketState",
     "NewsArrivalComponent",
     "OpenClosedGapFailureKind",

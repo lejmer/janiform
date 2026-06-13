@@ -99,9 +99,9 @@ fn render_deterministic_failure(output: &mut String, failure: &RegressionCaseFai
         } => output.push_str(&format!(
             "  failure_kind=market_state_mismatch exchange_code={exchange_code} timestamp_utc={timestamp_utc} expected_value={expected_state} observed_value={observed_state}\n",
         )),
-        RegressionCaseFailure::HourlyFactorResolutionError { error_message } => {
+        RegressionCaseFailure::IntervalFactorGridResolutionError { error_message } => {
             output.push_str(&format!(
-                "  failure_kind=hourly_factor_resolution_error error_message=\"{error_message}\"\n",
+                "  failure_kind=interval_factor_grid_resolution_error error_message=\"{error_message}\"\n",
             ));
         }
         RegressionCaseFailure::FactorLengthMismatch {

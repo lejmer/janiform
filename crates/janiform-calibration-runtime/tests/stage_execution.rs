@@ -980,7 +980,7 @@ fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constrai
     assert_eq!(
         original_candidate
             .implied_metrics
-            .max_runtime_hourly_seasonality_factor,
+            .max_runtime_interval_seasonality_factor,
         annual_rate_bound.ln().exp()
     );
     assert_eq!(
@@ -1064,7 +1064,7 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
     assert!(
         high_loss
             .implied_metrics
-            .max_runtime_hourly_seasonality_factor
+            .max_runtime_interval_seasonality_factor
             >= 1.0
     );
     assert!(

@@ -289,8 +289,9 @@ fn build_uniform_runtime_interval_schedule(
             policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
             derivation_policy:
                 "pricing_calibration_hook_consumer_integration.synthetic_schedule.v1".to_string(),
-            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
-                .to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_interval_factor_grid_source_intervals.v1"
+                    .to_string(),
         },
         (1..=interval_count)
             .map(|interval_index| interval_index as i64 * interval_duration_nanos)

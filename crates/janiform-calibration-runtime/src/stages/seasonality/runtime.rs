@@ -13,7 +13,7 @@ use super::{
     build_seasonality_stage_failure_report,
 };
 
-pub(crate) fn maximum_runtime_hourly_seasonality_factor_from_payload(
+pub(crate) fn maximum_runtime_interval_seasonality_factor_from_payload(
     _calendar_registry: &ExchangeCalendarRegistry,
     seasonality_payload: &SeasonalityStageNormalizedPayload,
 ) -> Result<f64, String> {
@@ -23,7 +23,7 @@ pub(crate) fn maximum_runtime_hourly_seasonality_factor_from_payload(
         .ok_or_else(|| "clock_model must admit a finite positive runtime rate bound".to_string())
 }
 
-pub(crate) struct RuntimeHourlySeasonalityFactorsBuildInput<'a> {
+pub(crate) struct RuntimeIntervalSeasonalityFactorsBuildInput<'a> {
     pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
     pub(crate) exchange_code: &'a str,
     pub(crate) clock_model: &'a FourierBusinessTimeClockModel,
@@ -32,8 +32,8 @@ pub(crate) struct RuntimeHourlySeasonalityFactorsBuildInput<'a> {
     pub(crate) interval_duration_nanos: i64,
 }
 
-pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
-    input: RuntimeHourlySeasonalityFactorsBuildInput<'_>,
+pub(crate) fn build_runtime_interval_seasonality_factors_from_components(
+    input: RuntimeIntervalSeasonalityFactorsBuildInput<'_>,
 ) -> Result<Vec<f64>, String> {
     let calendar_definition = input
         .calendar_registry

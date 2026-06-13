@@ -64,7 +64,7 @@ def run_coarse_simulation(
                 "horizon_interval_count": normalized_request.horizon_interval_count,
                 "interval_delta": normalized_request.interval_delta,
                 "model_inputs": normalized_request.model_inputs.to_payload(),
-                "hourly_factor_contract": normalized_request.hourly_factor_contract._native_result,
+                "interval_factor_grid": normalized_request.interval_factor_grid._native_result,
             },
             **native_run_kwargs,
         )

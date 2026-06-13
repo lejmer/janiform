@@ -49,7 +49,7 @@ def run_seeded_tick_event_simulation(
         mean_reversion_fitted_parameters=request.mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=request.mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=request.initial_mean_reversion_boundary_state,
-        hourly_factor_summary=request.hourly_factor_summary,
+        interval_factor_grid_summary=request.interval_factor_grid_summary,
         return_clock_exposure_parameters=request.return_clock_exposure_parameters,
         long_variance_parameters=request.long_variance_parameters,
         initial_long_variance_state=request.initial_long_variance_state,
@@ -58,7 +58,7 @@ def run_seeded_tick_event_simulation(
         sample_every_nth_transition=request.sample_every_nth_transition,
         max_records_per_chunk=request.max_records_per_chunk,
         state_snapshot_capture=request.state_snapshot_capture,
-        _hourly_factor_contract=request.hourly_factor_contract,
+        _interval_factor_grid=request.interval_factor_grid,
     )
 
     try:
@@ -97,7 +97,7 @@ def run_seeded_tick_event_simulation(
                     normalized_request.nig_shared_plus_shift_configuration.to_payload()
                 ),
                 "initial_excitation_state": normalized_request.initial_excitation_state.to_payload(),
-                "hourly_factor_contract": normalized_request.hourly_factor_contract._native_result,
+                "interval_factor_grid": normalized_request.interval_factor_grid._native_result,
                 "news_process_configuration": normalized_request.news_process_configuration.to_payload(),
                 "mean_reversion_fitted_parameters": (
                     normalized_request.mean_reversion_fitted_parameters.to_payload()

@@ -31,7 +31,7 @@ from janiform.simulation.coarse import (
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 )
-from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
 from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 TEST_REFERENCE_PRICE = 100.0
@@ -106,11 +106,11 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
             interval_delta=anchored_request.interval_delta,
         ),
         runtime_interval_schedule=build_runtime_interval_schedule((1.0,)),
-        hourly_factor_contract=build_hourly_factor_contract(
+        interval_factor_grid=build_interval_factor_grid_contract(
             request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
-            s_h=(1.0,),
-            known_component_nu_h=(0.0,),
-            surprise_component_nu_h=(0.0,),
+            seasonality_factor=(1.0,),
+            known_news_intensity=(0.0,),
+            surprise_news_intensity=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=False,
@@ -174,7 +174,7 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
             interval_delta=anchored_runtime_execution_input.request.interval_delta,
         ),
         runtime_interval_schedule=anchored_runtime_execution_input.runtime_interval_schedule,
-        hourly_factor_contract=anchored_runtime_execution_input.hourly_factor_contract,
+        interval_factor_grid=anchored_runtime_execution_input.interval_factor_grid,
         optional_output_selection=anchored_runtime_execution_input.optional_output_selection,
         cpu_count=1,
     )
@@ -286,7 +286,7 @@ def build_runtime_interval_schedule(
         metadata=PricingIntervalScheduleMetadata(
             policy_id="explicit_interval_end_timestamps_utc.v1",
             derivation_policy="tests.support.pricing.uniform_schedule.v1",
-            factor_assignment_policy="overlap_weighted_resampling_from_hourly_source_buckets.v1",
+            factor_assignment_policy="overlap_weighted_resampling_from_interval_factor_grid_source_intervals.v1",
         ),
         interval_end_timestamps_utc_nanos=tuple(interval_end_timestamps_utc_nanos),
         interval_deltas_hours=interval_deltas_hours,

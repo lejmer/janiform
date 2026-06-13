@@ -38,7 +38,7 @@ from ...contracts.base import (
 )
 from ..._timestamps import NANOS_PER_HOUR
 from ...calendar import MarketState
-from ...hourly_factors import HourlyFactorContract
+from ...interval_factor_grids import IntervalFactorGridContract
 from ...pricing import NigSharedPlusShiftConfiguration
 from ...sufficient_statistics import SufficientStatisticsReturnComponents
 
@@ -54,8 +54,8 @@ def _parse_nig_shared_plus_shift_configuration(
 
 
 @dataclass(frozen=True, slots=True)
-class SeededTickSimulationHourlyFactorSummary(ContractModel):
-    """Serializable snapshot of the hourly factor contract used by one run."""
+class SeededTickSimulationIntervalFactorGridSummary(ContractModel):
+    """Serializable snapshot of the interval factor grid contract used by one run."""
 
     schema_version: str
     exchange_code: str
@@ -63,94 +63,99 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
     interval_duration_nanos: int
     interval_start_utc_nanos: tuple[int, ...]
     interval_end_utc_nanos: tuple[int, ...]
-    s_h: tuple[float, ...]
-    nu_h: tuple[float, ...]
+    seasonality_factor: tuple[float, ...]
+    news_intensity: tuple[float, ...]
 
     def __post_init__(self) -> None:
-        if self.schema_version != "seasonality.hourly_factor.contract.v1":
+        if self.schema_version != "seasonality.interval_factor_grid.contract.v1":
             raise _simulation_error(
-                "hourly_factor_summary.schema_version",
-                "must be `seasonality.hourly_factor.contract.v1`",
+                "interval_factor_grid_summary.schema_version",
+                "must be `seasonality.interval_factor_grid.contract.v1`",
             )
 
         if not self.exchange_code.strip():
-            raise _simulation_error("hourly_factor_summary.exchange_code", "must be a non-empty string")
+            raise _simulation_error("interval_factor_grid_summary.exchange_code", "must be a non-empty string")
+
         if self.interval_count <= 0:
-            raise _simulation_error("hourly_factor_summary.interval_count", "must be strictly positive")
+            raise _simulation_error("interval_factor_grid_summary.interval_count", "must be strictly positive")
+
         if self.interval_duration_nanos <= 0:
             raise _simulation_error(
-                "hourly_factor_summary.interval_duration_nanos",
+                "interval_factor_grid_summary.interval_duration_nanos",
                 "must be strictly positive",
             )
 
         if len(self.interval_start_utc_nanos) != self.interval_count:
             raise _simulation_error(
-                "hourly_factor_summary.interval_start_utc_nanos",
-                "must contain one entry per interval",
-            )
-        if len(self.interval_end_utc_nanos) != self.interval_count:
-            raise _simulation_error(
-                "hourly_factor_summary.interval_end_utc_nanos",
+                "interval_factor_grid_summary.interval_start_utc_nanos",
                 "must contain one entry per interval",
             )
 
-        if len(self.s_h) != self.interval_count:
-            raise _simulation_error("hourly_factor_summary.s_h", "must contain one entry per interval")
-        if len(self.nu_h) != self.interval_count:
-            raise _simulation_error("hourly_factor_summary.nu_h", "must contain one entry per interval")
+        if len(self.interval_end_utc_nanos) != self.interval_count:
+            raise _simulation_error(
+                "interval_factor_grid_summary.interval_end_utc_nanos",
+                "must contain one entry per interval",
+            )
+
+        if len(self.seasonality_factor) != self.interval_count:
+            raise _simulation_error("interval_factor_grid_summary.seasonality_factor", "must contain one entry per interval")
+
+        if len(self.news_intensity) != self.interval_count:
+            raise _simulation_error("interval_factor_grid_summary.news_intensity", "must contain one entry per interval")
 
         for interval_index, interval_start_utc_nanos in enumerate(self.interval_start_utc_nanos):
             if interval_start_utc_nanos < 0:
                 raise _simulation_error(
-                    f"hourly_factor_summary.interval_start_utc_nanos[{interval_index}]",
+                    f"interval_factor_grid_summary.interval_start_utc_nanos[{interval_index}]",
                     "must be non-negative",
                 )
 
         for interval_index, interval_end_utc_nanos in enumerate(self.interval_end_utc_nanos):
             if interval_end_utc_nanos < 0:
                 raise _simulation_error(
-                    f"hourly_factor_summary.interval_end_utc_nanos[{interval_index}]",
+                    f"interval_factor_grid_summary.interval_end_utc_nanos[{interval_index}]",
                     "must be non-negative",
                 )
+
             if interval_end_utc_nanos <= self.interval_start_utc_nanos[interval_index]:
                 raise _simulation_error(
-                    f"hourly_factor_summary.interval_end_utc_nanos[{interval_index}]",
+                    f"interval_factor_grid_summary.interval_end_utc_nanos[{interval_index}]",
                     "must be greater than the corresponding interval start timestamp",
                 )
 
-        for interval_index, seasonality_factor in enumerate(self.s_h):
+        for interval_index, seasonality_factor in enumerate(self.seasonality_factor):
             require_non_negative_finite_scalar(
                 seasonality_factor,
-                f"hourly_factor_summary.s_h[{interval_index}]",
+                f"interval_factor_grid_summary.seasonality_factor[{interval_index}]",
                 SIMULATION_ERROR_FACTORY,
             )
 
-        for interval_index, news_intensity_factor in enumerate(self.nu_h):
+        for interval_index, news_intensity_factor in enumerate(self.news_intensity):
             require_non_negative_finite_scalar(
                 news_intensity_factor,
-                f"hourly_factor_summary.nu_h[{interval_index}]",
+                f"interval_factor_grid_summary.news_intensity[{interval_index}]",
                 SIMULATION_ERROR_FACTORY,
             )
 
     @staticmethod
-    def from_contract(hourly_factor_contract: HourlyFactorContract) -> SeededTickSimulationHourlyFactorSummary:
-        return SeededTickSimulationHourlyFactorSummary(
-            schema_version=hourly_factor_contract.schema_version,
-            exchange_code=hourly_factor_contract.exchange_code,
-            interval_count=hourly_factor_contract.interval_count,
-            interval_duration_nanos=hourly_factor_contract.interval_duration_nanos,
-            interval_start_utc_nanos=tuple(hourly_factor_contract.interval_start_utc_nanos),
-            interval_end_utc_nanos=tuple(hourly_factor_contract.interval_end_utc_nanos),
-            s_h=tuple(hourly_factor_contract.s_h),
-            nu_h=tuple(hourly_factor_contract.nu_h),
+    def from_contract(interval_factor_grid: IntervalFactorGridContract) -> SeededTickSimulationIntervalFactorGridSummary:
+        return SeededTickSimulationIntervalFactorGridSummary(
+            schema_version=interval_factor_grid.schema_version,
+            exchange_code=interval_factor_grid.exchange_code,
+            interval_count=interval_factor_grid.interval_count,
+            interval_duration_nanos=interval_factor_grid.interval_duration_nanos,
+            interval_start_utc_nanos=tuple(interval_factor_grid.interval_start_utc_nanos),
+            interval_end_utc_nanos=tuple(interval_factor_grid.interval_end_utc_nanos),
+            seasonality_factor=tuple(interval_factor_grid.seasonality_factor),
+            news_intensity=tuple(interval_factor_grid.news_intensity),
         )
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
-        field_path: str = "hourly_factor_summary",
-    ) -> SeededTickSimulationHourlyFactorSummary:
+        field_path: str = "interval_factor_grid_summary",
+    ) -> SeededTickSimulationIntervalFactorGridSummary:
         if not isinstance(raw_payload, dict):
             raise _simulation_error(field_path, "must be an object")
 
@@ -160,26 +165,29 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
             f"{field_path}.interval_start_utc_nanos",
             SIMULATION_ERROR_FACTORY,
         )
+
         raw_interval_end_utc_nanos = require_sequence(
             raw_payload,
             "interval_end_utc_nanos",
             f"{field_path}.interval_end_utc_nanos",
             SIMULATION_ERROR_FACTORY,
         )
+
         raw_seasonality_factors = require_sequence(
             raw_payload,
-            "s_h",
-            f"{field_path}.s_h",
-            SIMULATION_ERROR_FACTORY,
-        )
-        raw_news_intensity_factors = require_sequence(
-            raw_payload,
-            "nu_h",
-            f"{field_path}.nu_h",
+            "seasonality_factor",
+            f"{field_path}.seasonality_factor",
             SIMULATION_ERROR_FACTORY,
         )
 
-        return SeededTickSimulationHourlyFactorSummary(
+        raw_news_intensity_factors = require_sequence(
+            raw_payload,
+            "news_intensity",
+            f"{field_path}.news_intensity",
+            SIMULATION_ERROR_FACTORY,
+        )
+
+        return SeededTickSimulationIntervalFactorGridSummary(
             schema_version=require_string(
                 raw_payload,
                 "schema_version",
@@ -222,20 +230,20 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
                 )
                 for interval_index, raw_value in enumerate(raw_interval_end_utc_nanos)
             ),
-            s_h=tuple(
+            seasonality_factor=tuple(
                 require_non_negative_finite_number(
                     {"value": raw_value},
                     "value",
-                    f"{field_path}.s_h[{interval_index}]",
+                    f"{field_path}.seasonality_factor[{interval_index}]",
                     SIMULATION_ERROR_FACTORY,
                 )
                 for interval_index, raw_value in enumerate(raw_seasonality_factors)
             ),
-            nu_h=tuple(
+            news_intensity=tuple(
                 require_non_negative_finite_number(
                     {"value": raw_value},
                     "value",
-                    f"{field_path}.nu_h[{interval_index}]",
+                    f"{field_path}.news_intensity[{interval_index}]",
                     SIMULATION_ERROR_FACTORY,
                 )
                 for interval_index, raw_value in enumerate(raw_news_intensity_factors)
@@ -257,7 +265,7 @@ class SeededTickSimulationRequest(ContractModel):
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
-    hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
+    interval_factor_grid_summary: SeededTickSimulationIntervalFactorGridSummary
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
@@ -266,7 +274,7 @@ class SeededTickSimulationRequest(ContractModel):
     sample_every_nth_transition: int = 1
     max_records_per_chunk: int = 1024
     state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED
-    _hourly_factor_contract: Optional[HourlyFactorContract] = field(
+    _interval_factor_grid: Optional[IntervalFactorGridContract] = field(
         default=None,
         repr=False,
         compare=False,
@@ -274,7 +282,8 @@ class SeededTickSimulationRequest(ContractModel):
 
     def to_payload(self) -> dict[str, Any]:
         payload = ContractModel.to_payload(self)
-        payload.pop("_hourly_factor_contract", None)
+        payload.pop("_interval_factor_grid", None)
+
         return payload
 
     def __post_init__(self) -> None:
@@ -287,9 +296,9 @@ class SeededTickSimulationRequest(ContractModel):
         if self.horizon_interval_count <= 0:
             raise _simulation_error("horizon_interval_count", "must be strictly positive")
 
-        if self.hourly_factor_summary.interval_count != self.horizon_interval_count:
+        if self.interval_factor_grid_summary.interval_count != self.horizon_interval_count:
             raise _simulation_error(
-                "hourly_factor_summary.interval_count",
+                "interval_factor_grid_summary.interval_count",
                 "must match horizon_interval_count",
             )
 
@@ -351,14 +360,14 @@ class SeededTickSimulationRequest(ContractModel):
             raise _simulation_error("max_records_per_chunk", "must be strictly positive")
 
     @property
-    def hourly_factor_contract(self) -> HourlyFactorContract:
-        if self._hourly_factor_contract is None:
+    def interval_factor_grid(self) -> IntervalFactorGridContract:
+        if self._interval_factor_grid is None:
             raise _simulation_error(
-                "hourly_factor_summary",
-                "runtime hourly factor contract handle is unavailable on deserialized requests",
+                "interval_factor_grid_summary",
+                "runtime interval factor grid contract handle is unavailable on deserialized requests",
             )
 
-        return self._hourly_factor_contract
+        return self._interval_factor_grid
 
     @staticmethod
     def from_runtime_inputs(
@@ -373,7 +382,7 @@ class SeededTickSimulationRequest(ContractModel):
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
         initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
-        hourly_factor_contract: HourlyFactorContract,
+        interval_factor_grid: IntervalFactorGridContract,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
         initial_long_variance_state: LongVarianceState,
@@ -388,6 +397,7 @@ class SeededTickSimulationRequest(ContractModel):
             "start_time_utc",
             SIMULATION_ERROR_FACTORY,
         )
+
         return SeededTickSimulationRequest(
             seed=seed,
             start_time_utc=normalized_start_time_utc,
@@ -399,7 +409,7 @@ class SeededTickSimulationRequest(ContractModel):
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-            hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
+            interval_factor_grid_summary=SeededTickSimulationIntervalFactorGridSummary.from_contract(interval_factor_grid),
             return_clock_exposure_parameters=return_clock_exposure_parameters,
             long_variance_parameters=long_variance_parameters,
             initial_long_variance_state=initial_long_variance_state,
@@ -408,7 +418,7 @@ class SeededTickSimulationRequest(ContractModel):
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
             state_snapshot_capture=state_snapshot_capture,
-            _hourly_factor_contract=hourly_factor_contract,
+            _interval_factor_grid=interval_factor_grid,
         )
 
     @staticmethod
@@ -536,14 +546,14 @@ class SeededTickSimulationRequest(ContractModel):
                 ),
                 field_path="initial_mean_reversion_boundary_state",
             ),
-            hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_mapping(
+            interval_factor_grid_summary=SeededTickSimulationIntervalFactorGridSummary.from_mapping(
                 require_mapping(
                     raw_payload,
-                    "hourly_factor_summary",
-                    "hourly_factor_summary",
+                    "interval_factor_grid_summary",
+                    "interval_factor_grid_summary",
                     SIMULATION_ERROR_FACTORY,
                 ),
-                field_path="hourly_factor_summary",
+                field_path="interval_factor_grid_summary",
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
                 require_mapping(
@@ -1244,14 +1254,14 @@ class SeededTickSimulationDiagnostics(ContractModel):
 
 def build_endogenous_seeded_mean_reversion_runtime_inputs(
     *,
-    hourly_factor_contract: HourlyFactorContract,
+    interval_factor_grid: IntervalFactorGridContract,
 ) -> tuple[
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
     MeanReversionBoundaryState,
 ]:
-    interval_delta_hours = hourly_factor_contract.interval_duration_nanos / NANOS_PER_HOUR
-    interval_count = hourly_factor_contract.interval_count
+    interval_delta_hours = interval_factor_grid.interval_duration_nanos / NANOS_PER_HOUR
+    interval_count = interval_factor_grid.interval_count
 
     return (
         MeanReversionFittedParameters(
@@ -1261,7 +1271,7 @@ def build_endogenous_seeded_mean_reversion_runtime_inputs(
             ),
         ),
         MeanReversionRuntimeIntervalAnchors(
-            interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
+            interval_alignment_policy=interval_factor_grid.interval_alignment_policy,
             start_anchor_value=0.0,
             start_pressure_state=0.0,
             end_anchor_values=tuple(0.0 for _ in range(interval_count)),
@@ -1291,6 +1301,6 @@ __all__ = [
     "SeededTickEventStateSnapshot",
     "SeededTickEventTapeMetadata",
     "SeededTickSimulationDiagnostics",
-    "SeededTickSimulationHourlyFactorSummary",
+    "SeededTickSimulationIntervalFactorGridSummary",
     "SeededTickSimulationRequest",
 ]

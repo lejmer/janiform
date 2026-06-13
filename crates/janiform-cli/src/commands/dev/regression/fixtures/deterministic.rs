@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use janiform::governance::deterministic_regression::{
-    CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
-    HourlySeasonalityRegressionSource,
+    CalendarStateRegressionCase, IntervalFactorGridRegressionCase,
+    IntervalNewsIntensityRegressionSource, IntervalSeasonalityRegressionSource,
 };
 use janiform::time::calendar::MarketState;
 use serde_json::{Map, Value};
@@ -73,7 +73,7 @@ pub(crate) fn extract_calendar_cases(
 pub(crate) fn extract_seasonality_cases(
     path: &Path,
     document: &Value,
-) -> Result<Vec<HourlyFactorRegressionCase>, CliError> {
+) -> Result<Vec<IntervalFactorGridRegressionCase>, CliError> {
     let cases = array_field(
         root_object(document, "seasonality cases", path)?,
         "canonical_output_cases",
@@ -94,7 +94,7 @@ pub(crate) fn extract_seasonality_cases(
             )
         })?;
 
-        parsed_cases.push(HourlyFactorRegressionCase {
+        parsed_cases.push(IntervalFactorGridRegressionCase {
             fixture_id: non_empty_string_field(
                 case,
                 "fixture_id",
@@ -145,16 +145,16 @@ pub(crate) fn extract_seasonality_cases(
                 &format!("{context}.news_intensity_source"),
                 path,
             )?,
-            expected_s_h: finite_f64_array_field(
+            expected_seasonality_factor: finite_f64_array_field(
                 case,
-                "expected_s_h",
+                "expected_seasonality_factor",
                 &context,
                 "seasonality cases",
                 path,
             )?,
-            expected_nu_h: finite_f64_array_field(
+            expected_news_intensity: finite_f64_array_field(
                 case,
-                "expected_nu_h",
+                "expected_news_intensity",
                 &context,
                 "seasonality cases",
                 path,
@@ -169,14 +169,14 @@ fn seasonality_source(
     source: &Map<String, Value>,
     context: &str,
     path: &Path,
-) -> Result<HourlySeasonalityRegressionSource, CliError> {
+) -> Result<IntervalSeasonalityRegressionSource, CliError> {
     match non_empty_string_field(source, "source_kind", context, "seasonality cases", path)?
         .as_str()
     {
-        "explicit" => Ok(HourlySeasonalityRegressionSource::Explicit {
-            hourly_factors: finite_f64_array_field(
+        "explicit" => Ok(IntervalSeasonalityRegressionSource::Explicit {
+            interval_factors: finite_f64_array_field(
                 source,
-                "hourly_factors",
+                "interval_factors",
                 context,
                 "seasonality cases",
                 path,
@@ -200,7 +200,7 @@ fn seasonality_source(
                 ));
             }
 
-            Ok(HourlySeasonalityRegressionSource::Materialized {
+            Ok(IntervalSeasonalityRegressionSource::Materialized {
                 source_timestamp_utc_nanos: timestamp_nanos_array_field(
                     source,
                     "source_timestamps_utc",
@@ -236,9 +236,9 @@ fn seasonality_source(
                     "seasonality cases",
                     path,
                 )?,
-                sparse_hour_minimum_observation_count: usize_field(
+                sparse_interval_minimum_observation_count: usize_field(
                     source,
-                    "sparse_hour_minimum_observation_count",
+                    "sparse_interval_minimum_observation_count",
                     context,
                     "seasonality cases",
                     path,
@@ -259,14 +259,14 @@ fn news_intensity_source(
     source: &Map<String, Value>,
     context: &str,
     path: &Path,
-) -> Result<HourlyNewsIntensityRegressionSource, CliError> {
+) -> Result<IntervalNewsIntensityRegressionSource, CliError> {
     match non_empty_string_field(source, "source_kind", context, "seasonality cases", path)?
         .as_str()
     {
-        "explicit" => Ok(HourlyNewsIntensityRegressionSource::Explicit {
-            hourly_factors: finite_f64_array_field(
+        "explicit" => Ok(IntervalNewsIntensityRegressionSource::Explicit {
+            interval_factors: finite_f64_array_field(
                 source,
-                "hourly_factors",
+                "interval_factors",
                 context,
                 "seasonality cases",
                 path,
@@ -279,7 +279,7 @@ fn news_intensity_source(
                 path,
             )?,
         }),
-        "materialized" => Ok(HourlyNewsIntensityRegressionSource::Materialized {
+        "materialized" => Ok(IntervalNewsIntensityRegressionSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos: timestamp_nanos_array_field(
                 source,
                 "known_scheduled_event_timestamps_utc",

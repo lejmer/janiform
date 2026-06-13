@@ -43,7 +43,7 @@ impl Display for SufficientStatisticsTransformSliceContextError {
                 value,
             } => write!(
                 formatter,
-                "interval {interval_index} has invalid s_h, expected finite non-negative value, found {value}"
+                "interval {interval_index} has invalid seasonality_factor, expected finite non-negative value, found {value}"
             ),
             Self::InvalidNewsIntensity {
                 interval_index,
@@ -304,11 +304,11 @@ impl Display for SufficientStatisticsTransformSliceSamplingError {
                 context,
             } => write!(
                 formatter,
-                "interval {interval_index} derived expected {statistic} is invalid (value={value}, numerator={numerator}, denominator={denominator}, s_h={}, total_nu_h={}, known_nu_h={}, surprise_nu_h={}, delta={}, initial_state={:?})",
-                context.s_h,
-                context.news_intensity.total_nu_h(),
-                context.news_intensity.known_nu_h,
-                context.news_intensity.surprise_nu_h,
+                "interval {interval_index} derived expected {statistic} is invalid (value={value}, numerator={numerator}, denominator={denominator}, seasonality_factor={}, total_news_intensity={}, known_news_intensity={}, surprise_news_intensity={}, delta={}, initial_state={:?})",
+                context.seasonality_factor,
+                context.news_intensity.total_news_intensity(),
+                context.news_intensity.known_news_intensity,
+                context.news_intensity.surprise_news_intensity,
                 context.delta,
                 context.initial_excitation_state
             ),

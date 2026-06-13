@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ....calendar import CalendarRegistry
-from ....hourly_factors import HourlyFactorContract
+from ....interval_factor_grids import IntervalFactorGridContract
 from ....long_variance import LongVarianceParameters, LongVarianceState
 from ....mean_reversion import (
     MeanReversionBoundaryState,
@@ -45,7 +45,7 @@ class PreparedModelRuntimeFactors:
 @dataclass(frozen=True, slots=True)
 class PreparedModelPricingRuntimeInput:
     runtime_factors: PreparedModelRuntimeFactors
-    hourly_factor_contract: HourlyFactorContract
+    interval_factor_grid: IntervalFactorGridContract
     effective_boundary_state: HawkesExcitationState
     effective_long_variance_state: LongVarianceState
     effective_observed_boundary_state: MeanReversionBoundaryState

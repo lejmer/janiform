@@ -120,9 +120,9 @@ admissible if all of the following hold.
     \]
     \item The interval and deterministic intensities satisfy
     \[
-    \Delta>0,\qquad s_h\ge0,\qquad
-    \nu_h^{\mathrm{known}}\ge0,\qquad
-    \nu_h^{\mathrm{surprise}}\ge0.
+    \Delta>0,\qquad s_k\ge0,\qquad
+    \nu_k^{\mathrm{known}}\ge0,\qquad
+    \nu_k^{\mathrm{surprise}}\ge0.
     \]
     \item The terminal loadings and transform arguments are finite complex
     values, and the ODE solution \((C(\tau),\mathbf D(\tau),V(\tau))\) remains
@@ -152,11 +152,11 @@ The Hawkes conditions guarantee non-negative event intensities:
 \[
 \lambda_t^+
 =
-s_h\bar\lambda+Y_t^{++}+Y_t^{+-},
+s_k\bar\lambda+Y_t^{++}+Y_t^{+-},
 \qquad
 \lambda_t^-
 =
-s_h\bar\lambda+Y_t^{-+}+Y_t^{--}.
+s_k\bar\lambda+Y_t^{-+}+Y_t^{--}.
 \]
 The spectral-radius condition is the finite-branching condition for the
 linear Hawkes reaction system. It is also needed when stationary side rates
@@ -214,7 +214,7 @@ V'
 =
 -\kappa_zV
 +\frac{1}{2}\sigma_z^2V^2
--s_h\bar\lambda(u_+^B+u_-^B).
+-s_k\bar\lambda(u_+^B+u_-^B).
 \]
 If this equation develops a finite-time pole before \(\Delta\), then the
 exponent is not finite. The Hawkes loading equations also contain exponential

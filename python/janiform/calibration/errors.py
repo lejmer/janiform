@@ -15,8 +15,6 @@ CALIBRATION_EXECUTION_ERROR_ID = "calibration.execution.run_failed"
 CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID = "calibration.integration.native_module_unavailable"
 CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID = "calibration.integration.invalid_native_response"
 
-CalibrationValidationFailure = ContractValidationFailure
-
 
 class CalibrationValidationError(JaniformValidationError):
     pass
@@ -31,7 +29,7 @@ def calibration_error(
     context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> CalibrationValidationError:
     return CalibrationValidationError(
-        CalibrationValidationFailure.from_context(
+        ContractValidationFailure.from_context(
             error_id=error_id,
             workflow="calibration",
             entrypoint=entrypoint,
@@ -85,7 +83,6 @@ __all__ = [
     "CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID",
     "CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID",
     "CalibrationValidationError",
-    "CalibrationValidationFailure",
     "calibration_error",
     "calibration_execution_error",
     "calibration_integration_error",

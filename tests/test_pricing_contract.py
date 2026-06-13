@@ -51,7 +51,7 @@ from janiform.simulation.coarse import (
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 )
-from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
 from tests.support.pricing import (
     build_anchored_request_model,
     build_anchored_surface_execution_input_model,
@@ -382,11 +382,11 @@ def test_vanilla_option_surface_execution_input_rejects_runtime_schedule_termina
         VanillaOptionSurfacePricingExecutionInput(
             request=build_anchored_surface_request_model(),
             runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
-            hourly_factor_contract=build_hourly_factor_contract(
+            interval_factor_grid=build_interval_factor_grid_contract(
                 request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
-                s_h=(1.0,),
-                known_component_nu_h=(0.0,),
-                surprise_component_nu_h=(0.0,),
+                seasonality_factor=(1.0,),
+                known_news_intensity=(0.0,),
+                surprise_news_intensity=(0.0,),
             ),
         )
 
@@ -394,29 +394,29 @@ def test_vanilla_option_surface_execution_input_rejects_runtime_schedule_termina
     assert "terminal boundary exactly" in captured_error.value.failure.message
 
 
-def test_vanilla_option_pricing_execution_input_keeps_native_hourly_factor_contract() -> None:
+def test_vanilla_option_pricing_execution_input_keeps_native_interval_factor_grid_contract() -> None:
     execution_input = _valid_execution_input_model()
 
-    assert execution_input.hourly_factor_contract.known_component_nu_h[0] == pytest.approx(0.03)
-    assert execution_input.hourly_factor_contract.surprise_component_nu_h[0] == pytest.approx(0.05)
+    assert execution_input.interval_factor_grid.known_news_intensity[0] == pytest.approx(0.03)
+    assert execution_input.interval_factor_grid.surprise_news_intensity[0] == pytest.approx(0.05)
 
 
-def test_vanilla_option_pricing_execution_input_rejects_empty_hourly_factor_contract() -> None:
+def test_vanilla_option_pricing_execution_input_rejects_empty_interval_factor_grid_contract() -> None:
     request = _valid_request_model()
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         VanillaOptionPricingExecutionInput(
             request=request,
             runtime_interval_schedule=_runtime_interval_schedule((0.5,)),
-            hourly_factor_contract=build_hourly_factor_contract(
+            interval_factor_grid=build_interval_factor_grid_contract(
                 request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
-                s_h=(),
-                known_component_nu_h=(),
-                surprise_component_nu_h=(),
+                seasonality_factor=(),
+                known_news_intensity=(),
+                surprise_news_intensity=(),
             ),
         )
 
-    assert captured_error.value.failure.field_path == "hourly_factor_contract.interval_count"
+    assert captured_error.value.failure.field_path == "interval_factor_grid.interval_count"
     assert captured_error.value.failure.message == "must contain at least one interval"
 
 
@@ -780,7 +780,7 @@ def _runtime_interval_schedule(
         metadata=PricingIntervalScheduleMetadata(
             policy_id="explicit_interval_end_timestamps_utc.v1",
             derivation_policy="explicit_interval_end_timestamps_utc.v1",
-            factor_assignment_policy="overlap_weighted_resampling_from_hourly_source_buckets.v1",
+            factor_assignment_policy="overlap_weighted_resampling_from_interval_factor_grid_source_intervals.v1",
         ),
         interval_end_timestamps_utc_nanos=tuple(interval_end_timestamps_utc_nanos),
         interval_deltas_hours=interval_deltas_hours,
@@ -800,11 +800,12 @@ def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
             interval_delta=0.5,
         ),
         runtime_interval_schedule=_runtime_interval_schedule((0.5,)),
-        hourly_factor_contract=build_hourly_factor_contract(
+        interval_factor_grid=build_interval_factor_grid_contract(
             request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
-            s_h=(1.1,),
-            known_component_nu_h=(0.03,),
-            surprise_component_nu_h=(0.05,),
+            interval_duration_nanos=1_800_000_000_000,
+            seasonality_factor=(1.1,),
+            known_news_intensity=(0.03,),
+            surprise_news_intensity=(0.05,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=False,
@@ -838,11 +839,11 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             interval_delta=1.0,
         ),
         runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
-        hourly_factor_contract=build_hourly_factor_contract(
+        interval_factor_grid=build_interval_factor_grid_contract(
             request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
-            s_h=(1.0,),
-            known_component_nu_h=(0.0,),
-            surprise_component_nu_h=(0.0,),
+            seasonality_factor=(1.0,),
+            known_news_intensity=(0.0,),
+            surprise_news_intensity=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=False,

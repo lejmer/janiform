@@ -9,7 +9,7 @@ use janiform_affine_oracle::affine_oracle::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
-use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
+use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError,
@@ -340,19 +340,19 @@ enum LocalTiltSearchSide {
     Upper,
 }
 
-/// Resolve interval-aligned hourly factors for the pricing path.
-pub use janiform_market_time::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
+/// Resolve interval-aligned interval factor grids for the pricing path.
+pub use janiform_market_time::interval_factor_grids::provide_interval_factor_grid as load_interval_factor_grid;
 
 /// Project state to interval intensities for coarse-time sufficient-statistics paths.
 pub fn project_hawkes_intensities_coarse_interval(
     state: HawkesExcitationState,
     parameters: HawkesKernelParameters,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
     interval_index: usize,
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
         parameters.lambda_bar,
-        &hourly_factor_contract.s_h,
+        &interval_factor_grid.seasonality_factor,
         interval_index,
     )
 }

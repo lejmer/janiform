@@ -8,7 +8,7 @@ use janiform_model_kernels::mean_reversion::{
 use serde::{Deserialize, Serialize};
 
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
-use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
+use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::NewsProcessConfiguration;
@@ -21,8 +21,8 @@ use super::constants::{
 };
 use super::error::SeededTickSimulationRunError;
 use super::runtime::{
-    compute_max_effective_endogenous_branching_ratio, validate_hourly_factor_field_length,
-    validate_hourly_factor_interval_coverage, validate_known_scheduled_news_timestamps,
+    compute_max_effective_endogenous_branching_ratio, validate_interval_factor_grid_field_length,
+    validate_interval_factor_grid_interval_coverage, validate_known_scheduled_news_timestamps,
 };
 
 /// State snapshot capture mode for per-event diagnostics.
@@ -133,8 +133,8 @@ pub struct SeededTickSimulationModelInputs {
     /// Observed-state boundary payload carried into the first simulated interval.
     pub initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 
-    /// Interval-aligned hourly factors (`s_h`, `nu_h`) used by the simulator.
-    pub hourly_factor_contract: HourlyFactorContractOutput,
+    /// Interval-aligned interval factor grids (`seasonality_factor`, `news_intensity`) used by the simulator.
+    pub interval_factor_grid: IntervalFactorGrid,
 
     /// Exposure parameters mapping endogenous activity into return-clock time.
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
@@ -176,10 +176,10 @@ impl SeededTickSimulationRunConfig {
     ///
     /// Failure modes:
     /// - invalid horizon value (`horizon_interval_count == 0`)
-    /// - missing or incomplete hourly factor interval vectors
-    /// - mismatched hourly factor diagnostics interval count
-    /// - non-consecutive or invalid hourly factor interval bounds in simulated horizon
-    /// - start time not aligned to first hourly factor interval start
+    /// - missing or incomplete interval factor grid interval vectors
+    /// - mismatched interval factor grid diagnostics interval count
+    /// - non-consecutive or invalid interval factor grid interval bounds in simulated horizon
+    /// - start time not aligned to first interval factor grid interval start
     /// - requested horizon exceeds available factor intervals
     pub fn try_new(
         seed: u64,
@@ -206,43 +206,44 @@ impl SeededTickSimulationRunConfig {
             return Err(SeededTickSimulationRunError::InvalidHorizonIntervalCount { value: 0 });
         }
 
-        let hourly_factor_contract = &self.model_inputs.hourly_factor_contract;
-        let expected_interval_count = hourly_factor_contract.interval_indices.len();
+        let interval_factor_grid = &self.model_inputs.interval_factor_grid;
+        let expected_interval_count = interval_factor_grid.interval_indices.len();
+
         if expected_interval_count == 0 {
-            return Err(SeededTickSimulationRunError::MissingHourlyFactorIntervals);
+            return Err(SeededTickSimulationRunError::MissingIntervalFactorGridIntervals);
         }
 
-        if hourly_factor_contract.diagnostics.interval_count != expected_interval_count {
+        if interval_factor_grid.diagnostics.interval_count != expected_interval_count {
             return Err(
-                SeededTickSimulationRunError::HourlyFactorDiagnosticsIntervalCountMismatch {
+                SeededTickSimulationRunError::IntervalFactorGridDiagnosticsIntervalCountMismatch {
                     expected_interval_count,
-                    diagnostics_interval_count: hourly_factor_contract.diagnostics.interval_count,
+                    diagnostics_interval_count: interval_factor_grid.diagnostics.interval_count,
                 },
             );
         }
 
-        validate_hourly_factor_field_length(
+        validate_interval_factor_grid_field_length(
             "interval_start_utc_nanos",
             expected_interval_count,
-            hourly_factor_contract.interval_start_utc_nanos.len(),
+            interval_factor_grid.interval_start_utc_nanos.len(),
         )?;
 
-        validate_hourly_factor_field_length(
+        validate_interval_factor_grid_field_length(
             "interval_end_utc_nanos",
             expected_interval_count,
-            hourly_factor_contract.interval_end_utc_nanos.len(),
+            interval_factor_grid.interval_end_utc_nanos.len(),
         )?;
 
-        validate_hourly_factor_field_length(
-            "s_h",
+        validate_interval_factor_grid_field_length(
+            "seasonality_factor",
             expected_interval_count,
-            hourly_factor_contract.s_h.len(),
+            interval_factor_grid.seasonality_factor.len(),
         )?;
 
-        validate_hourly_factor_field_length(
-            "nu_h",
+        validate_interval_factor_grid_field_length(
+            "news_intensity",
             expected_interval_count,
-            hourly_factor_contract.nu_h.len(),
+            interval_factor_grid.news_intensity.len(),
         )?;
 
         self.model_inputs
@@ -295,20 +296,20 @@ impl SeededTickSimulationRunConfig {
             },
         )?;
 
-        let first_interval_start_utc_nanos = hourly_factor_contract.interval_start_utc_nanos[0];
+        let first_interval_start_utc_nanos = interval_factor_grid.interval_start_utc_nanos[0];
 
         if start_time_utc_nanos != first_interval_start_utc_nanos {
             return Err(
-                SeededTickSimulationRunError::StartTimeDoesNotMatchHourlyFactorCoverage {
+                SeededTickSimulationRunError::StartTimeDoesNotMatchIntervalFactorGridCoverage {
                     start_time_utc_nanos,
                     first_interval_start_utc_nanos,
                 },
             );
         }
 
-        validate_hourly_factor_interval_coverage(
-            &hourly_factor_contract.interval_start_utc_nanos,
-            &hourly_factor_contract.interval_end_utc_nanos,
+        validate_interval_factor_grid_interval_coverage(
+            &interval_factor_grid.interval_start_utc_nanos,
+            &interval_factor_grid.interval_end_utc_nanos,
             self.horizon_interval_count,
         )?;
 
@@ -350,11 +351,11 @@ impl SeededTickSimulationRunConfig {
         }
 
         if runtime_interval_anchors.interval_alignment_policy
-            != hourly_factor_contract.metadata.interval_alignment_policy
+            != interval_factor_grid.metadata.interval_alignment_policy
         {
             return Err(
                 SeededTickSimulationRunError::MeanReversionRuntimeAnchorAlignmentPolicyMismatch {
-                    expected_policy: hourly_factor_contract
+                    expected_policy: interval_factor_grid
                         .metadata
                         .interval_alignment_policy
                         .to_string(),
@@ -374,11 +375,13 @@ impl SeededTickSimulationRunConfig {
         }
 
         for interval_index in 0..self.horizon_interval_count {
-            let expected_interval_delta_nanos = hourly_factor_contract.interval_end_utc_nanos
+            let expected_interval_delta_nanos = interval_factor_grid.interval_end_utc_nanos
                 [interval_index]
-                - hourly_factor_contract.interval_start_utc_nanos[interval_index];
+                - interval_factor_grid.interval_start_utc_nanos[interval_index];
+
             let expected_interval_delta = duration_nanos_to_hours(expected_interval_delta_nanos);
             let observed_interval_delta = runtime_interval_anchors.interval_deltas[interval_index];
+
             let observed_interval_delta_nanos = duration_hours_to_nanos(observed_interval_delta);
             if observed_interval_delta_nanos != Ok(expected_interval_delta_nanos) {
                 return Err(

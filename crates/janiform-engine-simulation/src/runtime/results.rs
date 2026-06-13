@@ -113,19 +113,24 @@ pub fn estimate_seeded_result_capacities(
     for interval_index in 0..run_config.horizon_interval_count {
         let interval_start_utc_nanos = run_config
             .model_inputs
-            .hourly_factor_contract
+            .interval_factor_grid
             .interval_start_utc_nanos[interval_index];
+
         let interval_end_utc_nanos = run_config
             .model_inputs
-            .hourly_factor_contract
+            .interval_factor_grid
             .interval_end_utc_nanos[interval_index];
 
         let interval_duration_in_hours =
             (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64;
 
-        let seasonality_factor = run_config.model_inputs.hourly_factor_contract.s_h[interval_index];
+        let seasonality_factor = run_config
+            .model_inputs
+            .interval_factor_grid
+            .seasonality_factor[interval_index];
+
         let interval_news_intensity =
-            run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
+            run_config.model_inputs.interval_factor_grid.news_intensity[interval_index].max(0.0);
 
         estimated_endogenous_event_count = estimated_endogenous_event_count.saturating_add(
             estimate_endogenous_interval_event_capacity(

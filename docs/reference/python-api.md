@@ -13,8 +13,8 @@
 |--------|
 | [`janiform.errors`](#python-api-module-janiform-errors) |
 | [`janiform.calendar`](#python-api-module-janiform-calendar) |
-| [`janiform.hourly_factors`](#python-api-module-janiform-hourly-factors) |
-| [`janiform.hourly_factors.contracts`](#python-api-module-janiform-hourly-factors-contracts) |
+| [`janiform.interval_factor_grids`](#python-api-module-janiform-interval-factor-grids) |
+| [`janiform.interval_factor_grids.contracts`](#python-api-module-janiform-interval-factor-grids-contracts) |
 | [`janiform.contracts`](#python-api-module-janiform-contracts) |
 | [`janiform.return_clock`](#python-api-module-janiform-return-clock) |
 | [`janiform.mean_reversion`](#python-api-module-janiform-mean-reversion) |
@@ -255,109 +255,103 @@
 - Kind: `function`
 - Signature: `(registry_json: 'str', exchange_code: 'str', timestamp_utc: 'datetime') -> 'MarketState'`
 
-<a id="python-api-module-janiform-hourly-factors"></a>
-## `janiform.hourly_factors`
+<a id="python-api-module-janiform-interval-factor-grids"></a>
+## `janiform.interval_factor_grids`
 
 ### Schema Identifiers
 
 | Name | Value | Exported |
 |------|-------|----------|
-| `HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION` | `seasonality.hourly_factor.contract.v1` | true |
-| `HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.hourly_nu_h.materialization.v1` | true |
-| `HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.hourly_s_h.materialization.v1` | true |
+| `INTERVAL_FACTOR_GRID_SCHEMA_VERSION` | `seasonality.interval_factor_grid.contract.v1` | true |
+| `INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.interval_news_intensity.materialization.v1` | true |
+| `INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.interval_seasonality_factor.materialization.v1` | true |
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-hourly-factors-default-hourly-factor-materialization-method) | constant | constant value |
-| [`DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-hourly-factors-default-news-intensity-materialization-method) | constant | constant value |
-| [`DEFAULT_SEASONALITY_AGGREGATION_METHOD`](#python-api-symbol-janiform-hourly-factors-default-seasonality-aggregation-method) | constant | constant value |
-| [`DEFAULT_SEASONALITY_INTERPOLATION_METHOD`](#python-api-symbol-janiform-hourly-factors-default-seasonality-interpolation-method) | constant | constant value |
-| [`DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY`](#python-api-symbol-janiform-hourly-factors-default-seasonality-sparse-fallback-policy) | constant | constant value |
-| [`DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT`](#python-api-symbol-janiform-hourly-factors-default-sparse-hour-minimum-observation-count) | constant | constant value |
-| [`HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION`](#python-api-symbol-janiform-hourly-factors-hourly-factor-contract-schema-version) | constant | constant value |
-| [`HOURLY_FACTOR_FALL_BACK_POLICY`](#python-api-symbol-janiform-hourly-factors-hourly-factor-fall-back-policy) | constant | constant value |
-| [`HOURLY_FACTOR_OUTPUT_SCHEMA`](#python-api-symbol-janiform-hourly-factors-hourly-factor-output-schema) | constant | constant value |
-| [`HOURLY_FACTOR_SPRING_FORWARD_POLICY`](#python-api-symbol-janiform-hourly-factors-hourly-factor-spring-forward-policy) | constant | constant value |
-| [`HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY`](#python-api-symbol-janiform-hourly-factors-hourly-factor-timezone-transition-policy) | constant | constant value |
-| [`HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-hourly-factors-hourly-news-intensity-materialization-output-schema) | constant | constant value |
-| [`HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-hourly-factors-hourly-news-intensity-materialization-schema-version) | constant | constant value |
-| [`HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-hourly-factors-hourly-seasonality-materialization-output-schema) | constant | constant value |
-| [`HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-hourly-factors-hourly-seasonality-materialization-schema-version) | constant | constant value |
-| [`HourlyFactorContract`](#python-api-symbol-janiform-hourly-factors-hourlyfactorcontract) | class | janiform.hourly_factors.artifacts |
-| [`HourlyFactorOutputSchema`](#python-api-symbol-janiform-hourly-factors-hourlyfactoroutputschema) | contract_model | 5 fields |
-| [`HourlyFactorProviderError`](#python-api-symbol-janiform-hourly-factors-hourlyfactorprovidererror) | exception_class | janiform.hourly_factors.errors |
-| [`HourlyFactorProviderMissingInputError`](#python-api-symbol-janiform-hourly-factors-hourlyfactorprovidermissinginputerror) | exception_class | janiform.hourly_factors.errors |
-| [`HourlyFactorProviderUnsupportedRangeError`](#python-api-symbol-janiform-hourly-factors-hourlyfactorproviderunsupportedrangeerror) | exception_class | janiform.hourly_factors.errors |
-| [`HourlyNewsIntensityMaterialization`](#python-api-symbol-janiform-hourly-factors-hourlynewsintensitymaterialization) | class | janiform.hourly_factors.artifacts |
-| [`HourlyNewsIntensityMaterializationOutputSchema`](#python-api-symbol-janiform-hourly-factors-hourlynewsintensitymaterializationoutputschema) | contract_model | 5 fields |
-| [`HourlyNewsIntensityMaterializationSettings`](#python-api-symbol-janiform-hourly-factors-hourlynewsintensitymaterializationsettings) | contract_model | 4 fields |
-| [`HourlyNewsIntensityProviderExplicitSource`](#python-api-symbol-janiform-hourly-factors-hourlynewsintensityproviderexplicitsource) | contract_model | 2 fields |
-| [`HourlyNewsIntensityProviderMaterializedSource`](#python-api-symbol-janiform-hourly-factors-hourlynewsintensityprovidermaterializedsource) | contract_model | 4 fields |
-| [`HourlyNewsIntensityProviderSource`](#python-api-symbol-janiform-hourly-factors-hourlynewsintensityprovidersource) | constant | constant value |
-| [`HourlySeasonalityMaterialization`](#python-api-symbol-janiform-hourly-factors-hourlyseasonalitymaterialization) | class | janiform.hourly_factors.artifacts |
-| [`HourlySeasonalityMaterializationOutputSchema`](#python-api-symbol-janiform-hourly-factors-hourlyseasonalitymaterializationoutputschema) | contract_model | 5 fields |
-| [`HourlySeasonalityMaterializationSettings`](#python-api-symbol-janiform-hourly-factors-hourlyseasonalitymaterializationsettings) | contract_model | 4 fields |
-| [`HourlySeasonalityProviderExplicitSource`](#python-api-symbol-janiform-hourly-factors-hourlyseasonalityproviderexplicitsource) | contract_model | 2 fields |
-| [`HourlySeasonalityProviderMaterializedSource`](#python-api-symbol-janiform-hourly-factors-hourlyseasonalityprovidermaterializedsource) | contract_model | 6 fields |
-| [`HourlySeasonalityProviderSource`](#python-api-symbol-janiform-hourly-factors-hourlyseasonalityprovidersource) | constant | constant value |
-| [`SeasonalityInputValidationError`](#python-api-symbol-janiform-hourly-factors-seasonalityinputvalidationerror) | exception_class | janiform.seasonality.errors |
-| [`build_hourly_factor_contract`](#python-api-symbol-janiform-hourly-factors-build-hourly-factor-contract) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract' |
-| [`build_runtime_hourly_seasonality_source_from_calibration_payload`](#python-api-symbol-janiform-hourly-factors-build-runtime-hourly-seasonality-source-from-calibration-payload) | function | (*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityProviderExplicitSource' |
-| [`load_hourly_factor_contract_payload`](#python-api-symbol-janiform-hourly-factors-load-hourly-factor-contract-payload) | function | (hourly_factor_contract_payload: 'dict[str, Any] \| Any') -> 'HourlyFactorContract' |
-| [`materialize_hourly_news_intensity_factors`](#python-api-symbol-janiform-hourly-factors-materialize-hourly-news-intensity-factors) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization' |
-| [`materialize_hourly_seasonality_factors`](#python-api-symbol-janiform-hourly-factors-materialize-hourly-seasonality-factors) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityMaterialization' |
-| [`provide_hourly_factor_contract`](#python-api-symbol-janiform-hourly-factors-provide-hourly-factor-contract) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract' |
+| [`DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-default-interval-factor-grid-materialization-method) | constant | constant value |
+| [`DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-default-news-intensity-materialization-method) | constant | constant value |
+| [`DEFAULT_SEASONALITY_AGGREGATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-default-seasonality-aggregation-method) | constant | constant value |
+| [`DEFAULT_SEASONALITY_INTERPOLATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-default-seasonality-interpolation-method) | constant | constant value |
+| [`DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY`](#python-api-symbol-janiform-interval-factor-grids-default-seasonality-sparse-fallback-policy) | constant | constant value |
+| [`DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT`](#python-api-symbol-janiform-interval-factor-grids-default-sparse-interval-minimum-observation-count) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_FALL_BACK_POLICY`](#python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-fall-back-policy) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA`](#python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-output-schema) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_SCHEMA_VERSION`](#python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-schema-version) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY`](#python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-spring-forward-policy) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY`](#python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-timezone-transition-policy) | constant | constant value |
+| [`INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-interval-factor-grids-interval-news-intensity-materialization-output-schema) | constant | constant value |
+| [`INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-interval-factor-grids-interval-news-intensity-materialization-schema-version) | constant | constant value |
+| [`INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-interval-factor-grids-interval-seasonality-materialization-output-schema) | constant | constant value |
+| [`INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-interval-factor-grids-interval-seasonality-materialization-schema-version) | constant | constant value |
+| [`IntervalFactorGridContract`](#python-api-symbol-janiform-interval-factor-grids-intervalfactorgridcontract) | class | janiform.interval_factor_grids.artifacts |
+| [`IntervalFactorGridOutputSchema`](#python-api-symbol-janiform-interval-factor-grids-intervalfactorgridoutputschema) | contract_model | 5 fields |
+| [`IntervalFactorGridProviderError`](#python-api-symbol-janiform-interval-factor-grids-intervalfactorgridprovidererror) | exception_class | janiform.interval_factor_grids.errors |
+| [`IntervalFactorGridProviderMissingInputError`](#python-api-symbol-janiform-interval-factor-grids-intervalfactorgridprovidermissinginputerror) | exception_class | janiform.interval_factor_grids.errors |
+| [`IntervalFactorGridProviderUnsupportedRangeError`](#python-api-symbol-janiform-interval-factor-grids-intervalfactorgridproviderunsupportedrangeerror) | exception_class | janiform.interval_factor_grids.errors |
+| [`IntervalNewsIntensityMaterialization`](#python-api-symbol-janiform-interval-factor-grids-intervalnewsintensitymaterialization) | class | janiform.interval_factor_grids.artifacts |
+| [`IntervalNewsIntensityMaterializationOutputSchema`](#python-api-symbol-janiform-interval-factor-grids-intervalnewsintensitymaterializationoutputschema) | contract_model | 5 fields |
+| [`IntervalNewsIntensityMaterializationSettings`](#python-api-symbol-janiform-interval-factor-grids-intervalnewsintensitymaterializationsettings) | contract_model | 4 fields |
+| [`IntervalNewsIntensityProviderExplicitSource`](#python-api-symbol-janiform-interval-factor-grids-intervalnewsintensityproviderexplicitsource) | contract_model | 2 fields |
+| [`IntervalNewsIntensityProviderMaterializedSource`](#python-api-symbol-janiform-interval-factor-grids-intervalnewsintensityprovidermaterializedsource) | contract_model | 4 fields |
+| [`IntervalNewsIntensityProviderSource`](#python-api-symbol-janiform-interval-factor-grids-intervalnewsintensityprovidersource) | constant | constant value |
+| [`IntervalSeasonalityMaterialization`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalitymaterialization) | class | janiform.interval_factor_grids.artifacts |
+| [`IntervalSeasonalityMaterializationOutputSchema`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalitymaterializationoutputschema) | contract_model | 5 fields |
+| [`IntervalSeasonalityMaterializationSettings`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalitymaterializationsettings) | contract_model | 4 fields |
+| [`IntervalSeasonalityProviderExplicitSource`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalityproviderexplicitsource) | contract_model | 2 fields |
+| [`IntervalSeasonalityProviderMaterializedSource`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalityprovidermaterializedsource) | contract_model | 6 fields |
+| [`IntervalSeasonalityProviderSource`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalityprovidersource) | constant | constant value |
+| [`SeasonalityInputValidationError`](#python-api-symbol-janiform-interval-factor-grids-seasonalityinputvalidationerror) | exception_class | janiform.seasonality.errors |
+| [`build_interval_factor_grid`](#python-api-symbol-janiform-interval-factor-grids-build-interval-factor-grid) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_factors: 'Sequence[float]', news_intensity_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_interval_grid_input.v1', news_intensity_materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'IntervalFactorGridContract' |
+| [`build_runtime_interval_seasonality_source_from_calibration_payload`](#python-api-symbol-janiform-interval-factor-grids-build-runtime-interval-seasonality-source-from-calibration-payload) | function | (*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityProviderExplicitSource' |
+| [`load_interval_factor_grid_payload`](#python-api-symbol-janiform-interval-factor-grids-load-interval-factor-grid-payload) | function | (interval_factor_grid_payload: 'dict[str, Any] \| Any') -> 'IntervalFactorGridContract' |
+| [`materialize_interval_news_intensity_factors`](#python-api-symbol-janiform-interval-factor-grids-materialize-interval-news-intensity-factors) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', settings: 'IntervalNewsIntensityMaterializationSettings') -> 'IntervalNewsIntensityMaterialization' |
+| [`materialize_interval_seasonality_factors`](#python-api-symbol-janiform-interval-factor-grids-materialize-interval-seasonality-factors) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityMaterialization' |
+| [`provide_interval_factor_grid`](#python-api-symbol-janiform-interval-factor-grids-provide-interval-factor-grid) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_source: 'Optional[IntervalSeasonalityProviderSource]' = None, news_intensity_source: 'Optional[IntervalNewsIntensityProviderSource]' = None) -> 'IntervalFactorGridContract' |
 
-<a id="python-api-symbol-janiform-hourly-factors-default-hourly-factor-materialization-method"></a>
-### `DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD`
+<a id="python-api-symbol-janiform-interval-factor-grids-default-interval-factor-grid-materialization-method"></a>
+### `DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD`
 
 - Kind: `constant`
-- Value: `explicit_hourly_input.v1`
+- Value: `explicit_interval_grid_input.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-default-news-intensity-materialization-method"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-default-news-intensity-materialization-method"></a>
 ### `DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD`
 
 - Kind: `constant`
 - Value: `known_calendar_anchor_plus_surprise_background_controls.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-default-seasonality-aggregation-method"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-default-seasonality-aggregation-method"></a>
 ### `DEFAULT_SEASONALITY_AGGREGATION_METHOD`
 
 - Kind: `constant`
 - Value: `mean_of_observations.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-default-seasonality-interpolation-method"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-default-seasonality-interpolation-method"></a>
 ### `DEFAULT_SEASONALITY_INTERPOLATION_METHOD`
 
 - Kind: `constant`
 - Value: `previous_observation_carry_forward.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-default-seasonality-sparse-fallback-policy"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-default-seasonality-sparse-fallback-policy"></a>
 ### `DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY`
 
 - Kind: `constant`
 - Value: `global_mean.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-default-sparse-hour-minimum-observation-count"></a>
-### `DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT`
+<a id="python-api-symbol-janiform-interval-factor-grids-default-sparse-interval-minimum-observation-count"></a>
+### `DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT`
 
 - Kind: `constant`
 - Value: `1`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-factor-contract-schema-version"></a>
-### `HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-fall-back-policy"></a>
+### `INTERVAL_FACTOR_GRID_FALL_BACK_POLICY`
 
 - Kind: `constant`
-- Value: `seasonality.hourly_factor.contract.v1`
+- Value: `preserve_repeated_exchange_local_interval_labels_with_numeric_utc_offset.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-factor-fall-back-policy"></a>
-### `HOURLY_FACTOR_FALL_BACK_POLICY`
-
-- Kind: `constant`
-- Value: `preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1`
-
-<a id="python-api-symbol-janiform-hourly-factors-hourly-factor-output-schema"></a>
-### `HOURLY_FACTOR_OUTPUT_SCHEMA`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-output-schema"></a>
+### `INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA`
 
 - Kind: `constant`
 - Value:
@@ -378,15 +372,15 @@
     "interval_end_utc_nanos",
     "interval_start_exchange_local",
     "interval_end_exchange_local",
-    "s_h",
-    "known_component_nu_h",
-    "surprise_component_nu_h",
-    "nu_h",
+    "seasonality_factor",
+    "known_news_intensity",
+    "surprise_news_intensity",
+    "news_intensity",
     "interval_count",
     "first_interval_start_utc_nanos",
     "last_interval_end_utc_nanos",
-    "skipped_local_hour_interval_count",
-    "repeated_local_hour_interval_count",
+    "skipped_exchange_local_interval_count",
+    "repeated_exchange_local_interval_count",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -404,24 +398,30 @@
     "spring_forward_policy",
     "fall_back_policy"
   ],
-  "schema_version": "seasonality.hourly_factor.contract.v1"
+  "schema_version": "seasonality.interval_factor_grid.contract.v1"
 }
 ```
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-factor-spring-forward-policy"></a>
-### `HOURLY_FACTOR_SPRING_FORWARD_POLICY`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-schema-version"></a>
+### `INTERVAL_FACTOR_GRID_SCHEMA_VERSION`
 
 - Kind: `constant`
-- Value: `skip_nonexistent_local_hour_labels.v1`
+- Value: `seasonality.interval_factor_grid.contract.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-factor-timezone-transition-policy"></a>
-### `HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-spring-forward-policy"></a>
+### `INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY`
+
+- Kind: `constant`
+- Value: `skip_nonexistent_exchange_local_interval_labels.v1`
+
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-factor-grid-timezone-transition-policy"></a>
+### `INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY`
 
 - Kind: `constant`
 - Value: `fixed_width_utc_interval_projected_to_exchange_local.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-news-intensity-materialization-output-schema"></a>
-### `HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-news-intensity-materialization-output-schema"></a>
+### `INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`
 
 - Kind: `constant`
 - Value:
@@ -442,17 +442,17 @@
     "interval_end_utc_nanos",
     "interval_start_exchange_local",
     "interval_end_exchange_local",
-    "known_component_nu_h",
-    "surprise_component_nu_h",
-    "nu_h",
+    "known_news_intensity",
+    "surprise_news_intensity",
+    "news_intensity",
     "interval_count",
     "known_component_non_zero_interval_count",
     "surprise_component_non_zero_interval_count",
     "combined_component_non_zero_interval_count",
     "known_scheduled_arrival_count",
     "surprise_multiplier_override_interval_count",
-    "skipped_local_hour_interval_count",
-    "repeated_local_hour_interval_count",
+    "skipped_exchange_local_interval_count",
+    "repeated_exchange_local_interval_count",
     "materialization_method",
     "component_aggregation_policy",
     "arrival_intensity_policy",
@@ -482,18 +482,18 @@
     "spring_forward_policy",
     "fall_back_policy"
   ],
-  "schema_version": "seasonality.hourly_nu_h.materialization.v1"
+  "schema_version": "seasonality.interval_news_intensity.materialization.v1"
 }
 ```
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-news-intensity-materialization-schema-version"></a>
-### `HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-news-intensity-materialization-schema-version"></a>
+### `INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`
 
 - Kind: `constant`
-- Value: `seasonality.hourly_nu_h.materialization.v1`
+- Value: `seasonality.interval_news_intensity.materialization.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-seasonality-materialization-output-schema"></a>
-### `HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-seasonality-materialization-output-schema"></a>
+### `INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`
 
 - Kind: `constant`
 - Value:
@@ -514,18 +514,18 @@
     "interval_end_utc_nanos",
     "interval_start_exchange_local",
     "interval_end_exchange_local",
-    "s_h",
+    "seasonality_factor",
     "source_point_count",
     "interval_count",
     "sparse_interval_count",
     "interpolated_interval_count",
     "fallback_interval_count",
-    "skipped_local_hour_interval_count",
-    "repeated_local_hour_interval_count",
+    "skipped_exchange_local_interval_count",
+    "repeated_exchange_local_interval_count",
     "interpolation_method",
     "aggregation_method",
     "sparse_fallback_policy",
-    "sparse_hour_minimum_observation_count",
+    "sparse_interval_minimum_observation_count",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -536,147 +536,147 @@
     "interpolation_method",
     "aggregation_method",
     "sparse_fallback_policy",
-    "sparse_hour_minimum_observation_count",
+    "sparse_interval_minimum_observation_count",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
     "spring_forward_policy",
     "fall_back_policy"
   ],
-  "schema_version": "seasonality.hourly_s_h.materialization.v1"
+  "schema_version": "seasonality.interval_seasonality_factor.materialization.v1"
 }
 ```
 
-<a id="python-api-symbol-janiform-hourly-factors-hourly-seasonality-materialization-schema-version"></a>
-### `HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`
+<a id="python-api-symbol-janiform-interval-factor-grids-interval-seasonality-materialization-schema-version"></a>
+### `INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`
 
 - Kind: `constant`
-- Value: `seasonality.hourly_s_h.materialization.v1`
+- Value: `seasonality.interval_seasonality_factor.materialization.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyfactorcontract"></a>
-### `HourlyFactorContract`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalfactorgridcontract"></a>
+### `IntervalFactorGridContract`
 
 - Kind: `class`
-- Origin: `janiform.hourly_factors.artifacts`
-- Qualified name: `HourlyFactorContract`
-- Constructor: `(native_result: 'HourlyFactorContractResultProtocol') -> 'None'`
+- Origin: `janiform.interval_factor_grids.artifacts`
+- Qualified name: `IntervalFactorGridContract`
+- Constructor: `(native_result: 'IntervalFactorGridResultProtocol') -> 'None'`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyfactoroutputschema"></a>
-### `HourlyFactorOutputSchema`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalfactorgridoutputschema"></a>
+### `IntervalFactorGridOutputSchema`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyfactorprovidererror"></a>
-### `HourlyFactorProviderError`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalfactorgridprovidererror"></a>
+### `IntervalFactorGridProviderError`
 
 - Kind: `exception_class`
-- Origin: `janiform.hourly_factors.errors`
-- Qualified name: `HourlyFactorProviderError`
+- Origin: `janiform.interval_factor_grids.errors`
+- Qualified name: `IntervalFactorGridProviderError`
 - Base classes: `Exception`, `BaseException`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyfactorprovidermissinginputerror"></a>
-### `HourlyFactorProviderMissingInputError`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalfactorgridprovidermissinginputerror"></a>
+### `IntervalFactorGridProviderMissingInputError`
 
 - Kind: `exception_class`
-- Origin: `janiform.hourly_factors.errors`
-- Qualified name: `HourlyFactorProviderMissingInputError`
-- Base classes: `HourlyFactorProviderError`, `Exception`, `BaseException`
+- Origin: `janiform.interval_factor_grids.errors`
+- Qualified name: `IntervalFactorGridProviderMissingInputError`
+- Base classes: `IntervalFactorGridProviderError`, `Exception`, `BaseException`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyfactorproviderunsupportedrangeerror"></a>
-### `HourlyFactorProviderUnsupportedRangeError`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalfactorgridproviderunsupportedrangeerror"></a>
+### `IntervalFactorGridProviderUnsupportedRangeError`
 
 - Kind: `exception_class`
-- Origin: `janiform.hourly_factors.errors`
-- Qualified name: `HourlyFactorProviderUnsupportedRangeError`
-- Base classes: `HourlyFactorProviderError`, `Exception`, `BaseException`
+- Origin: `janiform.interval_factor_grids.errors`
+- Qualified name: `IntervalFactorGridProviderUnsupportedRangeError`
+- Base classes: `IntervalFactorGridProviderError`, `Exception`, `BaseException`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensitymaterialization"></a>
-### `HourlyNewsIntensityMaterialization`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalnewsintensitymaterialization"></a>
+### `IntervalNewsIntensityMaterialization`
 
 - Kind: `class`
-- Origin: `janiform.hourly_factors.artifacts`
-- Qualified name: `HourlyNewsIntensityMaterialization`
-- Constructor: `(native_result: 'HourlyNewsIntensityMaterializationResultProtocol') -> 'None'`
+- Origin: `janiform.interval_factor_grids.artifacts`
+- Qualified name: `IntervalNewsIntensityMaterialization`
+- Constructor: `(native_result: 'IntervalNewsIntensityMaterializationResultProtocol') -> 'None'`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensitymaterializationoutputschema"></a>
-### `HourlyNewsIntensityMaterializationOutputSchema`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalnewsintensitymaterializationoutputschema"></a>
+### `IntervalNewsIntensityMaterializationOutputSchema`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensitymaterializationsettings"></a>
-### `HourlyNewsIntensityMaterializationSettings`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalnewsintensitymaterializationsettings"></a>
+### `IntervalNewsIntensityMaterializationSettings`
 
 - Kind: `contract_model`
 - Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
 - Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensityproviderexplicitsource"></a>
-### `HourlyNewsIntensityProviderExplicitSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalnewsintensityproviderexplicitsource"></a>
+### `IntervalNewsIntensityProviderExplicitSource`
 
 - Kind: `contract_model`
-- Signature: `(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'`
-- Fields: `hourly_factors`, `materialization_method`
+- Signature: `(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'`
+- Fields: `interval_factors`, `materialization_method`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensityprovidermaterializedsource"></a>
-### `HourlyNewsIntensityProviderMaterializedSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalnewsintensityprovidermaterializedsource"></a>
+### `IntervalNewsIntensityProviderMaterializedSource`
 
 - Kind: `contract_model`
 - Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
 - Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlynewsintensityprovidersource"></a>
-### `HourlyNewsIntensityProviderSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalnewsintensityprovidersource"></a>
+### `IntervalNewsIntensityProviderSource`
 
 - Kind: `constant`
-- Value: `HourlyNewsIntensityProviderSource`
+- Value: `IntervalNewsIntensityProviderSource`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyseasonalitymaterialization"></a>
-### `HourlySeasonalityMaterialization`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalseasonalitymaterialization"></a>
+### `IntervalSeasonalityMaterialization`
 
 - Kind: `class`
-- Origin: `janiform.hourly_factors.artifacts`
-- Qualified name: `HourlySeasonalityMaterialization`
-- Constructor: `(native_result: 'HourlySeasonalityMaterializationResultProtocol') -> 'None'`
+- Origin: `janiform.interval_factor_grids.artifacts`
+- Qualified name: `IntervalSeasonalityMaterialization`
+- Constructor: `(native_result: 'IntervalSeasonalityMaterializationResultProtocol') -> 'None'`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyseasonalitymaterializationoutputschema"></a>
-### `HourlySeasonalityMaterializationOutputSchema`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalseasonalitymaterializationoutputschema"></a>
+### `IntervalSeasonalityMaterializationOutputSchema`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyseasonalitymaterializationsettings"></a>
-### `HourlySeasonalityMaterializationSettings`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalseasonalitymaterializationsettings"></a>
+### `IntervalSeasonalityMaterializationSettings`
 
 - Kind: `contract_model`
-- Signature: `(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'`
-- Fields: `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_hour_minimum_observation_count`
+- Signature: `(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'`
+- Fields: `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_interval_minimum_observation_count`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyseasonalityproviderexplicitsource"></a>
-### `HourlySeasonalityProviderExplicitSource`
-
-- Kind: `contract_model`
-- Signature: `(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'`
-- Fields: `hourly_factors`, `materialization_method`
-
-<a id="python-api-symbol-janiform-hourly-factors-hourlyseasonalityprovidermaterializedsource"></a>
-### `HourlySeasonalityProviderMaterializedSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalseasonalityproviderexplicitsource"></a>
+### `IntervalSeasonalityProviderExplicitSource`
 
 - Kind: `contract_model`
-- Signature: `(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'`
-- Fields: `source_timestamps_utc`, `source_seasonality_factors`, `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_hour_minimum_observation_count`
+- Signature: `(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'`
+- Fields: `interval_factors`, `materialization_method`
 
-<a id="python-api-symbol-janiform-hourly-factors-hourlyseasonalityprovidersource"></a>
-### `HourlySeasonalityProviderSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalseasonalityprovidermaterializedsource"></a>
+### `IntervalSeasonalityProviderMaterializedSource`
+
+- Kind: `contract_model`
+- Signature: `(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'`
+- Fields: `source_timestamps_utc`, `source_seasonality_factors`, `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_interval_minimum_observation_count`
+
+<a id="python-api-symbol-janiform-interval-factor-grids-intervalseasonalityprovidersource"></a>
+### `IntervalSeasonalityProviderSource`
 
 - Kind: `constant`
-- Value: `HourlySeasonalityProviderSource`
+- Value: `IntervalSeasonalityProviderSource`
 
-<a id="python-api-symbol-janiform-hourly-factors-seasonalityinputvalidationerror"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-seasonalityinputvalidationerror"></a>
 ### `SeasonalityInputValidationError`
 
 - Kind: `exception_class`
@@ -684,132 +684,126 @@
 - Qualified name: `SeasonalityInputValidationError`
 - Base classes: `SeasonalityPreprocessingError`, `Exception`, `BaseException`
 
-<a id="python-api-symbol-janiform-hourly-factors-build-hourly-factor-contract"></a>
-### `build_hourly_factor_contract`
+<a id="python-api-symbol-janiform-interval-factor-grids-build-interval-factor-grid"></a>
+### `build_interval_factor_grid`
 
 - Kind: `function`
-- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'`
+- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_factors: 'Sequence[float]', news_intensity_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_interval_grid_input.v1', news_intensity_materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'IntervalFactorGridContract'`
 
-<a id="python-api-symbol-janiform-hourly-factors-build-runtime-hourly-seasonality-source-from-calibration-payload"></a>
-### `build_runtime_hourly_seasonality_source_from_calibration_payload`
-
-- Kind: `function`
-- Signature: `(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityProviderExplicitSource'`
-
-<a id="python-api-symbol-janiform-hourly-factors-load-hourly-factor-contract-payload"></a>
-### `load_hourly_factor_contract_payload`
+<a id="python-api-symbol-janiform-interval-factor-grids-build-runtime-interval-seasonality-source-from-calibration-payload"></a>
+### `build_runtime_interval_seasonality_source_from_calibration_payload`
 
 - Kind: `function`
-- Signature: `(hourly_factor_contract_payload: 'dict[str, Any] | Any') -> 'HourlyFactorContract'`
+- Signature: `(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityProviderExplicitSource'`
 
-<a id="python-api-symbol-janiform-hourly-factors-materialize-hourly-news-intensity-factors"></a>
-### `materialize_hourly_news_intensity_factors`
-
-- Kind: `function`
-- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization'`
-
-<a id="python-api-symbol-janiform-hourly-factors-materialize-hourly-seasonality-factors"></a>
-### `materialize_hourly_seasonality_factors`
+<a id="python-api-symbol-janiform-interval-factor-grids-load-interval-factor-grid-payload"></a>
+### `load_interval_factor_grid_payload`
 
 - Kind: `function`
-- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityMaterialization'`
+- Signature: `(interval_factor_grid_payload: 'dict[str, Any] | Any') -> 'IntervalFactorGridContract'`
 
-<a id="python-api-symbol-janiform-hourly-factors-provide-hourly-factor-contract"></a>
-### `provide_hourly_factor_contract`
+<a id="python-api-symbol-janiform-interval-factor-grids-materialize-interval-news-intensity-factors"></a>
+### `materialize_interval_news_intensity_factors`
 
 - Kind: `function`
-- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'`
+- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', settings: 'IntervalNewsIntensityMaterializationSettings') -> 'IntervalNewsIntensityMaterialization'`
 
-<a id="python-api-module-janiform-hourly-factors-contracts"></a>
-## `janiform.hourly_factors.contracts`
+<a id="python-api-symbol-janiform-interval-factor-grids-materialize-interval-seasonality-factors"></a>
+### `materialize_interval_seasonality_factors`
+
+- Kind: `function`
+- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityMaterialization'`
+
+<a id="python-api-symbol-janiform-interval-factor-grids-provide-interval-factor-grid"></a>
+### `provide_interval_factor_grid`
+
+- Kind: `function`
+- Signature: `(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[IntervalSeasonalityProviderSource]' = None, news_intensity_source: 'Optional[IntervalNewsIntensityProviderSource]' = None) -> 'IntervalFactorGridContract'`
+
+<a id="python-api-module-janiform-interval-factor-grids-contracts"></a>
+## `janiform.interval_factor_grids.contracts`
 
 ### Schema Identifiers
 
 | Name | Value | Exported |
 |------|-------|----------|
-| `HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION` | `seasonality.hourly_factor.contract.v1` | true |
-| `HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.hourly_nu_h.materialization.v1` | true |
-| `HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.hourly_s_h.materialization.v1` | true |
+| `INTERVAL_FACTOR_GRID_SCHEMA_VERSION` | `seasonality.interval_factor_grid.contract.v1` | true |
+| `INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.interval_news_intensity.materialization.v1` | true |
+| `INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION` | `seasonality.interval_seasonality_factor.materialization.v1` | true |
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-hourly-factors-contracts-default-hourly-factor-materialization-method) | constant | constant value |
-| [`DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-hourly-factors-contracts-default-news-intensity-materialization-method) | constant | constant value |
-| [`DEFAULT_SEASONALITY_AGGREGATION_METHOD`](#python-api-symbol-janiform-hourly-factors-contracts-default-seasonality-aggregation-method) | constant | constant value |
-| [`DEFAULT_SEASONALITY_INTERPOLATION_METHOD`](#python-api-symbol-janiform-hourly-factors-contracts-default-seasonality-interpolation-method) | constant | constant value |
-| [`DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY`](#python-api-symbol-janiform-hourly-factors-contracts-default-seasonality-sparse-fallback-policy) | constant | constant value |
-| [`DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT`](#python-api-symbol-janiform-hourly-factors-contracts-default-sparse-hour-minimum-observation-count) | constant | constant value |
-| [`HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-contract-schema-version) | constant | constant value |
-| [`HOURLY_FACTOR_FALL_BACK_POLICY`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-fall-back-policy) | constant | constant value |
-| [`HOURLY_FACTOR_OUTPUT_SCHEMA`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-output-schema) | constant | constant value |
-| [`HOURLY_FACTOR_SPRING_FORWARD_POLICY`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-spring-forward-policy) | constant | constant value |
-| [`HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-timezone-transition-policy) | constant | constant value |
-| [`HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-news-intensity-materialization-output-schema) | constant | constant value |
-| [`HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-news-intensity-materialization-schema-version) | constant | constant value |
-| [`HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-seasonality-materialization-output-schema) | constant | constant value |
-| [`HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-hourly-factors-contracts-hourly-seasonality-materialization-schema-version) | constant | constant value |
-| [`HourlyFactorOutputSchema`](#python-api-symbol-janiform-hourly-factors-contracts-hourlyfactoroutputschema) | contract_model | 5 fields |
-| [`HourlyNewsIntensityMaterializationOutputSchema`](#python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensitymaterializationoutputschema) | contract_model | 5 fields |
-| [`HourlyNewsIntensityMaterializationSettings`](#python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensitymaterializationsettings) | contract_model | 4 fields |
-| [`HourlyNewsIntensityProviderExplicitSource`](#python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityproviderexplicitsource) | contract_model | 2 fields |
-| [`HourlyNewsIntensityProviderMaterializedSource`](#python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityprovidermaterializedsource) | contract_model | 4 fields |
-| [`HourlyNewsIntensityProviderSource`](#python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityprovidersource) | constant | constant value |
-| [`HourlySeasonalityMaterializationOutputSchema`](#python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalitymaterializationoutputschema) | contract_model | 5 fields |
-| [`HourlySeasonalityMaterializationSettings`](#python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalitymaterializationsettings) | contract_model | 4 fields |
-| [`HourlySeasonalityProviderExplicitSource`](#python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalityproviderexplicitsource) | contract_model | 2 fields |
-| [`HourlySeasonalityProviderMaterializedSource`](#python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalityprovidermaterializedsource) | contract_model | 6 fields |
-| [`HourlySeasonalityProviderSource`](#python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalityprovidersource) | constant | constant value |
+| [`DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-contracts-default-interval-factor-grid-materialization-method) | constant | constant value |
+| [`DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-contracts-default-news-intensity-materialization-method) | constant | constant value |
+| [`DEFAULT_SEASONALITY_AGGREGATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-contracts-default-seasonality-aggregation-method) | constant | constant value |
+| [`DEFAULT_SEASONALITY_INTERPOLATION_METHOD`](#python-api-symbol-janiform-interval-factor-grids-contracts-default-seasonality-interpolation-method) | constant | constant value |
+| [`DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY`](#python-api-symbol-janiform-interval-factor-grids-contracts-default-seasonality-sparse-fallback-policy) | constant | constant value |
+| [`DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT`](#python-api-symbol-janiform-interval-factor-grids-contracts-default-sparse-interval-minimum-observation-count) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_FALL_BACK_POLICY`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-fall-back-policy) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-output-schema) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_SCHEMA_VERSION`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-schema-version) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-spring-forward-policy) | constant | constant value |
+| [`INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-timezone-transition-policy) | constant | constant value |
+| [`INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-news-intensity-materialization-output-schema) | constant | constant value |
+| [`INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-news-intensity-materialization-schema-version) | constant | constant value |
+| [`INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-seasonality-materialization-output-schema) | constant | constant value |
+| [`INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`](#python-api-symbol-janiform-interval-factor-grids-contracts-interval-seasonality-materialization-schema-version) | constant | constant value |
+| [`IntervalFactorGridOutputSchema`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalfactorgridoutputschema) | contract_model | 5 fields |
+| [`IntervalNewsIntensityMaterializationOutputSchema`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensitymaterializationoutputschema) | contract_model | 5 fields |
+| [`IntervalNewsIntensityMaterializationSettings`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensitymaterializationsettings) | contract_model | 4 fields |
+| [`IntervalNewsIntensityProviderExplicitSource`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensityproviderexplicitsource) | contract_model | 2 fields |
+| [`IntervalNewsIntensityProviderMaterializedSource`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensityprovidermaterializedsource) | contract_model | 4 fields |
+| [`IntervalNewsIntensityProviderSource`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensityprovidersource) | constant | constant value |
+| [`IntervalSeasonalityMaterializationOutputSchema`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalitymaterializationoutputschema) | contract_model | 5 fields |
+| [`IntervalSeasonalityMaterializationSettings`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalitymaterializationsettings) | contract_model | 4 fields |
+| [`IntervalSeasonalityProviderExplicitSource`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalityproviderexplicitsource) | contract_model | 2 fields |
+| [`IntervalSeasonalityProviderMaterializedSource`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalityprovidermaterializedsource) | contract_model | 6 fields |
+| [`IntervalSeasonalityProviderSource`](#python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalityprovidersource) | constant | constant value |
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-default-hourly-factor-materialization-method"></a>
-### `DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-default-interval-factor-grid-materialization-method"></a>
+### `DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD`
 
 - Kind: `constant`
-- Value: `explicit_hourly_input.v1`
+- Value: `explicit_interval_grid_input.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-default-news-intensity-materialization-method"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-default-news-intensity-materialization-method"></a>
 ### `DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD`
 
 - Kind: `constant`
 - Value: `known_calendar_anchor_plus_surprise_background_controls.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-default-seasonality-aggregation-method"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-default-seasonality-aggregation-method"></a>
 ### `DEFAULT_SEASONALITY_AGGREGATION_METHOD`
 
 - Kind: `constant`
 - Value: `mean_of_observations.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-default-seasonality-interpolation-method"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-default-seasonality-interpolation-method"></a>
 ### `DEFAULT_SEASONALITY_INTERPOLATION_METHOD`
 
 - Kind: `constant`
 - Value: `previous_observation_carry_forward.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-default-seasonality-sparse-fallback-policy"></a>
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-default-seasonality-sparse-fallback-policy"></a>
 ### `DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY`
 
 - Kind: `constant`
 - Value: `global_mean.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-default-sparse-hour-minimum-observation-count"></a>
-### `DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-default-sparse-interval-minimum-observation-count"></a>
+### `DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT`
 
 - Kind: `constant`
 - Value: `1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-contract-schema-version"></a>
-### `HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-fall-back-policy"></a>
+### `INTERVAL_FACTOR_GRID_FALL_BACK_POLICY`
 
 - Kind: `constant`
-- Value: `seasonality.hourly_factor.contract.v1`
+- Value: `preserve_repeated_exchange_local_interval_labels_with_numeric_utc_offset.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-fall-back-policy"></a>
-### `HOURLY_FACTOR_FALL_BACK_POLICY`
-
-- Kind: `constant`
-- Value: `preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1`
-
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-output-schema"></a>
-### `HOURLY_FACTOR_OUTPUT_SCHEMA`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-output-schema"></a>
+### `INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA`
 
 - Kind: `constant`
 - Value:
@@ -830,15 +824,15 @@
     "interval_end_utc_nanos",
     "interval_start_exchange_local",
     "interval_end_exchange_local",
-    "s_h",
-    "known_component_nu_h",
-    "surprise_component_nu_h",
-    "nu_h",
+    "seasonality_factor",
+    "known_news_intensity",
+    "surprise_news_intensity",
+    "news_intensity",
     "interval_count",
     "first_interval_start_utc_nanos",
     "last_interval_end_utc_nanos",
-    "skipped_local_hour_interval_count",
-    "repeated_local_hour_interval_count",
+    "skipped_exchange_local_interval_count",
+    "repeated_exchange_local_interval_count",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -856,24 +850,30 @@
     "spring_forward_policy",
     "fall_back_policy"
   ],
-  "schema_version": "seasonality.hourly_factor.contract.v1"
+  "schema_version": "seasonality.interval_factor_grid.contract.v1"
 }
 ```
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-spring-forward-policy"></a>
-### `HOURLY_FACTOR_SPRING_FORWARD_POLICY`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-schema-version"></a>
+### `INTERVAL_FACTOR_GRID_SCHEMA_VERSION`
 
 - Kind: `constant`
-- Value: `skip_nonexistent_local_hour_labels.v1`
+- Value: `seasonality.interval_factor_grid.contract.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-factor-timezone-transition-policy"></a>
-### `HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-spring-forward-policy"></a>
+### `INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY`
+
+- Kind: `constant`
+- Value: `skip_nonexistent_exchange_local_interval_labels.v1`
+
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-factor-grid-timezone-transition-policy"></a>
+### `INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY`
 
 - Kind: `constant`
 - Value: `fixed_width_utc_interval_projected_to_exchange_local.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-news-intensity-materialization-output-schema"></a>
-### `HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-news-intensity-materialization-output-schema"></a>
+### `INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA`
 
 - Kind: `constant`
 - Value:
@@ -894,17 +894,17 @@
     "interval_end_utc_nanos",
     "interval_start_exchange_local",
     "interval_end_exchange_local",
-    "known_component_nu_h",
-    "surprise_component_nu_h",
-    "nu_h",
+    "known_news_intensity",
+    "surprise_news_intensity",
+    "news_intensity",
     "interval_count",
     "known_component_non_zero_interval_count",
     "surprise_component_non_zero_interval_count",
     "combined_component_non_zero_interval_count",
     "known_scheduled_arrival_count",
     "surprise_multiplier_override_interval_count",
-    "skipped_local_hour_interval_count",
-    "repeated_local_hour_interval_count",
+    "skipped_exchange_local_interval_count",
+    "repeated_exchange_local_interval_count",
     "materialization_method",
     "component_aggregation_policy",
     "arrival_intensity_policy",
@@ -934,18 +934,18 @@
     "spring_forward_policy",
     "fall_back_policy"
   ],
-  "schema_version": "seasonality.hourly_nu_h.materialization.v1"
+  "schema_version": "seasonality.interval_news_intensity.materialization.v1"
 }
 ```
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-news-intensity-materialization-schema-version"></a>
-### `HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-news-intensity-materialization-schema-version"></a>
+### `INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION`
 
 - Kind: `constant`
-- Value: `seasonality.hourly_nu_h.materialization.v1`
+- Value: `seasonality.interval_news_intensity.materialization.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-seasonality-materialization-output-schema"></a>
-### `HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-seasonality-materialization-output-schema"></a>
+### `INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA`
 
 - Kind: `constant`
 - Value:
@@ -966,18 +966,18 @@
     "interval_end_utc_nanos",
     "interval_start_exchange_local",
     "interval_end_exchange_local",
-    "s_h",
+    "seasonality_factor",
     "source_point_count",
     "interval_count",
     "sparse_interval_count",
     "interpolated_interval_count",
     "fallback_interval_count",
-    "skipped_local_hour_interval_count",
-    "repeated_local_hour_interval_count",
+    "skipped_exchange_local_interval_count",
+    "repeated_exchange_local_interval_count",
     "interpolation_method",
     "aggregation_method",
     "sparse_fallback_policy",
-    "sparse_hour_minimum_observation_count",
+    "sparse_interval_minimum_observation_count",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
@@ -988,97 +988,97 @@
     "interpolation_method",
     "aggregation_method",
     "sparse_fallback_policy",
-    "sparse_hour_minimum_observation_count",
+    "sparse_interval_minimum_observation_count",
     "interval_boundary_policy",
     "interval_alignment_policy",
     "timezone_transition_policy",
     "spring_forward_policy",
     "fall_back_policy"
   ],
-  "schema_version": "seasonality.hourly_s_h.materialization.v1"
+  "schema_version": "seasonality.interval_seasonality_factor.materialization.v1"
 }
 ```
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourly-seasonality-materialization-schema-version"></a>
-### `HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-interval-seasonality-materialization-schema-version"></a>
+### `INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION`
 
 - Kind: `constant`
-- Value: `seasonality.hourly_s_h.materialization.v1`
+- Value: `seasonality.interval_seasonality_factor.materialization.v1`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlyfactoroutputschema"></a>
-### `HourlyFactorOutputSchema`
-
-- Kind: `contract_model`
-- Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
-- Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
-
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensitymaterializationoutputschema"></a>
-### `HourlyNewsIntensityMaterializationOutputSchema`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalfactorgridoutputschema"></a>
+### `IntervalFactorGridOutputSchema`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensitymaterializationsettings"></a>
-### `HourlyNewsIntensityMaterializationSettings`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensitymaterializationoutputschema"></a>
+### `IntervalNewsIntensityMaterializationOutputSchema`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
+- Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
+
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensitymaterializationsettings"></a>
+### `IntervalNewsIntensityMaterializationSettings`
 
 - Kind: `contract_model`
 - Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
 - Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityproviderexplicitsource"></a>
-### `HourlyNewsIntensityProviderExplicitSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensityproviderexplicitsource"></a>
+### `IntervalNewsIntensityProviderExplicitSource`
 
 - Kind: `contract_model`
-- Signature: `(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'`
-- Fields: `hourly_factors`, `materialization_method`
+- Signature: `(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'`
+- Fields: `interval_factors`, `materialization_method`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityprovidermaterializedsource"></a>
-### `HourlyNewsIntensityProviderMaterializedSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensityprovidermaterializedsource"></a>
+### `IntervalNewsIntensityProviderMaterializedSource`
 
 - Kind: `contract_model`
 - Signature: `(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'`
 - Fields: `known_scheduled_event_timestamps_utc`, `surprise_open_baseline_intensity`, `surprise_closed_baseline_intensity`, `surprise_deterministic_time_multiplier_by_interval_index`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlynewsintensityprovidersource"></a>
-### `HourlyNewsIntensityProviderSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalnewsintensityprovidersource"></a>
+### `IntervalNewsIntensityProviderSource`
 
 - Kind: `constant`
-- Value: `HourlyNewsIntensityProviderSource`
+- Value: `IntervalNewsIntensityProviderSource`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalitymaterializationoutputschema"></a>
-### `HourlySeasonalityMaterializationOutputSchema`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalitymaterializationoutputschema"></a>
+### `IntervalSeasonalityMaterializationOutputSchema`
 
 - Kind: `contract_model`
 - Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'`
 - Fields: `schema_version`, `required_fields`, `interval_boundary_policy`, `interval_alignment_policy`, `required_metadata_fields`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalitymaterializationsettings"></a>
-### `HourlySeasonalityMaterializationSettings`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalitymaterializationsettings"></a>
+### `IntervalSeasonalityMaterializationSettings`
 
 - Kind: `contract_model`
-- Signature: `(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'`
-- Fields: `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_hour_minimum_observation_count`
+- Signature: `(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'`
+- Fields: `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_interval_minimum_observation_count`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalityproviderexplicitsource"></a>
-### `HourlySeasonalityProviderExplicitSource`
-
-- Kind: `contract_model`
-- Signature: `(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'`
-- Fields: `hourly_factors`, `materialization_method`
-
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalityprovidermaterializedsource"></a>
-### `HourlySeasonalityProviderMaterializedSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalityproviderexplicitsource"></a>
+### `IntervalSeasonalityProviderExplicitSource`
 
 - Kind: `contract_model`
-- Signature: `(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'`
-- Fields: `source_timestamps_utc`, `source_seasonality_factors`, `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_hour_minimum_observation_count`
+- Signature: `(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'`
+- Fields: `interval_factors`, `materialization_method`
 
-<a id="python-api-symbol-janiform-hourly-factors-contracts-hourlyseasonalityprovidersource"></a>
-### `HourlySeasonalityProviderSource`
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalityprovidermaterializedsource"></a>
+### `IntervalSeasonalityProviderMaterializedSource`
+
+- Kind: `contract_model`
+- Signature: `(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'`
+- Fields: `source_timestamps_utc`, `source_seasonality_factors`, `interpolation_method`, `aggregation_method`, `sparse_fallback_policy`, `sparse_interval_minimum_observation_count`
+
+<a id="python-api-symbol-janiform-interval-factor-grids-contracts-intervalseasonalityprovidersource"></a>
+### `IntervalSeasonalityProviderSource`
 
 - Kind: `constant`
-- Value: `HourlySeasonalityProviderSource`
+- Value: `IntervalSeasonalityProviderSource`
 
 <a id="python-api-module-janiform-contracts"></a>
 ## `janiform.contracts`
@@ -1603,36 +1603,12 @@
 
 | Name | Value | Exported |
 |------|-------|----------|
-| `DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION` | `seasonality.day_of_week.estimate.v1` | true |
-| `DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION` | `seasonality.day_of_year.estimate.v1` | true |
-| `DEFAULT_SEASONALITY_ESTIMATOR_VERSION` | `seasonality_estimator.v1` | true |
-| `DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION` | `seasonality.deterministic.composition.v1` | true |
-| `INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION` | `seasonality.intraday.estimate.v1` | true |
 | `PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION` | `seasonality.timestamp_event.preprocessed.v1` | true |
-| `SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION` | `seasonality.diagnostics.batch.v1` | true |
-| `SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION` | `seasonality.diagnostics.report.v1` | true |
 | `TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION` | `seasonality.timestamp_event.v1` | true |
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-day-of-week-seasonality-estimate-schema-version) | constant | constant value |
-| [`DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-day-of-year-seasonality-estimate-schema-version) | constant | constant value |
-| [`DEFAULT_SEASONALITY_ESTIMATOR_VERSION`](#python-api-symbol-janiform-seasonality-default-seasonality-estimator-version) | constant | constant value |
-| [`DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-deterministic-seasonality-composition-schema-version) | constant | constant value |
-| [`DayOfWeekSeasonalityEstimate`](#python-api-symbol-janiform-seasonality-dayofweekseasonalityestimate) | class | janiform.seasonality.artifacts |
-| [`DayOfWeekSeasonalityEstimatorSettings`](#python-api-symbol-janiform-seasonality-dayofweekseasonalityestimatorsettings) | contract_model | 2 fields |
-| [`DayOfYearSeasonalityEstimate`](#python-api-symbol-janiform-seasonality-dayofyearseasonalityestimate) | class | janiform.seasonality.artifacts |
-| [`DayOfYearSeasonalityEstimatorSettings`](#python-api-symbol-janiform-seasonality-dayofyearseasonalityestimatorsettings) | contract_model | 2 fields |
-| [`DeterministicSeasonalityComposition`](#python-api-symbol-janiform-seasonality-deterministicseasonalitycomposition) | class | janiform.seasonality.artifacts |
-| [`INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-intraday-seasonality-estimate-schema-version) | constant | constant value |
-| [`IntradaySeasonalityEstimate`](#python-api-symbol-janiform-seasonality-intradayseasonalityestimate) | class | janiform.seasonality.artifacts |
-| [`IntradaySeasonalityEstimatorSettings`](#python-api-symbol-janiform-seasonality-intradayseasonalityestimatorsettings) | contract_model | 5 fields |
-| [`IntradaySmoothingKernel`](#python-api-symbol-janiform-seasonality-intradaysmoothingkernel) | enum | 2 members |
 | [`PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-preprocessed-timestamp-event-schema-version) | constant | constant value |
-| [`SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-seasonality-diagnostics-batch-report-schema-version) | constant | constant value |
-| [`SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-seasonality-diagnostics-report-schema-version) | constant | constant value |
-| [`ScheduledEventOverlayDefinition`](#python-api-symbol-janiform-seasonality-scheduledeventoverlaydefinition) | contract_model | 7 fields |
-| [`SeasonalityDiagnosticsBatchInput`](#python-api-symbol-janiform-seasonality-seasonalitydiagnosticsbatchinput) | contract_model | 6 fields |
 | [`SeasonalityInputValidationError`](#python-api-symbol-janiform-seasonality-seasonalityinputvalidationerror) | exception_class | janiform.seasonality.errors |
 | [`SeasonalityPreprocessingError`](#python-api-symbol-janiform-seasonality-seasonalitypreprocessingerror) | exception_class | janiform.seasonality.errors |
 | [`SessionFilter`](#python-api-symbol-janiform-seasonality-sessionfilter) | enum | 3 members |
@@ -1640,143 +1616,13 @@
 | [`TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-timestamp-event-input-schema-version) | constant | constant value |
 | [`TimestampEventInputSchema`](#python-api-symbol-janiform-seasonality-timestampeventinputschema) | contract_model | 6 fields |
 | [`TimestampEventPreprocessingResult`](#python-api-symbol-janiform-seasonality-timestampeventpreprocessingresult) | class | janiform.seasonality.artifacts |
-| [`compose_deterministic_seasonality_signal`](#python-api-symbol-janiform-seasonality-compose-deterministic-seasonality-signal) | function | (preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', *, scheduled_event_overlays: 'Optional[Sequence[ScheduledEventOverlayDefinition]]' = None) -> 'DeterministicSeasonalityComposition' |
-| [`estimate_day_of_week_seasonality`](#python-api-symbol-janiform-seasonality-estimate-day-of-week-seasonality) | function | (preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[DayOfWeekSeasonalityEstimatorSettings]' = None) -> 'DayOfWeekSeasonalityEstimate' |
-| [`estimate_day_of_year_seasonality`](#python-api-symbol-janiform-seasonality-estimate-day-of-year-seasonality) | function | (preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[DayOfYearSeasonalityEstimatorSettings]' = None) -> 'DayOfYearSeasonalityEstimate' |
-| [`estimate_intraday_seasonality`](#python-api-symbol-janiform-seasonality-estimate-intraday-seasonality) | function | (preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[IntradaySeasonalityEstimatorSettings]' = None) -> 'IntradaySeasonalityEstimate' |
-| [`generate_seasonality_diagnostics_report`](#python-api-symbol-janiform-seasonality-generate-seasonality-diagnostics-report) | function | (dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition', *, estimator_version: 'str' = 'seasonality_estimator.v1') -> 'dict[str, Any]' |
-| [`generate_seasonality_diagnostics_reports_batch`](#python-api-symbol-janiform-seasonality-generate-seasonality-diagnostics-reports-batch) | function | (batch_inputs: 'Sequence[SeasonalityDiagnosticsBatchInput]', *, estimator_version: 'str' = 'seasonality_estimator.v1') -> 'dict[str, Any]' |
-| [`load_scheduled_event_overlay_definitions`](#python-api-symbol-janiform-seasonality-load-scheduled-event-overlay-definitions) | function | (overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]' |
 | [`preprocess_timestamp_events`](#python-api-symbol-janiform-seasonality-preprocess-timestamp-events) | function | (event_records: 'Sequence[Mapping[str, Any]]', *, exchange_code: 'str', calendar_registry: 'CalendarRegistry', timestamp_field_name: 'str' = 'timestamp', session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1) -> 'TimestampEventPreprocessingResult' |
-
-<a id="python-api-symbol-janiform-seasonality-day-of-week-seasonality-estimate-schema-version"></a>
-### `DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.day_of_week.estimate.v1`
-
-<a id="python-api-symbol-janiform-seasonality-day-of-year-seasonality-estimate-schema-version"></a>
-### `DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.day_of_year.estimate.v1`
-
-<a id="python-api-symbol-janiform-seasonality-default-seasonality-estimator-version"></a>
-### `DEFAULT_SEASONALITY_ESTIMATOR_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality_estimator.v1`
-
-<a id="python-api-symbol-janiform-seasonality-deterministic-seasonality-composition-schema-version"></a>
-### `DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.deterministic.composition.v1`
-
-<a id="python-api-symbol-janiform-seasonality-dayofweekseasonalityestimate"></a>
-### `DayOfWeekSeasonalityEstimate`
-
-- Kind: `class`
-- Origin: `janiform.seasonality.artifacts`
-- Qualified name: `DayOfWeekSeasonalityEstimate`
-- Constructor: `(native_result: 'object') -> 'None'`
-
-<a id="python-api-symbol-janiform-seasonality-dayofweekseasonalityestimatorsettings"></a>
-### `DayOfWeekSeasonalityEstimatorSettings`
-
-- Kind: `contract_model`
-- Signature: `(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'`
-- Fields: `minimum_bucket_events`, `pseudocount`
-
-<a id="python-api-symbol-janiform-seasonality-dayofyearseasonalityestimate"></a>
-### `DayOfYearSeasonalityEstimate`
-
-- Kind: `class`
-- Origin: `janiform.seasonality.artifacts`
-- Qualified name: `DayOfYearSeasonalityEstimate`
-- Constructor: `(native_result: 'object') -> 'None'`
-
-<a id="python-api-symbol-janiform-seasonality-dayofyearseasonalityestimatorsettings"></a>
-### `DayOfYearSeasonalityEstimatorSettings`
-
-- Kind: `contract_model`
-- Signature: `(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'`
-- Fields: `minimum_bucket_events`, `pseudocount`
-
-<a id="python-api-symbol-janiform-seasonality-deterministicseasonalitycomposition"></a>
-### `DeterministicSeasonalityComposition`
-
-- Kind: `class`
-- Origin: `janiform.seasonality.artifacts`
-- Qualified name: `DeterministicSeasonalityComposition`
-- Constructor: `(native_result: 'object') -> 'None'`
-
-<a id="python-api-symbol-janiform-seasonality-intraday-seasonality-estimate-schema-version"></a>
-### `INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.intraday.estimate.v1`
-
-<a id="python-api-symbol-janiform-seasonality-intradayseasonalityestimate"></a>
-### `IntradaySeasonalityEstimate`
-
-- Kind: `class`
-- Origin: `janiform.seasonality.artifacts`
-- Qualified name: `IntradaySeasonalityEstimate`
-- Constructor: `(native_result: 'object') -> 'None'`
-
-<a id="python-api-symbol-janiform-seasonality-intradayseasonalityestimatorsettings"></a>
-### `IntradaySeasonalityEstimatorSettings`
-
-- Kind: `contract_model`
-- Signature: `(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'`
-- Fields: `minutes_per_bin`, `smoothing_kernel`, `smoothing_bandwidth_bins`, `minimum_bin_events`, `pseudocount`
-
-<a id="python-api-symbol-janiform-seasonality-intradaysmoothingkernel"></a>
-### `IntradaySmoothingKernel`
-
-- Kind: `enum`
-
-| Member | Value |
-|--------|-------|
-| `GAUSSIAN` | `gaussian` |
-| `UNIFORM` | `uniform` |
 
 <a id="python-api-symbol-janiform-seasonality-preprocessed-timestamp-event-schema-version"></a>
 ### `PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION`
 
 - Kind: `constant`
 - Value: `seasonality.timestamp_event.preprocessed.v1`
-
-<a id="python-api-symbol-janiform-seasonality-seasonality-diagnostics-batch-report-schema-version"></a>
-### `SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.diagnostics.batch.v1`
-
-<a id="python-api-symbol-janiform-seasonality-seasonality-diagnostics-report-schema-version"></a>
-### `SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.diagnostics.report.v1`
-
-<a id="python-api-symbol-janiform-seasonality-scheduledeventoverlaydefinition"></a>
-### `ScheduledEventOverlayDefinition`
-
-- Kind: `contract_model`
-- Signature: `(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'`
-- Fields: `overlay_id`, `start_timestamp_utc`, `end_timestamp_utc`, `log_adjustment`, `precedence`, `enabled`, `source_label`
-
-| Method | Signature |
-|--------|-----------|
-| `from_config_record` | `(config_record: 'Mapping[str, Any] \| Any') -> 'ScheduledEventOverlayDefinition'` |
-
-<a id="python-api-symbol-janiform-seasonality-seasonalitydiagnosticsbatchinput"></a>
-### `SeasonalityDiagnosticsBatchInput`
-
-- Kind: `contract_model`
-- Signature: `(dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition') -> 'None'`
-- Fields: `dataset_id`, `preprocessed_events`, `intraday_estimate`, `day_of_week_estimate`, `day_of_year_estimate`, `composition`
 
 <a id="python-api-symbol-janiform-seasonality-seasonalityinputvalidationerror"></a>
 ### `SeasonalityInputValidationError`
@@ -1848,48 +1694,6 @@
 - Qualified name: `TimestampEventPreprocessingResult`
 - Constructor: `(native_result: 'object') -> 'None'`
 
-<a id="python-api-symbol-janiform-seasonality-compose-deterministic-seasonality-signal"></a>
-### `compose_deterministic_seasonality_signal`
-
-- Kind: `function`
-- Signature: `(preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', *, scheduled_event_overlays: 'Optional[Sequence[ScheduledEventOverlayDefinition]]' = None) -> 'DeterministicSeasonalityComposition'`
-
-<a id="python-api-symbol-janiform-seasonality-estimate-day-of-week-seasonality"></a>
-### `estimate_day_of_week_seasonality`
-
-- Kind: `function`
-- Signature: `(preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[DayOfWeekSeasonalityEstimatorSettings]' = None) -> 'DayOfWeekSeasonalityEstimate'`
-
-<a id="python-api-symbol-janiform-seasonality-estimate-day-of-year-seasonality"></a>
-### `estimate_day_of_year_seasonality`
-
-- Kind: `function`
-- Signature: `(preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[DayOfYearSeasonalityEstimatorSettings]' = None) -> 'DayOfYearSeasonalityEstimate'`
-
-<a id="python-api-symbol-janiform-seasonality-estimate-intraday-seasonality"></a>
-### `estimate_intraday_seasonality`
-
-- Kind: `function`
-- Signature: `(preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[IntradaySeasonalityEstimatorSettings]' = None) -> 'IntradaySeasonalityEstimate'`
-
-<a id="python-api-symbol-janiform-seasonality-generate-seasonality-diagnostics-report"></a>
-### `generate_seasonality_diagnostics_report`
-
-- Kind: `function`
-- Signature: `(dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition', *, estimator_version: 'str' = 'seasonality_estimator.v1') -> 'dict[str, Any]'`
-
-<a id="python-api-symbol-janiform-seasonality-generate-seasonality-diagnostics-reports-batch"></a>
-### `generate_seasonality_diagnostics_reports_batch`
-
-- Kind: `function`
-- Signature: `(batch_inputs: 'Sequence[SeasonalityDiagnosticsBatchInput]', *, estimator_version: 'str' = 'seasonality_estimator.v1') -> 'dict[str, Any]'`
-
-<a id="python-api-symbol-janiform-seasonality-load-scheduled-event-overlay-definitions"></a>
-### `load_scheduled_event_overlay_definitions`
-
-- Kind: `function`
-- Signature: `(overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]'`
-
 <a id="python-api-symbol-janiform-seasonality-preprocess-timestamp-events"></a>
 ### `preprocess_timestamp_events`
 
@@ -1903,126 +1707,22 @@
 
 | Name | Value | Exported |
 |------|-------|----------|
-| `DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION` | `seasonality.day_of_week.estimate.v1` | true |
-| `DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION` | `seasonality.day_of_year.estimate.v1` | true |
-| `DEFAULT_SEASONALITY_ESTIMATOR_VERSION` | `seasonality_estimator.v1` | true |
-| `DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION` | `seasonality.deterministic.composition.v1` | true |
-| `INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION` | `seasonality.intraday.estimate.v1` | true |
 | `PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION` | `seasonality.timestamp_event.preprocessed.v1` | true |
-| `SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION` | `seasonality.diagnostics.batch.v1` | true |
-| `SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION` | `seasonality.diagnostics.report.v1` | true |
 | `TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION` | `seasonality.timestamp_event.v1` | true |
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-day-of-week-seasonality-estimate-schema-version) | constant | constant value |
-| [`DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-day-of-year-seasonality-estimate-schema-version) | constant | constant value |
-| [`DEFAULT_SEASONALITY_ESTIMATOR_VERSION`](#python-api-symbol-janiform-seasonality-contracts-default-seasonality-estimator-version) | constant | constant value |
-| [`DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-deterministic-seasonality-composition-schema-version) | constant | constant value |
-| [`DayOfWeekSeasonalityEstimatorSettings`](#python-api-symbol-janiform-seasonality-contracts-dayofweekseasonalityestimatorsettings) | contract_model | 2 fields |
-| [`DayOfYearSeasonalityEstimatorSettings`](#python-api-symbol-janiform-seasonality-contracts-dayofyearseasonalityestimatorsettings) | contract_model | 2 fields |
-| [`INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-intraday-seasonality-estimate-schema-version) | constant | constant value |
-| [`IntradaySeasonalityEstimatorSettings`](#python-api-symbol-janiform-seasonality-contracts-intradayseasonalityestimatorsettings) | contract_model | 5 fields |
-| [`IntradaySmoothingKernel`](#python-api-symbol-janiform-seasonality-contracts-intradaysmoothingkernel) | enum | 2 members |
 | [`PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-preprocessed-timestamp-event-schema-version) | constant | constant value |
-| [`SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-seasonality-diagnostics-batch-report-schema-version) | constant | constant value |
-| [`SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-seasonality-diagnostics-report-schema-version) | constant | constant value |
-| [`ScheduledEventOverlayDefinition`](#python-api-symbol-janiform-seasonality-contracts-scheduledeventoverlaydefinition) | contract_model | 7 fields |
 | [`SessionFilter`](#python-api-symbol-janiform-seasonality-contracts-sessionfilter) | enum | 3 members |
 | [`TIMESTAMP_EVENT_INPUT_SCHEMA`](#python-api-symbol-janiform-seasonality-contracts-timestamp-event-input-schema) | constant | constant value |
 | [`TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION`](#python-api-symbol-janiform-seasonality-contracts-timestamp-event-input-schema-version) | constant | constant value |
 | [`TimestampEventInputSchema`](#python-api-symbol-janiform-seasonality-contracts-timestampeventinputschema) | contract_model | 6 fields |
-| [`load_scheduled_event_overlay_definitions`](#python-api-symbol-janiform-seasonality-contracts-load-scheduled-event-overlay-definitions) | function | (overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]' |
-
-<a id="python-api-symbol-janiform-seasonality-contracts-day-of-week-seasonality-estimate-schema-version"></a>
-### `DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.day_of_week.estimate.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-day-of-year-seasonality-estimate-schema-version"></a>
-### `DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.day_of_year.estimate.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-default-seasonality-estimator-version"></a>
-### `DEFAULT_SEASONALITY_ESTIMATOR_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality_estimator.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-deterministic-seasonality-composition-schema-version"></a>
-### `DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.deterministic.composition.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-dayofweekseasonalityestimatorsettings"></a>
-### `DayOfWeekSeasonalityEstimatorSettings`
-
-- Kind: `contract_model`
-- Signature: `(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'`
-- Fields: `minimum_bucket_events`, `pseudocount`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-dayofyearseasonalityestimatorsettings"></a>
-### `DayOfYearSeasonalityEstimatorSettings`
-
-- Kind: `contract_model`
-- Signature: `(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'`
-- Fields: `minimum_bucket_events`, `pseudocount`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-intraday-seasonality-estimate-schema-version"></a>
-### `INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.intraday.estimate.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-intradayseasonalityestimatorsettings"></a>
-### `IntradaySeasonalityEstimatorSettings`
-
-- Kind: `contract_model`
-- Signature: `(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'`
-- Fields: `minutes_per_bin`, `smoothing_kernel`, `smoothing_bandwidth_bins`, `minimum_bin_events`, `pseudocount`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-intradaysmoothingkernel"></a>
-### `IntradaySmoothingKernel`
-
-- Kind: `enum`
-
-| Member | Value |
-|--------|-------|
-| `GAUSSIAN` | `gaussian` |
-| `UNIFORM` | `uniform` |
 
 <a id="python-api-symbol-janiform-seasonality-contracts-preprocessed-timestamp-event-schema-version"></a>
 ### `PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION`
 
 - Kind: `constant`
 - Value: `seasonality.timestamp_event.preprocessed.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-seasonality-diagnostics-batch-report-schema-version"></a>
-### `SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.diagnostics.batch.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-seasonality-diagnostics-report-schema-version"></a>
-### `SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION`
-
-- Kind: `constant`
-- Value: `seasonality.diagnostics.report.v1`
-
-<a id="python-api-symbol-janiform-seasonality-contracts-scheduledeventoverlaydefinition"></a>
-### `ScheduledEventOverlayDefinition`
-
-- Kind: `contract_model`
-- Signature: `(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'`
-- Fields: `overlay_id`, `start_timestamp_utc`, `end_timestamp_utc`, `log_adjustment`, `precedence`, `enabled`, `source_label`
-
-| Method | Signature |
-|--------|-----------|
-| `from_config_record` | `(config_record: 'Mapping[str, Any] \| Any') -> 'ScheduledEventOverlayDefinition'` |
 
 <a id="python-api-symbol-janiform-seasonality-contracts-sessionfilter"></a>
 ### `SessionFilter`
@@ -2070,12 +1770,6 @@
 - Signature: `(schema_version: 'str', required_fields: 'tuple[str, ...]', timestamp_field_name: 'str', accepted_timestamp_types: 'tuple[str, ...]', timezone_requirement: 'str', ordering_policy: 'str') -> 'None'`
 - Fields: `schema_version`, `required_fields`, `timestamp_field_name`, `accepted_timestamp_types`, `timezone_requirement`, `ordering_policy`
 
-<a id="python-api-symbol-janiform-seasonality-contracts-load-scheduled-event-overlay-definitions"></a>
-### `load_scheduled_event_overlay_definitions`
-
-- Kind: `function`
-- Signature: `(overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]'`
-
 <a id="python-api-module-janiform-simulation"></a>
 ## `janiform.simulation`
 
@@ -2097,13 +1791,13 @@
 | [`NewsProcessConfiguration`](#python-api-symbol-janiform-simulation-newsprocessconfiguration) | contract_model | 5 fields |
 | [`SeededTickEventSide`](#python-api-symbol-janiform-simulation-seededtickeventside) | enum | 2 members |
 | [`SeededTickEventStateSnapshotCapture`](#python-api-symbol-janiform-simulation-seededtickeventstatesnapshotcapture) | enum | 2 members |
-| [`SeededTickSimulationHourlyFactorSummary`](#python-api-symbol-janiform-simulation-seededticksimulationhourlyfactorsummary) | contract_model | 8 fields |
+| [`SeededTickSimulationIntervalFactorGridSummary`](#python-api-symbol-janiform-simulation-seededticksimulationintervalfactorgridsummary) | contract_model | 8 fields |
 | [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 19 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationfailure) | contract_model | 6 fields |
 | [`SimulationKind`](#python-api-symbol-janiform-simulation-simulationkind) | enum | 2 members |
-| [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
+| [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
 
@@ -2133,13 +1827,13 @@
 ### `CoarseSimulationRunRequest`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'`
-- Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
+- Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factor_grid: 'IntervalFactorGridContract') -> 'None'`
+- Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `interval_factor_grid`
 
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationRunRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', hourly_factor_contract: 'HourlyFactorContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-hawkesexcitationstate"></a>
@@ -2295,29 +1989,29 @@
 | `DISABLED` | `disabled` |
 | `POST_EVENT_TRANSITION` | `post_event_transition` |
 
-<a id="python-api-symbol-janiform-simulation-seededticksimulationhourlyfactorsummary"></a>
-### `SeededTickSimulationHourlyFactorSummary`
+<a id="python-api-symbol-janiform-simulation-seededticksimulationintervalfactorgridsummary"></a>
+### `SeededTickSimulationIntervalFactorGridSummary`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'`
-- Fields: `schema_version`, `exchange_code`, `interval_count`, `interval_duration_nanos`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `s_h`, `nu_h`
+- Signature: `(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', seasonality_factor: 'tuple[float, ...]', news_intensity: 'tuple[float, ...]') -> 'None'`
+- Fields: `schema_version`, `exchange_code`, `interval_count`, `interval_duration_nanos`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `seasonality_factor`, `news_intensity`
 
 | Method | Signature |
 |--------|-----------|
-| `from_contract` | `(hourly_factor_contract: 'HourlyFactorContract') -> 'SeededTickSimulationHourlyFactorSummary'` |
-| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'hourly_factor_summary') -> 'SeededTickSimulationHourlyFactorSummary'` |
+| `from_contract` | `(interval_factor_grid: 'IntervalFactorGridContract') -> 'SeededTickSimulationIntervalFactorGridSummary'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'interval_factor_grid_summary') -> 'SeededTickSimulationIntervalFactorGridSummary'` |
 
 <a id="python-api-symbol-janiform-simulation-seededticksimulationrequest"></a>
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `interval_factor_grid_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SeededTickSimulationRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_contract: 'HourlyFactorContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-seededticksimulationresponse"></a>
@@ -2368,7 +2062,7 @@
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
 
 - Kind: `function`
-- Signature: `(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'`
+- Signature: `(*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'`
 
 <a id="python-api-symbol-janiform-simulation-run-coarse-simulation"></a>
 ### `run_coarse_simulation`
@@ -2563,13 +2257,13 @@
 ### `CoarseSimulationRunRequest`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'`
-- Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
+- Signature: `(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factor_grid: 'IntervalFactorGridContract') -> 'None'`
+- Fields: `schema_version`, `seed`, `start_time_utc_nanos`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `interval_factor_grid`
 
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationRunRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', hourly_factor_contract: 'HourlyFactorContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-knownnewsarrivalconfiguration"></a>
@@ -2738,12 +2432,12 @@
 | [`SeededTickEventTapeMetadata`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapemetadata) | contract_model | 8 fields |
 | [`SeededTickEventTapeView`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapeview) | class | janiform.simulation.seeded.response |
 | [`SeededTickSimulationDiagnostics`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationdiagnostics) | contract_model | 12 fields |
-| [`SeededTickSimulationHourlyFactorSummary`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationhourlyfactorsummary) | contract_model | 8 fields |
+| [`SeededTickSimulationIntervalFactorGridSummary`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationintervalfactorgridsummary) | contract_model | 8 fields |
 | [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 19 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationfailure) | contract_model | 6 fields |
-| [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
+| [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`deserialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-deserialize-seeded-tick-simulation-response) | function | (payload_json: 'str') -> 'SeededTickSimulationResponse' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-seeded-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
 | [`serialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-serialize-seeded-tick-simulation-response) | function | (response: 'SeededTickSimulationResponse') -> 'str' |
@@ -2957,29 +2651,29 @@
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SeededTickSimulationDiagnostics'` |
 
-<a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationhourlyfactorsummary"></a>
-### `SeededTickSimulationHourlyFactorSummary`
+<a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationintervalfactorgridsummary"></a>
+### `SeededTickSimulationIntervalFactorGridSummary`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'`
-- Fields: `schema_version`, `exchange_code`, `interval_count`, `interval_duration_nanos`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `s_h`, `nu_h`
+- Signature: `(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', seasonality_factor: 'tuple[float, ...]', news_intensity: 'tuple[float, ...]') -> 'None'`
+- Fields: `schema_version`, `exchange_code`, `interval_count`, `interval_duration_nanos`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `seasonality_factor`, `news_intensity`
 
 | Method | Signature |
 |--------|-----------|
-| `from_contract` | `(hourly_factor_contract: 'HourlyFactorContract') -> 'SeededTickSimulationHourlyFactorSummary'` |
-| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'hourly_factor_summary') -> 'SeededTickSimulationHourlyFactorSummary'` |
+| `from_contract` | `(interval_factor_grid: 'IntervalFactorGridContract') -> 'SeededTickSimulationIntervalFactorGridSummary'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str' = 'interval_factor_grid_summary') -> 'SeededTickSimulationIntervalFactorGridSummary'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest"></a>
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `hourly_factor_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `interval_factor_grid_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SeededTickSimulationRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_contract: 'HourlyFactorContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse"></a>
@@ -3020,7 +2714,7 @@
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
 
 - Kind: `function`
-- Signature: `(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'`
+- Signature: `(*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'`
 
 <a id="python-api-symbol-janiform-simulation-seeded-deserialize-seeded-tick-simulation-response"></a>
 ### `deserialize_seeded_tick_simulation_response`
@@ -3478,8 +3172,8 @@
 ### `VanillaOptionPricingExecutionInput`
 
 - Kind: `contract_model`
-- Signature: `(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'`
-- Fields: `request`, `runtime_interval_schedule`, `hourly_factor_contract`, `optional_output_selection`
+- Signature: `(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'`
+- Fields: `request`, `runtime_interval_schedule`, `interval_factor_grid`, `optional_output_selection`
 
 | Method | Signature |
 |--------|-----------|
@@ -3637,8 +3331,8 @@
 ### `VanillaOptionSurfacePricingExecutionInput`
 
 - Kind: `contract_model`
-- Signature: `(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'`
-- Fields: `request`, `runtime_interval_schedule`, `hourly_factor_contract`, `optional_output_selection`, `cpu_count`
+- Signature: `(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'`
+- Fields: `request`, `runtime_interval_schedule`, `interval_factor_grid`, `optional_output_selection`, `cpu_count`
 
 <a id="python-api-symbol-janiform-pricing-vanillaoptionsurfacepricingnodetable"></a>
 ### `VanillaOptionSurfacePricingNodeTable`
@@ -4015,8 +3709,8 @@
 ### `VanillaOptionPricingExecutionInput`
 
 - Kind: `contract_model`
-- Signature: `(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'`
-- Fields: `request`, `runtime_interval_schedule`, `hourly_factor_contract`, `optional_output_selection`
+- Signature: `(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'`
+- Fields: `request`, `runtime_interval_schedule`, `interval_factor_grid`, `optional_output_selection`
 
 | Method | Signature |
 |--------|-----------|
@@ -4153,8 +3847,8 @@
 ### `VanillaOptionSurfacePricingExecutionInput`
 
 - Kind: `contract_model`
-- Signature: `(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'`
-- Fields: `request`, `runtime_interval_schedule`, `hourly_factor_contract`, `optional_output_selection`, `cpu_count`
+- Signature: `(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'`
+- Fields: `request`, `runtime_interval_schedule`, `interval_factor_grid`, `optional_output_selection`, `cpu_count`
 
 <a id="python-api-symbol-janiform-pricing-contracts-vanillaoptionsurfacepricingnodetable"></a>
 ### `VanillaOptionSurfacePricingNodeTable`
@@ -4641,7 +4335,7 @@
 ### `SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY`
 
 - Kind: `constant`
-- Value: `explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1`
+- Value: `explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1`
 
 <a id="python-api-symbol-janiform-sufficient-statistics-sufficient-statistics-path-diagnostics-schema-version"></a>
 ### `SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION`
@@ -4752,8 +4446,8 @@
 ### `SufficientStatisticsRunRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'`
-- Fields: `seed`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
+- Signature: `(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, interval_factor_grid: 'Optional[IntervalFactorGridContract]' = None) -> 'None'`
+- Fields: `seed`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `interval_factor_grid`
 
 | Method | Signature |
 |--------|-----------|
@@ -4840,7 +4534,7 @@
 ### `SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY`
 
 - Kind: `constant`
-- Value: `explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1`
+- Value: `explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1`
 
 <a id="python-api-symbol-janiform-sufficient-statistics-contracts-sufficient-statistics-path-diagnostics-schema-version"></a>
 ### `SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION`
@@ -4951,8 +4645,8 @@
 ### `SufficientStatisticsRunRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'`
-- Fields: `seed`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `hourly_factor_contract`
+- Signature: `(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, interval_factor_grid: 'Optional[IntervalFactorGridContract]' = None) -> 'None'`
+- Fields: `seed`, `horizon_interval_count`, `interval_delta`, `model_inputs`, `interval_factor_grid`
 
 | Method | Signature |
 |--------|-----------|
@@ -5207,7 +4901,7 @@
 | [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
-| [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
+| [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 3 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-calibrationmarketdataworkflowscope) | enum | 3 members |
 | [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-calibrationmeanreversionconfiguration) | contract_model | 2 fields |
 | [`CalibrationOptionQuoteInputPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationoptionquoteinputpolicy) | enum | 3 members |
@@ -5217,7 +4911,7 @@
 | [`CalibrationTickObjectiveDataUsagePolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationtickobjectivedatausagepolicy) | enum | 2 members |
 | [`CalibrationTickPriceInputPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationtickpriceinputpolicy) | enum | 2 members |
 | [`DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD`](#python-api-symbol-janiform-calibration-market-data-default-option-forward-parity-warning-relative-threshold) | constant | constant value |
-| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationdiagnostics) | contract_model | 21 fields |
+| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationdiagnostics) | contract_model | 20 fields |
 | [`MarketDataCalibrationPreparationProvenance`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationprovenance) | contract_model | 14 fields |
 | [`MarketDataCalibrationRequest`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationrequest) | contract_model | 27 fields |
 | [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationsourcesummary) | contract_model | 11 fields |
@@ -5399,8 +5093,8 @@
 ### `CalibrationMarketDataSeasonalityPreprocessingSettings`
 
 - Kind: `contract_model`
-- Signature: `(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'`
-- Fields: `session_filter`, `sparse_hour_event_threshold`, `known_news_overlay_log_adjustment`, `intraday_minutes_per_bin`, `intraday_smoothing_kernel`, `intraday_smoothing_bandwidth_bins`, `intraday_minimum_bin_events`, `day_of_week_minimum_bucket_events`, `day_of_year_minimum_bucket_events`
+- Signature: `(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, maximum_harmonic_orders: 'dict[str, int]' = <factory>) -> 'None'`
+- Fields: `session_filter`, `sparse_hour_event_threshold`, `maximum_harmonic_orders`
 
 | Method | Signature |
 |--------|-----------|
@@ -5502,8 +5196,8 @@
 ### `MarketDataCalibrationPreparationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
-- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `seasonality_overlay_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
+- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
+- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
 | Method | Signature |
 |--------|-----------|
@@ -5727,7 +5421,7 @@
 | [`CalibrationMarketDataOutputPreferences`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataoutputpreferences) | contract_model | 3 fields |
 | [`CalibrationMarketDataPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatapreprocessingsettings) | contract_model | 2 fields |
 | [`CalibrationMarketDataReturnComponentsPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdatareturncomponentspreprocessingsettings) | contract_model | 2 fields |
-| [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 9 fields |
+| [`CalibrationMarketDataSeasonalityPreprocessingSettings`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataseasonalitypreprocessingsettings) | contract_model | 3 fields |
 | [`CalibrationMarketDataWorkflowScope`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmarketdataworkflowscope) | enum | 3 members |
 | [`CalibrationMeanReversionConfiguration`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationmeanreversionconfiguration) | contract_model | 2 fields |
 | [`CalibrationOptionQuoteInputPolicy`](#python-api-symbol-janiform-calibration-market-data-contracts-calibrationoptionquoteinputpolicy) | enum | 3 members |
@@ -5908,8 +5602,8 @@
 ### `CalibrationMarketDataSeasonalityPreprocessingSettings`
 
 - Kind: `contract_model`
-- Signature: `(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'`
-- Fields: `session_filter`, `sparse_hour_event_threshold`, `known_news_overlay_log_adjustment`, `intraday_minutes_per_bin`, `intraday_smoothing_kernel`, `intraday_smoothing_bandwidth_bins`, `intraday_minimum_bin_events`, `day_of_week_minimum_bucket_events`, `day_of_year_minimum_bucket_events`
+- Signature: `(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, maximum_harmonic_orders: 'dict[str, int]' = <factory>) -> 'None'`
+- Fields: `session_filter`, `sparse_hour_event_threshold`, `maximum_harmonic_orders`
 
 | Method | Signature |
 |--------|-----------|
@@ -6094,7 +5788,7 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`MarketDataSourceProbe`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatasourceprobe) | contract_model | 5 fields |
-| [`MarketDataTranslationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationdiagnostics) | contract_model | 21 fields |
+| [`MarketDataTranslationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationdiagnostics) | contract_model | 20 fields |
 | [`MarketDataTranslationProvenance`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationprovenance) | contract_model | 14 fields |
 | [`MarketDataTranslationResult`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationresult) | contract_model | 7 fields |
 | [`NormalizedMarketDataSource`](#python-api-symbol-janiform-calibration-market-data-translation-normalizedmarketdatasource) | contract_model | 4 fields |
@@ -6117,8 +5811,8 @@
 ### `MarketDataTranslationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
-- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `seasonality_overlay_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
+- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
+- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
 <a id="python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationprovenance"></a>
 ### `MarketDataTranslationProvenance`
@@ -6199,7 +5893,7 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationdiagnostics) | contract_model | 21 fields |
+| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationdiagnostics) | contract_model | 20 fields |
 | [`MarketDataCalibrationPreparationProvenance`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationprovenance) | contract_model | 14 fields |
 | [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationsourcesummary) | contract_model | 11 fields |
 | [`PreparedMarketDataCalibration`](#python-api-symbol-janiform-calibration-market-data-workflow-preparedmarketdatacalibration) | contract_model | 11 fields |
@@ -6210,8 +5904,8 @@
 ### `MarketDataCalibrationPreparationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
-- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `seasonality_overlay_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
+- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
+- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
 | Method | Signature |
 |--------|-----------|
@@ -6288,9 +5982,9 @@
 | [`KnownNewsPresetReference`](#python-api-symbol-janiform-calibration-presets-knownnewspresetreference) | contract_model | 5 fields |
 | [`MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-presets-market-profile-preset-artifact-schema-version) | constant | constant value |
 | [`MarketProfileColumnAliasHint`](#python-api-symbol-janiform-calibration-presets-marketprofilecolumnaliashint) | contract_model | 2 fields |
-| [`MarketProfileExplicitConfiguration`](#python-api-symbol-janiform-calibration-presets-marketprofileexplicitconfiguration) | contract_model | 8 fields |
+| [`MarketProfileExplicitConfiguration`](#python-api-symbol-janiform-calibration-presets-marketprofileexplicitconfiguration) | contract_model | 7 fields |
 | [`MarketProfileKnownNewsPolicy`](#python-api-symbol-janiform-calibration-presets-marketprofileknownnewspolicy) | enum | 2 members |
-| [`MarketProfileOverridePatch`](#python-api-symbol-janiform-calibration-presets-marketprofileoverridepatch) | contract_model | 7 fields |
+| [`MarketProfileOverridePatch`](#python-api-symbol-janiform-calibration-presets-marketprofileoverridepatch) | contract_model | 6 fields |
 | [`MarketProfilePresetArtifact`](#python-api-symbol-janiform-calibration-presets-marketprofilepresetartifact) | contract_model | 5 fields |
 | [`MarketProfileReference`](#python-api-symbol-janiform-calibration-presets-marketprofilereference) | contract_model | 5 fields |
 | [`PRESET_CONTENT_HASH_ALGORITHM`](#python-api-symbol-janiform-calibration-presets-preset-content-hash-algorithm) | constant | constant value |
@@ -6841,9 +6535,9 @@
 | [`KnownNewsExplicitConfiguration`](#python-api-symbol-janiform-calibration-presets-references-knownnewsexplicitconfiguration) | contract_model | 2 fields |
 | [`KnownNewsPresetReference`](#python-api-symbol-janiform-calibration-presets-references-knownnewspresetreference) | contract_model | 5 fields |
 | [`MarketProfileColumnAliasHint`](#python-api-symbol-janiform-calibration-presets-references-marketprofilecolumnaliashint) | contract_model | 2 fields |
-| [`MarketProfileExplicitConfiguration`](#python-api-symbol-janiform-calibration-presets-references-marketprofileexplicitconfiguration) | contract_model | 8 fields |
+| [`MarketProfileExplicitConfiguration`](#python-api-symbol-janiform-calibration-presets-references-marketprofileexplicitconfiguration) | contract_model | 7 fields |
 | [`MarketProfileKnownNewsPolicy`](#python-api-symbol-janiform-calibration-presets-references-marketprofileknownnewspolicy) | enum | 2 members |
-| [`MarketProfileOverridePatch`](#python-api-symbol-janiform-calibration-presets-references-marketprofileoverridepatch) | contract_model | 7 fields |
+| [`MarketProfileOverridePatch`](#python-api-symbol-janiform-calibration-presets-references-marketprofileoverridepatch) | contract_model | 6 fields |
 | [`MarketProfileReference`](#python-api-symbol-janiform-calibration-presets-references-marketprofilereference) | contract_model | 5 fields |
 | [`PresetReferenceUsageMode`](#python-api-symbol-janiform-calibration-presets-references-presetreferenceusagemode) | enum | 3 members |
 | [`PresetRegistryScope`](#python-api-symbol-janiform-calibration-presets-references-presetregistryscope) | enum | 2 members |

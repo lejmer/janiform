@@ -9,28 +9,32 @@ use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
 };
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
-use janiform_market_time::hourly_factors::{
-    HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-    HourlySeasonalityFactorSource,
+use janiform_market_time::interval_factor_grids::{
+    IntervalFactorGrid, IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
+    IntervalSeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::LongVarianceState;
 use janiform_work_scheduler::{DynamicWorkPoolStatus, StaticWorkPoolInput, run_static_work_pool};
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::load_hourly_factor_contract_for_calibration;
+use crate::adapters::load_interval_factor_grid_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementReturnScaleSummary,
     finalize_sell_share_proxies, return_scale_summary, zeroed_interval_observation_template,
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageCoarseTickConsistencyMetric;
+use crate::stages::seasonality::{
+    RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
+};
 
 use super::super::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 use super::super::mean_reversion_runtime::{
-    endogenous_interval_factors_from_hourly_contract,
+    endogenous_interval_factor_grids_from_hourly_contract,
     materialize_joint_refinement_mean_reversion_runtime_inputs,
 };
 use super::super::objective::root_mean_square;
@@ -542,18 +546,35 @@ pub(crate) fn build_joint_coarse_interval_observations(
                 .as_slice(),
         );
 
-    let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
+    let runtime_interval_seasonality_factors =
+        build_runtime_interval_seasonality_factors_from_components(
+            RuntimeIntervalSeasonalityFactorsBuildInput {
+                calendar_registry: &context.calendar_registry,
+                exchange_code: context.exchange_code.as_str(),
+                clock_model: &context.seasonality_clock_model,
+                range_start_utc_nanos: simulation_start_utc_nanos,
+                range_end_utc_nanos: simulation_end_utc_nanos,
+                interval_duration_nanos,
+            },
+        )
+        .map_err(|error_message| {
+            format!(
+                "coarse consistency runtime seasonality materialization failed: {error_message}"
+            )
+        })?;
+
+    let interval_factor_grid = load_interval_factor_grid_for_calibration(
         &context.calendar_registry,
-        HourlyFactorProviderRequest {
+        IntervalFactorGridProviderRequest {
             exchange_code: context.exchange_code.as_str(),
             range_start_utc: context.observed_data.hourly_simulation_start_utc,
             range_end_utc: context.observed_data.hourly_simulation_end_utc,
             interval_duration_nanos,
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: context.runtime_hourly_seasonality_factors.as_slice(),
+            seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
+                interval_factors: runtime_interval_seasonality_factors.as_slice(),
                 materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
             }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+            news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: fitted_parameters
                     .return_components_fitted_parameters
                     .news_process_configuration
@@ -578,12 +599,12 @@ pub(crate) fn build_joint_coarse_interval_observations(
             }),
         },
     )
-    .map_err(|source| format!("failed to load hourly factor contract: {source}"))?;
+    .map_err(|source| format!("failed to load interval factor grid contract: {source}"))?;
 
     let interval_delta = interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
-    let interval_factors = build_coarse_interval_factors_from_hourly_contract(
-        &hourly_factor_contract,
+    let interval_factor_grids = build_coarse_interval_factor_grids_from_hourly_contract(
+        &interval_factor_grid,
         fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration
@@ -595,16 +616,16 @@ pub(crate) fn build_joint_coarse_interval_observations(
     )?;
 
     let model_inputs =
-        build_joint_coarse_model_inputs(context, fitted_parameters, &hourly_factor_contract)?;
+        build_joint_coarse_model_inputs(context, fitted_parameters, &interval_factor_grid)?;
 
     let coarse_path = run_coarse_simulation(
         CoarseSimulationRunRequest::try_new(
             simulation_seed,
-            hourly_factor_contract.request_start_utc_nanos,
-            hourly_factor_contract.interval_indices.len(),
+            interval_factor_grid.request_start_utc_nanos,
+            interval_factor_grid.interval_indices.len(),
             interval_delta,
             model_inputs,
-            interval_factors,
+            interval_factor_grids,
         )
         .map_err(|source| format!("invalid coarse simulation run request: {source}"))?,
         context.cancellation_token.shared_handle(),
@@ -652,15 +673,15 @@ fn sum_interval_tick_count(intervals: &[JointRefinementAggregatedIntervalObserva
     intervals.iter().map(|interval| interval.tick_count).sum()
 }
 
-fn build_coarse_interval_factors_from_hourly_contract(
-    hourly_factor_contract: &HourlyFactorContractOutput,
+fn build_coarse_interval_factor_grids_from_hourly_contract(
+    interval_factor_grid: &IntervalFactorGrid,
     known_news_timestamps_utc_nanos: &[i64],
     interval_delta: f64,
 ) -> Result<SufficientStatisticsIntervalFactors, String> {
-    let nu_h_known = hourly_factor_contract
+    let known_news_intensity = interval_factor_grid
         .interval_start_utc_nanos
         .iter()
-        .zip(hourly_factor_contract.interval_end_utc_nanos.iter())
+        .zip(interval_factor_grid.interval_end_utc_nanos.iter())
         .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
             count_known_news_events(
                 known_news_timestamps_utc_nanos,
@@ -671,19 +692,19 @@ fn build_coarse_interval_factors_from_hourly_contract(
         })
         .collect::<Vec<_>>();
 
-    let nu_h_surprise = hourly_factor_contract
-        .nu_h
+    let surprise_news_intensity = interval_factor_grid
+        .news_intensity
         .iter()
-        .zip(nu_h_known.iter())
+        .zip(known_news_intensity.iter())
         .map(|(combined_intensity, known_intensity)| {
             (combined_intensity - known_intensity).max(0.0)
         })
         .collect::<Vec<_>>();
 
     SufficientStatisticsIntervalFactors::try_new(
-        hourly_factor_contract.s_h.clone(),
-        nu_h_known,
-        nu_h_surprise,
+        interval_factor_grid.seasonality_factor.clone(),
+        known_news_intensity,
+        surprise_news_intensity,
         Some(interval_delta),
     )
     .map_err(|source| format!("invalid sufficient-statistics interval factors: {source}"))
@@ -706,7 +727,7 @@ fn count_known_news_events(
 fn build_joint_coarse_model_inputs(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> Result<CoarseSimulationModelInputs, String> {
     let initial_excitation_state = HawkesExcitationState {
         y_plus_plus: 0.0,
@@ -715,8 +736,8 @@ fn build_joint_coarse_model_inputs(
         y_minus_minus: 0.0,
     };
 
-    let endogenous_interval_factors = endogenous_interval_factors_from_hourly_contract(
-        hourly_factor_contract,
+    let endogenous_interval_factor_grids = endogenous_interval_factor_grids_from_hourly_contract(
+        interval_factor_grid,
     )
     .map_err(|source| {
         format!("invalid endogenous anchor interval factors for coarse consistency: {source}")
@@ -724,10 +745,10 @@ fn build_joint_coarse_model_inputs(
 
     let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
         materialize_joint_refinement_mean_reversion_runtime_inputs(
-            hourly_factor_contract.metadata.interval_alignment_policy,
+            interval_factor_grid.metadata.interval_alignment_policy,
             fitted_parameters,
             initial_excitation_state,
-            endogenous_interval_factors.as_slice(),
+            endogenous_interval_factor_grids.as_slice(),
         )
         .map_err(|source| {
             format!(

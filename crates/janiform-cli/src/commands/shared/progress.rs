@@ -65,6 +65,7 @@ impl TerminalCommandProgress {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn observe(&mut self, phase: &str, completed_units: usize) -> Result<(), CliError> {
         self.observe_stage_progress(StageProgressUpdate {
             phase,
@@ -89,6 +90,7 @@ impl TerminalCommandProgress {
         }
 
         let stage_number = update.stage_number;
+
         ProgressMeasure::bounded(stage_number, self.total_units).map_err(|source| {
             CliError::OutputProgress {
                 source: Box::new(source),

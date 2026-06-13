@@ -49,9 +49,9 @@ pub enum SufficientStatisticsIntervalFactorsError {
     },
     InconsistentNewsIntensityAggregation {
         interval_index: usize,
-        nu_h_total: f64,
-        nu_h_known: f64,
-        nu_h_surprise: f64,
+        total_news_intensity: f64,
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
     },
     InvalidIntervalDelta {
         value: f64,
@@ -63,7 +63,7 @@ impl std::fmt::Display for SufficientStatisticsIntervalFactorsError {
         match self {
             Self::MissingIntervals => write!(
                 formatter,
-                "interval_factors must provide at least one interval"
+                "interval_factor_grids must provide at least one interval"
             ),
             Self::FieldLengthMismatch {
                 field,
@@ -71,48 +71,48 @@ impl std::fmt::Display for SufficientStatisticsIntervalFactorsError {
                 actual_length,
             } => write!(
                 formatter,
-                "interval_factors.{field} length must match s_h length ({expected_length}), found {actual_length}"
+                "interval_factor_grids.{field} length must match seasonality_factor length ({expected_length}), found {actual_length}"
             ),
             Self::InvalidSeasonalityFactor {
                 interval_index,
                 value,
             } => write!(
                 formatter,
-                "interval_factors.s_h[{interval_index}] must be finite and non-negative, found {value}"
+                "interval_factor_grids.seasonality_factor[{interval_index}] must be finite and non-negative, found {value}"
             ),
             Self::InvalidNewsIntensityFactor {
                 interval_index,
                 value,
             } => write!(
                 formatter,
-                "interval_factors.nu_h[{interval_index}] must be finite and non-negative, found {value}"
+                "interval_factor_grids.news_intensity[{interval_index}] must be finite and non-negative, found {value}"
             ),
             Self::InvalidKnownNewsIntensityFactor {
                 interval_index,
                 value,
             } => write!(
                 formatter,
-                "interval_factors.nu_h_known[{interval_index}] must be finite and non-negative, found {value}"
+                "interval_factor_grids.known_news_intensity[{interval_index}] must be finite and non-negative, found {value}"
             ),
             Self::InvalidSurpriseNewsIntensityFactor {
                 interval_index,
                 value,
             } => write!(
                 formatter,
-                "interval_factors.nu_h_surprise[{interval_index}] must be finite and non-negative, found {value}"
+                "interval_factor_grids.surprise_news_intensity[{interval_index}] must be finite and non-negative, found {value}"
             ),
             Self::InconsistentNewsIntensityAggregation {
                 interval_index,
-                nu_h_total,
-                nu_h_known,
-                nu_h_surprise,
+                total_news_intensity,
+                known_news_intensity,
+                surprise_news_intensity,
             } => write!(
                 formatter,
-                "interval_factors.nu_h[{interval_index}] must match nu_h_known + nu_h_surprise within tolerance {NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE}, found total={nu_h_total}, known={nu_h_known}, surprise={nu_h_surprise}"
+                "interval_factor_grids.news_intensity[{interval_index}] must match known_news_intensity + surprise_news_intensity within tolerance {NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE}, found total={total_news_intensity}, known={known_news_intensity}, surprise={surprise_news_intensity}"
             ),
             Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "interval_factors.interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration when provided, found {value}"
+                "interval_factor_grids.interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration when provided, found {value}"
             ),
         }
     }
@@ -125,65 +125,72 @@ impl std::error::Error for SufficientStatisticsIntervalFactorsError {}
 pub struct SufficientStatisticsIntervalFactors {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_delta: Option<f64>,
-    pub s_h: Box<[f64]>,
+    pub seasonality_factor: Box<[f64]>,
     #[serde(skip_serializing)]
-    pub nu_h: Box<[f64]>,
-    pub nu_h_known: Box<[f64]>,
-    pub nu_h_surprise: Box<[f64]>,
+    pub news_intensity: Box<[f64]>,
+    pub known_news_intensity: Box<[f64]>,
+    pub surprise_news_intensity: Box<[f64]>,
 }
 
 impl SufficientStatisticsIntervalFactors {
     pub fn try_new(
-        s_h: Vec<f64>,
-        nu_h_known: Vec<f64>,
-        nu_h_surprise: Vec<f64>,
+        seasonality_factor: Vec<f64>,
+        known_news_intensity: Vec<f64>,
+        surprise_news_intensity: Vec<f64>,
         interval_delta: Option<f64>,
     ) -> Result<Self, SufficientStatisticsIntervalFactorsError> {
-        if s_h.is_empty() {
+        if seasonality_factor.is_empty() {
             return Err(SufficientStatisticsIntervalFactorsError::MissingIntervals);
         }
-        if nu_h_known.len() != s_h.len() {
+
+        if known_news_intensity.len() != seasonality_factor.len() {
             return Err(
                 SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
-                    field: "nu_h_known",
-                    expected_length: s_h.len(),
-                    actual_length: nu_h_known.len(),
-                },
-            );
-        }
-        if nu_h_surprise.len() != s_h.len() {
-            return Err(
-                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
-                    field: "nu_h_surprise",
-                    expected_length: s_h.len(),
-                    actual_length: nu_h_surprise.len(),
+                    field: "known_news_intensity",
+                    expected_length: seasonality_factor.len(),
+                    actual_length: known_news_intensity.len(),
                 },
             );
         }
 
-        let nu_h: Vec<f64> = nu_h_known
+        if surprise_news_intensity.len() != seasonality_factor.len() {
+            return Err(
+                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
+                    field: "surprise_news_intensity",
+                    expected_length: seasonality_factor.len(),
+                    actual_length: surprise_news_intensity.len(),
+                },
+            );
+        }
+
+        let news_intensity: Vec<f64> = known_news_intensity
             .iter()
-            .zip(nu_h_surprise.iter())
-            .map(|(known_nu_h, surprise_nu_h)| known_nu_h + surprise_nu_h)
+            .zip(surprise_news_intensity.iter())
+            .map(|(known_news_intensity, surprise_news_intensity)| {
+                known_news_intensity + surprise_news_intensity
+            })
             .collect();
-        let interval_factors = Self {
+
+        let interval_factor_grids = Self {
             interval_delta,
-            s_h: s_h.into_boxed_slice(),
-            nu_h: nu_h.into_boxed_slice(),
-            nu_h_known: nu_h_known.into_boxed_slice(),
-            nu_h_surprise: nu_h_surprise.into_boxed_slice(),
+            seasonality_factor: seasonality_factor.into_boxed_slice(),
+            news_intensity: news_intensity.into_boxed_slice(),
+            known_news_intensity: known_news_intensity.into_boxed_slice(),
+            surprise_news_intensity: surprise_news_intensity.into_boxed_slice(),
         };
-        interval_factors.validate()?;
-        Ok(interval_factors)
+
+        interval_factor_grids.validate()?;
+
+        Ok(interval_factor_grids)
     }
 
     pub fn validate(&self) -> Result<(), SufficientStatisticsIntervalFactorsError> {
-        let interval_count = self.s_h.len();
+        let interval_count = self.seasonality_factor.len();
         if interval_count == 0 {
             return Err(SufficientStatisticsIntervalFactorsError::MissingIntervals);
         }
 
-        for (interval_index, value) in self.s_h.iter().copied().enumerate() {
+        for (interval_index, value) in self.seasonality_factor.iter().copied().enumerate() {
             if !value.is_finite() || value < 0.0 {
                 return Err(
                     SufficientStatisticsIntervalFactorsError::InvalidSeasonalityFactor {
@@ -194,7 +201,7 @@ impl SufficientStatisticsIntervalFactors {
             }
         }
 
-        for (interval_index, value) in self.nu_h.iter().copied().enumerate() {
+        for (interval_index, value) in self.news_intensity.iter().copied().enumerate() {
             if !value.is_finite() || value < 0.0 {
                 return Err(
                     SufficientStatisticsIntervalFactorsError::InvalidNewsIntensityFactor {
@@ -205,66 +212,70 @@ impl SufficientStatisticsIntervalFactors {
             }
         }
 
-        if self.nu_h_known.len() != interval_count {
+        if self.known_news_intensity.len() != interval_count {
             return Err(
                 SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
-                    field: "nu_h_known",
+                    field: "known_news_intensity",
                     expected_length: interval_count,
-                    actual_length: self.nu_h_known.len(),
+                    actual_length: self.known_news_intensity.len(),
                 },
             );
         }
-        if self.nu_h_surprise.len() != interval_count {
+
+        if self.surprise_news_intensity.len() != interval_count {
             return Err(
                 SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
-                    field: "nu_h_surprise",
+                    field: "surprise_news_intensity",
                     expected_length: interval_count,
-                    actual_length: self.nu_h_surprise.len(),
+                    actual_length: self.surprise_news_intensity.len(),
                 },
             );
         }
-        if self.nu_h.len() != interval_count {
+
+        if self.news_intensity.len() != interval_count {
             return Err(
                 SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
-                    field: "nu_h",
+                    field: "news_intensity",
                     expected_length: interval_count,
-                    actual_length: self.nu_h.len(),
+                    actual_length: self.news_intensity.len(),
                 },
             );
         }
 
         for interval_index in 0..interval_count {
-            let known_nu_h = self.nu_h_known[interval_index];
-            if !known_nu_h.is_finite() || known_nu_h < 0.0 {
+            let known_news_intensity = self.known_news_intensity[interval_index];
+            if !known_news_intensity.is_finite() || known_news_intensity < 0.0 {
                 return Err(
                     SufficientStatisticsIntervalFactorsError::InvalidKnownNewsIntensityFactor {
                         interval_index,
-                        value: known_nu_h,
+                        value: known_news_intensity,
                     },
                 );
             }
 
-            let surprise_nu_h = self.nu_h_surprise[interval_index];
-            if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
+            let surprise_news_intensity = self.surprise_news_intensity[interval_index];
+            if !surprise_news_intensity.is_finite() || surprise_news_intensity < 0.0 {
                 return Err(
                     SufficientStatisticsIntervalFactorsError::InvalidSurpriseNewsIntensityFactor {
                         interval_index,
-                        value: surprise_nu_h,
+                        value: surprise_news_intensity,
                     },
                 );
             }
 
-            let total_nu_h = self.nu_h[interval_index];
-            let component_sum = known_nu_h + surprise_nu_h;
+            let total_news_intensity = self.news_intensity[interval_index];
+
+            let component_sum = known_news_intensity + surprise_news_intensity;
             if !component_sum.is_finite()
-                || (component_sum - total_nu_h).abs() > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
+                || (component_sum - total_news_intensity).abs()
+                    > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
             {
                 return Err(
                     SufficientStatisticsIntervalFactorsError::InconsistentNewsIntensityAggregation {
                         interval_index,
-                        nu_h_total: total_nu_h,
-                        nu_h_known: known_nu_h,
-                        nu_h_surprise: surprise_nu_h,
+                        total_news_intensity,
+                        known_news_intensity,
+                        surprise_news_intensity,
                     },
                 );
             }
@@ -297,8 +308,8 @@ impl SufficientStatisticsIntervalFactors {
         interval_index: usize,
     ) -> ExponentialAffineTransformNewsIntensityInput {
         let news_intensity_input = ExponentialAffineTransformNewsIntensityInput {
-            known_nu_h: self.nu_h_known[interval_index],
-            surprise_nu_h: self.nu_h_surprise[interval_index],
+            known_news_intensity: self.known_news_intensity[interval_index],
+            surprise_news_intensity: self.surprise_news_intensity[interval_index],
         };
 
         debug_assert!(
@@ -515,9 +526,9 @@ impl SufficientStatisticsModelInputs {
 struct SufficientStatisticsIntervalFactorsPayload {
     #[serde(default)]
     interval_delta: Option<f64>,
-    s_h: Vec<f64>,
-    nu_h_known: Vec<f64>,
-    nu_h_surprise: Vec<f64>,
+    seasonality_factor: Vec<f64>,
+    known_news_intensity: Vec<f64>,
+    surprise_news_intensity: Vec<f64>,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsIntervalFactors {
@@ -528,9 +539,9 @@ impl<'de> Deserialize<'de> for SufficientStatisticsIntervalFactors {
         let payload = SufficientStatisticsIntervalFactorsPayload::deserialize(deserializer)?;
 
         Self::try_new(
-            payload.s_h,
-            payload.nu_h_known,
-            payload.nu_h_surprise,
+            payload.seasonality_factor,
+            payload.known_news_intensity,
+            payload.surprise_news_intensity,
             payload.interval_delta,
         )
         .map_err(serde::de::Error::custom)

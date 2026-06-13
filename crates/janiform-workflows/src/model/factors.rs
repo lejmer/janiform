@@ -1,10 +1,10 @@
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, Timelike, Utc};
 use janiform::calibration::staged::materialize_runtime_structural_seasonality;
-use janiform::model::factors::hourly::{
+use janiform::model::factors::interval_factor_grid::{
     DEFAULT_SEASONALITY_AGGREGATION_METHOD, DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
-    DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
-    HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-    HourlySeasonalityFactorSource, NANOS_PER_HOUR,
+    DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT,
+    IntervalFactorGrid, IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
+    IntervalSeasonalityFactorSource, NANOS_PER_HOUR,
 };
 use janiform_calibration_runtime::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use janiform_foundations::time::parse_utc_datetime;
@@ -19,12 +19,12 @@ use super::context::{
 
 const SURPRISE_MULTIPLIER_HOURS_PER_WEEK: usize = 168;
 
-pub(crate) fn build_hourly_factor_contract(
+pub(crate) fn build_interval_factor_grid(
     context: &FittedModelContext,
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
     interval_duration_nanos: i64,
-) -> Result<HourlyFactorContractOutput, WorkflowError> {
+) -> Result<IntervalFactorGrid, WorkflowError> {
     let seasonality_grid = materialize_runtime_seasonality_grid(
         context,
         range_start_utc,
@@ -60,15 +60,15 @@ pub(crate) fn build_hourly_factor_contract(
         .arrivals
         .surprise;
 
-    janiform_calibration_runtime::load_hourly_factor_contract_for_calibration(
+    janiform_calibration_runtime::load_interval_factor_grid_for_calibration(
         &context.calendar_registry,
-        HourlyFactorProviderRequest {
+        IntervalFactorGridProviderRequest {
             exchange_code: context.model.session_resolution.exchange_code.as_str(),
             range_start_utc,
             range_end_utc,
             interval_duration_nanos,
             seasonality_source: Some(seasonality_source),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+            news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
                 known_scheduled_event_timestamps_utc_nanos: known_news_timestamps.as_slice(),
                 surprise_open_baseline_intensity: surprise_arrival_configuration
                     .open_baseline_intensity,
@@ -79,7 +79,7 @@ pub(crate) fn build_hourly_factor_contract(
             }),
         },
     )
-    .map_err(|source| validation_error("hourly_factor_contract", source.to_string()))
+    .map_err(|source| validation_error("interval_factor_grid", source.to_string()))
 }
 
 fn materialize_runtime_seasonality_grid(
@@ -128,10 +128,10 @@ fn hourly_seasonality_source(
     range_end_utc: DateTime<Utc>,
     interval_duration_nanos: i64,
     seasonality_grid: &'_ (Vec<i64>, Vec<f64>),
-) -> HourlySeasonalityFactorSource<'_> {
+) -> IntervalSeasonalityFactorSource<'_> {
     if seasonality_grid.1.is_empty() {
-        return HourlySeasonalityFactorSource::Explicit {
-            hourly_factors: seasonality_grid.1.as_slice(),
+        return IntervalSeasonalityFactorSource::Explicit {
+            interval_factors: seasonality_grid.1.as_slice(),
             materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
         };
     }
@@ -139,18 +139,19 @@ fn hourly_seasonality_source(
     if interval_duration_nanos != NANOS_PER_HOUR
         || !runtime_interval_grid_is_hour_aligned(range_start_utc, range_end_utc)
     {
-        return HourlySeasonalityFactorSource::Materialized {
+        return IntervalSeasonalityFactorSource::Materialized {
             source_timestamp_utc_nanos: seasonality_grid.0.as_slice(),
             source_seasonality_factors: seasonality_grid.1.as_slice(),
             interpolation_method: DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
             aggregation_method: DEFAULT_SEASONALITY_AGGREGATION_METHOD,
             sparse_fallback_policy: DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
-            sparse_hour_minimum_observation_count: DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
+            sparse_interval_minimum_observation_count:
+                DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT,
         };
     }
 
-    HourlySeasonalityFactorSource::Explicit {
-        hourly_factors: seasonality_grid.1.as_slice(),
+    IntervalSeasonalityFactorSource::Explicit {
+        interval_factors: seasonality_grid.1.as_slice(),
         materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     }
 }
@@ -383,7 +384,7 @@ fn runtime_interval_grid_is_hour_aligned(
 #[cfg(test)]
 mod tests {
     use chrono::{Duration as ChronoDuration, TimeZone, Utc};
-    use janiform::model::factors::hourly::NANOS_PER_HOUR;
+    use janiform::model::factors::interval_factor_grid::NANOS_PER_HOUR;
     use janiform_foundations::time::NANOS_PER_DAY;
 
     use super::hourly_seasonality_source;
@@ -418,7 +419,7 @@ mod tests {
 
         assert!(matches!(
             source,
-            janiform::model::factors::hourly::HourlySeasonalityFactorSource::Materialized { .. }
+            janiform::model::factors::interval_factor_grid::IntervalSeasonalityFactorSource::Materialized { .. }
         ));
     }
 
@@ -452,7 +453,7 @@ mod tests {
 
         assert!(matches!(
             source,
-            janiform::model::factors::hourly::HourlySeasonalityFactorSource::Explicit { .. }
+            janiform::model::factors::interval_factor_grid::IntervalSeasonalityFactorSource::Explicit { .. }
         ));
     }
 }

@@ -33,6 +33,7 @@ use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
     ContinuousReturnOptimizerContext, ReturnComponentsStageContinuousReturnCalibrationSample,
 };
+use crate::stages::seasonality::FourierBusinessTimeClockModel;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
@@ -522,7 +523,8 @@ pub(crate) struct JointRefinementContext {
     pub(crate) calendar_registry: ExchangeCalendarRegistry,
     pub(crate) exchange_code: String,
     pub(crate) objective_policy: CalibrationObjectivePolicy,
-    pub(crate) runtime_hourly_seasonality_factors: Vec<f64>,
+    pub(crate) seasonality_clock_model: FourierBusinessTimeClockModel,
+    pub(crate) runtime_interval_seasonality_factors: Vec<f64>,
     pub(crate) observed_data: JointRefinementObservedData,
     pub(crate) baseline_modeled_open_event_rate_per_hour: f64,
     pub(crate) baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,
@@ -581,7 +583,7 @@ pub(crate) struct JointRefinementOptionNodeDefinition {
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementOptionTierPricingInputs {
     pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
-    pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+    pub(crate) interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
     pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
     pub(crate) spectral_collocation_node_count_override: Option<usize>,
     pub(crate) observed_nodes: Vec<JointRefinementOptionNodeDefinition>,

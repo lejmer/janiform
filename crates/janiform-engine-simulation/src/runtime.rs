@@ -39,5 +39,5 @@ pub(crate) use trading_time::{
 };
 pub(crate) use validation::{
     compute_max_effective_endogenous_branching_ratio, is_valid_observed_price_tick_size,
-    validate_hourly_factor_field_length, validate_hourly_factor_interval_coverage,
+    validate_interval_factor_grid_field_length, validate_interval_factor_grid_interval_coverage,
 };

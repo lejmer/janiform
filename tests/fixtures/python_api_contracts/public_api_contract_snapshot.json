@@ -604,19 +604,13 @@
           "field_names": [
             "session_filter",
             "sparse_hour_event_threshold",
-            "known_news_overlay_log_adjustment",
-            "intraday_minutes_per_bin",
-            "intraday_smoothing_kernel",
-            "intraday_smoothing_bandwidth_bins",
-            "intraday_minimum_bin_events",
-            "day_of_week_minimum_bucket_events",
-            "day_of_year_minimum_bucket_events"
+            "maximum_harmonic_orders"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMarketDataSeasonalityPreprocessingSettings'"
           },
-          "signature": "(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'"
+          "signature": "(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, maximum_harmonic_orders: 'dict[str, int]' = <factory>) -> 'None'"
         },
         "CalibrationMarketDataWorkflowScope": {
           "kind": "enum",
@@ -753,7 +747,6 @@
             "session_closed_tick_count",
             "known_news_open_event_count",
             "known_news_closed_event_count",
-            "seasonality_overlay_count",
             "hawkes_candidate_count",
             "known_news_return_sample_count",
             "intraday_jump_candidate_count",
@@ -764,7 +757,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationPreparationDiagnostics'"
           },
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -1259,19 +1252,13 @@
           "field_names": [
             "session_filter",
             "sparse_hour_event_threshold",
-            "known_news_overlay_log_adjustment",
-            "intraday_minutes_per_bin",
-            "intraday_smoothing_kernel",
-            "intraday_smoothing_bandwidth_bins",
-            "intraday_minimum_bin_events",
-            "day_of_week_minimum_bucket_events",
-            "day_of_year_minimum_bucket_events"
+            "maximum_harmonic_orders"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMarketDataSeasonalityPreprocessingSettings'"
           },
-          "signature": "(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'"
+          "signature": "(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, maximum_harmonic_orders: 'dict[str, int]' = <factory>) -> 'None'"
         },
         "CalibrationMarketDataWorkflowScope": {
           "kind": "enum",
@@ -1552,7 +1539,6 @@
             "session_closed_tick_count",
             "known_news_open_event_count",
             "known_news_closed_event_count",
-            "seasonality_overlay_count",
             "hawkes_candidate_count",
             "known_news_return_sample_count",
             "intraday_jump_candidate_count",
@@ -1560,7 +1546,7 @@
             "material_close_open_gap_count"
           ],
           "kind": "contract_model",
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataTranslationProvenance": {
           "field_names": [
@@ -1674,7 +1660,6 @@
             "session_closed_tick_count",
             "known_news_open_event_count",
             "known_news_closed_event_count",
-            "seasonality_overlay_count",
             "hawkes_candidate_count",
             "known_news_return_sample_count",
             "intraday_jump_candidate_count",
@@ -1685,7 +1670,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationPreparationDiagnostics'"
           },
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -4498,70 +4483,70 @@
         }
       }
     },
-    "janiform.hourly_factors": {
+    "janiform.interval_factor_grids": {
       "exports": [
-        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD",
+        "DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD",
         "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD",
         "DEFAULT_SEASONALITY_AGGREGATION_METHOD",
         "DEFAULT_SEASONALITY_INTERPOLATION_METHOD",
         "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
-        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
-        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
-        "HOURLY_FACTOR_FALL_BACK_POLICY",
-        "HOURLY_FACTOR_OUTPUT_SCHEMA",
-        "HOURLY_FACTOR_SPRING_FORWARD_POLICY",
-        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY",
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
-        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
-        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
-        "HourlyFactorContract",
-        "HourlyFactorOutputSchema",
-        "HourlyFactorProviderError",
-        "HourlyFactorProviderMissingInputError",
-        "HourlyFactorProviderUnsupportedRangeError",
-        "HourlyNewsIntensityMaterialization",
-        "HourlyNewsIntensityMaterializationOutputSchema",
-        "HourlyNewsIntensityMaterializationSettings",
-        "HourlyNewsIntensityProviderExplicitSource",
-        "HourlyNewsIntensityProviderMaterializedSource",
-        "HourlyNewsIntensityProviderSource",
-        "HourlySeasonalityMaterialization",
-        "HourlySeasonalityMaterializationOutputSchema",
-        "HourlySeasonalityMaterializationSettings",
-        "HourlySeasonalityProviderExplicitSource",
-        "HourlySeasonalityProviderMaterializedSource",
-        "HourlySeasonalityProviderSource",
+        "DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT",
+        "INTERVAL_FACTOR_GRID_FALL_BACK_POLICY",
+        "INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA",
+        "INTERVAL_FACTOR_GRID_SCHEMA_VERSION",
+        "INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY",
+        "INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY",
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+        "INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+        "IntervalFactorGridContract",
+        "IntervalFactorGridOutputSchema",
+        "IntervalFactorGridProviderError",
+        "IntervalFactorGridProviderMissingInputError",
+        "IntervalFactorGridProviderUnsupportedRangeError",
+        "IntervalNewsIntensityMaterialization",
+        "IntervalNewsIntensityMaterializationOutputSchema",
+        "IntervalNewsIntensityMaterializationSettings",
+        "IntervalNewsIntensityProviderExplicitSource",
+        "IntervalNewsIntensityProviderMaterializedSource",
+        "IntervalNewsIntensityProviderSource",
+        "IntervalSeasonalityMaterialization",
+        "IntervalSeasonalityMaterializationOutputSchema",
+        "IntervalSeasonalityMaterializationSettings",
+        "IntervalSeasonalityProviderExplicitSource",
+        "IntervalSeasonalityProviderMaterializedSource",
+        "IntervalSeasonalityProviderSource",
         "SeasonalityInputValidationError",
-        "build_hourly_factor_contract",
-        "build_runtime_hourly_seasonality_source_from_calibration_payload",
-        "load_hourly_factor_contract_payload",
-        "materialize_hourly_news_intensity_factors",
-        "materialize_hourly_seasonality_factors",
-        "provide_hourly_factor_contract"
+        "build_interval_factor_grid",
+        "build_runtime_interval_seasonality_source_from_calibration_payload",
+        "load_interval_factor_grid_payload",
+        "materialize_interval_news_intensity_factors",
+        "materialize_interval_seasonality_factors",
+        "provide_interval_factor_grid"
       ],
-      "module_name": "janiform.hourly_factors",
+      "module_name": "janiform.interval_factor_grids",
       "schema_identifiers": [
         {
-          "name": "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+          "name": "INTERVAL_FACTOR_GRID_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "seasonality.hourly_factor.contract.v1"
+          "value": "seasonality.interval_factor_grid.contract.v1"
         },
         {
-          "name": "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+          "name": "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "seasonality.hourly_nu_h.materialization.v1"
+          "value": "seasonality.interval_news_intensity.materialization.v1"
         },
         {
-          "name": "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+          "name": "INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "seasonality.hourly_s_h.materialization.v1"
+          "value": "seasonality.interval_seasonality_factor.materialization.v1"
         }
       ],
       "symbols": {
-        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD": {
+        "DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD": {
           "kind": "constant",
-          "value": "explicit_hourly_input.v1"
+          "value": "explicit_interval_grid_input.v1"
         },
         "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD": {
           "kind": "constant",
@@ -4579,19 +4564,15 @@
           "kind": "constant",
           "value": "global_mean.v1"
         },
-        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT": {
+        "DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT": {
           "kind": "constant",
           "value": 1
         },
-        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION": {
+        "INTERVAL_FACTOR_GRID_FALL_BACK_POLICY": {
           "kind": "constant",
-          "value": "seasonality.hourly_factor.contract.v1"
+          "value": "preserve_repeated_exchange_local_interval_labels_with_numeric_utc_offset.v1"
         },
-        "HOURLY_FACTOR_FALL_BACK_POLICY": {
-          "kind": "constant",
-          "value": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
-        },
-        "HOURLY_FACTOR_OUTPUT_SCHEMA": {
+        "INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
             "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
@@ -4608,15 +4589,15 @@
               "interval_end_utc_nanos",
               "interval_start_exchange_local",
               "interval_end_exchange_local",
-              "s_h",
-              "known_component_nu_h",
-              "surprise_component_nu_h",
-              "nu_h",
+              "seasonality_factor",
+              "known_news_intensity",
+              "surprise_news_intensity",
+              "news_intensity",
               "interval_count",
               "first_interval_start_utc_nanos",
               "last_interval_end_utc_nanos",
-              "skipped_local_hour_interval_count",
-              "repeated_local_hour_interval_count",
+              "skipped_exchange_local_interval_count",
+              "repeated_exchange_local_interval_count",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -4634,18 +4615,22 @@
               "spring_forward_policy",
               "fall_back_policy"
             ],
-            "schema_version": "seasonality.hourly_factor.contract.v1"
+            "schema_version": "seasonality.interval_factor_grid.contract.v1"
           }
         },
-        "HOURLY_FACTOR_SPRING_FORWARD_POLICY": {
+        "INTERVAL_FACTOR_GRID_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "skip_nonexistent_local_hour_labels.v1"
+          "value": "seasonality.interval_factor_grid.contract.v1"
         },
-        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY": {
+        "INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY": {
+          "kind": "constant",
+          "value": "skip_nonexistent_exchange_local_interval_labels.v1"
+        },
+        "INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY": {
           "kind": "constant",
           "value": "fixed_width_utc_interval_projected_to_exchange_local.v1"
         },
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
             "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
@@ -4662,17 +4647,17 @@
               "interval_end_utc_nanos",
               "interval_start_exchange_local",
               "interval_end_exchange_local",
-              "known_component_nu_h",
-              "surprise_component_nu_h",
-              "nu_h",
+              "known_news_intensity",
+              "surprise_news_intensity",
+              "news_intensity",
               "interval_count",
               "known_component_non_zero_interval_count",
               "surprise_component_non_zero_interval_count",
               "combined_component_non_zero_interval_count",
               "known_scheduled_arrival_count",
               "surprise_multiplier_override_interval_count",
-              "skipped_local_hour_interval_count",
-              "repeated_local_hour_interval_count",
+              "skipped_exchange_local_interval_count",
+              "repeated_exchange_local_interval_count",
               "materialization_method",
               "component_aggregation_policy",
               "arrival_intensity_policy",
@@ -4702,14 +4687,14 @@
               "spring_forward_policy",
               "fall_back_policy"
             ],
-            "schema_version": "seasonality.hourly_nu_h.materialization.v1"
+            "schema_version": "seasonality.interval_news_intensity.materialization.v1"
           }
         },
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION": {
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "seasonality.hourly_nu_h.materialization.v1"
+          "value": "seasonality.interval_news_intensity.materialization.v1"
         },
-        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+        "INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
             "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
@@ -4726,18 +4711,18 @@
               "interval_end_utc_nanos",
               "interval_start_exchange_local",
               "interval_end_exchange_local",
-              "s_h",
+              "seasonality_factor",
               "source_point_count",
               "interval_count",
               "sparse_interval_count",
               "interpolated_interval_count",
               "fallback_interval_count",
-              "skipped_local_hour_interval_count",
-              "repeated_local_hour_interval_count",
+              "skipped_exchange_local_interval_count",
+              "repeated_exchange_local_interval_count",
               "interpolation_method",
               "aggregation_method",
               "sparse_fallback_policy",
-              "sparse_hour_minimum_observation_count",
+              "sparse_interval_minimum_observation_count",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -4748,28 +4733,28 @@
               "interpolation_method",
               "aggregation_method",
               "sparse_fallback_policy",
-              "sparse_hour_minimum_observation_count",
+              "sparse_interval_minimum_observation_count",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
               "spring_forward_policy",
               "fall_back_policy"
             ],
-            "schema_version": "seasonality.hourly_s_h.materialization.v1"
+            "schema_version": "seasonality.interval_seasonality_factor.materialization.v1"
           }
         },
-        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION": {
+        "INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "seasonality.hourly_s_h.materialization.v1"
+          "value": "seasonality.interval_seasonality_factor.materialization.v1"
         },
-        "HourlyFactorContract": {
+        "IntervalFactorGridContract": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'HourlyFactorContractResultProtocol') -> 'None'",
+          "constructor_signature": "(native_result: 'IntervalFactorGridResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors.artifacts",
-          "qualname": "HourlyFactorContract"
+          "origin_module": "janiform.interval_factor_grids.artifacts",
+          "qualname": "IntervalFactorGridContract"
         },
-        "HourlyFactorOutputSchema": {
+        "IntervalFactorGridOutputSchema": {
           "field_names": [
             "schema_version",
             "required_fields",
@@ -4780,43 +4765,43 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
-        "HourlyFactorProviderError": {
+        "IntervalFactorGridProviderError": {
           "base_classes": [
             "Exception",
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors.errors",
-          "qualname": "HourlyFactorProviderError"
+          "origin_module": "janiform.interval_factor_grids.errors",
+          "qualname": "IntervalFactorGridProviderError"
         },
-        "HourlyFactorProviderMissingInputError": {
+        "IntervalFactorGridProviderMissingInputError": {
           "base_classes": [
-            "HourlyFactorProviderError",
+            "IntervalFactorGridProviderError",
             "Exception",
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors.errors",
-          "qualname": "HourlyFactorProviderMissingInputError"
+          "origin_module": "janiform.interval_factor_grids.errors",
+          "qualname": "IntervalFactorGridProviderMissingInputError"
         },
-        "HourlyFactorProviderUnsupportedRangeError": {
+        "IntervalFactorGridProviderUnsupportedRangeError": {
           "base_classes": [
-            "HourlyFactorProviderError",
+            "IntervalFactorGridProviderError",
             "Exception",
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors.errors",
-          "qualname": "HourlyFactorProviderUnsupportedRangeError"
+          "origin_module": "janiform.interval_factor_grids.errors",
+          "qualname": "IntervalFactorGridProviderUnsupportedRangeError"
         },
-        "HourlyNewsIntensityMaterialization": {
+        "IntervalNewsIntensityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'HourlyNewsIntensityMaterializationResultProtocol') -> 'None'",
+          "constructor_signature": "(native_result: 'IntervalNewsIntensityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors.artifacts",
-          "qualname": "HourlyNewsIntensityMaterialization"
+          "origin_module": "janiform.interval_factor_grids.artifacts",
+          "qualname": "IntervalNewsIntensityMaterialization"
         },
-        "HourlyNewsIntensityMaterializationOutputSchema": {
+        "IntervalNewsIntensityMaterializationOutputSchema": {
           "field_names": [
             "schema_version",
             "required_fields",
@@ -4827,7 +4812,7 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
-        "HourlyNewsIntensityMaterializationSettings": {
+        "IntervalNewsIntensityMaterializationSettings": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
             "surprise_open_baseline_intensity",
@@ -4837,15 +4822,15 @@
           "kind": "contract_model",
           "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
-        "HourlyNewsIntensityProviderExplicitSource": {
+        "IntervalNewsIntensityProviderExplicitSource": {
           "field_names": [
-            "hourly_factors",
+            "interval_factors",
             "materialization_method"
           ],
           "kind": "contract_model",
-          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+          "signature": "(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'"
         },
-        "HourlyNewsIntensityProviderMaterializedSource": {
+        "IntervalNewsIntensityProviderMaterializedSource": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
             "surprise_open_baseline_intensity",
@@ -4855,18 +4840,18 @@
           "kind": "contract_model",
           "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
-        "HourlyNewsIntensityProviderSource": {
+        "IntervalNewsIntensityProviderSource": {
           "kind": "constant",
-          "value": "HourlyNewsIntensityProviderSource"
+          "value": "IntervalNewsIntensityProviderSource"
         },
-        "HourlySeasonalityMaterialization": {
+        "IntervalSeasonalityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'HourlySeasonalityMaterializationResultProtocol') -> 'None'",
+          "constructor_signature": "(native_result: 'IntervalSeasonalityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors.artifacts",
-          "qualname": "HourlySeasonalityMaterialization"
+          "origin_module": "janiform.interval_factor_grids.artifacts",
+          "qualname": "IntervalSeasonalityMaterialization"
         },
-        "HourlySeasonalityMaterializationOutputSchema": {
+        "IntervalSeasonalityMaterializationOutputSchema": {
           "field_names": [
             "schema_version",
             "required_fields",
@@ -4877,39 +4862,39 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
-        "HourlySeasonalityMaterializationSettings": {
+        "IntervalSeasonalityMaterializationSettings": {
           "field_names": [
             "interpolation_method",
             "aggregation_method",
             "sparse_fallback_policy",
-            "sparse_hour_minimum_observation_count"
+            "sparse_interval_minimum_observation_count"
           ],
           "kind": "contract_model",
-          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'"
         },
-        "HourlySeasonalityProviderExplicitSource": {
+        "IntervalSeasonalityProviderExplicitSource": {
           "field_names": [
-            "hourly_factors",
+            "interval_factors",
             "materialization_method"
           ],
           "kind": "contract_model",
-          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+          "signature": "(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'"
         },
-        "HourlySeasonalityProviderMaterializedSource": {
+        "IntervalSeasonalityProviderMaterializedSource": {
           "field_names": [
             "source_timestamps_utc",
             "source_seasonality_factors",
             "interpolation_method",
             "aggregation_method",
             "sparse_fallback_policy",
-            "sparse_hour_minimum_observation_count"
+            "sparse_interval_minimum_observation_count"
           ],
           "kind": "contract_model",
-          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'"
         },
-        "HourlySeasonalityProviderSource": {
+        "IntervalSeasonalityProviderSource": {
           "kind": "constant",
-          "value": "HourlySeasonalityProviderSource"
+          "value": "IntervalSeasonalityProviderSource"
         },
         "SeasonalityInputValidationError": {
           "base_classes": [
@@ -4921,83 +4906,83 @@
           "origin_module": "janiform.seasonality.errors",
           "qualname": "SeasonalityInputValidationError"
         },
-        "build_hourly_factor_contract": {
+        "build_interval_factor_grid": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_factors: 'Sequence[float]', news_intensity_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_interval_grid_input.v1', news_intensity_materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'IntervalFactorGridContract'"
         },
-        "build_runtime_hourly_seasonality_source_from_calibration_payload": {
+        "build_runtime_interval_seasonality_source_from_calibration_payload": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityProviderExplicitSource'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityProviderExplicitSource'"
         },
-        "load_hourly_factor_contract_payload": {
+        "load_interval_factor_grid_payload": {
           "kind": "function",
-          "signature": "(hourly_factor_contract_payload: 'dict[str, Any] | Any') -> 'HourlyFactorContract'"
+          "signature": "(interval_factor_grid_payload: 'dict[str, Any] | Any') -> 'IntervalFactorGridContract'"
         },
-        "materialize_hourly_news_intensity_factors": {
+        "materialize_interval_news_intensity_factors": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', settings: 'IntervalNewsIntensityMaterializationSettings') -> 'IntervalNewsIntensityMaterialization'"
         },
-        "materialize_hourly_seasonality_factors": {
+        "materialize_interval_seasonality_factors": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityMaterialization'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityMaterialization'"
         },
-        "provide_hourly_factor_contract": {
+        "provide_interval_factor_grid": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[IntervalSeasonalityProviderSource]' = None, news_intensity_source: 'Optional[IntervalNewsIntensityProviderSource]' = None) -> 'IntervalFactorGridContract'"
         }
       }
     },
-    "janiform.hourly_factors.contracts": {
+    "janiform.interval_factor_grids.contracts": {
       "exports": [
-        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD",
+        "DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD",
         "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD",
         "DEFAULT_SEASONALITY_AGGREGATION_METHOD",
         "DEFAULT_SEASONALITY_INTERPOLATION_METHOD",
         "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
-        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
-        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
-        "HOURLY_FACTOR_FALL_BACK_POLICY",
-        "HOURLY_FACTOR_OUTPUT_SCHEMA",
-        "HOURLY_FACTOR_SPRING_FORWARD_POLICY",
-        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY",
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
-        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
-        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
-        "HourlyFactorOutputSchema",
-        "HourlyNewsIntensityMaterializationOutputSchema",
-        "HourlyNewsIntensityMaterializationSettings",
-        "HourlyNewsIntensityProviderExplicitSource",
-        "HourlyNewsIntensityProviderMaterializedSource",
-        "HourlyNewsIntensityProviderSource",
-        "HourlySeasonalityMaterializationOutputSchema",
-        "HourlySeasonalityMaterializationSettings",
-        "HourlySeasonalityProviderExplicitSource",
-        "HourlySeasonalityProviderMaterializedSource",
-        "HourlySeasonalityProviderSource"
+        "DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT",
+        "INTERVAL_FACTOR_GRID_FALL_BACK_POLICY",
+        "INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA",
+        "INTERVAL_FACTOR_GRID_SCHEMA_VERSION",
+        "INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY",
+        "INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY",
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+        "INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+        "IntervalFactorGridOutputSchema",
+        "IntervalNewsIntensityMaterializationOutputSchema",
+        "IntervalNewsIntensityMaterializationSettings",
+        "IntervalNewsIntensityProviderExplicitSource",
+        "IntervalNewsIntensityProviderMaterializedSource",
+        "IntervalNewsIntensityProviderSource",
+        "IntervalSeasonalityMaterializationOutputSchema",
+        "IntervalSeasonalityMaterializationSettings",
+        "IntervalSeasonalityProviderExplicitSource",
+        "IntervalSeasonalityProviderMaterializedSource",
+        "IntervalSeasonalityProviderSource"
       ],
-      "module_name": "janiform.hourly_factors.contracts",
+      "module_name": "janiform.interval_factor_grids.contracts",
       "schema_identifiers": [
         {
-          "name": "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+          "name": "INTERVAL_FACTOR_GRID_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "seasonality.hourly_factor.contract.v1"
+          "value": "seasonality.interval_factor_grid.contract.v1"
         },
         {
-          "name": "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+          "name": "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "seasonality.hourly_nu_h.materialization.v1"
+          "value": "seasonality.interval_news_intensity.materialization.v1"
         },
         {
-          "name": "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+          "name": "INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "seasonality.hourly_s_h.materialization.v1"
+          "value": "seasonality.interval_seasonality_factor.materialization.v1"
         }
       ],
       "symbols": {
-        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD": {
+        "DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD": {
           "kind": "constant",
-          "value": "explicit_hourly_input.v1"
+          "value": "explicit_interval_grid_input.v1"
         },
         "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD": {
           "kind": "constant",
@@ -5015,19 +5000,15 @@
           "kind": "constant",
           "value": "global_mean.v1"
         },
-        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT": {
+        "DEFAULT_SPARSE_INTERVAL_MINIMUM_OBSERVATION_COUNT": {
           "kind": "constant",
           "value": 1
         },
-        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION": {
+        "INTERVAL_FACTOR_GRID_FALL_BACK_POLICY": {
           "kind": "constant",
-          "value": "seasonality.hourly_factor.contract.v1"
+          "value": "preserve_repeated_exchange_local_interval_labels_with_numeric_utc_offset.v1"
         },
-        "HOURLY_FACTOR_FALL_BACK_POLICY": {
-          "kind": "constant",
-          "value": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
-        },
-        "HOURLY_FACTOR_OUTPUT_SCHEMA": {
+        "INTERVAL_FACTOR_GRID_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
             "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
@@ -5044,15 +5025,15 @@
               "interval_end_utc_nanos",
               "interval_start_exchange_local",
               "interval_end_exchange_local",
-              "s_h",
-              "known_component_nu_h",
-              "surprise_component_nu_h",
-              "nu_h",
+              "seasonality_factor",
+              "known_news_intensity",
+              "surprise_news_intensity",
+              "news_intensity",
               "interval_count",
               "first_interval_start_utc_nanos",
               "last_interval_end_utc_nanos",
-              "skipped_local_hour_interval_count",
-              "repeated_local_hour_interval_count",
+              "skipped_exchange_local_interval_count",
+              "repeated_exchange_local_interval_count",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -5070,18 +5051,22 @@
               "spring_forward_policy",
               "fall_back_policy"
             ],
-            "schema_version": "seasonality.hourly_factor.contract.v1"
+            "schema_version": "seasonality.interval_factor_grid.contract.v1"
           }
         },
-        "HOURLY_FACTOR_SPRING_FORWARD_POLICY": {
+        "INTERVAL_FACTOR_GRID_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "skip_nonexistent_local_hour_labels.v1"
+          "value": "seasonality.interval_factor_grid.contract.v1"
         },
-        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY": {
+        "INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY": {
+          "kind": "constant",
+          "value": "skip_nonexistent_exchange_local_interval_labels.v1"
+        },
+        "INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY": {
           "kind": "constant",
           "value": "fixed_width_utc_interval_projected_to_exchange_local.v1"
         },
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
             "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
@@ -5098,17 +5083,17 @@
               "interval_end_utc_nanos",
               "interval_start_exchange_local",
               "interval_end_exchange_local",
-              "known_component_nu_h",
-              "surprise_component_nu_h",
-              "nu_h",
+              "known_news_intensity",
+              "surprise_news_intensity",
+              "news_intensity",
               "interval_count",
               "known_component_non_zero_interval_count",
               "surprise_component_non_zero_interval_count",
               "combined_component_non_zero_interval_count",
               "known_scheduled_arrival_count",
               "surprise_multiplier_override_interval_count",
-              "skipped_local_hour_interval_count",
-              "repeated_local_hour_interval_count",
+              "skipped_exchange_local_interval_count",
+              "repeated_exchange_local_interval_count",
               "materialization_method",
               "component_aggregation_policy",
               "arrival_intensity_policy",
@@ -5138,14 +5123,14 @@
               "spring_forward_policy",
               "fall_back_policy"
             ],
-            "schema_version": "seasonality.hourly_nu_h.materialization.v1"
+            "schema_version": "seasonality.interval_news_intensity.materialization.v1"
           }
         },
-        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION": {
+        "INTERVAL_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "seasonality.hourly_nu_h.materialization.v1"
+          "value": "seasonality.interval_news_intensity.materialization.v1"
         },
-        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+        "INTERVAL_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
             "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
@@ -5162,18 +5147,18 @@
               "interval_end_utc_nanos",
               "interval_start_exchange_local",
               "interval_end_exchange_local",
-              "s_h",
+              "seasonality_factor",
               "source_point_count",
               "interval_count",
               "sparse_interval_count",
               "interpolated_interval_count",
               "fallback_interval_count",
-              "skipped_local_hour_interval_count",
-              "repeated_local_hour_interval_count",
+              "skipped_exchange_local_interval_count",
+              "repeated_exchange_local_interval_count",
               "interpolation_method",
               "aggregation_method",
               "sparse_fallback_policy",
-              "sparse_hour_minimum_observation_count",
+              "sparse_interval_minimum_observation_count",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
@@ -5184,21 +5169,21 @@
               "interpolation_method",
               "aggregation_method",
               "sparse_fallback_policy",
-              "sparse_hour_minimum_observation_count",
+              "sparse_interval_minimum_observation_count",
               "interval_boundary_policy",
               "interval_alignment_policy",
               "timezone_transition_policy",
               "spring_forward_policy",
               "fall_back_policy"
             ],
-            "schema_version": "seasonality.hourly_s_h.materialization.v1"
+            "schema_version": "seasonality.interval_seasonality_factor.materialization.v1"
           }
         },
-        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION": {
+        "INTERVAL_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "seasonality.hourly_s_h.materialization.v1"
+          "value": "seasonality.interval_seasonality_factor.materialization.v1"
         },
-        "HourlyFactorOutputSchema": {
+        "IntervalFactorGridOutputSchema": {
           "field_names": [
             "schema_version",
             "required_fields",
@@ -5209,7 +5194,7 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
-        "HourlyNewsIntensityMaterializationOutputSchema": {
+        "IntervalNewsIntensityMaterializationOutputSchema": {
           "field_names": [
             "schema_version",
             "required_fields",
@@ -5220,7 +5205,7 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
-        "HourlyNewsIntensityMaterializationSettings": {
+        "IntervalNewsIntensityMaterializationSettings": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
             "surprise_open_baseline_intensity",
@@ -5230,15 +5215,15 @@
           "kind": "contract_model",
           "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
-        "HourlyNewsIntensityProviderExplicitSource": {
+        "IntervalNewsIntensityProviderExplicitSource": {
           "field_names": [
-            "hourly_factors",
+            "interval_factors",
             "materialization_method"
           ],
           "kind": "contract_model",
-          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+          "signature": "(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'"
         },
-        "HourlyNewsIntensityProviderMaterializedSource": {
+        "IntervalNewsIntensityProviderMaterializedSource": {
           "field_names": [
             "known_scheduled_event_timestamps_utc",
             "surprise_open_baseline_intensity",
@@ -5248,11 +5233,11 @@
           "kind": "contract_model",
           "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_open_baseline_intensity: 'float', surprise_closed_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
-        "HourlyNewsIntensityProviderSource": {
+        "IntervalNewsIntensityProviderSource": {
           "kind": "constant",
-          "value": "HourlyNewsIntensityProviderSource"
+          "value": "IntervalNewsIntensityProviderSource"
         },
-        "HourlySeasonalityMaterializationOutputSchema": {
+        "IntervalSeasonalityMaterializationOutputSchema": {
           "field_names": [
             "schema_version",
             "required_fields",
@@ -5263,39 +5248,39 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
-        "HourlySeasonalityMaterializationSettings": {
+        "IntervalSeasonalityMaterializationSettings": {
           "field_names": [
             "interpolation_method",
             "aggregation_method",
             "sparse_fallback_policy",
-            "sparse_hour_minimum_observation_count"
+            "sparse_interval_minimum_observation_count"
           ],
           "kind": "contract_model",
-          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'"
         },
-        "HourlySeasonalityProviderExplicitSource": {
+        "IntervalSeasonalityProviderExplicitSource": {
           "field_names": [
-            "hourly_factors",
+            "interval_factors",
             "materialization_method"
           ],
           "kind": "contract_model",
-          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+          "signature": "(interval_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'None'"
         },
-        "HourlySeasonalityProviderMaterializedSource": {
+        "IntervalSeasonalityProviderMaterializedSource": {
           "field_names": [
             "source_timestamps_utc",
             "source_seasonality_factors",
             "interpolation_method",
             "aggregation_method",
             "sparse_fallback_policy",
-            "sparse_hour_minimum_observation_count"
+            "sparse_interval_minimum_observation_count"
           ],
           "kind": "contract_model",
-          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_interval_minimum_observation_count: 'int' = 1) -> 'None'"
         },
-        "HourlySeasonalityProviderSource": {
+        "IntervalSeasonalityProviderSource": {
           "kind": "constant",
-          "value": "HourlySeasonalityProviderSource"
+          "value": "IntervalSeasonalityProviderSource"
         }
       }
     },
@@ -5816,14 +5801,14 @@
           "field_names": [
             "request",
             "runtime_interval_schedule",
-            "hourly_factor_contract",
+            "interval_factor_grid",
             "optional_output_selection"
           ],
           "kind": "contract_model",
           "public_methods": {
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingFailureDiagnostic": {
           "field_names": [
@@ -6034,12 +6019,12 @@
           "field_names": [
             "request",
             "runtime_interval_schedule",
-            "hourly_factor_contract",
+            "interval_factor_grid",
             "optional_output_selection",
             "cpu_count"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
         "VanillaOptionSurfacePricingNodeTable": {
           "field_names": [
@@ -6507,14 +6492,14 @@
           "field_names": [
             "request",
             "runtime_interval_schedule",
-            "hourly_factor_contract",
+            "interval_factor_grid",
             "optional_output_selection"
           ],
           "kind": "contract_model",
           "public_methods": {
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingFailureDiagnostic": {
           "field_names": [
@@ -6701,12 +6686,12 @@
           "field_names": [
             "request",
             "runtime_interval_schedule",
-            "hourly_factor_contract",
+            "interval_factor_grid",
             "optional_output_selection",
             "cpu_count"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', interval_factor_grid: 'IntervalFactorGridContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
         "VanillaOptionSurfacePricingNodeTable": {
           "field_names": [
@@ -7451,24 +7436,7 @@
     },
     "janiform.seasonality": {
       "exports": [
-        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
-        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
-        "DayOfWeekSeasonalityEstimate",
-        "DayOfWeekSeasonalityEstimatorSettings",
-        "DayOfYearSeasonalityEstimate",
-        "DayOfYearSeasonalityEstimatorSettings",
-        "DeterministicSeasonalityComposition",
-        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-        "IntradaySeasonalityEstimate",
-        "IntradaySeasonalityEstimatorSettings",
-        "IntradaySmoothingKernel",
         "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
-        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
-        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
-        "ScheduledEventOverlayDefinition",
-        "SeasonalityDiagnosticsBatchInput",
         "SeasonalityInputValidationError",
         "SeasonalityPreprocessingError",
         "SessionFilter",
@@ -7476,56 +7444,14 @@
         "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
         "TimestampEventInputSchema",
         "TimestampEventPreprocessingResult",
-        "compose_deterministic_seasonality_signal",
-        "estimate_day_of_week_seasonality",
-        "estimate_day_of_year_seasonality",
-        "estimate_intraday_seasonality",
-        "generate_seasonality_diagnostics_report",
-        "generate_seasonality_diagnostics_reports_batch",
-        "load_scheduled_event_overlay_definitions",
         "preprocess_timestamp_events"
       ],
       "module_name": "janiform.seasonality",
       "schema_identifiers": [
         {
-          "name": "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.day_of_week.estimate.v1"
-        },
-        {
-          "name": "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.day_of_year.estimate.v1"
-        },
-        {
-          "name": "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
-          "public_exported": true,
-          "value": "seasonality_estimator.v1"
-        },
-        {
-          "name": "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.deterministic.composition.v1"
-        },
-        {
-          "name": "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.intraday.estimate.v1"
-        },
-        {
           "name": "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
           "public_exported": true,
           "value": "seasonality.timestamp_event.preprocessed.v1"
-        },
-        {
-          "name": "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.diagnostics.batch.v1"
-        },
-        {
-          "name": "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.diagnostics.report.v1"
         },
         {
           "name": "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
@@ -7534,133 +7460,9 @@
         }
       ],
       "symbols": {
-        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.day_of_week.estimate.v1"
-        },
-        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.day_of_year.estimate.v1"
-        },
-        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION": {
-          "kind": "constant",
-          "value": "seasonality_estimator.v1"
-        },
-        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.deterministic.composition.v1"
-        },
-        "DayOfWeekSeasonalityEstimate": {
-          "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
-          "kind": "class",
-          "origin_module": "janiform.seasonality.artifacts",
-          "qualname": "DayOfWeekSeasonalityEstimate"
-        },
-        "DayOfWeekSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
-        },
-        "DayOfYearSeasonalityEstimate": {
-          "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
-          "kind": "class",
-          "origin_module": "janiform.seasonality.artifacts",
-          "qualname": "DayOfYearSeasonalityEstimate"
-        },
-        "DayOfYearSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
-        },
-        "DeterministicSeasonalityComposition": {
-          "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
-          "kind": "class",
-          "origin_module": "janiform.seasonality.artifacts",
-          "qualname": "DeterministicSeasonalityComposition"
-        },
-        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.intraday.estimate.v1"
-        },
-        "IntradaySeasonalityEstimate": {
-          "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
-          "kind": "class",
-          "origin_module": "janiform.seasonality.artifacts",
-          "qualname": "IntradaySeasonalityEstimate"
-        },
-        "IntradaySeasonalityEstimatorSettings": {
-          "field_names": [
-            "minutes_per_bin",
-            "smoothing_kernel",
-            "smoothing_bandwidth_bins",
-            "minimum_bin_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
-        },
-        "IntradaySmoothingKernel": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "GAUSSIAN",
-              "value": "gaussian"
-            },
-            {
-              "name": "UNIFORM",
-              "value": "uniform"
-            }
-          ]
-        },
         "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION": {
           "kind": "constant",
           "value": "seasonality.timestamp_event.preprocessed.v1"
-        },
-        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.diagnostics.batch.v1"
-        },
-        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.diagnostics.report.v1"
-        },
-        "ScheduledEventOverlayDefinition": {
-          "field_names": [
-            "overlay_id",
-            "start_timestamp_utc",
-            "end_timestamp_utc",
-            "log_adjustment",
-            "precedence",
-            "enabled",
-            "source_label"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "from_config_record": "(config_record: 'Mapping[str, Any] | Any') -> 'ScheduledEventOverlayDefinition'"
-          },
-          "signature": "(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'"
-        },
-        "SeasonalityDiagnosticsBatchInput": {
-          "field_names": [
-            "dataset_id",
-            "preprocessed_events",
-            "intraday_estimate",
-            "day_of_week_estimate",
-            "day_of_year_estimate",
-            "composition"
-          ],
-          "kind": "contract_model",
-          "signature": "(dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition') -> 'None'"
         },
         "SeasonalityInputValidationError": {
           "base_classes": [
@@ -7737,34 +7539,6 @@
           "origin_module": "janiform.seasonality.artifacts",
           "qualname": "TimestampEventPreprocessingResult"
         },
-        "compose_deterministic_seasonality_signal": {
-          "kind": "function",
-          "signature": "(preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', *, scheduled_event_overlays: 'Optional[Sequence[ScheduledEventOverlayDefinition]]' = None) -> 'DeterministicSeasonalityComposition'"
-        },
-        "estimate_day_of_week_seasonality": {
-          "kind": "function",
-          "signature": "(preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[DayOfWeekSeasonalityEstimatorSettings]' = None) -> 'DayOfWeekSeasonalityEstimate'"
-        },
-        "estimate_day_of_year_seasonality": {
-          "kind": "function",
-          "signature": "(preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[DayOfYearSeasonalityEstimatorSettings]' = None) -> 'DayOfYearSeasonalityEstimate'"
-        },
-        "estimate_intraday_seasonality": {
-          "kind": "function",
-          "signature": "(preprocessed_events: 'TimestampEventPreprocessingResult', *, settings: 'Optional[IntradaySeasonalityEstimatorSettings]' = None) -> 'IntradaySeasonalityEstimate'"
-        },
-        "generate_seasonality_diagnostics_report": {
-          "kind": "function",
-          "signature": "(dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition', *, estimator_version: 'str' = 'seasonality_estimator.v1') -> 'dict[str, Any]'"
-        },
-        "generate_seasonality_diagnostics_reports_batch": {
-          "kind": "function",
-          "signature": "(batch_inputs: 'Sequence[SeasonalityDiagnosticsBatchInput]', *, estimator_version: 'str' = 'seasonality_estimator.v1') -> 'dict[str, Any]'"
-        },
-        "load_scheduled_event_overlay_definitions": {
-          "kind": "function",
-          "signature": "(overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]'"
-        },
         "preprocess_timestamp_events": {
           "kind": "function",
           "signature": "(event_records: 'Sequence[Mapping[str, Any]]', *, exchange_code: 'str', calendar_registry: 'CalendarRegistry', timestamp_field_name: 'str' = 'timestamp', session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1) -> 'TimestampEventPreprocessingResult'"
@@ -7773,66 +7547,18 @@
     },
     "janiform.seasonality.contracts": {
       "exports": [
-        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
-        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
-        "DayOfWeekSeasonalityEstimatorSettings",
-        "DayOfYearSeasonalityEstimatorSettings",
-        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-        "IntradaySeasonalityEstimatorSettings",
-        "IntradaySmoothingKernel",
         "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
-        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
-        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
-        "ScheduledEventOverlayDefinition",
         "SessionFilter",
         "TIMESTAMP_EVENT_INPUT_SCHEMA",
         "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
-        "TimestampEventInputSchema",
-        "load_scheduled_event_overlay_definitions"
+        "TimestampEventInputSchema"
       ],
       "module_name": "janiform.seasonality.contracts",
       "schema_identifiers": [
         {
-          "name": "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.day_of_week.estimate.v1"
-        },
-        {
-          "name": "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.day_of_year.estimate.v1"
-        },
-        {
-          "name": "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
-          "public_exported": true,
-          "value": "seasonality_estimator.v1"
-        },
-        {
-          "name": "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.deterministic.composition.v1"
-        },
-        {
-          "name": "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.intraday.estimate.v1"
-        },
-        {
           "name": "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
           "public_exported": true,
           "value": "seasonality.timestamp_event.preprocessed.v1"
-        },
-        {
-          "name": "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.diagnostics.batch.v1"
-        },
-        {
-          "name": "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
-          "public_exported": true,
-          "value": "seasonality.diagnostics.report.v1"
         },
         {
           "name": "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
@@ -7841,93 +7567,9 @@
         }
       ],
       "symbols": {
-        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.day_of_week.estimate.v1"
-        },
-        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.day_of_year.estimate.v1"
-        },
-        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION": {
-          "kind": "constant",
-          "value": "seasonality_estimator.v1"
-        },
-        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.deterministic.composition.v1"
-        },
-        "DayOfWeekSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
-        },
-        "DayOfYearSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
-        },
-        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.intraday.estimate.v1"
-        },
-        "IntradaySeasonalityEstimatorSettings": {
-          "field_names": [
-            "minutes_per_bin",
-            "smoothing_kernel",
-            "smoothing_bandwidth_bins",
-            "minimum_bin_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
-        },
-        "IntradaySmoothingKernel": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "GAUSSIAN",
-              "value": "gaussian"
-            },
-            {
-              "name": "UNIFORM",
-              "value": "uniform"
-            }
-          ]
-        },
         "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION": {
           "kind": "constant",
           "value": "seasonality.timestamp_event.preprocessed.v1"
-        },
-        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.diagnostics.batch.v1"
-        },
-        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION": {
-          "kind": "constant",
-          "value": "seasonality.diagnostics.report.v1"
-        },
-        "ScheduledEventOverlayDefinition": {
-          "field_names": [
-            "overlay_id",
-            "start_timestamp_utc",
-            "end_timestamp_utc",
-            "log_adjustment",
-            "precedence",
-            "enabled",
-            "source_label"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "from_config_record": "(config_record: 'Mapping[str, Any] | Any') -> 'ScheduledEventOverlayDefinition'"
-          },
-          "signature": "(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'"
         },
         "SessionFilter": {
           "kind": "enum",
@@ -7977,10 +7619,6 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', timestamp_field_name: 'str', accepted_timestamp_types: 'tuple[str, ...]', timezone_requirement: 'str', ordering_policy: 'str') -> 'None'"
-        },
-        "load_scheduled_event_overlay_definitions": {
-          "kind": "function",
-          "signature": "(overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]'"
         }
       }
     },
@@ -8002,7 +7640,7 @@
         "NewsProcessConfiguration",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshotCapture",
-        "SeededTickSimulationHourlyFactorSummary",
+        "SeededTickSimulationIntervalFactorGridSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
@@ -8062,15 +7700,15 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "hourly_factor_contract"
+            "interval_factor_grid"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'CoarseSimulationRunRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', hourly_factor_contract: 'HourlyFactorContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'"
+          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factor_grid: 'IntervalFactorGridContract') -> 'None'"
         },
         "HawkesExcitationState": {
           "field_names": [
@@ -8251,7 +7889,7 @@
             }
           ]
         },
-        "SeededTickSimulationHourlyFactorSummary": {
+        "SeededTickSimulationIntervalFactorGridSummary": {
           "field_names": [
             "schema_version",
             "exchange_code",
@@ -8259,15 +7897,15 @@
             "interval_duration_nanos",
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
-            "s_h",
-            "nu_h"
+            "seasonality_factor",
+            "news_intensity"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_contract": "(hourly_factor_contract: 'HourlyFactorContract') -> 'SeededTickSimulationHourlyFactorSummary'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'hourly_factor_summary') -> 'SeededTickSimulationHourlyFactorSummary'"
+            "from_contract": "(interval_factor_grid: 'IntervalFactorGridContract') -> 'SeededTickSimulationIntervalFactorGridSummary'",
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'interval_factor_grid_summary') -> 'SeededTickSimulationIntervalFactorGridSummary'"
           },
-          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'"
+          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', seasonality_factor: 'tuple[float, ...]', news_intensity: 'tuple[float, ...]') -> 'None'"
         },
         "SeededTickSimulationRequest": {
           "field_names": [
@@ -8281,7 +7919,7 @@
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state",
-            "hourly_factor_summary",
+            "interval_factor_grid_summary",
             "return_clock_exposure_parameters",
             "long_variance_parameters",
             "initial_long_variance_state",
@@ -8294,10 +7932,10 @@
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SeededTickSimulationRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_contract: 'HourlyFactorContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -8359,7 +7997,7 @@
         },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
-          "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
+          "signature": "(*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
         "run_coarse_simulation": {
           "kind": "function",
@@ -8621,15 +8259,15 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "hourly_factor_contract"
+            "interval_factor_grid"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'CoarseSimulationRunRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', hourly_factor_contract: 'HourlyFactorContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'"
+          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factor_grid: 'IntervalFactorGridContract') -> 'None'"
         },
         "KnownNewsArrivalConfiguration": {
           "field_names": [
@@ -8781,7 +8419,7 @@
         "SeededTickEventTapeMetadata",
         "SeededTickEventTapeView",
         "SeededTickSimulationDiagnostics",
-        "SeededTickSimulationHourlyFactorSummary",
+        "SeededTickSimulationIntervalFactorGridSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
@@ -9085,7 +8723,7 @@
           },
           "signature": "(schema_version: 'str', transition_count: 'int', event_count: 'int', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', python_materialization_seconds: 'float', boundary_transport_bytes: 'int', native_estimated_retained_bytes: 'int', materialized_transition_count: 'int', materialized_event_count: 'int', boundary_transport_policy: 'str', boundary_chunk_record_count: 'int') -> 'None'"
         },
-        "SeededTickSimulationHourlyFactorSummary": {
+        "SeededTickSimulationIntervalFactorGridSummary": {
           "field_names": [
             "schema_version",
             "exchange_code",
@@ -9093,15 +8731,15 @@
             "interval_duration_nanos",
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
-            "s_h",
-            "nu_h"
+            "seasonality_factor",
+            "news_intensity"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_contract": "(hourly_factor_contract: 'HourlyFactorContract') -> 'SeededTickSimulationHourlyFactorSummary'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'hourly_factor_summary') -> 'SeededTickSimulationHourlyFactorSummary'"
+            "from_contract": "(interval_factor_grid: 'IntervalFactorGridContract') -> 'SeededTickSimulationIntervalFactorGridSummary'",
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'interval_factor_grid_summary') -> 'SeededTickSimulationIntervalFactorGridSummary'"
           },
-          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'"
+          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', seasonality_factor: 'tuple[float, ...]', news_intensity: 'tuple[float, ...]') -> 'None'"
         },
         "SeededTickSimulationRequest": {
           "field_names": [
@@ -9115,7 +8753,7 @@
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state",
-            "hourly_factor_summary",
+            "interval_factor_grid_summary",
             "return_clock_exposure_parameters",
             "long_variance_parameters",
             "initial_long_variance_state",
@@ -9128,10 +8766,10 @@
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SeededTickSimulationRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_contract: 'HourlyFactorContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -9180,7 +8818,7 @@
         },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
-          "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
+          "signature": "(*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
         "deserialize_seeded_tick_simulation_response": {
           "kind": "function",
@@ -10036,7 +9674,7 @@
       "symbols": {
         "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY": {
           "kind": "constant",
-          "value": "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
+          "value": "explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1"
         },
         "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION": {
           "kind": "constant",
@@ -10208,14 +9846,14 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "hourly_factor_contract"
+            "interval_factor_grid"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SufficientStatisticsRunRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
+          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, interval_factor_grid: 'Optional[IntervalFactorGridContract]' = None) -> 'None'"
         },
         "SufficientStatisticsValidationError": {
           "base_classes": [
@@ -10308,7 +9946,7 @@
       "symbols": {
         "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY": {
           "kind": "constant",
-          "value": "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
+          "value": "explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1"
         },
         "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION": {
           "kind": "constant",
@@ -10480,14 +10118,14 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "hourly_factor_contract"
+            "interval_factor_grid"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SufficientStatisticsRunRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
+          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsModelInputs]' = None, interval_factor_grid: 'Optional[IntervalFactorGridContract]' = None) -> 'None'"
         }
       }
     },

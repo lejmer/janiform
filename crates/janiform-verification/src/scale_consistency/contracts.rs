@@ -83,7 +83,7 @@ impl Error for ScaleConsistencyArtifactOutputConfigError {}
 pub struct ScaleConsistencyExperimentParameterSet {
     pub parameter_set_id: String,
     pub model_inputs: SufficientStatisticsModelInputs,
-    pub fine_interval_factors: SufficientStatisticsIntervalFactors,
+    pub fine_interval_factor_grids: SufficientStatisticsIntervalFactors,
 }
 
 impl ScaleConsistencyExperimentParameterSet {
@@ -96,11 +96,13 @@ impl ScaleConsistencyExperimentParameterSet {
             ScaleConsistencyExperimentParameterSetError::InvalidModelInputs { source }
         })?;
 
-        self.fine_interval_factors.validate().map_err(|source| {
-            ScaleConsistencyExperimentParameterSetError::InvalidFineIntervalFactors { source }
-        })?;
+        self.fine_interval_factor_grids
+            .validate()
+            .map_err(|source| {
+                ScaleConsistencyExperimentParameterSetError::InvalidFineIntervalFactors { source }
+            })?;
 
-        if self.fine_interval_factors.interval_delta.is_none() {
+        if self.fine_interval_factor_grids.interval_delta.is_none() {
             return Err(
                 ScaleConsistencyExperimentParameterSetError::MissingFineIntervalFactorDelta,
             );
@@ -134,12 +136,12 @@ impl Display for ScaleConsistencyExperimentParameterSetError {
             Self::InvalidFineIntervalFactors { source } => {
                 write!(
                     formatter,
-                    "fine_interval_factors payload is invalid: {source}"
+                    "fine_interval_factor_grids payload is invalid: {source}"
                 )
             }
             Self::MissingFineIntervalFactorDelta => write!(
                 formatter,
-                "fine_interval_factors.interval_delta must be provided explicitly to avoid hidden coarse or fine mismatches"
+                "fine_interval_factor_grids.interval_delta must be provided explicitly to avoid hidden coarse or fine mismatches"
             ),
         }
     }
@@ -324,6 +326,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
         if self.scenario_id.trim().is_empty() {
             return Err(ScaleConsistencyPairedExperimentScenarioSpecError::MissingScenarioId);
         }
+
         if !self.coarse_interval_delta.is_finite() || self.coarse_interval_delta <= 0.0 {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::InvalidCoarseIntervalDelta {
@@ -331,6 +334,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
                 },
             );
         }
+
         if !self.fine_interval_delta.is_finite() || self.fine_interval_delta <= 0.0 {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::InvalidFineIntervalDelta {
@@ -338,6 +342,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
                 },
             );
         }
+
         if self.fine_interval_delta >= self.coarse_interval_delta {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::FineIntervalMustBeStrictlySmaller {
@@ -346,6 +351,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
                 },
             );
         }
+
         if self.horizon_interval_count == 0 {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::InvalidHorizonIntervalCount {
@@ -357,6 +363,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
         self.parameter_set.validate().map_err(|source| {
             ScaleConsistencyPairedExperimentScenarioSpecError::InvalidParameterSet { source }
         })?;
+
         self.random_seed_policy.validate().map_err(|source| {
             ScaleConsistencyPairedExperimentScenarioSpecError::InvalidRandomSeedPolicy { source }
         })?;
@@ -366,7 +373,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
 
         let available_factor_interval_delta = self
             .parameter_set
-            .fine_interval_factors
+            .fine_interval_factor_grids
             .interval_delta
             .ok_or(
                 ScaleConsistencyPairedExperimentScenarioSpecError::InvalidParameterSet {
@@ -374,6 +381,7 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
                         ScaleConsistencyExperimentParameterSetError::MissingFineIntervalFactorDelta,
                 },
             )?;
+
         if available_factor_interval_delta != self.fine_interval_delta {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::FineIntervalFactorDeltaMismatch {
@@ -393,7 +401,12 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
                 },
             )?;
 
-        let available_fine_interval_count = self.parameter_set.fine_interval_factors.s_h.len();
+        let available_fine_interval_count = self
+            .parameter_set
+            .fine_interval_factor_grids
+            .seasonality_factor
+            .len();
+
         if required_fine_interval_count > available_fine_interval_count {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::HorizonExceedsAvailableFineIntervals {
@@ -508,7 +521,7 @@ impl Display for ScaleConsistencyPairedExperimentScenarioSpecError {
                 available_factor_interval_delta,
             } => write!(
                 formatter,
-                "parameter_set.fine_interval_factors.interval_delta must match fine_interval_delta exactly, found fine_interval_delta={expected_fine_interval_delta} and fine_interval_factors.interval_delta={available_factor_interval_delta}"
+                "parameter_set.fine_interval_factor_grids.interval_delta must match fine_interval_delta exactly, found fine_interval_delta={expected_fine_interval_delta} and fine_interval_factor_grids.interval_delta={available_factor_interval_delta}"
             ),
             Self::FineIntervalCountOverflow {
                 coarse_horizon_interval_count,
@@ -523,7 +536,7 @@ impl Display for ScaleConsistencyPairedExperimentScenarioSpecError {
                 available_fine_interval_count,
             } => write!(
                 formatter,
-                "scenario requires {required_fine_interval_count} fine intervals for horizon_interval_count={coarse_horizon_interval_count}, but parameter_set.fine_interval_factors provides only {available_fine_interval_count}"
+                "scenario requires {required_fine_interval_count} fine intervals for horizon_interval_count={coarse_horizon_interval_count}, but parameter_set.fine_interval_factor_grids provides only {available_fine_interval_count}"
             ),
         }
     }
@@ -554,11 +567,13 @@ impl ScaleConsistencyPairedRunSpec {
         if self.run_id.trim().is_empty() {
             return Err(ScaleConsistencyPairedRunSpecError::MissingRunId);
         }
+
         if self.scenarios.is_empty() {
             return Err(ScaleConsistencyPairedRunSpecError::MissingScenarios);
         }
 
         let mut observed_scenario_ids: BTreeSet<&str> = BTreeSet::new();
+
         for scenario in &self.scenarios {
             scenario.validate().map_err(|source| {
                 ScaleConsistencyPairedRunSpecError::InvalidScenario {

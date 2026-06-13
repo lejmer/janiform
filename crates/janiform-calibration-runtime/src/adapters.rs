@@ -7,9 +7,9 @@ use janiform_engine_pricing::{
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingCalibrationHooksError,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
-use janiform_market_time::hourly_factors::{
-    HourlyFactorContractOutput, HourlyFactorProviderError, HourlyFactorProviderRequest,
-    provide_hourly_factor_contract,
+use janiform_market_time::interval_factor_grids::{
+    IntervalFactorGrid, IntervalFactorGridProviderError, IntervalFactorGridProviderRequest,
+    provide_interval_factor_grid,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelLoadings,
@@ -24,12 +24,12 @@ use janiform_model_kernels::risk_neutral::{
     transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 
-/// Resolve interval-aligned hourly factors for the calibration path.
-pub fn load_hourly_factor_contract_for_calibration(
+/// Resolve interval-aligned interval factor grids for the calibration path.
+pub fn load_interval_factor_grid_for_calibration(
     calendar_registry: &ExchangeCalendarRegistry,
-    provider_request: HourlyFactorProviderRequest<'_>,
-) -> Result<HourlyFactorContractOutput, HourlyFactorProviderError> {
-    provide_hourly_factor_contract(calendar_registry, provider_request)
+    provider_request: IntervalFactorGridProviderRequest<'_>,
+) -> Result<IntervalFactorGrid, IntervalFactorGridProviderError> {
+    provide_interval_factor_grid(calendar_registry, provider_request)
 }
 
 /// Run pure Hawkes kernel-domain checks before expensive calibration loops.
@@ -65,12 +65,12 @@ pub fn precheck_structured_hawkes_kernel_parameter_domain(
 pub fn project_hawkes_intensities_for_calibration_interval(
     state: HawkesExcitationState,
     parameters: HawkesKernelParameters,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
     interval_index: usize,
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
         parameters.lambda_bar,
-        &hourly_factor_contract.s_h,
+        &interval_factor_grid.seasonality_factor,
         interval_index,
     )
 }

@@ -33,7 +33,9 @@ fn janiform_exposes_representative_semantic_facade_imports() {
     let _ = std::mem::size_of::<calibration::staged::CalibrationStagedRunReport>();
     let _ = std::mem::size_of::<foundation::math::ComplexScalar>();
     let _ = std::mem::size_of::<model::hawkes::HawkesKernelParameters>();
-    let _ = std::mem::size_of::<model::factors::hourly::HourlyFactorProviderRequest<'static>>();
+    let _ = std::mem::size_of::<
+        model::factors::interval_factor_grid::IntervalFactorGridProviderRequest<'static>,
+    >();
     let _ = std::mem::size_of::<model::news::NewsProcessConfiguration>();
     let _ = std::mem::size_of::<model::nig::NigSharedPlusShiftConfiguration>();
     let _ = std::mem::size_of::<pricing::VanillaOptionPricingExecutionInput>();
@@ -48,7 +50,7 @@ fn janiform_exposes_representative_semantic_facade_imports() {
 
     let _ = governance::benchmarking::run_oracle_pricer_sufficient_statistics_benchmark_harness;
     let _ = calibration::market_data::preprocess_market_data_translation_request;
-    let _ = model::factors::hourly::provide_hourly_factor_contract;
+    let _ = model::factors::interval_factor_grid::provide_interval_factor_grid;
     let _ = pricing::run_vanilla_option_pricing;
     let _ = model::sufficient_statistics::solve_sufficient_statistics_transform_slices;
     let _ = simulation::run_coarse_simulation;

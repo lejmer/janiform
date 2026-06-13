@@ -585,7 +585,7 @@ pub struct HawkesStageImpliedMetricsDiagnostic {
     pub observed_open_event_rate_per_hour: f64,
     pub deseasonalized_open_event_rate_per_hour_target: f64,
     pub lambda_bar_scaling_ratio_applied: f64,
-    pub max_runtime_hourly_seasonality_factor: f64,
+    pub max_runtime_interval_seasonality_factor: f64,
     pub max_runtime_effective_branching_ratio: f64,
     pub runtime_effective_branching_margin: f64,
     pub model_implied_open_event_rate_per_hour: f64,

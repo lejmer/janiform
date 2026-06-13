@@ -13,13 +13,13 @@ use janiform_engine_simulation::{
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use janiform_market_time::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
-    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
+use janiform_market_time::interval_factor_grids::{
+    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD,
+    DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
+    INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY, INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+    INTERVAL_FACTOR_GRID_SCHEMA_VERSION, INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+    INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY, IntervalFactorGrid,
+    IntervalFactorGridDiagnostics, IntervalFactorGridMetadata,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -1337,7 +1337,7 @@ fn build_run_config(
     seasonality_factor: f64,
     news_intensity: f64,
 ) -> SeededTickSimulationRunConfig {
-    let hourly_factor_contract = build_uniform_factor_contract(
+    let interval_factor_grid = build_uniform_factor_contract(
         interval_duration_nanos,
         interval_count,
         seasonality_factor,
@@ -1355,7 +1355,7 @@ fn build_run_config(
                 MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                     .expect("zero-kappa endogenous mean reversion should construct"),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
-                hourly_factor_contract.metadata.interval_alignment_policy,
+                interval_factor_grid.metadata.interval_alignment_policy,
                 0.0,
                 0.0,
                 vec![0.0; interval_count],
@@ -1367,7 +1367,7 @@ fn build_run_config(
                 0.0, 0.0, 0.0, 0.0,
             )
             .expect("disabled mean-reversion boundary state should construct"),
-            hourly_factor_contract,
+            interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
@@ -1421,7 +1421,7 @@ fn build_uniform_factor_contract(
     interval_count: usize,
     seasonality_factor: f64,
     news_intensity: f64,
-) -> HourlyFactorContractOutput {
+) -> IntervalFactorGrid {
     let mut interval_indices: Vec<u64> = Vec::with_capacity(interval_count);
     let mut interval_start_utc_nanos: Vec<i64> = Vec::with_capacity(interval_count);
     let mut interval_end_utc_nanos: Vec<i64> = Vec::with_capacity(interval_count);
@@ -1449,8 +1449,8 @@ fn build_uniform_factor_contract(
         .copied()
         .expect("uniform factor contract should include at least one interval");
 
-    HourlyFactorContractOutput {
-        schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+    IntervalFactorGrid {
+        schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
         exchange_code: "XNYS".to_owned(),
         exchange_timezone_name: "America/New_York".to_owned(),
         request_start_utc_nanos: START_TIME_UTC_NANOS,
@@ -1461,28 +1461,28 @@ fn build_uniform_factor_contract(
         interval_end_utc_nanos: interval_end_utc_nanos.clone(),
         interval_start_exchange_local,
         interval_end_exchange_local,
-        s_h: vec![seasonality_factor; interval_count],
-        known_component_nu_h: vec![0.0; interval_count],
-        surprise_component_nu_h: vec![news_intensity; interval_count],
-        nu_h: vec![news_intensity; interval_count],
-        metadata: HourlyFactorMaterializationMetadata {
-            seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+        seasonality_factor: vec![seasonality_factor; interval_count],
+        known_news_intensity: vec![0.0; interval_count],
+        surprise_news_intensity: vec![news_intensity; interval_count],
+        news_intensity: vec![news_intensity; interval_count],
+        metadata: IntervalFactorGridMetadata {
+            seasonality_materialization_method: DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD
                 .to_owned(),
             news_intensity_materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
                 .to_owned(),
-            interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-            interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+            interval_boundary_policy: INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+            interval_alignment_policy: INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+            fall_back_policy: INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
         },
-        diagnostics: HourlyFactorContractDiagnostics {
+        diagnostics: IntervalFactorGridDiagnostics {
             interval_count,
             interval_duration_nanos,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: request_end_utc_nanos,
-            skipped_local_hour_interval_count: 0,
-            repeated_local_hour_interval_count: 0,
+            skipped_exchange_local_interval_count: 0,
+            repeated_exchange_local_interval_count: 0,
         },
     }
 }

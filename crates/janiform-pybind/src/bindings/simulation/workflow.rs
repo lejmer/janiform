@@ -95,7 +95,7 @@ fn run_simulation_from_model_artifact(
 }
 
 #[pyfunction]
-#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, long_variance_parameters, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
+#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, long_variance_parameters, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, seasonality_factor, known_news_intensity, surprise_news_intensity, interval_deltas))]
 #[expect(
     clippy::too_many_arguments,
     reason = "PyO3 boundary mirrors the public Python keyword API."
@@ -110,9 +110,9 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     interval_alignment_policy: &str,
     start_anchor_value: f64,
-    s_h: &Bound<'_, PyAny>,
-    known_nu_h: &Bound<'_, PyAny>,
-    surprise_nu_h: &Bound<'_, PyAny>,
+    seasonality_factor: &Bound<'_, PyAny>,
+    known_news_intensity: &Bound<'_, PyAny>,
+    surprise_news_intensity: &Bound<'_, PyAny>,
     interval_deltas: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
     let parsed_kernel_parameters = parse_seeded_simulation_kernel_parameters(kernel_parameters)?;
@@ -146,46 +146,52 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     let parsed_mean_reversion_fitted_parameters =
         parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
 
-    let parsed_s_h = parse_required_numeric_sequence(s_h, "s_h")?;
-    let parsed_known_nu_h = parse_required_numeric_sequence(known_nu_h, "known_nu_h")?;
-    let parsed_surprise_nu_h = parse_required_numeric_sequence(surprise_nu_h, "surprise_nu_h")?;
+    let parsed_seasonality_factor =
+        parse_required_numeric_sequence(seasonality_factor, "seasonality_factor")?;
+
+    let parsed_known_news_intensity =
+        parse_required_numeric_sequence(known_news_intensity, "known_news_intensity")?;
+
+    let parsed_surprise_news_intensity =
+        parse_required_numeric_sequence(surprise_news_intensity, "surprise_news_intensity")?;
 
     let parsed_interval_deltas =
         parse_required_numeric_sequence(interval_deltas, "interval_deltas")?;
 
-    let interval_count = parsed_s_h.len();
-    if parsed_known_nu_h.len() != interval_count
-        || parsed_surprise_nu_h.len() != interval_count
+    let interval_count = parsed_seasonality_factor.len();
+    if parsed_known_news_intensity.len() != interval_count
+        || parsed_surprise_news_intensity.len() != interval_count
         || parsed_interval_deltas.len() != interval_count
     {
         return Err(SeasonalityInputValidationError::new_err(
-            "endogenous mean-reversion runtime anchor materialization requires `s_h`, `known_nu_h`, `surprise_nu_h`, and `interval_deltas` to have identical lengths",
+            "endogenous mean-reversion runtime anchor materialization requires `seasonality_factor`, `known_news_intensity`, `surprise_news_intensity`, and `interval_deltas` to have identical lengths",
         ));
     }
 
-    let interval_factors: Result<Vec<EndogenousAnchorIntervalFactors>, PyErr> = parsed_s_h
-        .iter()
-        .zip(parsed_known_nu_h.iter())
-        .zip(parsed_surprise_nu_h.iter())
-        .zip(parsed_interval_deltas.iter())
-        .map(
-            |(((seasonality_factor, known_intensity), surprise_intensity), interval_delta)| {
-                EndogenousAnchorIntervalFactors::try_new(
-                    *seasonality_factor,
-                    *known_intensity,
-                    *surprise_intensity,
-                    *interval_delta,
-                )
-                .map_err(|source| {
-                    SeasonalityInputValidationError::new_err(format!(
-                        "endogenous mean-reversion interval factors failed validation: {source}"
-                    ))
-                })
-            },
-        )
-        .collect();
+    let interval_factor_grids: Result<Vec<EndogenousAnchorIntervalFactors>, PyErr> =
+        parsed_seasonality_factor
+            .iter()
+            .zip(parsed_known_news_intensity.iter())
+            .zip(parsed_surprise_news_intensity.iter())
+            .zip(parsed_interval_deltas.iter())
+            .map(
+                |(((seasonality_factor, known_intensity), surprise_intensity), interval_delta)| {
+                    EndogenousAnchorIntervalFactors::try_new(
+                        *seasonality_factor,
+                        *known_intensity,
+                        *surprise_intensity,
+                        *interval_delta,
+                    )
+                    .map_err(|source| {
+                        SeasonalityInputValidationError::new_err(format!(
+                            "endogenous mean-reversion interval factors failed validation: {source}"
+                        ))
+                    })
+                },
+            )
+            .collect();
 
-    let interval_factors = interval_factors?;
+    let interval_factor_grids = interval_factor_grids?;
 
     let materialization = materialize_endogenous_anchor_path(
         interval_alignment_policy,
@@ -200,7 +206,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
         parsed_nig_shared_plus_shift_configuration,
         &parsed_news_process_configuration,
         parsed_initial_excitation_state,
-        interval_factors.as_slice(),
+        interval_factor_grids.as_slice(),
     )
     .map_err(|source| {
         SeasonalityInputValidationError::new_err(format!(

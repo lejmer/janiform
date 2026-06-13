@@ -2,10 +2,10 @@ from datetime import datetime
 from typing import Any, Optional, cast
 
 from janiform._timestamps import NANOS_PER_HOUR
-from janiform.hourly_factors import (
-    HourlyNewsIntensityProviderExplicitSource,
-    HourlySeasonalityProviderExplicitSource,
-    provide_hourly_factor_contract,
+from janiform.interval_factor_grids import (
+    IntervalNewsIntensityProviderExplicitSource,
+    IntervalSeasonalityProviderExplicitSource,
+    provide_interval_factor_grid,
 )
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
@@ -88,18 +88,18 @@ def _run_seeded_case(
     range_start_utc = datetime.fromisoformat(fixture_case["range_start_utc"].replace("Z", "+00:00"))
     range_end_utc = datetime.fromisoformat(fixture_case["range_end_utc"].replace("Z", "+00:00"))
 
-    hourly_factor_contract = provide_hourly_factor_contract(
+    interval_factor_grid_contract = provide_interval_factor_grid(
         calendar_registry=calendar_registry,
         exchange_code=fixture_case["exchange_code"],
         range_start_utc=range_start_utc,
         range_end_utc=range_end_utc,
-        seasonality_source=HourlySeasonalityProviderExplicitSource(
-            hourly_factors=fixture_case["seasonality_hourly_factors"],
-            materialization_method="explicit_hourly_input.v1",
+        seasonality_source=IntervalSeasonalityProviderExplicitSource(
+            interval_factors=fixture_case["seasonality_interval_factor_grids"],
+            materialization_method="explicit_interval_grid_input.v1",
         ),
-        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
-            hourly_factors=fixture_case["news_intensity_hourly_factors"],
-            materialization_method="explicit_hourly_input.v1",
+        news_intensity_source=IntervalNewsIntensityProviderExplicitSource(
+            interval_factors=fixture_case["news_intensity_interval_factor_grids"],
+            materialization_method="explicit_interval_grid_input.v1",
         ),
     )
 
@@ -108,7 +108,7 @@ def _run_seeded_case(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
     ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
-        hourly_factor_contract=hourly_factor_contract
+        interval_factor_grid=interval_factor_grid_contract
     )
 
     request = SeededTickSimulationRequest.from_runtime_inputs(
@@ -151,7 +151,7 @@ def _run_seeded_case(
             ),
         ),
         initial_excitation_state=HawkesExcitationState.from_mapping(fixture_case["initial_excitation_state"]),
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid_contract,
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),

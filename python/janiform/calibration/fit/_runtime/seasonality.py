@@ -5,14 +5,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final, TYPE_CHECKING, cast
 
 from ...._native_api import native_module
-from ...._timestamps import NANOS_PER_HOUR, datetime_to_utc_nanos
 from ....calendar import CalendarRegistry
-from ....hourly_factors import (
-    HourlySeasonalityProviderExplicitSource,
-    HourlySeasonalityProviderMaterializedSource,
-    HourlySeasonalityProviderSource,
+from ....interval_factor_grids import (
+    IntervalSeasonalityProviderExplicitSource,
+    IntervalSeasonalityProviderSource,
 )
-from ....hourly_factors.workflow import _parse_interval_duration_nanos
+from ....interval_factor_grids.workflow import _parse_interval_duration_nanos
 from ...errors import calibration_error
 from .payloads import (
     raise_invalid_weekly_surprise_multiplier,
@@ -31,7 +29,7 @@ RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: Final = (
 )
 
 
-def build_runtime_hourly_seasonality_source_from_model(
+def build_runtime_interval_seasonality_source_from_model(
     model: JaniformModel,
     *,
     calendar_registry: CalendarRegistry,
@@ -39,7 +37,7 @@ def build_runtime_hourly_seasonality_source_from_model(
     range_start_utc: datetime,
     range_end_utc: datetime,
     interval: str | timedelta,
-) -> HourlySeasonalityProviderSource:
+) -> IntervalSeasonalityProviderSource:
     seasonality_parameters = seasonality_parameters_payload(model)
     if not contains_structural_seasonality_parameters(seasonality_parameters):
         raise RuntimeError(
@@ -59,29 +57,13 @@ def build_runtime_hourly_seasonality_source_from_model(
     )
 
     if not seasonality_grid.seasonality_factors:
-        return HourlySeasonalityProviderExplicitSource(
-            hourly_factors=(),
+        return IntervalSeasonalityProviderExplicitSource(
+            interval_factors=(),
             materialization_method=RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
         )
 
-    if interval_duration_nanos < NANOS_PER_HOUR or not runtime_interval_grid_is_hour_aligned(
-        range_start_utc=range_start_utc,
-        range_end_utc=range_end_utc,
-    ):
-        return HourlySeasonalityProviderMaterializedSource(
-            source_timestamps_utc=tuple(
-                runtime_datetime_from_utc_nanos(timestamp_utc_nanos)
-                for timestamp_utc_nanos in seasonality_grid.interval_start_utc_nanos
-            ),
-            source_seasonality_factors=seasonality_grid.seasonality_factors,
-            interpolation_method="previous_observation_carry_forward.v1",
-            aggregation_method="mean_of_observations.v1",
-            sparse_fallback_policy="global_mean.v1",
-            sparse_hour_minimum_observation_count=1,
-        )
-
-    return HourlySeasonalityProviderExplicitSource(
-        hourly_factors=seasonality_grid.seasonality_factors,
+    return IntervalSeasonalityProviderExplicitSource(
+        interval_factors=seasonality_grid.seasonality_factors,
         materialization_method=RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     )
 
@@ -154,18 +136,6 @@ def surprise_weekly_hour_utc_multipliers(model: JaniformModel) -> tuple[float, .
         )
 
     return weekly_hour_utc_multipliers
-
-
-def runtime_interval_grid_is_hour_aligned(*, range_start_utc: datetime, range_end_utc: datetime) -> bool:
-    return (
-        datetime_to_utc_nanos(range_start_utc) % NANOS_PER_HOUR == 0
-        and datetime_to_utc_nanos(range_end_utc) % NANOS_PER_HOUR == 0
-    )
-
-
-def runtime_datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
-    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
-    return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
 
 
 def materialize_runtime_structural_seasonality_grid(

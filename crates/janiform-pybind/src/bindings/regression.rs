@@ -1,6 +1,7 @@
 use janiform::governance::deterministic_regression::{
-    CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
-    HourlySeasonalityRegressionSource, RegressionHarnessError, RegressionHarnessToleranceConfig,
+    CalendarStateRegressionCase, IntervalFactorGridRegressionCase,
+    IntervalNewsIntensityRegressionSource, IntervalSeasonalityRegressionSource,
+    RegressionHarnessError, RegressionHarnessToleranceConfig,
     run_deterministic_regression_harness as run_deterministic_regression_harness_core,
 };
 use janiform::model::news::NewsArrivalComponent;
@@ -18,9 +19,9 @@ use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, Py
 use serde_json::to_string as serialize_to_json_string;
 
 use super::calendar::parse_timestamp_utc;
-use super::hourly::{
-    ParsedHourlyProviderNewsIntensitySource, ParsedHourlyProviderSeasonalitySource,
-    parse_hourly_provider_news_intensity_source, parse_hourly_provider_seasonality_source,
+use super::interval_factor_grid::{
+    ParsedIntervalProviderNewsIntensitySource, ParsedIntervalProviderSeasonalitySource,
+    parse_interval_provider_news_intensity_source, parse_interval_provider_seasonality_source,
 };
 use crate::SeasonalityInputValidationError;
 use crate::types::PyCalendarRegistry;
@@ -157,14 +158,14 @@ fn parse_regression_calendar_cases(
 
 fn parse_regression_seasonality_cases(
     raw_seasonality_cases: &Bound<'_, PyAny>,
-) -> PyResult<Vec<HourlyFactorRegressionCase>> {
+) -> PyResult<Vec<IntervalFactorGridRegressionCase>> {
     let seasonality_case_iter = raw_seasonality_cases.try_iter().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "seasonality_cases must be an iterable of mapping records",
         )
     })?;
 
-    let mut parsed_seasonality_cases: Vec<HourlyFactorRegressionCase> = Vec::new();
+    let mut parsed_seasonality_cases: Vec<IntervalFactorGridRegressionCase> = Vec::new();
 
     for (case_position, raw_case) in seasonality_case_iter.enumerate() {
         let raw_case = raw_case?;
@@ -221,34 +222,35 @@ fn parse_regression_seasonality_cases(
             case_mapping,
             case_position,
             "seasonality_cases",
-            "expected_s_h",
+            "expected_seasonality_factor",
         )?;
 
-        let expected_nu_h_value = parse_required_field(
+        let expected_news_intensity_value = parse_required_field(
             case_mapping,
             case_position,
             "seasonality_cases",
-            "expected_nu_h",
+            "expected_news_intensity",
         )?;
 
         let parsed_seasonality_source =
-            parse_hourly_provider_seasonality_source(&seasonality_source_value)?;
+            parse_interval_provider_seasonality_source(&seasonality_source_value)?;
+
         let parsed_news_intensity_source =
-            parse_hourly_provider_news_intensity_source(&news_intensity_source_value)?;
+            parse_interval_provider_news_intensity_source(&news_intensity_source_value)?;
 
-        let expected_s_h: Vec<f64> = expected_s_h_value.extract().map_err(|_| {
+        let expected_seasonality_factor: Vec<f64> = expected_s_h_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
-                "seasonality_cases[{case_position}] field 'expected_s_h' must be an iterable of float values",
+                "seasonality_cases[{case_position}] field 'expected_seasonality_factor' must be an iterable of float values",
             ))
         })?;
 
-        let expected_nu_h: Vec<f64> = expected_nu_h_value.extract().map_err(|_| {
+        let expected_news_intensity: Vec<f64> = expected_news_intensity_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
-                "seasonality_cases[{case_position}] field 'expected_nu_h' must be an iterable of float values",
+                "seasonality_cases[{case_position}] field 'expected_news_intensity' must be an iterable of float values",
             ))
         })?;
 
-        parsed_seasonality_cases.push(HourlyFactorRegressionCase {
+        parsed_seasonality_cases.push(IntervalFactorGridRegressionCase {
             fixture_id,
             exchange_code,
             range_start_utc: parse_timestamp_utc(&range_start_utc_text)?,
@@ -257,8 +259,8 @@ fn parse_regression_seasonality_cases(
             news_intensity_source: convert_regression_news_intensity_source(
                 parsed_news_intensity_source,
             ),
-            expected_s_h,
-            expected_nu_h,
+            expected_seasonality_factor,
+            expected_news_intensity,
         });
     }
 
@@ -305,6 +307,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
             "gap_behavior_cases",
             "scenario_class",
         )?;
+
         let scenario_class = parse_news_semantics_scenario_class(raw_scenario_class.as_str())?;
 
         let initial_j_t_value = parse_required_field(
@@ -383,6 +386,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
 
         for (event_position, raw_event) in injected_event_iter.enumerate() {
             let raw_event = raw_event?;
+
             let event_mapping = raw_event.cast::<PyMapping>().map_err(|_| {
                 SeasonalityInputValidationError::new_err(format!(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] must be a mapping"
@@ -731,51 +735,51 @@ fn parse_issue_traceability_metadata(
 }
 
 fn convert_regression_seasonality_source(
-    parsed_source: ParsedHourlyProviderSeasonalitySource,
-) -> HourlySeasonalityRegressionSource {
+    parsed_source: ParsedIntervalProviderSeasonalitySource,
+) -> IntervalSeasonalityRegressionSource {
     match parsed_source {
-        ParsedHourlyProviderSeasonalitySource::Explicit {
-            hourly_factors,
+        ParsedIntervalProviderSeasonalitySource::Explicit {
+            interval_factors,
             materialization_method,
-        } => HourlySeasonalityRegressionSource::Explicit {
-            hourly_factors,
+        } => IntervalSeasonalityRegressionSource::Explicit {
+            interval_factors,
             materialization_method,
         },
-        ParsedHourlyProviderSeasonalitySource::Materialized {
+        ParsedIntervalProviderSeasonalitySource::Materialized {
             source_timestamp_utc_nanos,
             source_seasonality_factors,
             interpolation_method,
             aggregation_method,
             sparse_fallback_policy,
-            sparse_hour_minimum_observation_count,
-        } => HourlySeasonalityRegressionSource::Materialized {
+            sparse_interval_minimum_observation_count,
+        } => IntervalSeasonalityRegressionSource::Materialized {
             source_timestamp_utc_nanos,
             source_seasonality_factors,
             interpolation_method,
             aggregation_method,
             sparse_fallback_policy,
-            sparse_hour_minimum_observation_count,
+            sparse_interval_minimum_observation_count,
         },
     }
 }
 
 fn convert_regression_news_intensity_source(
-    parsed_source: ParsedHourlyProviderNewsIntensitySource,
-) -> HourlyNewsIntensityRegressionSource {
+    parsed_source: ParsedIntervalProviderNewsIntensitySource,
+) -> IntervalNewsIntensityRegressionSource {
     match parsed_source {
-        ParsedHourlyProviderNewsIntensitySource::Explicit {
-            hourly_factors,
+        ParsedIntervalProviderNewsIntensitySource::Explicit {
+            interval_factors,
             materialization_method,
-        } => HourlyNewsIntensityRegressionSource::Explicit {
-            hourly_factors,
+        } => IntervalNewsIntensityRegressionSource::Explicit {
+            interval_factors,
             materialization_method,
         },
-        ParsedHourlyProviderNewsIntensitySource::Materialized {
+        ParsedIntervalProviderNewsIntensitySource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
             surprise_open_baseline_intensity,
             surprise_closed_baseline_intensity,
             surprise_deterministic_time_multiplier_by_interval_index,
-        } => HourlyNewsIntensityRegressionSource::Materialized {
+        } => IntervalNewsIntensityRegressionSource::Materialized {
             known_scheduled_event_timestamps_utc_nanos,
             surprise_open_baseline_intensity,
             surprise_closed_baseline_intensity,
@@ -799,6 +803,7 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         run_deterministic_regression_harness,
         module
     )?)?;
+
     module.add_function(pyo3::wrap_pyfunction!(
         run_open_closed_gap_leakage_regression_harness,
         module

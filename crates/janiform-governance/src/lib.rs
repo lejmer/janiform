@@ -8,9 +8,9 @@ mod regression_drift_attribution;
 
 pub use deterministic_regression::{
     CalendarStateRegressionCase, DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY,
-    DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION, HourlyFactorRegressionCase,
-    HourlyNewsIntensityRegressionSource, HourlySeasonalityRegressionSource, RegressionCaseFailure,
-    RegressionCaseKind, RegressionCaseReport, RegressionHarnessError,
+    DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION, IntervalFactorGridRegressionCase,
+    IntervalNewsIntensityRegressionSource, IntervalSeasonalityRegressionSource,
+    RegressionCaseFailure, RegressionCaseKind, RegressionCaseReport, RegressionHarnessError,
     RegressionHarnessFallbackPolicy, RegressionHarnessReport, RegressionHarnessSummary,
     RegressionHarnessToleranceConfig, VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
     VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY, VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,

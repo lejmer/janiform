@@ -294,7 +294,7 @@ impl HawkesExcitationState {
         }
     }
 
-    /// Project intensities for an interval index using shared hourly factor contract `s_h`.
+    /// Project intensities for an interval index using shared interval factor grid contract `seasonality_factor`.
     pub fn project_intensities_for_hourly_interval(
         self,
         lambda_bar: f64,

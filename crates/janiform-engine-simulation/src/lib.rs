@@ -1,4 +1,4 @@
-//! Simulation-side hourly factor loading through the shared provider interface.
+//! Simulation-side interval factor grid loading through the shared provider interface.
 
 mod api;
 mod artifacts;
@@ -12,9 +12,8 @@ mod progress;
 mod runtime;
 
 pub use api::{
-    evolve_hawkes_state, load_hourly_factor_contract,
-    project_hawkes_intensities_simulation_interval, sample_nig_trading_time_increment,
-    sample_nig_trading_time_increment_with_edge_mode,
+    evolve_hawkes_state, load_interval_factor_grid, project_hawkes_intensities_simulation_interval,
+    sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
 };
 pub use artifacts::{
     SeededFinePathMetadata, SeededFinePathOutput, SeededFinePathRecord,

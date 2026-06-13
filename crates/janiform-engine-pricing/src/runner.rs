@@ -33,44 +33,56 @@ use super::progress::PricingProgressEvent;
 /// One-interval pricing factors required to execute the canonical vanilla pricing workflow.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct VanillaOptionPricingIntervalFactors {
-    pub s_h: f64,
-    pub nu_h_known: f64,
-    pub nu_h_surprise: f64,
+    pub seasonality_factor: f64,
+    pub known_news_intensity: f64,
+    pub surprise_news_intensity: f64,
 }
 
 impl VanillaOptionPricingIntervalFactors {
-    pub const fn new(s_h: f64, nu_h_known: f64, nu_h_surprise: f64) -> Self {
+    pub const fn new(
+        seasonality_factor: f64,
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
+    ) -> Self {
         Self {
-            s_h,
-            nu_h_known,
-            nu_h_surprise,
+            seasonality_factor,
+            known_news_intensity,
+            surprise_news_intensity,
         }
     }
 
     pub fn try_new(
-        s_h: f64,
-        nu_h_known: f64,
-        nu_h_surprise: f64,
+        seasonality_factor: f64,
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
     ) -> Result<Self, VanillaOptionPricingIntervalFactorsError> {
-        let factors = Self::new(s_h, nu_h_known, nu_h_surprise);
+        let factors = Self::new(
+            seasonality_factor,
+            known_news_intensity,
+            surprise_news_intensity,
+        );
+
         factors.validate()?;
 
         Ok(factors)
     }
 
     pub fn validate(self) -> Result<(), VanillaOptionPricingIntervalFactorsError> {
-        if !self.s_h.is_finite() || self.s_h < 0.0 {
+        if !self.seasonality_factor.is_finite() || self.seasonality_factor < 0.0 {
             return Err(
                 VanillaOptionPricingIntervalFactorsError::InvalidSeasonalityFactor {
-                    value: self.s_h,
+                    value: self.seasonality_factor,
                 },
             );
         }
 
-        ExponentialAffineTransformNewsIntensityInput::try_new(self.nu_h_known, self.nu_h_surprise)
-            .map_err(
-                |source| VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { source },
-            )?;
+        ExponentialAffineTransformNewsIntensityInput::try_new(
+            self.known_news_intensity,
+            self.surprise_news_intensity,
+        )
+        .map_err(|source| {
+            VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { source }
+        })?;
 
         Ok(())
     }
@@ -81,14 +93,15 @@ impl VanillaOptionPricingIntervalFactors {
         ExponentialAffineTransformNewsIntensityInput,
         VanillaOptionPricingIntervalFactorsError,
     > {
-        ExponentialAffineTransformNewsIntensityInput::try_new(self.nu_h_known, self.nu_h_surprise)
-            .map_err(
-                |source| VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { source },
-            )
+        ExponentialAffineTransformNewsIntensityInput::try_new(
+            self.known_news_intensity,
+            self.surprise_news_intensity,
+        )
+        .map_err(|source| VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { source })
     }
 
     pub fn total_news_intensity(self) -> f64 {
-        self.nu_h_known + self.nu_h_surprise
+        self.known_news_intensity + self.surprise_news_intensity
     }
 }
 
@@ -107,12 +120,12 @@ impl Display for VanillaOptionPricingIntervalFactorsError {
         match self {
             Self::InvalidSeasonalityFactor { value } => write!(
                 formatter,
-                "interval_factors.s_h must be finite and non-negative, found {value}"
+                "interval_factor_grids.seasonality_factor must be finite and non-negative, found {value}"
             ),
             Self::InvalidNewsIntensity { source } => {
                 write!(
                     formatter,
-                    "interval_factors news intensity is invalid: {source}"
+                    "interval_factor_grids news intensity is invalid: {source}"
                 )
             }
         }
@@ -133,7 +146,7 @@ impl Error for VanillaOptionPricingIntervalFactorsError {
 pub struct VanillaOptionPricingExecutionInput {
     pub request: VanillaOptionPricingRequest,
     pub runtime_interval_schedule: PricingIntervalSchedule,
-    pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+    pub interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
 }
 
@@ -141,13 +154,13 @@ impl VanillaOptionPricingExecutionInput {
     pub fn new(
         request: VanillaOptionPricingRequest,
         runtime_interval_schedule: PricingIntervalSchedule,
-        interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+        interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     ) -> Self {
         Self {
             request,
             runtime_interval_schedule,
-            interval_factors,
+            interval_factor_grids,
             optional_output_selection,
         }
     }
@@ -155,13 +168,13 @@ impl VanillaOptionPricingExecutionInput {
     pub fn try_new(
         request: VanillaOptionPricingRequest,
         runtime_interval_schedule: PricingIntervalSchedule,
-        interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+        interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     ) -> Result<Self, VanillaOptionPricingExecutionInputError> {
         let execution_input = Self::new(
             request,
             runtime_interval_schedule,
-            interval_factors,
+            interval_factor_grids,
             optional_output_selection,
         );
 
@@ -175,21 +188,21 @@ impl VanillaOptionPricingExecutionInput {
             .validate()
             .map_err(|source| VanillaOptionPricingExecutionInputError::InvalidRequest { source })?;
 
-        if self.interval_factors.is_empty() {
+        if self.interval_factor_grids.is_empty() {
             return Err(VanillaOptionPricingExecutionInputError::EmptyIntervalFactors);
         }
 
-        for interval_factors in &self.interval_factors {
-            interval_factors.validate().map_err(|source| {
+        for interval_factor_grids in &self.interval_factor_grids {
+            interval_factor_grids.validate().map_err(|source| {
                 VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source }
             })?;
         }
 
-        if self.interval_factors.len() != self.runtime_interval_schedule.interval_count() {
+        if self.interval_factor_grids.len() != self.runtime_interval_schedule.interval_count() {
             return Err(
                 VanillaOptionPricingExecutionInputError::IntervalFactorShapeMismatch {
                     expected_interval_factor_count: self.runtime_interval_schedule.interval_count(),
-                    found_interval_factor_count: self.interval_factors.len(),
+                    found_interval_factor_count: self.interval_factor_grids.len(),
                 },
             );
         }
@@ -275,11 +288,11 @@ impl Display for VanillaOptionPricingExecutionInputError {
             ),
             Self::EmptyIntervalFactors => write!(
                 formatter,
-                "pricing execution interval_factors payload must contain at least one interval"
+                "pricing execution interval_factor_grids payload must contain at least one interval"
             ),
             Self::InvalidIntervalFactors { source } => write!(
                 formatter,
-                "pricing execution interval_factors payload is invalid: {source}"
+                "pricing execution interval_factor_grids payload is invalid: {source}"
             ),
             Self::EmptyRuntimeIntervalSchedule => write!(
                 formatter,
@@ -301,14 +314,14 @@ impl Display for VanillaOptionPricingExecutionInputError {
                 found_interval_factor_count,
             } => write!(
                 formatter,
-                "pricing execution interval_factors must contain exactly {expected_interval_factor_count} entries implied by runtime_interval_schedule, found {found_interval_factor_count}"
+                "pricing execution interval_factor_grids must contain exactly {expected_interval_factor_count} entries implied by runtime_interval_schedule, found {found_interval_factor_count}"
             ),
             Self::MaturityIntervalMismatch {
                 requested_maturity_interval,
                 runtime_grid_maturity_interval,
             } => write!(
                 formatter,
-                "pricing execution maturity_interval {requested_maturity_interval} must equal interval_factors.len() * request.interval_delta = {runtime_grid_maturity_interval}"
+                "pricing execution maturity_interval {requested_maturity_interval} must equal interval_factor_grids.len() * request.interval_delta = {runtime_grid_maturity_interval}"
             ),
         }
     }
@@ -663,9 +676,9 @@ impl Error for VanillaOptionPricingRunError {
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VanillaOptionPricingIntervalFactorsPayload {
-    s_h: f64,
-    nu_h_known: f64,
-    nu_h_surprise: f64,
+    seasonality_factor: f64,
+    known_news_intensity: f64,
+    surprise_news_intensity: f64,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
@@ -675,8 +688,12 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
     {
         let payload = VanillaOptionPricingIntervalFactorsPayload::deserialize(deserializer)?;
 
-        Self::try_new(payload.s_h, payload.nu_h_known, payload.nu_h_surprise)
-            .map_err(serde::de::Error::custom)
+        Self::try_new(
+            payload.seasonality_factor,
+            payload.known_news_intensity,
+            payload.surprise_news_intensity,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -685,7 +702,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
 struct VanillaOptionPricingExecutionInputPayload {
     request: VanillaOptionPricingRequest,
     runtime_interval_schedule: PricingIntervalSchedule,
-    interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+    interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
 }
@@ -700,7 +717,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingExecutionInput {
         Self::try_new(
             payload.request,
             payload.runtime_interval_schedule,
-            payload.interval_factors,
+            payload.interval_factor_grids,
             payload.optional_output_selection,
         )
         .map_err(serde::de::Error::custom)

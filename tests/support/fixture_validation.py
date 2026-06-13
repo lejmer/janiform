@@ -12,8 +12,6 @@ from janiform.calendar import CalendarRegistry
 from janiform.calibration.errors import calibration_error
 from janiform.contracts import require_boolean
 from janiform.validation.enum import (
-    HourlySourceKind,
-    HourlyValidationOutcomeKind,
     MarketState,
     NewsArrivalComponent,
     OpenClosedGapScenarioClass,
@@ -48,10 +46,6 @@ CALENDAR_SCHEMA_FAMILY: str = "validation.calendar.service.regression"
 CALENDAR_SCHEMA_GENERATION: str = "v0.x"
 CALENDAR_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
 
-HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "hourly.factor.regression.v1"
-HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: str = "hourly_factor_regression_matrix_v1"
-HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: str = "validation.hourly_factor.thresholds.v1"
-STATE_CLASSIFICATION_STRICTNESS_POLICY: str = "exact_match_required.v1"
 OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SCHEMA_VERSION: str = "gap.behavior.open_closed.scenario_fixture.v1"
 OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID: str = "open_closed_gap_behavior_scenarios_v1"
 OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY: str = "validation.gap_behavior.open_closed"
@@ -166,77 +160,6 @@ class CalendarRegressionFixtureDocument(TypedDict):
     canonical_regression_metadata: CalendarCanonicalRegressionMetadata
     calendar_registry: dict[str, Any]
     cases: list[CalendarRegressionCase]
-
-
-class HourlyFactorRegressionCanonicalMetadata(TypedDict):
-    required_tags: list[str]
-    stable_canonical_output_fixture_ids: list[str]
-    stable_missing_data_guard_fixture_ids: list[str]
-
-
-class HourlyFactorRegressionToleranceConfig(TypedDict):
-    s_h_absolute_tolerance: float
-    nu_h_absolute_tolerance: float
-
-
-class HourlyFactorRegressionFactorRange(TypedDict):
-    s_h_min: float
-    s_h_max: float
-    nu_h_min: float
-    nu_h_max: float
-
-
-class HourlyFactorRegressionThresholdChangeLogEntry(TypedDict):
-    policy_version: str
-    recorded_at_utc: str
-    rationale: str
-
-
-class HourlyFactorRegressionThresholdConfiguration(TypedDict):
-    schema_version: str
-    policy_version: str
-    state_classification_strictness: str
-    tolerance_config: HourlyFactorRegressionToleranceConfig
-    factor_range_by_fixture_class: dict[str, HourlyFactorRegressionFactorRange]
-    change_log: list[HourlyFactorRegressionThresholdChangeLogEntry]
-
-
-class HourlyFactorRegressionCanonicalOutputCase(TypedDict):
-    fixture_id: str
-    exchange_code: str
-    range_start_utc: str
-    range_end_utc: str
-    seasonality_source: dict[str, Any]
-    news_intensity_source: dict[str, Any]
-    expected_s_h: list[float]
-    expected_nu_h: list[float]
-    expected_skipped_local_hour_interval_count: int
-    expected_repeated_local_hour_interval_count: int
-    tags: list[str]
-    description: str
-
-
-class HourlyFactorRegressionMissingDataGuardCase(TypedDict):
-    fixture_id: str
-    exchange_code: str
-    range_start_utc: str
-    range_end_utc: str
-    source_timestamps_utc: list[str]
-    source_seasonality_factors: list[float]
-    settings: dict[str, Any]
-    expected_outcome: dict[str, Any]
-    tags: list[str]
-    description: str
-
-
-class HourlyFactorRegressionFixtureDocument(TypedDict):
-    schema_version: str
-    fixture_set_id: str
-    calendar_fixture_set_id: str
-    threshold_configuration: HourlyFactorRegressionThresholdConfiguration
-    canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata
-    canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase]
-    missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase]
 
 
 class OpenClosedGapBehaviorSchemaMetadata(TypedDict):
@@ -385,8 +308,8 @@ class SeededTickSimulationParityCase(TypedDict):
     horizon_interval_count: int
     kernel_parameters: SeededTickSimulationParityKernelParameters
     initial_excitation_state: SeededTickSimulationParityInitialExcitationState
-    seasonality_hourly_factors: list[float]
-    news_intensity_hourly_factors: list[float]
+    seasonality_interval_factor_grids: list[float]
+    news_intensity_interval_factor_grids: list[float]
     expected_timestamps_utc_nanos: list[int]
     expected_side_sequence: list[str]
     expected_total_event_count: int
@@ -820,103 +743,6 @@ def load_calendar_regression_fixture_document(
 ) -> CalendarRegressionFixtureDocument:
     payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_calendar_regression_fixture_document(payload_value)
-
-
-def validate_hourly_factor_regression_fixture_document(
-    raw_document: object,
-) -> HourlyFactorRegressionFixtureDocument:
-    document_map: JsonObject = _require_json_object(raw_document, "hourly factor regression fixture")
-    schema_version: str = _require_non_empty_string(document_map, "schema_version", "hourly factor fixture")
-    if schema_version != HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION:
-        raise ValueError(f"unsupported hourly factor fixture schema version: {schema_version}")
-
-    fixture_set_id: str = _require_non_empty_string(document_map, "fixture_set_id", "hourly factor fixture")
-    if fixture_set_id != HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID:
-        raise ValueError(f"unexpected hourly factor fixture set id: {fixture_set_id}")
-
-    calendar_fixture_set_id: str = _require_non_empty_string(
-        document_map,
-        "calendar_fixture_set_id",
-        "hourly factor fixture",
-    )
-    if calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID:
-        raise ValueError(
-            f"unexpected hourly factor calendar_fixture_set_id: {calendar_fixture_set_id}",
-        )
-
-    threshold_configuration = _validate_hourly_factor_threshold_configuration(
-        _require_json_object_field(
-            document_map,
-            "threshold_configuration",
-            "hourly factor fixture",
-        ),
-        "hourly factor fixture.threshold_configuration",
-    )
-
-    canonical_output_cases_raw: JsonArray = _require_json_array_field(
-        document_map,
-        "canonical_output_cases",
-        "hourly factor fixture",
-    )
-    if not canonical_output_cases_raw:
-        raise ValueError("hourly factor fixture requires at least one canonical_output_cases entry")
-
-    missing_data_guard_cases_raw: JsonArray = _require_json_array_field(
-        document_map,
-        "missing_data_guard_cases",
-        "hourly factor fixture",
-    )
-    if not missing_data_guard_cases_raw:
-        raise ValueError("hourly factor fixture requires at least one missing_data_guard_cases entry")
-
-    canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase] = [
-        _validate_hourly_factor_canonical_output_case(
-            _require_json_object(case_value, "hourly canonical output case"),
-        )
-        for case_value in canonical_output_cases_raw
-    ]
-    missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase] = [
-        _validate_hourly_factor_missing_data_guard_case(
-            _require_json_object(case_value, "hourly missing data guard case"),
-        )
-        for case_value in missing_data_guard_cases_raw
-    ]
-
-    _require_unique_fixture_ids(
-        [fixture_case["fixture_id"] for fixture_case in canonical_output_cases],
-        "canonical_output_cases",
-    )
-    _require_unique_fixture_ids(
-        [fixture_case["fixture_id"] for fixture_case in missing_data_guard_cases],
-        "missing_data_guard_cases",
-    )
-
-    canonical_regression_metadata = _validate_hourly_canonical_regression_metadata(
-        _require_json_object_field(
-            document_map,
-            "canonical_regression_metadata",
-            "hourly factor fixture",
-        ),
-        canonical_output_cases,
-        missing_data_guard_cases,
-    )
-
-    return {
-        "schema_version": schema_version,
-        "fixture_set_id": fixture_set_id,
-        "calendar_fixture_set_id": calendar_fixture_set_id,
-        "threshold_configuration": threshold_configuration,
-        "canonical_regression_metadata": canonical_regression_metadata,
-        "canonical_output_cases": canonical_output_cases,
-        "missing_data_guard_cases": missing_data_guard_cases,
-    }
-
-
-def load_hourly_factor_regression_fixture_document(
-    fixture_payload_bytes: bytes,
-) -> HourlyFactorRegressionFixtureDocument:
-    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
-    return validate_hourly_factor_regression_fixture_document(payload_value)
 
 
 def validate_open_closed_gap_behavior_fixture_document(
@@ -2343,358 +2169,6 @@ def _validate_calendar_canonical_regression_metadata(
     }
 
 
-def _validate_hourly_factor_canonical_output_case(
-    raw_case: JsonObject,
-) -> HourlyFactorRegressionCanonicalOutputCase:
-    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", "hourly canonical output case")
-    exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "hourly canonical output case")
-    range_start_utc: str = _require_non_empty_string(raw_case, "range_start_utc", "hourly canonical output case")
-    range_end_utc: str = _require_non_empty_string(raw_case, "range_end_utc", "hourly canonical output case")
-
-    seasonality_source: JsonObject = _require_json_object_field(
-        raw_case,
-        "seasonality_source",
-        "hourly canonical output case",
-    )
-    _validate_hourly_seasonality_source(seasonality_source, "hourly canonical output case.seasonality_source")
-
-    news_intensity_source: JsonObject = _require_json_object_field(
-        raw_case,
-        "news_intensity_source",
-        "hourly canonical output case",
-    )
-
-    _validate_hourly_news_intensity_source(news_intensity_source, "hourly canonical output case.news_intensity_source")
-
-    expected_s_h: list[float] = _require_float_list(raw_case, "expected_s_h", "hourly canonical output case")
-    expected_nu_h: list[float] = _require_float_list(raw_case, "expected_nu_h", "hourly canonical output case")
-    expected_skipped_local_hour_interval_count: int = _require_non_negative_int(
-        raw_case,
-        "expected_skipped_local_hour_interval_count",
-        "hourly canonical output case",
-    )
-    expected_repeated_local_hour_interval_count: int = _require_non_negative_int(
-        raw_case,
-        "expected_repeated_local_hour_interval_count",
-        "hourly canonical output case",
-    )
-    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "hourly canonical output case")
-    description: str = _require_non_empty_string(raw_case, "description", "hourly canonical output case")
-
-    return {
-        "fixture_id": fixture_id,
-        "exchange_code": exchange_code,
-        "range_start_utc": range_start_utc,
-        "range_end_utc": range_end_utc,
-        "seasonality_source": cast(dict[str, Any], seasonality_source),
-        "news_intensity_source": cast(dict[str, Any], news_intensity_source),
-        "expected_s_h": expected_s_h,
-        "expected_nu_h": expected_nu_h,
-        "expected_skipped_local_hour_interval_count": expected_skipped_local_hour_interval_count,
-        "expected_repeated_local_hour_interval_count": expected_repeated_local_hour_interval_count,
-        "tags": tags,
-        "description": description,
-    }
-
-
-def _validate_hourly_factor_threshold_configuration(
-    raw_configuration: JsonObject,
-    context: str,
-) -> HourlyFactorRegressionThresholdConfiguration:
-    schema_version: str = _require_non_empty_string(raw_configuration, "schema_version", context)
-    if schema_version != HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION:
-        raise ValueError(
-            f"unsupported threshold configuration schema version: {schema_version}",
-        )
-
-    policy_version: str = _require_non_empty_string(raw_configuration, "policy_version", context)
-    strictness_policy: str = _require_non_empty_string(
-        raw_configuration,
-        "state_classification_strictness",
-        context,
-    )
-    if strictness_policy != STATE_CLASSIFICATION_STRICTNESS_POLICY:
-        raise ValueError(f"unsupported state classification strictness policy: {strictness_policy}")
-
-    tolerance_config_raw: JsonObject = _require_json_object_field(
-        raw_configuration,
-        "tolerance_config",
-        context,
-    )
-    tolerance_config: HourlyFactorRegressionToleranceConfig = {
-        "s_h_absolute_tolerance": _require_non_negative_float(
-            tolerance_config_raw,
-            "s_h_absolute_tolerance",
-            f"{context}.tolerance_config",
-        ),
-        "nu_h_absolute_tolerance": _require_non_negative_float(
-            tolerance_config_raw,
-            "nu_h_absolute_tolerance",
-            f"{context}.tolerance_config",
-        ),
-    }
-
-    factor_range_map_raw: JsonObject = _require_json_object_field(
-        raw_configuration,
-        "factor_range_by_fixture_class",
-        context,
-    )
-    if not factor_range_map_raw:
-        raise ValueError(f"{context}.factor_range_by_fixture_class must not be empty")
-
-    factor_range_by_fixture_class: dict[str, HourlyFactorRegressionFactorRange] = {}
-    for raw_fixture_class, raw_range_policy in factor_range_map_raw.items():
-        if not isinstance(raw_fixture_class, str) or not raw_fixture_class.strip():
-            raise ValueError(f"{context}.factor_range_by_fixture_class keys must be non-empty strings")
-
-        fixture_class: str = raw_fixture_class.strip()
-        range_policy: JsonObject = _require_json_object(
-            raw_range_policy,
-            f"{context}.factor_range_by_fixture_class.{fixture_class}",
-        )
-        factor_range_by_fixture_class[fixture_class] = _validate_hourly_factor_range_policy(
-            range_policy,
-            fixture_class,
-            context,
-        )
-
-    change_log_raw: JsonArray = _require_json_array_field(raw_configuration, "change_log", context)
-    if not change_log_raw:
-        raise ValueError(f"{context}.change_log must include at least one entry")
-
-    change_log: list[HourlyFactorRegressionThresholdChangeLogEntry] = []
-    observed_policy_versions: set[str] = set()
-    has_current_policy_version = False
-    for change_entry_value in change_log_raw:
-        change_entry: JsonObject = _require_json_object(change_entry_value, f"{context}.change_log entry")
-        change_entry_policy_version: str = _require_non_empty_string(
-            change_entry,
-            "policy_version",
-            f"{context}.change_log entry",
-        )
-        if change_entry_policy_version in observed_policy_versions:
-            raise ValueError(
-                f"{context}.change_log contains duplicate policy_version: {change_entry_policy_version}",
-            )
-
-        observed_policy_versions.add(change_entry_policy_version)
-        has_current_policy_version = has_current_policy_version or (
-            change_entry_policy_version == policy_version
-        )
-        change_log.append(
-            {
-                "policy_version": change_entry_policy_version,
-                "recorded_at_utc": _require_non_empty_string(
-                    change_entry,
-                    "recorded_at_utc",
-                    f"{context}.change_log entry",
-                ),
-                "rationale": _require_non_empty_string(
-                    change_entry,
-                    "rationale",
-                    f"{context}.change_log entry",
-                ),
-            },
-        )
-
-    if not has_current_policy_version:
-        raise ValueError(
-            f"{context}.change_log must include an entry for policy_version '{policy_version}'",
-        )
-
-    return {
-        "schema_version": schema_version,
-        "policy_version": policy_version,
-        "state_classification_strictness": strictness_policy,
-        "tolerance_config": tolerance_config,
-        "factor_range_by_fixture_class": factor_range_by_fixture_class,
-        "change_log": change_log,
-    }
-
-
-def _validate_hourly_factor_range_policy(
-    raw_range_policy: JsonObject,
-    fixture_class: str,
-    context: str,
-) -> HourlyFactorRegressionFactorRange:
-    s_h_min: float = _require_non_negative_float(
-        raw_range_policy,
-        "s_h_min",
-        f"{context}.factor_range_by_fixture_class.{fixture_class}",
-    )
-    s_h_max: float = _require_non_negative_float(
-        raw_range_policy,
-        "s_h_max",
-        f"{context}.factor_range_by_fixture_class.{fixture_class}",
-    )
-    nu_h_min: float = _require_non_negative_float(
-        raw_range_policy,
-        "nu_h_min",
-        f"{context}.factor_range_by_fixture_class.{fixture_class}",
-    )
-    nu_h_max: float = _require_non_negative_float(
-        raw_range_policy,
-        "nu_h_max",
-        f"{context}.factor_range_by_fixture_class.{fixture_class}",
-    )
-
-    if s_h_min > s_h_max:
-        raise ValueError(
-            f"{context}.factor_range_by_fixture_class.{fixture_class} has s_h_min greater than s_h_max",
-        )
-    if nu_h_min > nu_h_max:
-        raise ValueError(
-            f"{context}.factor_range_by_fixture_class.{fixture_class} has nu_h_min greater than nu_h_max",
-        )
-
-    return {
-        "s_h_min": s_h_min,
-        "s_h_max": s_h_max,
-        "nu_h_min": nu_h_min,
-        "nu_h_max": nu_h_max,
-    }
-
-
-def _validate_hourly_factor_missing_data_guard_case(
-    raw_case: JsonObject,
-) -> HourlyFactorRegressionMissingDataGuardCase:
-    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", "hourly missing data guard case")
-    exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "hourly missing data guard case")
-    range_start_utc: str = _require_non_empty_string(raw_case, "range_start_utc", "hourly missing data guard case")
-    range_end_utc: str = _require_non_empty_string(raw_case, "range_end_utc", "hourly missing data guard case")
-    source_timestamps_utc: list[str] = _require_string_list_allow_empty(
-        raw_case,
-        "source_timestamps_utc",
-        "hourly missing data guard case",
-    )
-    source_seasonality_factors: list[float] = _require_float_list_allow_empty(
-        raw_case,
-        "source_seasonality_factors",
-        "hourly missing data guard case",
-    )
-
-    settings: JsonObject = _require_json_object_field(raw_case, "settings", "hourly missing data guard case")
-    _require_non_empty_string(settings, "interpolation_method", "hourly missing data guard case.settings")
-    _require_non_empty_string(settings, "aggregation_method", "hourly missing data guard case.settings")
-    _require_non_empty_string(settings, "sparse_fallback_policy", "hourly missing data guard case.settings")
-    _require_non_negative_int(
-        settings,
-        "sparse_hour_minimum_observation_count",
-        "hourly missing data guard case.settings",
-    )
-
-    expected_outcome: JsonObject = _require_json_object_field(
-        raw_case,
-        "expected_outcome",
-        "hourly missing data guard case",
-    )
-
-    _validate_hourly_missing_data_expected_outcome(expected_outcome)
-
-    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "hourly missing data guard case")
-    description: str = _require_non_empty_string(raw_case, "description", "hourly missing data guard case")
-
-    return {
-        "fixture_id": fixture_id,
-        "exchange_code": exchange_code,
-        "range_start_utc": range_start_utc,
-        "range_end_utc": range_end_utc,
-        "source_timestamps_utc": source_timestamps_utc,
-        "source_seasonality_factors": source_seasonality_factors,
-        "settings": cast(dict[str, Any], settings),
-        "expected_outcome": cast(dict[str, Any], expected_outcome),
-        "tags": tags,
-        "description": description,
-    }
-
-
-def _validate_hourly_canonical_regression_metadata(
-    raw_metadata: JsonObject,
-    canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase],
-    missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase],
-) -> HourlyFactorRegressionCanonicalMetadata:
-    required_tags: list[str] = _require_non_empty_string_list(
-        raw_metadata,
-        "required_tags",
-        "hourly canonical_regression_metadata",
-    )
-    stable_canonical_output_fixture_ids: list[str] = _require_non_empty_string_list(
-        raw_metadata,
-        "stable_canonical_output_fixture_ids",
-        "hourly canonical_regression_metadata",
-    )
-    stable_missing_data_guard_fixture_ids: list[str] = _require_non_empty_string_list(
-        raw_metadata,
-        "stable_missing_data_guard_fixture_ids",
-        "hourly canonical_regression_metadata",
-    )
-
-    _require_unique_fixture_ids(
-        stable_canonical_output_fixture_ids,
-        "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids",
-    )
-    _require_unique_fixture_ids(
-        stable_missing_data_guard_fixture_ids,
-        "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids",
-    )
-
-    observed_tags: set[str] = {
-        tag
-        for fixture_case in canonical_output_cases
-        for tag in fixture_case["tags"]
-    }
-    observed_tags.update(
-        tag
-        for fixture_case in missing_data_guard_cases
-        for tag in fixture_case["tags"]
-    )
-
-    if not set(required_tags).issubset(observed_tags):
-        raise ValueError("hourly canonical_regression_metadata.required_tags must be present in fixture cases")
-
-    observed_canonical_output_fixture_ids: set[str] = {
-        fixture_case["fixture_id"] for fixture_case in canonical_output_cases
-    }
-    observed_missing_data_guard_fixture_ids: set[str] = {
-        fixture_case["fixture_id"] for fixture_case in missing_data_guard_cases
-    }
-
-    if observed_canonical_output_fixture_ids != set(stable_canonical_output_fixture_ids):
-        raise ValueError(
-            "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids does not match observed fixture ids",
-        )
-    if observed_missing_data_guard_fixture_ids != set(stable_missing_data_guard_fixture_ids):
-        raise ValueError(
-            "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids does not match observed fixture ids",
-        )
-
-    return {
-        "required_tags": required_tags,
-        "stable_canonical_output_fixture_ids": stable_canonical_output_fixture_ids,
-        "stable_missing_data_guard_fixture_ids": stable_missing_data_guard_fixture_ids,
-    }
-
-
-def _validate_hourly_missing_data_expected_outcome(expected_outcome: JsonObject) -> None:
-    outcome_kind = _require_enum_field(
-        expected_outcome,
-        "outcome_kind",
-        "expected_outcome",
-        HourlyValidationOutcomeKind,
-        error_message="unsupported expected_outcome.outcome_kind: {value}",
-    )
-
-    match outcome_kind:
-        case HourlyValidationOutcomeKind.SUCCESS:
-            _require_float_list(expected_outcome, "expected_s_h", "expected_outcome")
-            _require_non_negative_int(expected_outcome, "expected_sparse_interval_count", "expected_outcome")
-            _require_non_negative_int(expected_outcome, "expected_interpolated_interval_count", "expected_outcome")
-            _require_non_negative_int(expected_outcome, "expected_fallback_interval_count", "expected_outcome")
-        case HourlyValidationOutcomeKind.FAILURE:
-            _require_non_empty_string(expected_outcome, "expected_error_variant", "expected_outcome")
-            _require_non_empty_string(expected_outcome, "expected_error_message_substring", "expected_outcome")
-
-
 def _validate_open_closed_gap_behavior_output_schema_metadata(
     raw_metadata: JsonObject,
 ) -> OpenClosedGapBehaviorOutputSchemaMetadata:
@@ -3227,25 +2701,25 @@ def _validate_seeded_tick_simulation_parity_case(
         "seeded tick simulation parity case.initial_excitation_state",
     )
 
-    seasonality_hourly_factors: list[float] = _require_float_list(
+    seasonality_interval_factor_grids: list[float] = _require_float_list(
         raw_case,
-        "seasonality_hourly_factors",
+        "seasonality_interval_factor_grids",
         "seeded tick simulation parity case",
     )
 
-    news_intensity_hourly_factors: list[float] = _require_float_list(
+    news_intensity_interval_factor_grids: list[float] = _require_float_list(
         raw_case,
-        "news_intensity_hourly_factors",
+        "news_intensity_interval_factor_grids",
         "seeded tick simulation parity case",
     )
 
-    if len(seasonality_hourly_factors) != horizon_interval_count:
+    if len(seasonality_interval_factor_grids) != horizon_interval_count:
         raise ValueError(
-            "seeded tick simulation parity case seasonality_hourly_factors length must match horizon_interval_count",
+            "seeded tick simulation parity case seasonality_interval_factor_grids length must match horizon_interval_count",
         )
-    if len(news_intensity_hourly_factors) != horizon_interval_count:
+    if len(news_intensity_interval_factor_grids) != horizon_interval_count:
         raise ValueError(
-            "seeded tick simulation parity case news_intensity_hourly_factors length must match horizon_interval_count",
+            "seeded tick simulation parity case news_intensity_interval_factor_grids length must match horizon_interval_count",
         )
 
     expected_timestamps_utc_nanos_raw: JsonArray = _require_json_array_field(
@@ -3358,8 +2832,8 @@ def _validate_seeded_tick_simulation_parity_case(
         "horizon_interval_count": horizon_interval_count,
         "kernel_parameters": kernel_parameters,
         "initial_excitation_state": initial_excitation_state,
-        "seasonality_hourly_factors": seasonality_hourly_factors,
-        "news_intensity_hourly_factors": news_intensity_hourly_factors,
+        "seasonality_interval_factor_grids": seasonality_interval_factor_grids,
+        "news_intensity_interval_factor_grids": news_intensity_interval_factor_grids,
         "expected_timestamps_utc_nanos": expected_timestamps_utc_nanos,
         "expected_side_sequence": expected_side_sequence,
         "expected_total_event_count": expected_total_event_count,
@@ -3416,82 +2890,6 @@ def _validate_seeded_tick_simulation_initial_excitation_state(
         "y_minus_plus": _require_number(raw_state, "y_minus_plus", context),
         "y_minus_minus": _require_number(raw_state, "y_minus_minus", context),
     }
-
-
-def _validate_hourly_seasonality_source(raw_source: JsonObject, context: str) -> None:
-    source_kind = _require_enum_field(
-        raw_source,
-        "source_kind",
-        context,
-        HourlySourceKind,
-        error_message=f"{context} contains unsupported source_kind value: {{value}}",
-    )
-
-    match source_kind:
-        case HourlySourceKind.EXPLICIT:
-            _require_float_list(raw_source, "hourly_factors", context)
-            _require_non_empty_string(raw_source, "materialization_method", context)
-        case HourlySourceKind.MATERIALIZED:
-            if "source_timestamp_utc" in raw_source:
-                raise ValueError(
-                    f"{context} contains unsupported field 'source_timestamp_utc'; use 'source_timestamps_utc'",
-                )
-
-            _require_non_empty_string_list(raw_source, "source_timestamps_utc", context)
-            _require_float_list(raw_source, "source_seasonality_factors", context)
-            _require_non_empty_string(raw_source, "interpolation_method", context)
-            _require_non_empty_string(raw_source, "aggregation_method", context)
-            _require_non_empty_string(raw_source, "sparse_fallback_policy", context)
-            _require_non_negative_int(raw_source, "sparse_hour_minimum_observation_count", context)
-
-
-def _validate_hourly_news_intensity_source(raw_source: JsonObject, context: str) -> None:
-    source_kind = _require_enum_field(
-        raw_source,
-        "source_kind",
-        context,
-        HourlySourceKind,
-        error_message=f"{context} contains unsupported source_kind value: {{value}}",
-    )
-
-    match source_kind:
-        case HourlySourceKind.EXPLICIT:
-            _require_float_list(raw_source, "hourly_factors", context)
-            _require_non_empty_string(raw_source, "materialization_method", context)
-        case HourlySourceKind.MATERIALIZED:
-            known_scheduled_event_timestamps_utc: JsonArray = _require_json_array_field(
-                raw_source,
-                "known_scheduled_event_timestamps_utc",
-                context,
-            )
-            for raw_known_timestamp in known_scheduled_event_timestamps_utc:
-                if not isinstance(raw_known_timestamp, str) or not raw_known_timestamp.strip():
-                    raise ValueError(
-                        f"{context}.known_scheduled_event_timestamps_utc values must be non-empty strings",
-                    )
-
-            _require_number(raw_source, "surprise_open_baseline_intensity", context)
-            _require_number(raw_source, "surprise_closed_baseline_intensity", context)
-
-            multipliers: JsonObject = _require_json_object_field(
-                raw_source,
-                "surprise_deterministic_time_multiplier_by_interval_index",
-                context,
-            )
-            for raw_interval_index, raw_multiplier in multipliers.items():
-                if not isinstance(raw_interval_index, str) or not raw_interval_index.strip():
-                    raise ValueError(
-                        f"{context}.surprise_deterministic_time_multiplier_by_interval_index keys must be non-empty strings"
-                    )
-                if not raw_interval_index.isdigit():
-                    raise ValueError(
-                        f"{context}.surprise_deterministic_time_multiplier_by_interval_index key '{raw_interval_index}' must be numeric",
-                    )
-
-                _require_float_like(
-                    raw_multiplier,
-                    f"{context}.surprise_deterministic_time_multiplier_by_interval_index",
-                )
 
 
 def _extract_registry_exchange_codes(calendar_registry: JsonObject) -> set[str]:
