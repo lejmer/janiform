@@ -26,7 +26,11 @@ pub use fit::{
 use janiform_foundations::numeric::{representable_positive_f64_log_span, saturating_positive_exp};
 pub use materialization::{
     FourierBusinessTimeClockMaterializationError, FourierBusinessTimeClockMaterializationInput,
-    FourierBusinessTimeClockMaterializationOutput, materialize_fourier_business_time_clock,
+    FourierBusinessTimeClockMaterializationOutput,
+    FourierBusinessTimeClockOrderedIntervalExposureInput,
+    FourierBusinessTimeClockOrderedIntervalExposureOutput,
+    integrate_fourier_business_time_clock_ordered_interval_exposures,
+    materialize_fourier_business_time_clock,
 };
 use serde::{Deserialize, Serialize};
 

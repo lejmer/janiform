@@ -1226,7 +1226,7 @@ impl ReturnComponentsKnownNewsArrivalCandidateFamily {
 pub struct ReturnComponentsSurpriseNewsArrivalCandidateFamily {
     pub open_baseline_intensity: f64,
     pub closed_baseline_intensity: f64,
-    pub weekly_hour_utc_multipliers: Vec<f64>,
+    pub weekly_utc_profile_multipliers: Vec<f64>,
     pub profile_resolution_hours: usize,
 }
 
@@ -1243,33 +1243,34 @@ impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
             }
         })?;
 
-        if self.profile_resolution_hours
-            != super::constants::RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
-        {
+        let Some(expected_bucket_count) =
+            super::derived_contracts::return_components_stage_surprise_intensity_weekly_profile_bucket_count_for_resolution(
+                self.profile_resolution_hours,
+            )
+        else {
             return Err(
                 ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
                     error_message: format!(
-                        "surprise arrival weekly profile resolution must equal {} hour(s)",
-                        super::constants::RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
+                        "surprise arrival weekly profile resolution must be a positive divisor of the UTC week length in hours, found {}",
+                        self.profile_resolution_hours
                     ),
                 },
             );
-        }
+        };
 
-        let expected_bucket_count =
-            super::derived_contracts::return_components_stage_surprise_intensity_weekly_profile_bucket_count();
-        if self.weekly_hour_utc_multipliers.len() != expected_bucket_count {
+        if self.weekly_utc_profile_multipliers.len() != expected_bucket_count {
             return Err(
                 ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
                     error_message: format!(
-                        "surprise arrival weekly profile must contain exactly {expected_bucket_count} multipliers"
+                        "surprise arrival weekly profile must contain exactly {expected_bucket_count} multipliers for profile_resolution_hours={}",
+                        self.profile_resolution_hours
                     ),
                 },
             );
         }
 
         if self
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .iter()
             .any(|multiplier| !multiplier.is_finite() || *multiplier <= 0.0)
         {

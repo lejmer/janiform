@@ -55,5 +55,6 @@ class PreparedModelPricingRuntimeInput:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeStructuralSeasonalityGrid:
+    materialization_method: str
     interval_start_utc_nanos: tuple[int, ...]
     seasonality_factors: tuple[float, ...]

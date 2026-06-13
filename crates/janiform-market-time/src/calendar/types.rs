@@ -6,6 +6,12 @@ use chrono_tz::Tz;
 pub use janiform_foundations::market_state::MarketState;
 use serde::{Deserialize, Serialize};
 
+/// Compact preprocessing code for an open market state.
+pub const OPEN_MARKET_STATE_CODE: u8 = 1;
+
+/// Compact preprocessing code for a closed market state.
+pub const CLOSED_MARKET_STATE_CODE: u8 = 0;
+
 /// Weekday used by regular exchange sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub enum TradingWeekday {

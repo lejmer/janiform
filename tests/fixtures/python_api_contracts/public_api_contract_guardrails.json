@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "bb5e9d0291ff2122693e91cdf0d120ac157ecb19cdf79e44d5f4965ae7858af7",
+  "approved_snapshot_sha256": "dae97dce311e3629a68bd4f4917b8c5f6b56535972a8d3974583577f7a42403a",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1665,6 +1665,33 @@
         "janiform.simulation.seeded",
         "janiform.sufficient_statistics",
         "janiform.sufficient_statistics.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Validation errors are exposed as typed exception classes, so the public Python calibration and seeded-simulation surfaces no longer export the redundant validation-failure contract-model aliases.",
+      "snapshot_sha256": "55ffc8102f4a8460d1ce1a0103fed574bc3175927662f86aa43a290934310fb3",
+      "summary": "Remove validation-failure contract-model aliases from the public Python surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.simulation",
+        "janiform.simulation.seeded",
+        "janiform.simulation.shared"
+      ]
+    },
+    {
+      "approved_on": "2026-06-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Runtime interval seasonality now materializes the fitted structural Fourier clock directly, so the public helper no longer accepts event-signal interpolation settings or a raw-level preservation flag.",
+      "snapshot_sha256": "dae97dce311e3629a68bd4f4917b8c5f6b56535972a8d3974583577f7a42403a",
+      "summary": "Simplify runtime interval seasonality source construction to the structural clock contract.",
+      "updated_surfaces": [
+        "janiform.interval_factor_grids"
       ]
     }
   ],

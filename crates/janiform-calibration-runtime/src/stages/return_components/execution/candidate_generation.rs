@@ -444,9 +444,9 @@ fn build_surprise_arrival_families(
         closed_baseline_intensity: round_candidate_value(
             fitted_surprise_arrival_layer.closed_baseline_intensity_per_hour,
         ),
-        weekly_hour_utc_multipliers: fitted_surprise_arrival_layer
+        weekly_utc_profile_multipliers: fitted_surprise_arrival_layer
             .deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .clone(),
         profile_resolution_hours: fitted_surprise_arrival_layer
             .deterministic_intensity_profile

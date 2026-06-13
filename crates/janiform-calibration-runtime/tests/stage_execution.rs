@@ -876,7 +876,6 @@ fn hawkes_stage_keeps_subcritical_candidates_stable_under_baseline_seasonality()
 
     let mut seasonality_payload = build_seasonality_stage_success_payload();
 
-    seasonality_payload.business_time_rate_by_event.fill(2.0);
     set_intraday_clock_rate_bound(&mut seasonality_payload, 1.6);
 
     let mut candidate = hawkes_stage_candidate_fixture()
@@ -936,7 +935,6 @@ fn hawkes_stage_tracks_unobserved_runtime_seasonality_without_branching_constrai
     let mut seasonality_payload = build_seasonality_stage_success_payload();
 
     let annual_rate_bound = 3.0_f64;
-    seasonality_payload.business_time_rate_by_event.fill(1.0);
     set_annual_clock_rate_bound(&mut seasonality_payload, annual_rate_bound);
 
     let mut candidate = hawkes_stage_candidate_fixture()

@@ -701,16 +701,23 @@ fn precheck_deterministic_intensity_scales(
         ));
     }
 
-    let surprise_weekly_hour_utc_multipliers = fitted_parameters
+    crate::surprise_profile::validate_surprise_news_weekly_profile(
+        &fitted_parameters
+            .return_components_fitted_parameters
+            .surprise_deterministic_intensity_profile,
+    )
+    .map_err(|source| format!("surprise_weekly_profile_invalid {source}"))?;
+
+    let surprise_weekly_profile_multipliers = fitted_parameters
         .return_components_fitted_parameters
         .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers
+        .weekly_utc_profile_multipliers
         .as_slice();
-    if surprise_weekly_hour_utc_multipliers.is_empty() {
+    if surprise_weekly_profile_multipliers.is_empty() {
         return Err("surprise_weekly_multipliers_empty".to_string());
     }
 
-    for (bucket_index, multiplier) in surprise_weekly_hour_utc_multipliers.iter().enumerate() {
+    for (bucket_index, multiplier) in surprise_weekly_profile_multipliers.iter().enumerate() {
         if !multiplier.is_finite() || *multiplier < 0.0 {
             return Err(format!(
                 "surprise_weekly_multiplier_invalid bucket_index={bucket_index} value={multiplier}"

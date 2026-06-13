@@ -104,12 +104,12 @@ pub use registry::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketStateIntervalExposure,
 };
 pub use types::{
-    CalendarDate, CalendarRuleMetadata, CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact,
-    ExchangeCalendarArtifact, ExchangeCalendarDefinition, ExchangeCalendarRegistryArtifact,
-    ExchangeMetadata, MarketState, RegularSessionArtifact, RegularSessionDefinition, SessionTime,
-    SessionWindowArtifact, SessionWindowDefinition, TimestampEventInputRecord,
-    TimestampEventPreprocessingDiagnostics, TimestampEventPreprocessingOutput,
-    TimestampEventSessionFilter, TradingWeekday,
+    CLOSED_MARKET_STATE_CODE, CalendarDate, CalendarRuleMetadata, CalendarRuleMetadataArtifact,
+    EarlyCloseSessionArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
+    ExchangeCalendarRegistryArtifact, ExchangeMetadata, MarketState, OPEN_MARKET_STATE_CODE,
+    RegularSessionArtifact, RegularSessionDefinition, SessionTime, SessionWindowArtifact,
+    SessionWindowDefinition, TimestampEventInputRecord, TimestampEventPreprocessingDiagnostics,
+    TimestampEventPreprocessingOutput, TimestampEventSessionFilter, TradingWeekday,
 };
 
 #[cfg(test)]

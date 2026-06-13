@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from types import ModuleType
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from .._native_api import native_module, remap_native_exception_by_type
 from .._native_types import (
@@ -23,8 +23,7 @@ from ..calendar import (
 )
 from ..contracts.base import (
     require_datetime_instance_utc,
-    require_finite_number_sequence,
-    require_integer_sequence,
+    require_mapping,
     require_non_empty_string,
 )
 from ..seasonality import SeasonalityInputValidationError
@@ -49,13 +48,6 @@ from .errors import (
     IntervalFactorGridProviderUnsupportedRangeError,
 )
 
-_RUNTIME_CALIBRATION_SEASONALITY_MATERIALIZATION_METHOD: str = (
-    "calibration.normalized_event_signal_interval.v1"
-)
-_RUNTIME_CALIBRATION_SEASONALITY_MEAN_RENORMALIZED_MATERIALIZATION_METHOD: str = (
-    "calibration.normalized_event_signal_interval_mean_renormalized.v1"
-)
-_UNIX_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
 _INTERVAL_SPEC_PATTERN = re.compile(
     r"^\s*(?P<value>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[A-Za-z]+)\s*$"
 )
@@ -488,16 +480,14 @@ def build_runtime_interval_seasonality_source_from_calibration_payload(
     range_end_utc: datetime,
     interval: str | timedelta = "1h",
     seasonality_stage_payload: Mapping[str, Any],
-    mean_renormalize: bool = True,
-    settings: IntervalSeasonalityMaterializationSettings = IntervalSeasonalityMaterializationSettings(),
 ) -> IntervalSeasonalityProviderExplicitSource:
     """
     Build runtime-ready interval seasonality from the normalized seasonality stage payload.
 
-    The helper materializes calibrated event-level business-time rates onto the requested
-    fixed-width UTC interval grid. Mean renormalization is enabled by default so `lambda_bar`
-    stays responsible for average event-rate level while `seasonality_factor` redistributes that level across time.
+    The helper materializes the structural Fourier clock onto the requested fixed-width UTC interval grid.
     """
+
+    native: ModuleType = native_module()
 
     exchange_code = require_non_empty_string(
         seasonality_stage_payload,
@@ -506,52 +496,55 @@ def build_runtime_interval_seasonality_source_from_calibration_payload(
         _seasonality_error_factory,
     )
 
-    timestamp_utc_nanos = require_integer_sequence(
+    clock_model = require_mapping(
         seasonality_stage_payload,
-        "timestamp_utc_nanos",
-        "seasonality_stage_payload.timestamp_utc_nanos",
+        "clock_model",
+        "seasonality_stage_payload.clock_model",
         _seasonality_error_factory,
     )
 
-    business_time_rate_by_event = require_finite_number_sequence(
-        seasonality_stage_payload,
-        "business_time_rate_by_event",
-        "seasonality_stage_payload.business_time_rate_by_event",
-        _seasonality_error_factory,
+    normalized_range_start_utc = require_datetime_instance_utc(
+        range_start_utc,
+        "range_start_utc",
+        _calendar_invalid_timestamp_error,
     )
 
-    if len(timestamp_utc_nanos) != len(business_time_rate_by_event):
-        raise SeasonalityInputValidationError(
-            "seasonality_stage_payload.timestamp_utc_nanos and "
-            "seasonality_stage_payload.business_time_rate_by_event must have the same length",
-        )
-
-    materialization = materialize_interval_seasonality_factors(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=range_start_utc,
-        range_end_utc=range_end_utc,
-        interval=interval,
-        source_timestamps_utc=[
-            _utc_datetime_from_nanos(timestamp_utc_nanos_value)
-            for timestamp_utc_nanos_value in timestamp_utc_nanos
-        ],
-        source_seasonality_factors=business_time_rate_by_event,
-        settings=settings,
+    normalized_range_end_utc = require_datetime_instance_utc(
+        range_end_utc,
+        "range_end_utc",
+        _calendar_invalid_timestamp_error,
     )
 
-    interval_factors = tuple(float(value) for value in materialization.seasonality_factor)
-    materialization_method = _RUNTIME_CALIBRATION_SEASONALITY_MATERIALIZATION_METHOD
+    interval_duration_nanos = _parse_interval_duration_nanos(interval)
 
-    if mean_renormalize:
-        interval_factors = _mean_renormalize_interval_factors(interval_factors)
-        materialization_method = (
-            _RUNTIME_CALIBRATION_SEASONALITY_MEAN_RENORMALIZED_MATERIALIZATION_METHOD
+    try:
+        native_payload = native.materialize_runtime_structural_seasonality(
+            calendar_registry._native_registry,
+            exchange_code,
+            normalized_range_start_utc.isoformat(),
+            normalized_range_end_utc.isoformat(),
+            interval_duration_nanos,
+            dict(clock_model),
         )
+    except Exception as error:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            error,
+            _INTERVAL_FACTOR_GRID_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from error
+
+        raise
+
+    materialization_payload = cast(Mapping[str, Any], native_payload)
 
     return IntervalSeasonalityProviderExplicitSource(
-        interval_factors=interval_factors,
-        materialization_method=materialization_method,
+        interval_factors=tuple(
+            float(value)
+            for value in materialization_payload["seasonality_factors"]
+        ),
+        materialization_method=str(materialization_payload["materialization_method"]),
     )
 
 
@@ -641,19 +634,3 @@ def _calendar_invalid_timestamp_error(
     message: str,
 ) -> CalendarInvalidTimestampError:
     return CalendarInvalidTimestampError(f"{field_path} {message}")
-
-
-def _mean_renormalize_interval_factors(interval_factors: Sequence[float]) -> tuple[float, ...]:
-    if len(interval_factors) == 0:
-        return ()
-
-    mean_interval_factor = sum(float(value) for value in interval_factors) / len(interval_factors)
-    if mean_interval_factor == 0.0:
-        return tuple(float(value) for value in interval_factors)
-
-    return tuple(float(value) / mean_interval_factor for value in interval_factors)
-
-
-def _utc_datetime_from_nanos(timestamp_utc_nanos: int) -> datetime:
-    microseconds_since_epoch, _ = divmod(timestamp_utc_nanos, 1_000)
-    return _UNIX_EPOCH_UTC + timedelta(microseconds=microseconds_since_epoch)

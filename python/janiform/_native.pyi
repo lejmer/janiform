@@ -769,6 +769,14 @@ def materialize_runtime_structural_seasonality(
 ) -> object: ...
 
 
+def materialize_surprise_news_weekly_profile_multipliers_for_interval_range(
+    range_start_utc: str,
+    range_end_utc: str,
+    interval_duration_nanos: int,
+    surprise_profile: object,
+) -> object: ...
+
+
 def preprocess_market_data_translation_request(
     preprocessing_request: object,
     calendar_registry: CalendarRegistry,

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use janiform_engine_pricing::VanillaOptionPricingKernelParameters;
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::numeric::clamp_point_in_place as clamp_in_place;
@@ -3162,27 +3162,15 @@ pub(crate) fn build_surprise_multipliers_for_interval_grid(
     simulation_start_utc: DateTime<Utc>,
     interval_count: usize,
     interval_duration_nanos: i64,
-    weekly_hour_utc_multipliers: &[f64],
-) -> Vec<(u64, f64)> {
-    (0..interval_count)
-        .map(|interval_index| {
-            let interval_start = simulation_start_utc
-                .checked_add_signed(Duration::nanoseconds(
-                    interval_duration_nanos.saturating_mul(interval_index as i64),
-                ))
-                .unwrap_or(simulation_start_utc);
-
-            let weekday_index = interval_start.weekday().num_days_from_monday() as usize;
-            let hour_index = interval_start.hour() as usize;
-            let bucket_index = weekday_index * 24 + hour_index;
-            (
-                interval_index as u64,
-                *weekly_hour_utc_multipliers
-                    .get(bucket_index)
-                    .unwrap_or(&1.0),
-            )
-        })
-        .collect()
+    surprise_profile: &janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile,
+) -> Result<Vec<(u64, f64)>, String> {
+    crate::surprise_profile::materialize_surprise_news_weekly_profile_multipliers_for_interval_grid(
+        simulation_start_utc,
+        interval_count,
+        interval_duration_nanos,
+        surprise_profile,
+    )
+    .map_err(|source| source.to_string())
 }
 
 fn build_seed_summaries_for_candidate_seeds(

@@ -9,6 +9,7 @@ use janiform_calibration_artifacts::{
     JointRefinementStageOptionAggregateDiagnostic, JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
     JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
+    SurpriseNewsDeterministicIntensityProfile,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -506,7 +507,7 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) hourly_simulation_start_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_end_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_interval_count: usize,
-    pub(crate) surprise_weekly_hour_utc_multipliers: Vec<f64>,
+    pub(crate) surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub(crate) simulated_5m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) simulated_15m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) simulated_hourly_interval_template:

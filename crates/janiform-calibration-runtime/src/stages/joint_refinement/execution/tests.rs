@@ -49,7 +49,7 @@ use crate::stages::return_components::{
 use janiform_calibration_artifacts::{
     CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermKind,
     CalibrationObjectivePolicy, CalibrationOptimizerSettings,
-    JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageObjectiveBreakdown, SurpriseNewsDeterministicIntensityProfile,
 };
 
 fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
@@ -221,7 +221,12 @@ fn build_test_observed_data() -> JointRefinementObservedData {
         hourly_simulation_start_utc: DateTime::<Utc>::from_timestamp_nanos(0),
         hourly_simulation_end_utc: DateTime::<Utc>::from_timestamp_nanos(24 * 3_600_000_000_000),
         hourly_simulation_interval_count: 24,
-        surprise_weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+        surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
+            weekly_utc_profile_multipliers: vec![1.0; 24 * 7],
+            profile_resolution_hours: 1,
+            fit_policy: "test_weekly_utc_profile.v1".to_string(),
+            normalization_policy: "test_unit_mean.v1".to_string(),
+        },
         simulated_5m_interval_template: vec![
             build_test_interval_observation(0, 300, 0.0, 0, 0.5),
             build_test_interval_observation(300, 600, 0.0, 0, 0.5),

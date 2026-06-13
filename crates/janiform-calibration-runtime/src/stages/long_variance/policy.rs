@@ -14,7 +14,7 @@ const LONG_VARIANCE_SHORTEST_IDENTIFICATION_HORIZON_HOURS: f64 =
 
 // Stationary unit mean is decomposed into buy-event feedback drift,
 // sell-event feedback drift, and the retained mean-reversion level.
-const LONG_VARIANCE_STATIONARY_COMPONENT_COUNT: f64 = 3.0;
+const LONG_VARIANCE_STATIONARY_COMPONENT_COUNT: usize = 3;
 
 pub(crate) fn long_variance_mean_reversion_rate_calibration_upper_bound() -> f64 {
     std::f64::consts::LN_2 / LONG_VARIANCE_SHORTEST_IDENTIFICATION_HORIZON_HOURS
@@ -34,14 +34,21 @@ pub(crate) fn long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate(
 }
 
 pub(crate) fn long_variance_retained_stationary_level_floor() -> f64 {
-    1.0 / LONG_VARIANCE_STATIONARY_COMPONENT_COUNT
+    1.0 / long_variance_stationary_component_count_as_f64()
 }
 
 pub(crate) fn long_variance_retained_stationary_level_acceptance_floor() -> f64 {
-    // The accepted boundary is one representable value below the mathematical
-    // floor so parameters projected onto the floor round-trip through
-    // independent event-drift multiplication and division.
-    long_variance_retained_stationary_level_floor().next_down()
+    let mut acceptance_floor = long_variance_retained_stationary_level_floor();
+
+    // Boundary parameters are projected through the stationary mean
+    // components and then decoded through independent event-drift products,
+    // summation, division by mean reversion, and subtraction from unit mean.
+    // Accept one adjacent representable value for each stationary component.
+    for _ in 0..LONG_VARIANCE_STATIONARY_COMPONENT_COUNT {
+        acceptance_floor = acceptance_floor.next_down();
+    }
+
+    acceptance_floor
 }
 
 pub(crate) fn long_variance_event_feedback_drift_budget(mean_reversion_rate: f64) -> Option<f64> {
@@ -61,9 +68,13 @@ pub(crate) fn long_variance_side_event_feedback_drift_budget(
         return None;
     }
 
-    let budget = mean_reversion_rate / LONG_VARIANCE_STATIONARY_COMPONENT_COUNT;
+    let budget = mean_reversion_rate / long_variance_stationary_component_count_as_f64();
 
     (budget.is_finite() && budget >= 0.0).then_some(budget)
+}
+
+fn long_variance_stationary_component_count_as_f64() -> f64 {
+    LONG_VARIANCE_STATIONARY_COMPONENT_COUNT as f64
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -145,7 +156,21 @@ mod tests {
         let retained_floor = long_variance_retained_stationary_level_floor();
         let acceptance_floor = long_variance_retained_stationary_level_acceptance_floor();
 
+        let mut round_trip_boundary = retained_floor;
+
+        for _ in 0..super::LONG_VARIANCE_STATIONARY_COMPONENT_COUNT {
+            round_trip_boundary = round_trip_boundary.next_down();
+        }
+
         assert!(acceptance_floor < retained_floor);
-        assert_eq!(acceptance_floor.next_up(), retained_floor);
+        assert_eq!(acceptance_floor, round_trip_boundary);
+
+        let mut recovered_floor = acceptance_floor;
+
+        for _ in 0..super::LONG_VARIANCE_STATIONARY_COMPONENT_COUNT {
+            recovered_floor = recovered_floor.next_up();
+        }
+
+        assert_eq!(recovered_floor, retained_floor);
     }
 }

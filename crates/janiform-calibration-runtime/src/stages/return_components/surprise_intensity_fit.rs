@@ -1,6 +1,8 @@
-use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
 use janiform_foundations::time::duration_nanos_to_hours;
+
+use crate::surprise_profile::{next_weekly_profile_bucket_boundary, weekly_profile_bucket_index};
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
@@ -72,8 +74,15 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
         return unit_weekly_profile(bucket_count);
     }
 
-    let exposure_hours_by_bucket =
-        exposure_hours_by_weekly_bucket(window_start_utc_nanos, window_end_utc_nanos, bucket_count);
+    let profile_resolution_hours =
+        RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS;
+
+    let exposure_hours_by_bucket = exposure_hours_by_weekly_bucket(
+        window_start_utc_nanos,
+        window_end_utc_nanos,
+        bucket_count,
+        profile_resolution_hours,
+    );
 
     let total_exposure_hours = exposure_hours_by_bucket.iter().sum::<f64>();
     if total_exposure_hours <= 0.0 {
@@ -89,7 +98,10 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
             continue;
         }
 
-        let bucket_index = weekly_hour_bucket_index(timestamp_utc_nanos);
+        let bucket_index = weekly_profile_bucket_index(
+            DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos),
+            profile_resolution_hours,
+        );
 
         event_count_by_bucket[bucket_index] += 1.0;
     }
@@ -107,7 +119,7 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
 
     let shrinkage_event_mass = (total_event_count / bucket_count as f64).max(1.0);
 
-    let mut weekly_hour_utc_multipliers = Vec::with_capacity(bucket_count);
+    let mut weekly_utc_profile_multipliers = Vec::with_capacity(bucket_count);
 
     for bucket_index in 0..bucket_count {
         let bucket_exposure_hours = exposure_hours_by_bucket[bucket_index]
@@ -119,7 +131,7 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
             / (bucket_expected_count + shrinkage_event_mass)
                 .max(return_components_stage_positive_domain_floor());
 
-        weekly_hour_utc_multipliers.push(
+        weekly_utc_profile_multipliers.push(
             if bucket_multiplier.is_finite() && bucket_multiplier > 0.0 {
                 bucket_multiplier
             } else {
@@ -128,20 +140,20 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
         );
     }
 
-    let weighted_mean_multiplier = weekly_hour_utc_multipliers
+    let weighted_mean_multiplier = weekly_utc_profile_multipliers
         .iter()
         .zip(exposure_hours_by_bucket.iter())
         .map(|(multiplier, exposure_hours)| multiplier * exposure_hours)
         .sum::<f64>()
         / total_exposure_hours.max(return_components_stage_positive_domain_floor());
     if weighted_mean_multiplier.is_finite() && weighted_mean_multiplier > 0.0 {
-        for multiplier in &mut weekly_hour_utc_multipliers {
+        for multiplier in &mut weekly_utc_profile_multipliers {
             *multiplier /= weighted_mean_multiplier;
         }
     }
 
     SurpriseNewsDeterministicIntensityProfile {
-        weekly_hour_utc_multipliers,
+        weekly_utc_profile_multipliers,
         profile_resolution_hours:
             RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS,
         fit_policy: RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY.to_string(),
@@ -154,23 +166,23 @@ pub(super) fn profile_mean_absolute_error(
     left: &SurpriseNewsDeterministicIntensityProfile,
     right: &SurpriseNewsDeterministicIntensityProfile,
 ) -> f64 {
-    if left.weekly_hour_utc_multipliers.len() != right.weekly_hour_utc_multipliers.len()
+    if left.weekly_utc_profile_multipliers.len() != right.weekly_utc_profile_multipliers.len()
         || left.profile_resolution_hours != right.profile_resolution_hours
     {
         return f64::INFINITY;
     }
 
-    left.weekly_hour_utc_multipliers
+    left.weekly_utc_profile_multipliers
         .iter()
-        .zip(right.weekly_hour_utc_multipliers.iter())
+        .zip(right.weekly_utc_profile_multipliers.iter())
         .map(|(left_multiplier, right_multiplier)| (left_multiplier - right_multiplier).abs())
         .sum::<f64>()
-        / left.weekly_hour_utc_multipliers.len().max(1) as f64
+        / left.weekly_utc_profile_multipliers.len().max(1) as f64
 }
 
 fn unit_weekly_profile(bucket_count: usize) -> SurpriseNewsDeterministicIntensityProfile {
     SurpriseNewsDeterministicIntensityProfile {
-        weekly_hour_utc_multipliers: vec![1.0; bucket_count],
+        weekly_utc_profile_multipliers: vec![1.0; bucket_count],
         profile_resolution_hours:
             RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS,
         fit_policy: RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY.to_string(),
@@ -183,25 +195,16 @@ fn exposure_hours_by_weekly_bucket(
     window_start_utc_nanos: i64,
     window_end_utc_nanos: i64,
     bucket_count: usize,
+    profile_resolution_hours: usize,
 ) -> Vec<f64> {
     let mut exposure_hours_by_bucket = vec![0.0; bucket_count];
     let mut current = DateTime::<Utc>::from_timestamp_nanos(window_start_utc_nanos);
+
     let window_end = DateTime::<Utc>::from_timestamp_nanos(window_end_utc_nanos);
 
     while current < window_end {
-        let hour_start = current
-            .with_minute(0)
-            .and_then(|value| value.with_second(0))
-            .and_then(|value| value.with_nanosecond(0))
-            .unwrap_or(current);
-
-        let next_hour_boundary = if current == hour_start {
-            current + Duration::hours(1)
-        } else {
-            hour_start + Duration::hours(1)
-        };
-
-        let segment_end = next_hour_boundary.min(window_end);
+        let segment_end =
+            next_weekly_profile_bucket_boundary(current, profile_resolution_hours).min(window_end);
 
         let segment_duration_hours = duration_nanos_to_hours(
             segment_end
@@ -212,11 +215,7 @@ fn exposure_hours_by_weekly_bucket(
                     .unwrap_or(window_start_utc_nanos),
         );
 
-        let bucket_index = weekly_hour_bucket_index(
-            current
-                .timestamp_nanos_opt()
-                .unwrap_or(window_start_utc_nanos),
-        );
+        let bucket_index = weekly_profile_bucket_index(current, profile_resolution_hours);
 
         exposure_hours_by_bucket[bucket_index] += segment_duration_hours.max(0.0);
 
@@ -224,11 +223,6 @@ fn exposure_hours_by_weekly_bucket(
     }
 
     exposure_hours_by_bucket
-}
-
-fn weekly_hour_bucket_index(timestamp_utc_nanos: i64) -> usize {
-    let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos);
-    timestamp_utc.weekday().num_days_from_monday() as usize * 24 + timestamp_utc.hour() as usize
 }
 
 #[cfg(test)]
@@ -279,20 +273,20 @@ mod tests {
         );
 
         assert_eq!(
-            fitted_profile.weekly_hour_utc_multipliers.len(),
+            fitted_profile.weekly_utc_profile_multipliers.len(),
             return_components_stage_surprise_intensity_weekly_profile_bucket_count()
         );
 
         let weighted_mean = fitted_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .iter()
             .sum::<f64>()
-            / fitted_profile.weekly_hour_utc_multipliers.len() as f64;
+            / fitted_profile.weekly_utc_profile_multipliers.len() as f64;
 
         assert!((weighted_mean - 1.0).abs() <= 1.0e-12);
         assert!(
-            fitted_profile.weekly_hour_utc_multipliers[9]
-                > fitted_profile.weekly_hour_utc_multipliers[8]
+            fitted_profile.weekly_utc_profile_multipliers[9]
+                > fitted_profile.weekly_utc_profile_multipliers[8]
         );
     }
 
@@ -326,7 +320,7 @@ mod tests {
         assert!(
             fitted_layer
                 .deterministic_intensity_profile
-                .weekly_hour_utc_multipliers
+                .weekly_utc_profile_multipliers
                 .iter()
                 .all(|&multiplier| (multiplier - 1.0).abs() <= 1.0e-12)
         );

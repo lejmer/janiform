@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, TimeZone};
+use chrono_tz::America::New_York;
 use janiform_foundations::time::MINUTES_PER_DAY;
 
 use super::{
@@ -9,8 +10,14 @@ use super::{
     FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
     FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY, FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY,
     FourierBusinessTimeClockAxis, FourierBusinessTimeClockHarmonicSeries,
-    FourierBusinessTimeClockModel, FourierBusinessTimeClockPhases,
+    FourierBusinessTimeClockModel, FourierBusinessTimeClockOrderedIntervalExposureInput,
+    FourierBusinessTimeClockPhases,
+    integrate_fourier_business_time_clock_ordered_interval_exposures,
     zero_order_harmonic_series_by_axis,
+};
+use crate::calendar::{
+    CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
+    RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
 };
 
 fn flat_clock_model() -> FourierBusinessTimeClockModel {
@@ -48,6 +55,46 @@ fn set_harmonic_series(
     );
 }
 
+fn xnys_monday_calendar_definition() -> ExchangeCalendarDefinition {
+    ExchangeCalendarDefinition::from_artifact(ExchangeCalendarArtifact {
+        schema_version: "calendar.v1".to_string(),
+        exchange_code: "XNYS".to_string(),
+        exchange_name: "New York Stock Exchange".to_string(),
+        timezone_name: Some("America/New_York".to_string()),
+        rule_metadata: CalendarRuleMetadataArtifact {
+            holiday_calendar_code: "US_EQUITIES".to_string(),
+            early_close_rule_set: Some("US_EQUITIES_EARLY_CLOSE".to_string()),
+        },
+        regular_sessions: vec![RegularSessionArtifact {
+            weekday: TradingWeekday::Monday,
+            windows: vec![SessionWindowArtifact {
+                label: "regular".to_string(),
+                open_time: "09:30".to_string(),
+                close_time: "16:00".to_string(),
+            }],
+        }],
+        holiday_dates: Vec::new(),
+        early_close_sessions: Vec::new(),
+    })
+    .expect("calendar fixture should validate")
+}
+
+fn new_york_local_timestamp_nanos(
+    year: i32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+) -> i64 {
+    New_York
+        .with_ymd_and_hms(year, month, day, hour, minute, second)
+        .single()
+        .expect("fixture local timestamp should resolve uniquely")
+        .timestamp_nanos_opt()
+        .expect("fixture timestamp should be inside nanosecond range")
+}
+
 #[test]
 fn rate_at_phases_accepts_axis_keyed_phase_map() {
     let mut phase_by_axis = BTreeMap::new();
@@ -71,6 +118,37 @@ fn axis_keyed_phase_map_requires_every_clock_axis() {
         FourierBusinessTimeClockPhases::try_from_axis_phase_map(&phase_by_axis),
         None
     );
+}
+
+#[test]
+fn ordered_interval_exposures_integrate_flat_clock_over_open_segments() {
+    let calendar_definition = xnys_monday_calendar_definition();
+    let model = flat_clock_model();
+
+    let interval_start_utc_nanos = vec![
+        new_york_local_timestamp_nanos(2026, 2, 2, 9, 30, 0),
+        new_york_local_timestamp_nanos(2026, 2, 2, 9, 30, 30),
+        new_york_local_timestamp_nanos(2026, 2, 2, 16, 0, 0),
+    ];
+
+    let interval_end_utc_nanos = vec![
+        new_york_local_timestamp_nanos(2026, 2, 2, 9, 30, 30),
+        new_york_local_timestamp_nanos(2026, 2, 2, 9, 31, 30),
+        new_york_local_timestamp_nanos(2026, 2, 2, 16, 30, 0),
+    ];
+
+    let output = integrate_fourier_business_time_clock_ordered_interval_exposures(
+        FourierBusinessTimeClockOrderedIntervalExposureInput {
+            calendar_definition: &calendar_definition,
+            timezone: New_York,
+            model: &model,
+            interval_start_utc_nanos: interval_start_utc_nanos.as_slice(),
+            interval_end_utc_nanos: interval_end_utc_nanos.as_slice(),
+        },
+    )
+    .expect("flat-clock ordered interval exposure should integrate");
+
+    assert_eq!(output.business_time_exposure_seconds, vec![30.0, 60.0, 0.0]);
 }
 
 #[test]

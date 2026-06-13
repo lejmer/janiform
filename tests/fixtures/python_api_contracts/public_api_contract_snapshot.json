@@ -116,7 +116,6 @@
     "janiform.calibration": {
       "exports": [
         "CalibrationValidationError",
-        "CalibrationValidationFailure",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformFitResult"
@@ -135,22 +134,6 @@
           "kind": "exception_class",
           "origin_module": "janiform.calibration.errors",
           "qualname": "CalibrationValidationError"
-        },
-        "CalibrationValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "from_context": "(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'",
-            "to_error_details": "(self) -> 'JaniformErrorDetails'"
-          },
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "JaniformEstimator": {
           "base_classes": [],
@@ -4912,7 +4895,7 @@
         },
         "build_runtime_interval_seasonality_source_from_calibration_payload": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityProviderExplicitSource'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]') -> 'IntervalSeasonalityProviderExplicitSource'"
         },
         "load_interval_factor_grid_payload": {
           "kind": "function",
@@ -7644,7 +7627,6 @@
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
-        "SeededTickSimulationValidationFailure",
         "SimulationKind",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
@@ -7965,22 +7947,6 @@
           "kind": "exception_class",
           "origin_module": "janiform.simulation.shared.errors",
           "qualname": "SeededTickSimulationValidationError"
-        },
-        "SeededTickSimulationValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "from_context": "(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'",
-            "to_error_details": "(self) -> 'JaniformErrorDetails'"
-          },
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "SimulationKind": {
           "kind": "enum",
@@ -8423,7 +8389,6 @@
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
-        "SeededTickSimulationValidationFailure",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "deserialize_seeded_tick_simulation_response",
         "run_seeded_tick_event_simulation",
@@ -8800,22 +8765,6 @@
           "origin_module": "janiform.simulation.shared.errors",
           "qualname": "SeededTickSimulationValidationError"
         },
-        "SeededTickSimulationValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "from_context": "(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'",
-            "to_error_details": "(self) -> 'JaniformErrorDetails'"
-          },
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
-        },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
           "signature": "(*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
@@ -8849,8 +8798,7 @@
         "MeanReversionRuntimeIntervalAnchors",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshotCapture",
-        "SeededTickSimulationValidationError",
-        "SeededTickSimulationValidationFailure"
+        "SeededTickSimulationValidationError"
       ],
       "module_name": "janiform.simulation.shared",
       "schema_identifiers": [],
@@ -8990,22 +8938,6 @@
           "kind": "exception_class",
           "origin_module": "janiform.simulation.shared.errors",
           "qualname": "SeededTickSimulationValidationError"
-        },
-        "SeededTickSimulationValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "from_context": "(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'",
-            "to_error_details": "(self) -> 'JaniformErrorDetails'"
-          },
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         }
       }
     },

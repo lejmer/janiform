@@ -513,12 +513,17 @@ fn build_option_interval_factor_grid(
             DateTime::<Utc>::from_timestamp_nanos(horizon.factor_grid_coverage_start_utc_nanos),
             horizon.factor_grid_coverage_interval_count,
             horizon.factor_grid_interval_duration_nanos,
-            return_components_payload
+            &return_components_payload
                 .fitted_parameters
-                .surprise_deterministic_intensity_profile
-                .weekly_hour_utc_multipliers
-                .as_slice(),
-        );
+                .surprise_deterministic_intensity_profile,
+        )
+        .map_err(|error_message| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: format!(
+                    "joint option calibration surprise profile materialization failed: {error_message}"
+                ),
+            }
+        })?;
 
     load_interval_factor_grid_for_calibration(
         calendar_registry,
@@ -2968,12 +2973,11 @@ mod tests {
                 ),
                 hourly_coverage_interval_count,
                 NANOS_PER_HOUR,
-                return_components_payload
+                &return_components_payload
                     .fitted_parameters
-                    .surprise_deterministic_intensity_profile
-                    .weekly_hour_utc_multipliers
-                    .as_slice(),
-            );
+                    .surprise_deterministic_intensity_profile,
+            )
+            .expect("test surprise profile materialization should succeed");
 
         let interval_factor_grid = load_interval_factor_grid_for_calibration(
             &calendar_registry,

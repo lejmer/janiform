@@ -110,10 +110,10 @@ def successful_full_model_staged_runner_payload(
                             },
                         },
                         "surprise_deterministic_intensity_profile": {
-                            "weekly_hour_utc_multipliers": [1.0] * 168,
+                            "weekly_utc_profile_multipliers": [1.0] * 168,
                             "profile_resolution_hours": 1,
                             "fit_policy": (
-                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
                                 "with_baseline_shrinkage.v1"
                             ),
                             "normalization_policy": (
@@ -320,12 +320,12 @@ def successful_full_model_staged_runner_payload(
                                 },
                             },
                             "surprise_deterministic_intensity_profile": {
-                                "weekly_hour_utc_multipliers": [
+                                "weekly_utc_profile_multipliers": [
                                     2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
                                 ],
                                 "profile_resolution_hours": 1,
                                 "fit_policy": (
-                                    "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                    "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
                                     "with_baseline_shrinkage.v1"
                                 ),
                                 "normalization_policy": (
@@ -416,12 +416,12 @@ def successful_full_model_staged_runner_payload(
                             },
                         },
                         "surprise_deterministic_intensity_profile": {
-                            "weekly_hour_utc_multipliers": [
+                            "weekly_utc_profile_multipliers": [
                                 2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
                             ],
                             "profile_resolution_hours": 1,
                             "fit_policy": (
-                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
                                 "with_baseline_shrinkage.v1"
                             ),
                             "normalization_policy": (

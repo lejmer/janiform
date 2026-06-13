@@ -6,6 +6,7 @@ mod execution;
 mod likelihood;
 mod likelihood_objective;
 mod progress;
+mod seasonality_input;
 mod selection;
 
 pub(crate) use activity::short_gap_ratio_from_threshold;

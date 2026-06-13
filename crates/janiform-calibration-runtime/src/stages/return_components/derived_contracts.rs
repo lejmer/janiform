@@ -13,3 +13,19 @@ pub(super) const fn return_components_stage_surprise_intensity_weekly_profile_bu
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_HOURS_PER_WEEK
         / RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
 }
+
+pub(super) const fn return_components_stage_surprise_intensity_weekly_profile_bucket_count_for_resolution(
+    profile_resolution_hours: usize,
+) -> Option<usize> {
+    if profile_resolution_hours == 0
+        || !RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_HOURS_PER_WEEK
+            .is_multiple_of(profile_resolution_hours)
+    {
+        return None;
+    }
+
+    Some(
+        RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_HOURS_PER_WEEK
+            / profile_resolution_hours,
+    )
+}

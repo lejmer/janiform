@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic;
 use std::sync::mpsc::{self, Sender};
 
-use super::clock::hawkes_deseasonalized_adjacent_open_gap;
+use super::clock::hawkes_adjacent_open_gap;
 use super::contracts::{
-    HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR, HAWKES_OPEN_MARKET_STATE_CODE,
-    HawkesStageCandidateDiagnostic, HawkesStageCandidateInput, HawkesStageExecutionFailure,
-    HawkesStageExecutionInput, HawkesStageExecutionMetadata, HawkesStageExecutionReport,
-    HawkesStageFittedPayload, HawkesStageHandoffOutput, HawkesStageImpliedMetricsDiagnostic,
+    HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR, HawkesStageCandidateDiagnostic,
+    HawkesStageCandidateInput, HawkesStageExecutionFailure, HawkesStageExecutionInput,
+    HawkesStageExecutionMetadata, HawkesStageExecutionReport, HawkesStageFittedPayload,
+    HawkesStageHandoffOutput, HawkesStageImpliedMetricsDiagnostic,
     HawkesStageObjectiveTermDiagnostic, HawkesStageObservedSourceRegime, HawkesStageProgressPhase,
     HawkesStageProgressUpdate,
 };
@@ -16,6 +16,7 @@ use super::likelihood::{
     score_hawkes_candidates_with_signed_likelihood,
 };
 use super::progress::emit_hawkes_progress;
+use super::seasonality_input::validate_hawkes_seasonality_event_vectors;
 use super::selection::ranked_hawkes_candidate_indices;
 use super::short_gap_ratio_from_threshold;
 use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
@@ -42,7 +43,8 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::{
     arithmetic_mean, coefficient_of_variation, round_positive_to_domain, round_to,
 };
-use janiform_market_time::calendar::ExchangeCalendarRegistry;
+use janiform_foundations::time::SECONDS_PER_HOUR;
+use janiform_market_time::calendar::{ExchangeCalendarRegistry, OPEN_MARKET_STATE_CODE};
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
     HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
@@ -374,6 +376,7 @@ fn validate_hawkes_stage_preflight(
     );
 
     validate_hawkes_seasonality_handoff(run_spec, stage_input)?;
+    validate_hawkes_seasonality_payload(run_spec, stage_input.seasonality_input.payload())?;
 
     emit_hawkes_progress(
         progress_sender,
@@ -384,6 +387,18 @@ fn validate_hawkes_stage_preflight(
     );
 
     Ok(stage_solver_settings)
+}
+
+fn validate_hawkes_seasonality_payload(
+    run_spec: &CalibrationRunSpec,
+    seasonality_payload: &SeasonalityStageNormalizedPayload,
+) -> HawkesStageReportResult<()> {
+    validate_hawkes_seasonality_event_vectors(seasonality_payload).map_err(|error_message| {
+        Box::new(build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::InvalidSeasonalityPayload { error_message },
+        ))
+    })
 }
 
 fn validate_hawkes_seasonality_handoff(
@@ -1644,77 +1659,64 @@ fn derive_observed_activity_targets(
         .copied()
         .zip(
             seasonality_payload
-                .business_time_rate_by_event
+                .open_event_business_time_delta_exposure_hours_by_event
                 .iter()
                 .copied(),
         )
         .zip(seasonality_payload.market_state_codes.iter().copied())
-        .filter_map(|((timestamp_utc_nanos, factor), market_state_code)| {
-            if market_state_code == HAWKES_OPEN_MARKET_STATE_CODE {
-                Some((
-                    timestamp_utc_nanos,
-                    factor.max(HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR),
-                ))
-            } else {
-                None
-            }
-        })
+        .filter_map(
+            |((timestamp_utc_nanos, delta_exposure_hours), market_state_code)| {
+                if market_state_code != OPEN_MARKET_STATE_CODE {
+                    return None;
+                }
+
+                Some((timestamp_utc_nanos, delta_exposure_hours))
+            },
+        )
         .collect();
 
     let mut transformed_open_gaps_seconds: Vec<f64> =
         Vec::with_capacity(open_event_points.len().saturating_sub(1));
 
-    let mut same_window_gap_seconds_sum = 0.0;
     let mut seasonality_weighted_gap_seconds_sum = 0.0;
 
-    for (
-        (previous_timestamp_utc_nanos, previous_factor),
-        (current_timestamp_utc_nanos, current_factor),
-    ) in open_event_points
-        .iter()
-        .copied()
-        .zip(open_event_points.iter().copied().skip(1))
-    {
-        let Some(gap) = hawkes_deseasonalized_adjacent_open_gap(
-            previous_timestamp_utc_nanos,
-            previous_factor,
-            current_timestamp_utc_nanos,
-            current_factor,
-        ) else {
-            continue;
-        };
-
-        same_window_gap_seconds_sum += gap.raw_gap_seconds;
-        seasonality_weighted_gap_seconds_sum += gap.transformed_gap_seconds;
-        transformed_open_gaps_seconds.push(gap.transformed_gap_seconds);
-    }
-
-    let fallback_mean_factor = arithmetic_mean(
+    for ((previous_timestamp_utc_nanos, _), (current_timestamp_utc_nanos, delta_exposure_hours)) in
         open_event_points
             .iter()
-            .map(|(_, factor)| *factor)
-            .collect::<Vec<f64>>()
-            .as_slice(),
-    )
-    .unwrap_or(1.0)
-    .max(HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR);
+            .copied()
+            .zip(open_event_points.iter().copied().skip(1))
+    {
+        if hawkes_adjacent_open_gap(previous_timestamp_utc_nanos, current_timestamp_utc_nanos)
+            .is_none()
+        {
+            continue;
+        }
 
-    let mean_open_factor = if same_window_gap_seconds_sum > 0.0 {
-        (seasonality_weighted_gap_seconds_sum / same_window_gap_seconds_sum)
-            .max(HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR)
+        let transformed_gap_seconds = delta_exposure_hours * SECONDS_PER_HOUR;
+
+        seasonality_weighted_gap_seconds_sum += transformed_gap_seconds;
+
+        transformed_open_gaps_seconds.push(transformed_gap_seconds);
+    }
+
+    let integrated_open_gap_exposure_hours =
+        seasonality_weighted_gap_seconds_sum / SECONDS_PER_HOUR;
+
+    let open_factor_exposure_hours = if integrated_open_gap_exposure_hours.is_finite()
+        && integrated_open_gap_exposure_hours > 0.0
+    {
+        integrated_open_gap_exposure_hours
     } else {
-        fallback_mean_factor
-    };
-
-    let open_factor_exposure_hours = (source_regime.open_session_duration_hours * mean_open_factor)
-        .max(HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR);
+        source_regime.open_session_duration_hours
+    }
+    .max(HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR);
 
     let deseasonalized_open_event_rate_per_hour =
         source_regime.open_session_tick_count as f64 / open_factor_exposure_hours;
 
     let deseasonalized_mean_interarrival_seconds =
         arithmetic_mean(transformed_open_gaps_seconds.as_slice())
-            .unwrap_or(source_regime.open_session_mean_interarrival_seconds * mean_open_factor);
+            .unwrap_or(source_regime.open_session_mean_interarrival_seconds);
 
     let deseasonalized_interarrival_coefficient_of_variation =
         coefficient_of_variation(transformed_open_gaps_seconds.as_slice());
@@ -2081,6 +2083,7 @@ mod tests {
         HawkesStageObservedSourceRegime,
     };
     use crate::stages::seasonality::SeasonalityStageNormalizedPayload;
+    use janiform_foundations::time::SECONDS_PER_HOUR;
     use janiform_market_time::business_time_clock::{
         FOURIER_BUSINESS_TIME_CLOCK_BASIS, FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM,
         FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
@@ -2456,6 +2459,11 @@ mod tests {
             exchange_local_minute_of_week: vec![570, 571, 573],
             market_state_codes: vec![1, 1, 1],
             business_time_rate_by_event: vec![1.0, 2.0, 1.0],
+            open_event_business_time_delta_exposure_hours_by_event: vec![
+                0.0,
+                1.5 / SECONDS_PER_HOUR,
+                3.0 / SECONDS_PER_HOUR,
+            ],
             clock_model: flat_business_time_clock_model(),
         }
     }

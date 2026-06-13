@@ -18,7 +18,9 @@ use crate::stages::joint_metrics::{
 use crate::stages::long_variance::metrics::{
     aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
 };
-use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
+use janiform_calibration_artifacts::{
+    JointRefinementStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
+};
 use janiform_engine_simulation::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickSimulationTransitionConsumer,
     estimate_seeded_result_capacities, stream_seeded_tick_event_simulation,
@@ -67,7 +69,7 @@ pub struct JointRefinementSummarySimulationSessionContext {
     pub runtime_interval_seasonality_factors: Vec<f64>,
     pub hourly_simulation_start_utc_nanos: i64,
     pub hourly_simulation_interval_count: usize,
-    pub surprise_weekly_hour_utc_multipliers: Vec<f64>,
+    pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub simulated_5m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     pub simulated_15m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     pub simulated_hourly_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
@@ -511,10 +513,8 @@ pub fn initialize_joint_refinement_summary_simulation_session(
             hourly_simulation_start_utc,
             session_context.hourly_simulation_interval_count,
             NANOS_PER_HOUR,
-            session_context
-                .surprise_weekly_hour_utc_multipliers
-                .as_slice(),
-        );
+            &session_context.surprise_deterministic_intensity_profile,
+        )?;
 
     let surprise_deterministic_time_multipliers =
         surprise_deterministic_time_multiplier_by_interval_index
@@ -911,7 +911,9 @@ pub(crate) mod tests {
         return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_trade_returns,
         scale_normalized_returns, tick_count_series,
     };
-    use crate::stages::joint_refinement::JointRefinementSeedSummary;
+    use crate::stages::joint_refinement::{
+        JointRefinementSeedSummary, build_surprise_multipliers_for_interval_grid,
+    };
     use crate::stages::long_variance::metrics::{
         aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
     };
@@ -1109,14 +1111,16 @@ pub(crate) mod tests {
             ))
             .expect("hourly simulation end should stay in range");
 
-        let surprise_deterministic_time_multiplier_by_interval_index = fixture
-            .session_context
-            .surprise_weekly_hour_utc_multipliers
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(interval_index, multiplier)| (interval_index as u64, multiplier))
-            .collect::<Vec<_>>();
+        let surprise_deterministic_time_multiplier_by_interval_index =
+            build_surprise_multipliers_for_interval_grid(
+                session_state.hourly_simulation_start_utc,
+                session_state.hourly_simulation_interval_count,
+                NANOS_PER_HOUR,
+                &fixture
+                    .session_context
+                    .surprise_deterministic_intensity_profile,
+            )
+            .expect("test surprise profile materialization should succeed");
 
         let expected_interval_factor_grid = load_interval_factor_grid_for_calibration(
             &session_state.calendar_registry,
@@ -1590,8 +1594,8 @@ pub(crate) mod tests {
                         .expect("hourly simulation start timestamp should fit in i64"),
                     hourly_simulation_interval_count: observed_data
                         .hourly_simulation_interval_count,
-                    surprise_weekly_hour_utc_multipliers: observed_data
-                        .surprise_weekly_hour_utc_multipliers
+                    surprise_deterministic_intensity_profile: observed_data
+                        .surprise_deterministic_intensity_profile
                         .clone(),
                     simulated_5m_interval_template: observed_data
                         .simulated_5m_interval_template

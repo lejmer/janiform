@@ -714,10 +714,10 @@ fn build_return_components_stage_success_report(
             nig_shared_plus_shift_configuration: nig_configuration,
             news_process_configuration,
             surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-                weekly_hour_utc_multipliers: selected_candidate_input
+                weekly_utc_profile_multipliers: selected_candidate_input
                     .candidate_families
                     .surprise_news_arrival_controls
-                    .weekly_hour_utc_multipliers
+                    .weekly_utc_profile_multipliers
                     .clone(),
                 profile_resolution_hours: selected_candidate_input
                     .candidate_families

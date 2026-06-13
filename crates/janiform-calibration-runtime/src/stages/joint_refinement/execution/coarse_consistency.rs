@@ -540,11 +540,10 @@ pub(crate) fn build_joint_coarse_interval_observations(
             context.observed_data.hourly_simulation_start_utc,
             interval_count,
             interval_duration_nanos,
-            context
+            &context
                 .observed_data
-                .surprise_weekly_hour_utc_multipliers
-                .as_slice(),
-        );
+                .surprise_deterministic_intensity_profile,
+        )?;
 
     let runtime_interval_seasonality_factors =
         build_runtime_interval_seasonality_factors_from_components(

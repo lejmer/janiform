@@ -201,9 +201,9 @@ pub fn evaluate_return_components_exact_candidate(
             .arrivals
             .surprise
             .closed_baseline_intensity,
-        weekly_hour_utc_multipliers: fitted_parameters
+        weekly_utc_profile_multipliers: fitted_parameters
             .surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .clone(),
         profile_resolution_hours: fitted_parameters
             .surprise_deterministic_intensity_profile

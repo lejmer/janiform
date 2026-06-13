@@ -10,11 +10,10 @@ use janiform_work_scheduler::{
 };
 
 use super::bit_flags::HawkesBitFlags;
-use super::clock::hawkes_deseasonalized_adjacent_open_gap;
+use super::clock::hawkes_adjacent_open_gap;
 use super::contracts::{
-    HAWKES_EVENT_SIDE_CODE_BUY, HAWKES_EVENT_SIDE_CODE_SELL,
-    HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR, HAWKES_OPEN_MARKET_STATE_CODE,
-    HawkesStageCandidateDiagnostic, HawkesStageProgressPhase, HawkesStageProgressUpdate,
+    HAWKES_EVENT_SIDE_CODE_BUY, HAWKES_EVENT_SIDE_CODE_SELL, HawkesStageCandidateDiagnostic,
+    HawkesStageProgressPhase, HawkesStageProgressUpdate,
 };
 use super::execution::HawkesPreparedCandidate;
 use super::likelihood_objective::{
@@ -23,8 +22,10 @@ use super::likelihood_objective::{
 use super::progress::{
     HawkesConvergenceProgress, emit_hawkes_convergence_progress, emit_hawkes_progress,
 };
+use super::seasonality_input::validate_hawkes_seasonality_event_vectors;
 use super::selection::ranked_hawkes_candidate_indices;
 use crate::stages::seasonality::SeasonalityStageNormalizedPayload;
+use janiform_market_time::calendar::OPEN_MARKET_STATE_CODE;
 
 const PROGRESS_PERCENT_BUCKET_COUNT: usize = 100;
 
@@ -54,7 +55,7 @@ pub(super) fn build_hawkes_likelihood_tape(
         return Ok(None);
     }
 
-    validate_likelihood_tape_input_lengths(seasonality_payload, event_side_codes)?;
+    validate_likelihood_tape_inputs(seasonality_payload, event_side_codes)?;
 
     let source_event_count = seasonality_payload.timestamp_utc_nanos.len();
     let progress_stride = progress_stride(source_event_count);
@@ -71,14 +72,14 @@ pub(super) fn build_hawkes_likelihood_tape(
 
     for (
         event_position,
-        (((timestamp_utc_nanos, seasonality_factor), market_state_code), event_side_code),
+        (((timestamp_utc_nanos, delta_exposure_hours), market_state_code), event_side_code),
     ) in seasonality_payload
         .timestamp_utc_nanos
         .iter()
         .copied()
         .zip(
             seasonality_payload
-                .business_time_rate_by_event
+                .open_event_business_time_delta_exposure_hours_by_event
                 .iter()
                 .copied(),
         )
@@ -88,8 +89,12 @@ pub(super) fn build_hawkes_likelihood_tape(
     {
         validate_event_side_code(event_position, event_side_code)?;
 
-        if market_state_code == HAWKES_OPEN_MARKET_STATE_CODE {
-            tape_builder.push_open_event(timestamp_utc_nanos, seasonality_factor, event_side_code);
+        if market_state_code == OPEN_MARKET_STATE_CODE {
+            tape_builder.push_open_event(
+                timestamp_utc_nanos,
+                delta_exposure_hours,
+                event_side_code,
+            )?;
         }
 
         if event_position % progress_stride == 0 {
@@ -210,32 +215,18 @@ pub(super) fn score_hawkes_candidates_with_signed_likelihood(
     build_likelihood_scored_candidates(prepared_candidates, state.outputs)
 }
 
-fn validate_likelihood_tape_input_lengths(
+fn validate_likelihood_tape_inputs(
     seasonality_payload: &SeasonalityStageNormalizedPayload,
     event_side_codes: &[u8],
 ) -> Result<(), String> {
+    validate_hawkes_seasonality_event_vectors(seasonality_payload)?;
+
     let expected_event_count = seasonality_payload.timestamp_utc_nanos.len();
 
     if event_side_codes.len() != expected_event_count {
         return Err(format!(
             "event_side_codes length {} must match seasonality event count {}",
             event_side_codes.len(),
-            expected_event_count
-        ));
-    }
-
-    if seasonality_payload.market_state_codes.len() != expected_event_count {
-        return Err(format!(
-            "seasonality market_state_codes length {} must match timestamp event count {}",
-            seasonality_payload.market_state_codes.len(),
-            expected_event_count
-        ));
-    }
-
-    if seasonality_payload.business_time_rate_by_event.len() != expected_event_count {
-        return Err(format!(
-            "seasonality business_time_rate_by_event length {} must match timestamp event count {}",
-            seasonality_payload.business_time_rate_by_event.len(),
             expected_event_count
         ));
     }
@@ -263,7 +254,6 @@ struct HawkesLikelihoodTapeBuilder {
     sell_event_count: usize,
     total_exposure_hours: f64,
     previous_open_timestamp_utc_nanos: Option<i64>,
-    previous_open_factor: Option<f64>,
 }
 
 impl HawkesLikelihoodTapeBuilder {
@@ -277,43 +267,43 @@ impl HawkesLikelihoodTapeBuilder {
             sell_event_count: 0,
             total_exposure_hours: 0.0,
             previous_open_timestamp_utc_nanos: None,
-            previous_open_factor: None,
         }
     }
 
     fn push_open_event(
         &mut self,
         timestamp_utc_nanos: i64,
-        seasonality_factor: f64,
+        delta_exposure_hours: f64,
         event_side_code: u8,
-    ) {
-        let event_factor = seasonality_factor.max(HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR);
+    ) -> Result<(), String> {
+        if !delta_exposure_hours.is_finite() || delta_exposure_hours < 0.0 {
+            return Err(format!(
+                "seasonality open_event_business_time_delta_exposure_hours_by_event produced invalid exposure {delta_exposure_hours}"
+            ));
+        }
 
-        let (delta_exposure_hours, reset_state) = self
+        let (applied_delta_exposure_hours, reset_state) = self
             .previous_open_timestamp_utc_nanos
-            .zip(self.previous_open_factor)
-            .map(
-                |(previous_open_timestamp_utc_nanos, previous_open_factor)| {
-                    match hawkes_deseasonalized_adjacent_open_gap(
-                        previous_open_timestamp_utc_nanos,
-                        previous_open_factor,
-                        timestamp_utc_nanos,
-                        event_factor,
-                    ) {
-                        Some(gap) => (gap.transformed_gap_hours, false),
-                        None => (0.0, true),
-                    }
-                },
-            )
+            .map(|previous_open_timestamp_utc_nanos| {
+                match hawkes_adjacent_open_gap(
+                    previous_open_timestamp_utc_nanos,
+                    timestamp_utc_nanos,
+                ) {
+                    Some(_) => (delta_exposure_hours, false),
+                    None => (0.0, true),
+                }
+            })
             .unwrap_or((0.0, true));
 
-        self.delta_exposure_hours.push(delta_exposure_hours);
-        self.total_exposure_hours += delta_exposure_hours;
+        self.delta_exposure_hours.push(applied_delta_exposure_hours);
+
+        self.total_exposure_hours += applied_delta_exposure_hours;
 
         self.buy_side_flags.push(
             self.event_count,
             event_side_code == HAWKES_EVENT_SIDE_CODE_BUY,
         );
+
         self.reset_flags.push(self.event_count, reset_state);
 
         if event_side_code == HAWKES_EVENT_SIDE_CODE_BUY {
@@ -324,7 +314,8 @@ impl HawkesLikelihoodTapeBuilder {
 
         self.event_count = self.event_count.saturating_add(1);
         self.previous_open_timestamp_utc_nanos = Some(timestamp_utc_nanos);
-        self.previous_open_factor = Some(event_factor);
+
+        Ok(())
     }
 
     fn finish(self) -> Result<Option<HawkesLikelihoodTape>, String> {

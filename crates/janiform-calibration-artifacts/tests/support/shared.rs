@@ -775,12 +775,12 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
         )
         .expect("news process configuration should validate"),
         surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-            weekly_hour_utc_multipliers: (0..168)
+            weekly_utc_profile_multipliers: (0..168)
                 .map(|hour_index| if hour_index == 14 { 2.0 } else { 1.0 })
                 .collect(),
             profile_resolution_hours: 1,
             fit_policy:
-                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_with_baseline_shrinkage.v1"
+                "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_with_baseline_shrinkage.v1"
                     .to_string(),
             normalization_policy: "exposure_weighted_mean_one_over_source_window.v1"
                 .to_string(),

@@ -27,6 +27,7 @@ pub use janiform_calibration_runtime::{
     evaluate_return_components_exact_candidate_from_bridge,
     evolve_hawkes_state_for_calibration_step, load_interval_factor_grid_for_calibration,
     materialize_runtime_structural_seasonality,
+    materialize_surprise_news_weekly_profile_multipliers_for_interval_range,
     project_hawkes_intensities_for_calibration_interval,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,

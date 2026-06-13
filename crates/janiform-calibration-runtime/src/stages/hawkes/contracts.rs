@@ -24,11 +24,8 @@ pub const HAWKES_EVENT_SIDE_CODE_BUY: u8 = 1;
 /// Compact event-side code for a sell-side Hawkes event.
 pub const HAWKES_EVENT_SIDE_CODE_SELL: u8 = 2;
 
-// Hawkes likelihood and activity targets only use open-session events.
-pub(super) const HAWKES_OPEN_MARKET_STATE_CODE: u8 = 1;
-
-// One hour is the existing continuity boundary for the de-seasonalized event clock.
-pub(super) const HAWKES_MAX_DESEASONALIZED_GAP_SECONDS: f64 = SECONDS_PER_HOUR;
+// One hour is the existing continuity boundary for the open-event Hawkes state recursion.
+pub(super) const HAWKES_MAX_CONTINUOUS_OPEN_GAP_SECONDS: f64 = SECONDS_PER_HOUR;
 
 // Seasonality factors are positive by construction, but persisted artifacts can
 // contain machine-scale edge values near sparse windows.
@@ -676,6 +673,9 @@ pub enum HawkesStageExecutionFailure {
     SeasonalityArtifactReferenceMismatch {
         expected_artifact_reference: String,
         provided_artifact_reference: String,
+    },
+    InvalidSeasonalityPayload {
+        error_message: String,
     },
     MissingHawkesCandidateInputs,
     DuplicateCandidateId {

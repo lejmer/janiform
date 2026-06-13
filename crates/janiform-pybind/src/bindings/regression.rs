@@ -218,7 +218,7 @@ fn parse_regression_seasonality_cases(
             "news_intensity_source",
         )?;
 
-        let expected_s_h_value = parse_required_field(
+        let expected_seasonality_factor_value = parse_required_field(
             case_mapping,
             case_position,
             "seasonality_cases",
@@ -238,11 +238,12 @@ fn parse_regression_seasonality_cases(
         let parsed_news_intensity_source =
             parse_interval_provider_news_intensity_source(&news_intensity_source_value)?;
 
-        let expected_seasonality_factor: Vec<f64> = expected_s_h_value.extract().map_err(|_| {
-            SeasonalityInputValidationError::new_err(format!(
-                "seasonality_cases[{case_position}] field 'expected_seasonality_factor' must be an iterable of float values",
-            ))
-        })?;
+        let expected_seasonality_factor: Vec<f64> =
+            expected_seasonality_factor_value.extract().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "seasonality_cases[{case_position}] field 'expected_seasonality_factor' must be an iterable of float values",
+                ))
+            })?;
 
         let expected_news_intensity: Vec<f64> = expected_news_intensity_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(

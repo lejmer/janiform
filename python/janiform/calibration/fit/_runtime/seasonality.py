@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final, TYPE_CHECKING, cast
+from typing import Any, TYPE_CHECKING, cast
 
 from ...._native_api import native_module
 from ....calendar import CalendarRegistry
@@ -13,7 +13,6 @@ from ....interval_factor_grids import (
 from ....interval_factor_grids.workflow import _parse_interval_duration_nanos
 from ...errors import calibration_error
 from .payloads import (
-    raise_invalid_weekly_surprise_multiplier,
     require_payload_mapping,
     return_components_fitted_parameters_payload,
     seasonality_parameters_payload,
@@ -22,11 +21,6 @@ from .shared import RuntimeStructuralSeasonalityGrid
 
 if TYPE_CHECKING:
     from ....model import JaniformModel
-
-
-RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: Final = (
-    "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
-)
 
 
 def build_runtime_interval_seasonality_source_from_model(
@@ -56,15 +50,9 @@ def build_runtime_interval_seasonality_source_from_model(
         clock_model=clock_model,
     )
 
-    if not seasonality_grid.seasonality_factors:
-        return IntervalSeasonalityProviderExplicitSource(
-            interval_factors=(),
-            materialization_method=RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
-        )
-
     return IntervalSeasonalityProviderExplicitSource(
         interval_factors=seasonality_grid.seasonality_factors,
-        materialization_method=RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
+        materialization_method=seasonality_grid.materialization_method,
     )
 
 
@@ -75,67 +63,39 @@ def surprise_deterministic_time_multiplier_by_interval_index(
     range_end_utc: datetime,
     interval_duration_nanos: int,
 ) -> dict[int, float]:
-    weekly_hour_utc_multipliers = surprise_weekly_hour_utc_multipliers(model)
-
-    normalized_range_start_utc = normalize_runtime_utc_timestamp(range_start_utc, field_name="range_start_utc")
-    normalized_range_end_utc = normalize_runtime_utc_timestamp(range_end_utc, field_name="range_end_utc")
-
-    if normalized_range_end_utc <= normalized_range_start_utc:
-        return {}
-
-    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
-
-    interval_count = int(
-        (normalized_range_end_utc - normalized_range_start_utc).total_seconds()
-        / interval_duration.total_seconds()
+    normalized_range_start_utc = normalize_runtime_utc_timestamp(
+        range_start_utc,
+        field_name="range_start_utc",
     )
 
-    multiplier_by_interval: dict[int, float] = {}
+    normalized_range_end_utc = normalize_runtime_utc_timestamp(
+        range_end_utc,
+        field_name="range_end_utc",
+    )
 
-    for interval_index in range(interval_count):
-        interval_start_utc = normalized_range_start_utc + interval_duration * interval_index
-        interval_end_utc = min(interval_start_utc + interval_duration, normalized_range_end_utc)
+    native = native_module()
 
-        interval_multiplier = average_weekly_hour_multiplier_over_interval(
-            interval_start_utc=interval_start_utc,
-            interval_end_utc=interval_end_utc,
-            weekly_hour_utc_multipliers=weekly_hour_utc_multipliers,
-        )
+    native_payload = native.materialize_surprise_news_weekly_profile_multipliers_for_interval_range(
+        normalized_range_start_utc.isoformat(),
+        normalized_range_end_utc.isoformat(),
+        interval_duration_nanos,
+        dict(surprise_deterministic_intensity_profile_payload(model)),
+    )
 
-        if abs(interval_multiplier - 1.0) > 1.0e-12:
-            multiplier_by_interval[interval_index] = interval_multiplier
+    return {
+        int(interval_index): float(multiplier)
+        for interval_index, multiplier in cast(Mapping[Any, Any], native_payload).items()
+    }
 
-    return multiplier_by_interval
 
-
-def surprise_weekly_hour_utc_multipliers(model: JaniformModel) -> tuple[float, ...]:
+def surprise_deterministic_intensity_profile_payload(model: JaniformModel) -> Mapping[str, Any]:
     fitted_parameters = return_components_fitted_parameters_payload(model)
 
-    profile = require_payload_mapping(
+    return require_payload_mapping(
         fitted_parameters,
         "surprise_deterministic_intensity_profile",
         "return_components.fitted_parameters.surprise_deterministic_intensity_profile",
     )
-
-    raw_weekly_hour_utc_multipliers = profile.get("weekly_hour_utc_multipliers")
-    if not isinstance(raw_weekly_hour_utc_multipliers, list):
-        raise RuntimeError(
-            "JaniformModel is missing weekly surprise intensity multipliers in the fitted model payload"
-        )
-
-    weekly_hour_utc_multipliers = tuple(
-        float(raw_multiplier)
-        if isinstance(raw_multiplier, int | float) and not isinstance(raw_multiplier, bool)
-        else raise_invalid_weekly_surprise_multiplier(bucket_index)
-        for bucket_index, raw_multiplier in enumerate(raw_weekly_hour_utc_multipliers)
-    )
-
-    if len(weekly_hour_utc_multipliers) != 168:
-        raise RuntimeError(
-            "JaniformModel weekly surprise intensity profile must contain exactly 168 hourly multipliers"
-        )
-
-    return weekly_hour_utc_multipliers
 
 
 def materialize_runtime_structural_seasonality_grid(
@@ -159,6 +119,7 @@ def materialize_runtime_structural_seasonality_grid(
     payload_mapping = cast(Mapping[str, Any], native_payload)
 
     return RuntimeStructuralSeasonalityGrid(
+        materialization_method=str(payload_mapping["materialization_method"]),
         interval_start_utc_nanos=tuple(
             cast(Sequence[int], payload_mapping["interval_start_utc_nanos"])
         ),
@@ -178,50 +139,6 @@ def seasonality_clock_model(seasonality_parameters: Mapping[str, Any]) -> Mappin
         "clock_model",
         "seasonality.clock_model",
     )
-
-
-def average_weekly_hour_multiplier_over_interval(
-    *,
-    interval_start_utc: datetime,
-    interval_end_utc: datetime,
-    weekly_hour_utc_multipliers: tuple[float, ...],
-) -> float:
-    if interval_end_utc <= interval_start_utc:
-        return 1.0
-
-    weighted_multiplier_sum = 0.0
-    weighted_duration_seconds = 0.0
-
-    current = interval_start_utc
-    while current < interval_end_utc:
-        hour_start_utc = current.replace(minute=0, second=0, microsecond=0)
-
-        next_hour_boundary_utc = (
-            current + timedelta(hours=1)
-            if current == hour_start_utc
-            else hour_start_utc + timedelta(hours=1)
-        )
-
-        segment_end_utc = min(next_hour_boundary_utc, interval_end_utc)
-        segment_duration_seconds = (segment_end_utc - current).total_seconds()
-
-        weighted_multiplier_sum += (
-            weekly_hour_utc_multipliers[weekly_hour_bucket_index(current)] * segment_duration_seconds
-        )
-
-        weighted_duration_seconds += segment_duration_seconds
-
-        current = segment_end_utc
-
-    if weighted_duration_seconds <= 0.0:
-        return 1.0
-
-    return weighted_multiplier_sum / weighted_duration_seconds
-
-
-def weekly_hour_bucket_index(timestamp_utc: datetime) -> int:
-    normalized_timestamp_utc = normalize_runtime_utc_timestamp(timestamp_utc, field_name="timestamp_utc")
-    return normalized_timestamp_utc.weekday() * 24 + normalized_timestamp_utc.hour
 
 
 def normalize_runtime_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> datetime:

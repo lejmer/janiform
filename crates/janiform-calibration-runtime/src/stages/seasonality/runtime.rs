@@ -1,11 +1,19 @@
 use chrono::Timelike;
 use chrono_tz::Tz;
 use janiform_calibration_artifacts::CalibrationRunSpec;
-use janiform_foundations::time::{MINUTES_PER_DAY, MINUTES_PER_HOUR, utc_datetime_from_nanos};
-use janiform_market_time::business_time_clock::{
-    FourierBusinessTimeClockMaterializationInput, materialize_fourier_business_time_clock,
+use janiform_foundations::time::{
+    MINUTES_PER_DAY, MINUTES_PER_HOUR, SECONDS_PER_HOUR, utc_datetime_from_nanos,
 };
-use janiform_market_time::calendar::{ExchangeCalendarRegistry, TimestampEventPreprocessingOutput};
+use janiform_market_time::business_time_clock::{
+    FourierBusinessTimeClockMaterializationInput,
+    FourierBusinessTimeClockOrderedIntervalExposureInput,
+    integrate_fourier_business_time_clock_ordered_interval_exposures,
+    materialize_fourier_business_time_clock,
+};
+use janiform_market_time::calendar::{
+    ExchangeCalendarDefinition, ExchangeCalendarRegistry, OPEN_MARKET_STATE_CODE,
+    TimestampEventPreprocessingOutput,
+};
 
 use super::{
     FourierBusinessTimeClockModel, SeasonalityStageExecutionFailure,
@@ -119,6 +127,71 @@ pub(super) fn materialize_event_rates(
     Ok(event_rates)
 }
 
+pub(super) fn materialize_open_event_gap_exposures(
+    run_spec: &CalibrationRunSpec,
+    preprocessed: &TimestampEventPreprocessingOutput,
+    calendar_definition: &ExchangeCalendarDefinition,
+    clock_model: &FourierBusinessTimeClockModel,
+    timezone: Tz,
+) -> Result<Vec<f64>, Box<SeasonalityStageExecutionReport>> {
+    if preprocessed.market_state_codes.len() != preprocessed.timestamp_utc_nanos.len() {
+        return Err(Box::new(build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::EventRateMaterializationFailed {
+                error_message: "market state code count must match timestamp event count"
+                    .to_string(),
+            },
+        )));
+    }
+
+    let mut interval_start_utc_nanos = Vec::with_capacity(preprocessed.timestamp_utc_nanos.len());
+    let mut interval_end_utc_nanos = Vec::with_capacity(preprocessed.timestamp_utc_nanos.len());
+    let mut previous_open_timestamp_utc_nanos = None;
+
+    for (timestamp_utc_nanos, market_state_code) in preprocessed
+        .timestamp_utc_nanos
+        .iter()
+        .copied()
+        .zip(preprocessed.market_state_codes.iter().copied())
+    {
+        if market_state_code == OPEN_MARKET_STATE_CODE {
+            interval_start_utc_nanos
+                .push(previous_open_timestamp_utc_nanos.unwrap_or(timestamp_utc_nanos));
+
+            interval_end_utc_nanos.push(timestamp_utc_nanos);
+
+            previous_open_timestamp_utc_nanos = Some(timestamp_utc_nanos);
+        } else {
+            interval_start_utc_nanos.push(timestamp_utc_nanos);
+            interval_end_utc_nanos.push(timestamp_utc_nanos);
+        }
+    }
+
+    let output = integrate_fourier_business_time_clock_ordered_interval_exposures(
+        FourierBusinessTimeClockOrderedIntervalExposureInput {
+            calendar_definition,
+            timezone,
+            model: clock_model,
+            interval_start_utc_nanos: interval_start_utc_nanos.as_slice(),
+            interval_end_utc_nanos: interval_end_utc_nanos.as_slice(),
+        },
+    )
+    .map_err(|source| {
+        Box::new(build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::EventRateMaterializationFailed {
+                error_message: source.to_string(),
+            },
+        ))
+    })?;
+
+    Ok(output
+        .business_time_exposure_seconds
+        .into_iter()
+        .map(|exposure_seconds| exposure_seconds / SECONDS_PER_HOUR)
+        .collect())
+}
+
 pub(super) fn exchange_local_minute_of_week(
     run_spec: &CalibrationRunSpec,
     preprocessed: &TimestampEventPreprocessingOutput,
@@ -129,6 +202,7 @@ pub(super) fn exchange_local_minute_of_week(
         .zip(preprocessed.exchange_local_minute_of_day.iter())
         .map(|(day_of_week, minute_of_day)| {
             let day_position = usize::from(day_of_week.saturating_sub(1));
+
             let minute_of_week = day_position
                 .checked_mul(MINUTES_PER_DAY)
                 .and_then(|value| value.checked_add(usize::from(*minute_of_day)))

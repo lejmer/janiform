@@ -14,6 +14,7 @@ mod runtime_seasonality;
 mod shock_mark_fitting;
 mod staged_runner;
 mod stages;
+mod surprise_profile;
 mod temporal;
 
 pub use adapters::{
@@ -250,4 +251,10 @@ pub use stages::seasonality::{
     SeasonalityStageHandoffOutput, SeasonalityStageNormalizedPayload,
     SeasonalityStageProgressPhase, SeasonalityStageProgressUpdate,
     run_seasonality_calibration_stage,
+};
+pub use surprise_profile::{
+    SurpriseNewsWeeklyProfileError, average_surprise_news_weekly_profile_multiplier_over_interval,
+    materialize_surprise_news_weekly_profile_multipliers_for_interval_grid,
+    materialize_surprise_news_weekly_profile_multipliers_for_interval_range,
+    validate_surprise_news_weekly_profile,
 };

@@ -480,7 +480,7 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
         .expect("regression NIG configuration should validate"),
         news_process_configuration: regression_news_process_configuration(),
         surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-            weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+            weekly_utc_profile_multipliers: vec![1.0; 24 * 7],
             profile_resolution_hours: 1,
             fit_policy: "artifact_regression_fixture.v1".to_string(),
             normalization_policy: "artifact_regression_fixture.v1".to_string(),

@@ -17,7 +17,8 @@ pub(crate) use runtime::{
     maximum_runtime_interval_seasonality_factor_from_payload,
 };
 use runtime::{
-    exchange_local_minute_of_week, materialize_event_rates, parse_preprocessed_timezone,
+    exchange_local_minute_of_week, materialize_event_rates, materialize_open_event_gap_exposures,
+    parse_preprocessed_timezone,
 };
 
 use crate::stages::progress::StageProgressUpdate;
@@ -178,6 +179,8 @@ pub struct SeasonalityStageNormalizedPayload {
     pub market_state_codes: Vec<u8>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub business_time_rate_by_event: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open_event_business_time_delta_exposure_hours_by_event: Vec<f64>,
     pub clock_model: FourierBusinessTimeClockModel,
 }
 
@@ -198,6 +201,7 @@ impl SeasonalityStageNormalizedPayload {
             exchange_local_minute_of_week: Vec::new(),
             market_state_codes: Vec::new(),
             business_time_rate_by_event: Vec::new(),
+            open_event_business_time_delta_exposure_hours_by_event: Vec::new(),
             clock_model: self.clock_model.clone(),
         }
     }
@@ -353,6 +357,7 @@ fn run_seasonality_calibration_stage_inner(
 
     let payload = match build_normalized_payload(
         run_spec,
+        calendar_registry,
         &preflight,
         &preprocessed,
         &clock_fit,
@@ -596,6 +601,7 @@ fn fit_business_time_clock(
 
 fn build_normalized_payload(
     run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
     preflight: &SeasonalityPreflight,
     preprocessed: &TimestampEventPreprocessingOutput,
     clock_fit: &FourierBusinessTimeClockFitSummary,
@@ -611,12 +617,32 @@ fn build_normalized_payload(
 
     let timezone = parse_preprocessed_timezone(run_spec, preprocessed)?;
 
+    let calendar_definition = calendar_registry
+        .get_required(&preprocessed.exchange_code)
+        .map_err(|source| {
+            Box::new(build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::CalendarResolutionFailed {
+                    error_message: source.to_string(),
+                },
+            ))
+        })?;
+
     let business_time_rate_by_event = materialize_event_rates(
         run_spec,
         preprocessed.timestamp_utc_nanos.as_slice(),
         &clock_fit.model,
         timezone,
     )?;
+
+    let open_event_business_time_delta_exposure_hours_by_event =
+        materialize_open_event_gap_exposures(
+            run_spec,
+            preprocessed,
+            calendar_definition,
+            &clock_fit.model,
+            timezone,
+        )?;
 
     let exchange_local_minute_of_week = exchange_local_minute_of_week(run_spec, preprocessed)?;
 
@@ -641,6 +667,7 @@ fn build_normalized_payload(
         exchange_local_minute_of_week,
         market_state_codes: preprocessed.market_state_codes.clone(),
         business_time_rate_by_event,
+        open_event_business_time_delta_exposure_hours_by_event,
         clock_model: clock_fit.model.clone(),
     })
 }

@@ -932,12 +932,15 @@ fn build_endogenous_mean_reversion_calibration_context(
             range_start_utc,
             interval_count,
             interval_duration_nanos,
-            return_components_payload
+            &return_components_payload
                 .fitted_parameters
-                .surprise_deterministic_intensity_profile
-                .weekly_hour_utc_multipliers
-                .as_slice(),
-        );
+                .surprise_deterministic_intensity_profile,
+        )
+        .map_err(|error_message| {
+            MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
+                error_message,
+            }
+        })?;
 
     let interval_factor_grid = load_interval_factor_grid_for_calibration(
         calendar_registry,

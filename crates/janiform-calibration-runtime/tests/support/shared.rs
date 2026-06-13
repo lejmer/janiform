@@ -867,23 +867,23 @@ fn assert_return_components_fitted_parameters_match(
     assert_eq!(
         actual_parameters
             .surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .len(),
         expected_parameters
             .surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .len(),
-        "{context} surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers length drifted"
+        "{context} surprise_deterministic_intensity_profile.weekly_utc_profile_multipliers length drifted"
     );
 
     for (position, (actual_multiplier, expected_multiplier)) in actual_parameters
         .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers
+        .weekly_utc_profile_multipliers
         .iter()
         .zip(
             expected_parameters
                 .surprise_deterministic_intensity_profile
-                .weekly_hour_utc_multipliers
+                .weekly_utc_profile_multipliers
                 .iter(),
         )
         .enumerate()
@@ -892,7 +892,7 @@ fn assert_return_components_fitted_parameters_match(
             *actual_multiplier,
             *expected_multiplier,
             &format!(
-                "{context} surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers[{position}]"
+                "{context} surprise_deterministic_intensity_profile.weekly_utc_profile_multipliers[{position}]"
             ),
         );
     }

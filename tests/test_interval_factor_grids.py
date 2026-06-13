@@ -31,6 +31,8 @@ from janiform.interval_factor_grids import (
 )
 from janiform.seasonality import SeasonalityInputValidationError
 
+from tests.support.calibration import build_flat_business_time_clock_model_payload
+
 
 def test_build_interval_factor_grid_exposes_required_schema_fields_and_types(
     calendar_registry: CalendarRegistry,
@@ -296,56 +298,60 @@ def test_materialize_interval_seasonality_is_deterministic_for_controlled_inputs
     assert first_snapshot == second_snapshot
 
 
-def test_build_runtime_interval_seasonality_source_from_calibration_payload_renormalizes_window_mean(
+def test_build_runtime_interval_seasonality_source_from_calibration_payload_uses_structural_clock_model(
     calendar_registry: CalendarRegistry,
 ) -> None:
     seasonality_source = build_runtime_interval_seasonality_source_from_calibration_payload(
         calendar_registry=calendar_registry,
-        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
-        range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        range_start_utc=datetime(2026, 2, 2, 15, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 18, 0, 0, tzinfo=UTC),
         seasonality_stage_payload={
             "exchange_code": "XNYS",
+            "clock_model": build_flat_business_time_clock_model_payload(),
             "timestamp_utc_nanos": [
-                int(datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-                int(datetime(2026, 2, 2, 14, 20, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-                int(datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-                int(datetime(2026, 2, 2, 16, 15, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 15, 5, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 16, 20, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
             ],
-            "business_time_rate_by_event": [1.0, 1.4, 0.8, 1.8],
+            "business_time_rate_by_event": [100.0, 200.0],
         },
     )
 
     assert seasonality_source.materialization_method == (
-        "calibration.normalized_event_signal_interval_mean_renormalized.v1"
+        "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
     )
-    assert seasonality_source.interval_factors == pytest.approx(
-        [0.9473684210526315, 0.631578947368421, 1.4210526315789473]
-    )
-    assert sum(seasonality_source.interval_factors) / len(seasonality_source.interval_factors) == pytest.approx(1.0)
+    assert seasonality_source.interval_factors == pytest.approx([1.0, 1.0, 1.0])
 
 
-def test_build_runtime_interval_seasonality_source_from_calibration_payload_can_preserve_raw_interval_level(
+def test_build_runtime_interval_seasonality_source_from_calibration_payload_supports_sub_hour_grid(
     calendar_registry: CalendarRegistry,
 ) -> None:
     seasonality_source = build_runtime_interval_seasonality_source_from_calibration_payload(
         calendar_registry=calendar_registry,
-        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_start_utc=datetime(2026, 2, 2, 15, 0, 0, tzinfo=UTC),
         range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        interval="30min",
         seasonality_stage_payload={
             "exchange_code": "XNYS",
-            "timestamp_utc_nanos": [
-                int(datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-                int(datetime(2026, 2, 2, 14, 20, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-                int(datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-                int(datetime(2026, 2, 2, 16, 15, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
-            ],
-            "business_time_rate_by_event": [1.0, 1.4, 0.8, 1.8],
+            "clock_model": build_flat_business_time_clock_model_payload(),
         },
-        mean_renormalize=False,
     )
 
-    assert seasonality_source.materialization_method == "calibration.normalized_event_signal_interval.v1"
-    assert seasonality_source.interval_factors == pytest.approx([1.2, 0.8, 1.8])
+    assert seasonality_source.interval_factors == pytest.approx([1.0, 1.0, 1.0, 1.0])
+
+
+def test_build_runtime_interval_seasonality_source_from_calibration_payload_rejects_missing_clock_model(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    with pytest.raises(
+        SeasonalityInputValidationError,
+        match="seasonality_stage_payload.clock_model is required",
+    ):
+        build_runtime_interval_seasonality_source_from_calibration_payload(
+            calendar_registry=calendar_registry,
+            range_start_utc=datetime(2026, 2, 2, 15, 0, 0, tzinfo=UTC),
+            range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+            seasonality_stage_payload={"exchange_code": "XNYS"},
+        )
 
 
 def test_materialize_interval_seasonality_transition_boundaries_assign_to_start_inclusive_bucket(

@@ -50,6 +50,7 @@ use janiform::calibration::staged::{
     RuntimeStructuralSeasonalityMaterializationInput,
     evaluate_return_components_exact_candidate_from_bridge,
     materialize_runtime_structural_seasonality as materialize_runtime_structural_seasonality_core,
+    materialize_surprise_news_weekly_profile_multipliers_for_interval_range as materialize_surprise_news_weekly_profile_multipliers_for_interval_range_core,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
@@ -626,6 +627,7 @@ fn prepared_market_data_plan_to_py_object(
     )?;
 
     result.set_item("prepared_handle", prepared_handle)?;
+
     result.set_item(
         "staged_request",
         json_value_to_py_object(
@@ -637,6 +639,7 @@ fn prepared_market_data_plan_to_py_object(
             })?,
         )?,
     )?;
+
     result.set_item(
         "diagnostics",
         json_value_to_py_object(
@@ -648,6 +651,7 @@ fn prepared_market_data_plan_to_py_object(
             })?,
         )?,
     )?;
+
     result.set_item(
         "provenance",
         json_value_to_py_object(
@@ -659,10 +663,12 @@ fn prepared_market_data_plan_to_py_object(
             })?,
         )?,
     )?;
+
     result.set_item(
         "session_resolution",
         market_data_session_resolution_to_py_object(py, &prepared_plan.session_resolution)?,
     )?;
+
     result.set_item("fit_warning", prepared_plan.fit_warning)?;
     result.set_item("reference_price", prepared_plan.reference_price)?;
 
@@ -1154,6 +1160,45 @@ fn materialize_runtime_structural_seasonality(
     json_value_to_py_object(py, &serialized_output)
 }
 
+#[pyfunction]
+#[pyo3(signature = (range_start_utc, range_end_utc, interval_duration_nanos, surprise_profile))]
+fn materialize_surprise_news_weekly_profile_multipliers_for_interval_range(
+    py: Python<'_>,
+    range_start_utc: &str,
+    range_end_utc: &str,
+    interval_duration_nanos: i64,
+    surprise_profile: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
+    let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+
+    let parsed_surprise_profile = serde_json::from_value(py_any_to_json_value(surprise_profile)?)
+        .map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "surprise deterministic intensity profile must match the fitted profile contract: {source}"
+            ))
+        })?;
+
+    let multipliers = py
+        .detach(|| {
+            materialize_surprise_news_weekly_profile_multipliers_for_interval_range_core(
+                parsed_range_start_utc,
+                parsed_range_end_utc,
+                interval_duration_nanos,
+                &parsed_surprise_profile,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let result = PyDict::new(py);
+
+    for (interval_index, multiplier) in multipliers {
+        result.set_item(interval_index, multiplier)?;
+    }
+
+    Ok(result.into_any().unbind())
+}
+
 fn python_staged_calibration_report_to_py_object(
     py: Python<'_>,
     report: &CalibrationStagedRunReport,
@@ -1284,6 +1329,7 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         infer_bundled_market_profile_for_tick_data_path,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(infer_market_data_fit_inputs, module)?)?;
     module.add_function(wrap_pyfunction!(built_in_preset_registry_index, module)?)?;
     module.add_function(wrap_pyfunction!(preset_registry_index, module)?)?;
@@ -1292,73 +1338,97 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(serialize_preset_artifact, module)?)?;
     module.add_function(wrap_pyfunction!(deserialize_preset_artifact, module)?)?;
     module.add_function(wrap_pyfunction!(normalize_preset_artifact, module)?)?;
+
     module.add_function(wrap_pyfunction!(
         compute_preset_artifact_content_hash,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         resolve_preset_workflow_configuration,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         resolve_market_profile_configuration,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         exchange_code_from_session_reference,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         exchange_code_from_market_profile_reference,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         preprocess_market_data_translation_request,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         load_and_preprocess_market_data_translation_request,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(probe_market_data_source, module)?)?;
     module.add_function(wrap_pyfunction!(normalize_market_data_source, module)?)?;
     module.add_function(wrap_pyfunction!(resolve_market_data_session, module)?)?;
+
     module.add_function(wrap_pyfunction!(
         prepare_market_data_calibration_plan,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         prepare_market_data_calibration_plan_from_phases,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(run_prepared_staged_calibration, module)?)?;
+
     module.add_function(wrap_pyfunction!(
         run_prepared_staged_calibration_with_events,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_prepared_staged_calibration_with_resume,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         run_prepared_staged_calibration_with_resume_and_events,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;
+
     module.add_function(wrap_pyfunction!(
         run_staged_calibration_with_events,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         evaluate_return_components_candidate,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         estimate_current_state_from_observed_data,
         module
     )?)?;
+
     module.add_function(wrap_pyfunction!(
         materialize_runtime_structural_seasonality,
+        module
+    )?)?;
+
+    module.add_function(wrap_pyfunction!(
+        materialize_surprise_news_weekly_profile_multipliers_for_interval_range,
         module
     )?)?;
 

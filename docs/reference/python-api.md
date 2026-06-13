@@ -302,7 +302,7 @@
 | [`IntervalSeasonalityProviderSource`](#python-api-symbol-janiform-interval-factor-grids-intervalseasonalityprovidersource) | constant | constant value |
 | [`SeasonalityInputValidationError`](#python-api-symbol-janiform-interval-factor-grids-seasonalityinputvalidationerror) | exception_class | janiform.seasonality.errors |
 | [`build_interval_factor_grid`](#python-api-symbol-janiform-interval-factor-grids-build-interval-factor-grid) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_factors: 'Sequence[float]', news_intensity_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_interval_grid_input.v1', news_intensity_materialization_method: 'str' = 'explicit_interval_grid_input.v1') -> 'IntervalFactorGridContract' |
-| [`build_runtime_interval_seasonality_source_from_calibration_payload`](#python-api-symbol-janiform-interval-factor-grids-build-runtime-interval-seasonality-source-from-calibration-payload) | function | (*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityProviderExplicitSource' |
+| [`build_runtime_interval_seasonality_source_from_calibration_payload`](#python-api-symbol-janiform-interval-factor-grids-build-runtime-interval-seasonality-source-from-calibration-payload) | function | (*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]') -> 'IntervalSeasonalityProviderExplicitSource' |
 | [`load_interval_factor_grid_payload`](#python-api-symbol-janiform-interval-factor-grids-load-interval-factor-grid-payload) | function | (interval_factor_grid_payload: 'dict[str, Any] \| Any') -> 'IntervalFactorGridContract' |
 | [`materialize_interval_news_intensity_factors`](#python-api-symbol-janiform-interval-factor-grids-materialize-interval-news-intensity-factors) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', settings: 'IntervalNewsIntensityMaterializationSettings') -> 'IntervalNewsIntensityMaterialization' |
 | [`materialize_interval_seasonality_factors`](#python-api-symbol-janiform-interval-factor-grids-materialize-interval-seasonality-factors) | function | (*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str \| timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityMaterialization' |
@@ -694,7 +694,7 @@
 ### `build_runtime_interval_seasonality_source_from_calibration_payload`
 
 - Kind: `function`
-- Signature: `(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'IntervalSeasonalityMaterializationSettings' = IntervalSeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_interval_minimum_observation_count=1)) -> 'IntervalSeasonalityProviderExplicitSource'`
+- Signature: `(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]') -> 'IntervalSeasonalityProviderExplicitSource'`
 
 <a id="python-api-symbol-janiform-interval-factor-grids-load-interval-factor-grid-payload"></a>
 ### `load_interval_factor_grid_payload`
@@ -1795,7 +1795,6 @@
 | [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 19 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
-| [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationfailure) | contract_model | 6 fields |
 | [`SimulationKind`](#python-api-symbol-janiform-simulation-simulationkind) | enum | 2 members |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
@@ -2035,18 +2034,6 @@
 - Qualified name: `SeededTickSimulationValidationError`
 - Base classes: `JaniformValidationError`, `JaniformError`, `Exception`, `BaseException`
 - Constructor: `(failure: 'ContractValidationFailure') -> 'None'`
-
-<a id="python-api-symbol-janiform-simulation-seededticksimulationvalidationfailure"></a>
-### `SeededTickSimulationValidationFailure`
-
-- Kind: `contract_model`
-- Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
-- Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
-
-| Method | Signature |
-|--------|-----------|
-| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
-| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-symbol-janiform-simulation-simulationkind"></a>
 ### `SimulationKind`
@@ -2436,7 +2423,6 @@
 | [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 19 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
-| [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationfailure) | contract_model | 6 fields |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`deserialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-deserialize-seeded-tick-simulation-response) | function | (payload_json: 'str') -> 'SeededTickSimulationResponse' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-seeded-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
@@ -2698,18 +2684,6 @@
 - Base classes: `JaniformValidationError`, `JaniformError`, `Exception`, `BaseException`
 - Constructor: `(failure: 'ContractValidationFailure') -> 'None'`
 
-<a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationfailure"></a>
-### `SeededTickSimulationValidationFailure`
-
-- Kind: `contract_model`
-- Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
-- Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
-
-| Method | Signature |
-|--------|-----------|
-| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
-| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
-
 <a id="python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs"></a>
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
 
@@ -2755,7 +2729,6 @@
 | [`SeededTickEventSide`](#python-api-symbol-janiform-simulation-shared-seededtickeventside) | enum | 2 members |
 | [`SeededTickEventStateSnapshotCapture`](#python-api-symbol-janiform-simulation-shared-seededtickeventstatesnapshotcapture) | enum | 2 members |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-shared-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
-| [`SeededTickSimulationValidationFailure`](#python-api-symbol-janiform-simulation-shared-seededticksimulationvalidationfailure) | contract_model | 6 fields |
 
 <a id="python-api-symbol-janiform-simulation-shared-hawkesexcitationstate"></a>
 ### `HawkesExcitationState`
@@ -2870,18 +2843,6 @@
 - Qualified name: `SeededTickSimulationValidationError`
 - Base classes: `JaniformValidationError`, `JaniformError`, `Exception`, `BaseException`
 - Constructor: `(failure: 'ContractValidationFailure') -> 'None'`
-
-<a id="python-api-symbol-janiform-simulation-shared-seededticksimulationvalidationfailure"></a>
-### `SeededTickSimulationValidationFailure`
-
-- Kind: `contract_model`
-- Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
-- Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
-
-| Method | Signature |
-|--------|-----------|
-| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
-| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-module-janiform-pricing"></a>
 ## `janiform.pricing`
@@ -4659,7 +4620,6 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`CalibrationValidationError`](#python-api-symbol-janiform-calibration-calibrationvalidationerror) | exception_class | janiform.calibration.errors |
-| [`CalibrationValidationFailure`](#python-api-symbol-janiform-calibration-calibrationvalidationfailure) | contract_model | 6 fields |
 | [`JaniformEstimator`](#python-api-symbol-janiform-calibration-janiformestimator) | class | janiform.calibration.fit.estimator |
 | [`JaniformFitReport`](#python-api-symbol-janiform-calibration-janiformfitreport) | contract_model | 14 fields |
 | [`JaniformFitResult`](#python-api-symbol-janiform-calibration-janiformfitresult) | contract_model | 2 fields |
@@ -4672,18 +4632,6 @@
 - Qualified name: `CalibrationValidationError`
 - Base classes: `JaniformValidationError`, `JaniformError`, `Exception`, `BaseException`
 - Constructor: `(failure: 'ContractValidationFailure') -> 'None'`
-
-<a id="python-api-symbol-janiform-calibration-calibrationvalidationfailure"></a>
-### `CalibrationValidationFailure`
-
-- Kind: `contract_model`
-- Signature: `(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'`
-- Fields: `error_id`, `workflow`, `entrypoint`, `field_path`, `message`, `context_items`
-
-| Method | Signature |
-|--------|-----------|
-| `from_context` | `(*, error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context: 'Optional[Mapping[str, ErrorContextValue]]' = None) -> 'ContractValidationFailure'` |
-| `to_error_details` | `(self) -> 'JaniformErrorDetails'` |
 
 <a id="python-api-symbol-janiform-calibration-janiformestimator"></a>
 ### `JaniformEstimator`

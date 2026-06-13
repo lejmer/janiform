@@ -67,7 +67,6 @@ from janiform.errors import JaniformExecutionError
 from janiform.interval_factor_grids import (
     IntervalFactorGridContract,
     IntervalSeasonalityProviderExplicitSource,
-    IntervalSeasonalityProviderMaterializedSource,
 )
 from janiform.long_variance import LongVarianceState
 from janiform.mean_reversion import (
@@ -1659,6 +1658,9 @@ def test_loaded_high_level_model_runtime_seasonality_uses_structural_clock_model
         assert interval_duration_nanos == 3_600_000_000_000
         assert clock_model == loaded_model.parameters["seasonality"]["clock_model"]
         return {
+            "materialization_method": (
+                "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
+            ),
             "interval_start_utc_nanos": [
                 datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
                 datetime_to_utc_nanos(datetime(2026, 2, 2, 15, tzinfo=UTC)),
@@ -1685,7 +1687,10 @@ def test_loaded_high_level_model_runtime_seasonality_uses_structural_clock_model
         interval="1h",
     )
 
-    assert seasonality_source.interval_factor_grids == (1.0, 1.0)
+    assert seasonality_source.interval_factors == (1.0, 1.0)
+    assert seasonality_source.materialization_method == (
+        "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
+    )
 
 
 def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clock_model(
@@ -1730,6 +1735,9 @@ def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clo
         assert interval_duration_nanos == 3_600_000_000_000
         assert clock_model["intercept"] == 0.25
         return {
+            "materialization_method": (
+                "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
+            ),
             "interval_start_utc_nanos": [
                 datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
                 datetime_to_utc_nanos(datetime(2026, 2, 2, 15, tzinfo=UTC)),
@@ -1756,7 +1764,10 @@ def test_loaded_high_level_model_runtime_seasonality_uses_mutated_structural_clo
         interval="1h",
     )
 
-    assert seasonality_source.interval_factor_grids == (1.0, 1.0)
+    assert seasonality_source.interval_factors == (1.0, 1.0)
+    assert seasonality_source.materialization_method == (
+        "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1"
+    )
 
 
 def test_loaded_high_level_model_runtime_seasonality_requires_structural_parameters(
@@ -3868,7 +3879,7 @@ def test_high_level_model_price_option_grid_surface_matches_single_option_engine
         )
 
 
-def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_windows(
+def test_runtime_pricing_seasonality_source_uses_explicit_interval_factor_grids_for_off_hour_windows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3898,12 +3909,9 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
 
     assert isinstance(
         seasonality_source,
-        IntervalSeasonalityProviderMaterializedSource,
+        IntervalSeasonalityProviderExplicitSource,
     )
-    assert seasonality_source.source_timestamps_utc == (
-        datetime(2026, 2, 2, 15, 34, tzinfo=UTC),
-        datetime(2026, 2, 2, 16, 34, tzinfo=UTC),
-    )
+    assert tuple(seasonality_source.interval_factors) == (1.0, 1.0)
 
 
 def test_runtime_pricing_seasonality_source_uses_explicit_interval_factor_grids_for_hour_aligned_windows(
@@ -3938,7 +3946,47 @@ def test_runtime_pricing_seasonality_source_uses_explicit_interval_factor_grids_
         seasonality_source,
         IntervalSeasonalityProviderExplicitSource,
     )
-    assert tuple(seasonality_source.interval_factor_grids) == (1.0, 1.0)
+    assert tuple(seasonality_source.interval_factors) == (1.0, 1.0)
+
+
+def test_runtime_surprise_weekly_profile_materializes_requested_interval_multipliers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-surprise-weekly-profile",
+    )
+
+    profile_multipliers = [1.0] * 84
+    profile_multipliers[7] = 3.0
+    return_components_parameters = model.parameters["finalization"]["fitted_parameters"][
+        "return_components_fitted_parameters"
+    ]
+    return_components_parameters["surprise_deterministic_intensity_profile"] = {
+        "weekly_utc_profile_multipliers": profile_multipliers,
+        "profile_resolution_hours": 2,
+        "fit_policy": (
+            "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
+            "with_baseline_shrinkage.v1"
+        ),
+        "normalization_policy": "exposure_weighted_mean_one_over_source_window.v1",
+    }
+
+    multiplier_by_interval = fit_seasonality_runtime_module.surprise_deterministic_time_multiplier_by_interval_index(
+        model,
+        range_start_utc=datetime(2026, 2, 2, 13, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, tzinfo=UTC),
+        interval_duration_nanos=3_600_000_000_000,
+    )
+
+    assert multiplier_by_interval == {
+        0: 1.0,
+        1: 3.0,
+        2: 3.0,
+        3: 1.0,
+    }
 
 
 def test_runtime_pricing_factors_use_pricing_kernel_when_requested(
@@ -5204,12 +5252,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             },
                         },
                         "surprise_deterministic_intensity_profile": {
-                            "weekly_hour_utc_multipliers": [
+                            "weekly_utc_profile_multipliers": [
                                 2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
                             ],
                             "profile_resolution_hours": 1,
                             "fit_policy": (
-                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
                                 "with_baseline_shrinkage.v1"
                             ),
                             "normalization_policy": (
@@ -5225,7 +5273,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
                         ),
-                        "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
+                        "mean_reversion_fitted_parameters": (
+                            build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
+                        ),
                     },
                 },
             },
@@ -5412,12 +5462,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 },
                             },
                             "surprise_deterministic_intensity_profile": {
-                                "weekly_hour_utc_multipliers": [
+                                "weekly_utc_profile_multipliers": [
                                     2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
                                 ],
                                 "profile_resolution_hours": 1,
                                 "fit_policy": (
-                                    "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                    "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
                                     "with_baseline_shrinkage.v1"
                                 ),
                                 "normalization_policy": (
@@ -5433,7 +5483,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "tick_grid_observation_model": (
                                 build_nominal_tick_grid_observation_model_payload()
                             ),
-                            "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
+                            "mean_reversion_fitted_parameters": (
+                                build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
+                            ),
                         },
                     },
                     "baseline_hawkes_fitted_parameters": {
@@ -5506,12 +5558,12 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             },
                         },
                         "surprise_deterministic_intensity_profile": {
-                            "weekly_hour_utc_multipliers": [
+                            "weekly_utc_profile_multipliers": [
                                 2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
                             ],
                             "profile_resolution_hours": 1,
                             "fit_policy": (
-                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_"
                                 "with_baseline_shrinkage.v1"
                             ),
                             "normalization_policy": (
@@ -5527,7 +5579,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
                         ),
-                        "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
+                        "mean_reversion_fitted_parameters": (
+                            build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
+                        ),
                     },
                     "objective_breakdown": {
                         "aggregated_likelihood_fit": 1.0,

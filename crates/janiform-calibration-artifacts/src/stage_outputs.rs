@@ -25,7 +25,7 @@ pub struct HawkesStageFittedParameters {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SurpriseNewsDeterministicIntensityProfile {
-    pub weekly_hour_utc_multipliers: Vec<f64>,
+    pub weekly_utc_profile_multipliers: Vec<f64>,
     pub profile_resolution_hours: usize,
     pub fit_policy: String,
     pub normalization_policy: String,
