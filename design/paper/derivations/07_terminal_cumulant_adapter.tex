@@ -22,35 +22,36 @@
 \section{Purpose}
 
 Derive the adapter that turns a terminal log-moment argument into the affine
-schedule query parameters. This is the bridge between the terminal cumulant
-\(K_{t,T}\) used by pricing and the affine oracle's activity, event-count, and
-news-return loadings.
+schedule query parameters.
+This is the bridge between the terminal cumulant \(K_{t,T}\) used by pricing and
+the affine oracle's activity, event-count, and news-return loadings.
 
 \section{Setup}
 
-Let \(t\) be valuation time and \(T\) the terminal option expiry. The observed
-log return is decomposed into a deterministic terminal component and weighted
-Janiform core increments:
+Let \(t\) be valuation time and \(T\) the terminal option expiry.
+The observed log return is decomposed into a deterministic terminal component
+and weighted Janiform core increments:
 \[
-R_{t,T}
-=
-d_{t,T}
-+
-\sum_{h=t}^{T-1} w_h X_h,
+    R_{t,T}
+    =
+    d_{t,T}
+    +
+    \sum_{h=t}^{T-1} w_h X_h,
 \]
 where \(w_h\ge0\) is the terminal mean-reversion weight applied to interval
-\(h\). In the no-observed-state-mean-reversion case, \(w_h=1\).
+\(h\).
+In the no-observed-state-mean-reversion case, \(w_h=1\).
 
 The terminal stochastic cumulant is
 \[
-K_{t,T}(v,\gamma_+,\gamma_-)
-=
-\log\mathbb E^P\!\left[
-\exp\!\left(
-v\sum_h w_h X_h+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
-\right)
-\mid\mathcal F_t
-\right].
+    K_{t,T}(v,\gamma_+,\gamma_-)
+    =
+    \log\mathbb E^P\!\left[
+        \exp\!\left(
+            v\sum_h w_h X_h+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+        \right)
+        \mid\mathcal F_t
+    \right].
 \]
 The deterministic component \(d_{t,T}\) is kept outside \(K_{t,T}\).
 
@@ -101,39 +102,39 @@ Activity premia are count multipliers.
 
 \noindent\textbf{Identity.} For interval \(h\), set
 \[
-\tilde v_h=w_hv.
+    \tilde v_h=w_hv.
 \]
 Define the side compensated unit-clock log moments
 \[
-a_+(\tilde v_h)
-=
-\log\mathbb E\!\left[e^{\tilde v_h(L_1^+-m_+)}\right],
-\qquad
-a_-(\tilde v_h)
-=
-\log\mathbb E\!\left[e^{-\tilde v_h(L_1^--m_-)}\right].
+    a_+(\tilde v_h)
+    =
+    \log\mathbb E\!\left[e^{\tilde v_h(L_1^+-m_+)}\right],
+    \qquad
+    a_-(\tilde v_h)
+    =
+    \log\mathbb E\!\left[e^{-\tilde v_h(L_1^--m_-)}\right].
 \]
 Then the affine schedule query receives
 \[
-\begin{aligned}
-u_{+,h}^B&=-a_+(\tilde v_h),
-&
-u_{+,h}^E&=-\eta_+a_+(\tilde v_h),
-&
-z_{+,h}&=\pi_+,
-\\
-u_{-,h}^B&=-a_-(\tilde v_h),
-&
-u_{-,h}^E&=-\eta_-a_-(\tilde v_h),
-&
-z_{-,h}&=\pi_-,
-\\
-q_h&=\tilde v_h.
-\end{aligned}
+    \begin{aligned}
+        u_{+,h}^B&=-a_+(\tilde v_h),
+        &
+        u_{+,h}^E&=-\eta_+a_+(\tilde v_h),
+        &
+        z_{+,h}&=\pi_+,
+        \\
+        u_{-,h}^B&=-a_-(\tilde v_h),
+        &
+        u_{-,h}^E&=-\eta_-a_-(\tilde v_h),
+        &
+        z_{-,h}&=\pi_-,
+        \\
+        q_h&=\tilde v_h.
+    \end{aligned}
 \]
 With these interval inputs, the affine schedule exponent equals
 \[
-K_{t,T}(v,\log\pi_+,\log\pi_-).
+    K_{t,T}(v,\log\pi_+,\log\pi_-).
 \]
 
 \section{Derivation}
@@ -141,27 +142,27 @@ K_{t,T}(v,\log\pi_+,\log\pi_-).
 For one interval, the conditional trading-block MGF from
 \texttt{03\_conditional\_cf\_mgf\_trading\_block.tex} is
 \[
-\exp\!\left(
-A_h^+\left[K_+(\tilde v_h)-\tilde v_hm_+\right]
-+
-A_h^-\left[K_-(-\tilde v_h)+\tilde v_hm_-\right]
-\right).
+    \exp\!\left(
+        A_h^+\left[K_+(\tilde v_h)-\tilde v_hm_+\right]
+        +
+        A_h^-\left[K_-(-\tilde v_h)+\tilde v_hm_-\right]
+    \right).
 \]
 Write
 \[
-a_+(\tilde v_h)=K_+(\tilde v_h)-\tilde v_hm_+,
-\qquad
-a_-(\tilde v_h)=K_-(-\tilde v_h)+\tilde v_hm_-.
+    a_+(\tilde v_h)=K_+(\tilde v_h)-\tilde v_hm_+,
+    \qquad
+    a_-(\tilde v_h)=K_-(-\tilde v_h)+\tilde v_hm_-.
 \]
 The effective return clocks are
 \[
-A_h^+=B_{Z,h}^++\eta_+E_h^+,
-\qquad
-A_h^-=B_{Z,h}^-+\eta_-E_h^-.
+    A_h^+=B_{Z,h}^++\eta_+E_h^+,
+    \qquad
+    A_h^-=B_{Z,h}^-+\eta_-E_h^-.
 \]
-Thus the trading contribution to the interval transform is
+Thus, the trading contribution to the interval transform is
 \[
-\exp\!\left(
+    \exp\!\left(
 a_+(\tilde v_h)B_{Z,h}^+
 +\eta_+a_+(\tilde v_h)E_h^+
 +a_-(\tilde v_h)B_{Z,h}^-
@@ -171,40 +172,40 @@ a_+(\tilde v_h)B_{Z,h}^+
 
 The affine schedule transform uses the convention
 \[
-\exp\!\left(
+    \exp\!\left(
 -u_+^BB_Z^+-u_+^EE^+
 -u_-^BB_Z^--u_-^EE^-
 \right).
 \]
 Matching exponents gives
 \[
-u_{+,h}^B=-a_+(\tilde v_h),
-\qquad
-u_{+,h}^E=-\eta_+a_+(\tilde v_h),
-\qquad
-u_{-,h}^B=-a_-(\tilde v_h),
-\qquad
-u_{-,h}^E=-\eta_-a_-(\tilde v_h).
+    u_{+,h}^B=-a_+(\tilde v_h),
+    \qquad
+    u_{+,h}^E=-\eta_+a_+(\tilde v_h),
+    \qquad
+    u_{-,h}^B=-a_-(\tilde v_h),
+    \qquad
+    u_{-,h}^E=-\eta_-a_-(\tilde v_h).
 \]
 
 The pricing density uses activity-premium factors
 \[
-\pi_+^{N_{t,T}^+}\pi_-^{N_{t,T}^-}
-=
-\prod_h \pi_+^{N_h^+}\pi_-^{N_h^-}.
+    \pi_+^{N_{t,T}^+}\pi_-^{N_{t,T}^-}
+    =
+    \prod_h \pi_+^{N_h^+}\pi_-^{N_h^-}.
 \]
 Because the affine schedule transform represents count tilts as
 \(z_+^{N_h^+}z_-^{N_h^-}\), the count multipliers are
 \[
-z_{+,h}=\pi_+,
-\qquad
-z_{-,h}=\pi_-.
+    z_{+,h}=\pi_+,
+    \qquad
+    z_{-,h}=\pi_-.
 \]
 
 Open news and reopening gaps are additive log-return components, so the same
 weighted terminal argument applies to their return transform:
 \[
-q_h=\tilde v_h.
+    q_h=\tilde v_h.
 \]
 
 The affine oracle composes intervals backward. Since each interval receives
@@ -212,7 +213,7 @@ the loadings above and the terminal interval composition passes inherited
 \(\mathbf D\) and \(V\) loadings to earlier intervals, the resulting schedule
 exponent is the stochastic terminal cumulant
 \[
-K_{t,T}(v,\log\pi_+,\log\pi_-).
+    K_{t,T}(v,\log\pi_+,\log\pi_-).
 \]
 
 \section{Domain and validity}

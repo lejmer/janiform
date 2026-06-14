@@ -18,24 +18,26 @@
 \section{Purpose}
 
 Derive the scalar equation that determines the terminal return tilt
-\(\theta\). The activity premia \(\pi_+\) and \(\pi_-\) are pricing-kernel
-coordinates, while \(\theta\) is solved so that the discounted ex-dividend
-terminal price is a martingale.
+\(\theta\).
+The activity premia \(\pi_+\) and \(\pi_-\) are pricing-kernel coordinates,
+while \(\theta\) is solved so that the discounted ex-dividend terminal price
+is a martingale.
 
 \section{Setup}
 
 Write the terminal log return as
 \[
-R_{t,T}=d_{t,T}+X_{t,T},
+    R_{t,T}=d_{t,T}+X_{t,T},
 \]
 where \(d_{t,T}\) is deterministic conditional on \(\mathcal F_t\) and
 \(X_{t,T}\) is the stochastic Janiform terminal component whose cumulant is
-\(K_{t,T}\). Under the normalized density from
+\(K_{t,T}\).
+Under the normalized density from
 \texttt{08\_pricing\_density\_normalization.tex},
 \[
-\frac{dQ^{\theta,\pi}}{dP}\bigg|_{\mathcal F_T}
-=
-M_T(\theta,\pi_+,\pi_-).
+    \frac{dQ^{\theta,\pi}}{dP}\bigg|_{\mathcal F_T}
+    =
+    M_T(\theta,\pi_+,\pi_-).
 \]
 
 \section{Notation}
@@ -81,81 +83,81 @@ The deterministic terminal component is known at valuation time.
 \noindent\textbf{Identity.} The martingale tilt \(\theta\) is any admissible
 real solution of
 \[
-d_{t,T}
-+K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-=
-(r-q)\tau.
+    d_{t,T}
+    +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
+    -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    =
+    (r-q)\tau.
 \]
-The model uses this equation to derive \(\theta\). It is not an independent
-free pricing parameter.
+The model uses this equation to derive \(\theta\).
+It is not an independent free pricing parameter.
 
 \section{Derivation}
 
 The ex-dividend martingale condition is
 \[
-\mathbb E^{Q^{\theta,\pi}}\!\left[\frac{S_T}{S_t}\mid\mathcal F_t\right]
-=
-e^{(r-q)\tau}.
+    \mathbb E^{Q^{\theta,\pi}}\!\left[\frac{S_T}{S_t}\mid\mathcal F_t\right]
+    =
+    e^{(r-q)\tau}.
 \]
 Since \(S_T/S_t=e^{R_{t,T}}=e^{d_{t,T}}e^{X_{t,T}}\),
 \[
-\mathbb E^{Q^{\theta,\pi}}\!\left[e^{R_{t,T}}\mid\mathcal F_t\right]
-=
-e^{d_{t,T}}
-\mathbb E^{Q^{\theta,\pi}}\!\left[e^{X_{t,T}}\mid\mathcal F_t\right].
+    \mathbb E^{Q^{\theta,\pi}}\!\left[e^{R_{t,T}}\mid\mathcal F_t\right]
+    =
+    e^{d_{t,T}}
+    \mathbb E^{Q^{\theta,\pi}}\!\left[e^{X_{t,T}}\mid\mathcal F_t\right].
 \]
 
 Using the density \(M_T\), the stochastic expectation is
 \[
-\mathbb E^{Q^{\theta,\pi}}\!\left[e^{X_{t,T}}\mid\mathcal F_t\right]
-=
-\mathbb E^P\!\left[
-e^{X_{t,T}}M_T(\theta,\pi_+,\pi_-)
-\mid\mathcal F_t
-\right].
+    \mathbb E^{Q^{\theta,\pi}}\!\left[e^{X_{t,T}}\mid\mathcal F_t\right]
+    =
+    \mathbb E^P\!\left[
+        e^{X_{t,T}}M_T(\theta,\pi_+,\pi_-)
+        \mid\mathcal F_t
+    \right].
 \]
 Substituting the normalized density gives
 \[
-\mathbb E^{Q^{\theta,\pi}}\!\left[e^{X_{t,T}}\mid\mathcal F_t\right]
-=
-\frac{
-\mathbb E^P\!\left[
-\exp\!\left(
-(\theta+1)X_{t,T}
-+\log(\pi_+)N_{t,T}^+
-+\log(\pi_-)N_{t,T}^-
-\right)
-\mid\mathcal F_t
-\right]
-}{
-\exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\right)
-}.
+    \mathbb E^{Q^{\theta,\pi}}\!\left[e^{X_{t,T}}\mid\mathcal F_t\right]
+    =
+    \frac{
+        \mathbb E^P\!\left[
+            \exp\!\left(
+                (\theta+1)X_{t,T}
+                +\log(\pi_+)N_{t,T}^+
+                +\log(\pi_-)N_{t,T}^-
+            \right)
+            \mid\mathcal F_t
+        \right]
+    }{
+        \exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\right)
+    }.
 \]
 By definition of \(K_{t,T}\), this is
 \[
-\exp\!\left(
-K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-\right).
+    \exp\!\left(
+        K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right).
 \]
 Therefore
 \[
-\mathbb E^{Q^{\theta,\pi}}\!\left[e^{R_{t,T}}\mid\mathcal F_t\right]
-=
-\exp\!\left(
-d_{t,T}
-+K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-\right).
+    \mathbb E^{Q^{\theta,\pi}}\!\left[e^{R_{t,T}}\mid\mathcal F_t\right]
+    =
+    \exp\!\left(
+        d_{t,T}
+        +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right).
 \]
 Equating this to \(e^{(r-q)\tau}\) and taking logs gives
 \[
-d_{t,T}
-+K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-=
-(r-q)\tau.
+    d_{t,T}
+    +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
+    -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    =
+    (r-q)\tau.
 \]
 This is the martingale tilt equation solved for \(\theta\).
 

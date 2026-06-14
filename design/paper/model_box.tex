@@ -88,17 +88,60 @@
         \end{cases}
     \]
 
+    The recurring baseline activity clock is the Fourier business-time clock
+    \[
+        s_\star(t)=\exp(\ell(t)),
+    \]
+    with
+    \[
+        \ell(t)
+        =
+        c_0
+        +
+        \sum_{a\in\{\mathrm{intraday},\mathrm{weekly},\mathrm{annual}\}}
+        \sum_{n=1}^{K_a}
+        \left[
+            c_{a,n}\cos(2\pi n\phi_a(t))
+            +
+            d_{a,n}\sin(2\pi n\phi_a(t))
+        \right],
+    \]
+    where \(\phi_a(t)\) are exchange-local recurring calendar phases.
+    Runtime consumers materialize this source clock over requested intervals
+    \(I_k=[t_k,t_{k+1})\), \(\Delta_k=t_{k+1}-t_k\), as non-negative interval
+    factors \(s_k\) satisfying
+    \[
+        s_k\Delta_k
+        =
+        \frac{
+            \int_{I_k}\mathcal O(u)s_\star(u)\,du
+        }{
+            n_{\mathcal K}
+        },
+        \qquad
+        n_{\mathcal K}
+        =
+        \frac{
+            \sum_j\int_{I_j}\mathcal O(u)s_\star(u)\,du
+        }{
+            \sum_j\int_{I_j}\mathcal O(u)\,du
+        },
+    \]
+    whenever the requested range has positive open exposure.
+    If it has no open exposure, all materialized seasonality factors
+    are zero.
+
     The buy and sell return clocks are
     \begin{gather*}
         A_t^+
         =
-        \int_0^t \mathcal O(u)s(u)\bar\lambda Z_u\,du
+        \int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
         +
         \eta_+\int_0^t \mathcal O(u)
         \big(Y_u^{++}+Y_u^{+-}\big)\,du,\\
         A_t^-
         =
-        \int_0^t \mathcal O(u)s(u)\bar\lambda Z_u\,du
+        \int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
         +
         \eta_-\int_0^t \mathcal O(u)
         \big(Y_u^{-+}+Y_u^{--}\big)\,du.\\
@@ -109,16 +152,16 @@
         =
         \mathcal O(t)
         \left[
-            s(t)\bar\lambda Z_t
-        +
+            s_\star(t)\bar\lambda Z_t
+            +
             \eta_+\big(Y_t^{++}+Y_t^{+-}\big)
         \right]dt,\\
         dA_t^-
         =
         \mathcal O(t)
         \left[
-            s(t)\bar\lambda Z_t
-        +
+            s_\star(t)\bar\lambda Z_t
+            +
             \eta_-\big(Y_t^{-+}+Y_t^{--}\big)
         \right]dt.\\
     \end{gather*}
@@ -128,12 +171,12 @@
         \lambda_t^+
         =
         \mathcal O(t)
-        \left(s(t)\bar\lambda+Y_t^{++}+Y_t^{+-}\right),
+        \left(s_\star(t)\bar\lambda+Y_t^{++}+Y_t^{+-}\right),
         \qquad
         \lambda_t^-
         =
         \mathcal O(t)
-        \left(s(t)\bar\lambda+Y_t^{-+}+Y_t^{--}\right),
+        \left(s_\star(t)\bar\lambda+Y_t^{-+}+Y_t^{--}\right),
     \]
     with Hawkes reaction state
     \[
@@ -205,7 +248,7 @@
         (\alpha,\beta_0,\Delta_\beta,\delta,\mu),\\
         \Theta_{\mathrm{trade}}
         =
-        (\bar\lambda,s(\cdot),\beta,\alpha_{ij},\rho_{ij},\eta_+,\eta_-),\\
+        (\bar\lambda,s_\star(\cdot),\beta,\alpha_{ij},\rho_{ij},\eta_+,\eta_-),\\
         \Theta_Z
         =
         (\kappa_z,\sigma_z,\chi_+,\chi_-,Z_0),\\

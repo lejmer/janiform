@@ -15,48 +15,50 @@
 \(\big(F=\exp(C+\mathbf D\cdot\mathbf y_0+VZ_0)\big)\)\\
 \textbf{Depends on.} \texttt{01\_long\_variance\_normalization.tex},
 \texttt{02\_first\_moment\_guard.tex},
-\texttt{03\_conditional\_cf\_mgf\_trading\_block.tex}\\
+\texttt{03\_conditional\_cf\_mgf\_trading\_block.tex},
+\texttt{15\_fourier\_business\_time\_clock\_interval\_factor\_grid.tex}\\
 \textbf{Feeds.} Affine schedule transform, Riccati system, terminal pricing measure, sufficient-statistics consistency
 
 \section{Purpose}
 
 Show why the schedule-level transform remains exponential-affine in the
-initial Hawkes state and the initial long-variance state. This is the closure
-argument that justifies solving deterministic equations for
+initial Hawkes state and the initial long-variance state.
+This is the closure argument that justifies solving deterministic equations for
 \((C,\mathbf D,V)\) instead of simulating the latent event and variance state.
 
 \section{Setup}
 
-Work on one schedule interval \([0,\Delta]\) with piecewise-constant
-seasonality \(s_k\), known-news equivalent rate \(\nu_k^{\mathrm{known}}\),
-and surprise-news rate \(\nu_k^{\mathrm{surprise}}\). Condition on the initial
-state
+Work on one schedule interval \([0,\Delta]\) with interval-grid seasonality
+factor \(s_k\), known-news equivalent rate \(\nu_k^{\mathrm{known}}\), and
+surprise-news rate \(\nu_k^{\mathrm{surprise}}\).
+Condition on the initial state
 \[
-\mathcal F_0^{Y,Z}
-=
-\sigma(\mathbf Y_0,Z_0),
-\qquad
-\mathbf y_0=(Y_0^{++},Y_0^{+-},Y_0^{-+},Y_0^{--}).
+    \mathcal F_0^{Y,Z}
+    =
+    \sigma(\mathbf Y_0,Z_0),
+    \qquad
+    \mathbf y_0=(Y_0^{++},Y_0^{+-},Y_0^{-+},Y_0^{--}).
 \]
 
 The transform is
 \[
-\begin{aligned}
-F(&u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q
-    \mid \mathbf y_0,Z_0)\\
-&=
-\mathbb E\!\left[
-e^{-u_+^B B_Z^+-u_+^E E^+-u_-^B B_Z^--u_-^E E^-+\xi Z_\Delta}
-z_+^{N^+}z_-^{N^-}
-e^{q(M_\Delta+G_\Delta)}
-\mid \mathbf Y_0=\mathbf y_0,Z_0
-\right].
-\end{aligned}
+    \begin{aligned}
+    F(&u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q
+        \mid \mathbf y_0,Z_0)\\
+    &=
+    \mathbb E\!\left[
+        e^{-u_+^B B_Z^+-u_+^E E^+-u_-^B B_Z^--u_-^E E^-+\xi Z_\Delta}
+        z_+^{N^+}z_-^{N^-}
+        e^{q(M_\Delta+G_\Delta)}
+        \mid \mathbf Y_0=\mathbf y_0,Z_0
+    \right].
+    \end{aligned}
 \]
 
 For a standalone terminal interval, the terminal Hawkes and long-variance
-loadings are zero. In a schedule recursion they are inherited from later
-intervals, so \(V(0)=\xi\) and \(\mathbf D(0)\) may be nonzero.
+loadings are zero.
+In a schedule recursion they are inherited from later intervals,
+so \(V(0)=\xi\) and \(\mathbf D(0)\) may be nonzero.
 
 \section{Notation}
 
@@ -84,7 +86,7 @@ Symbol & Meaning & Units or domain\\
 \toprule
 Assumption & Where it is used & Why it is needed\\
 \midrule
-Trade intensities are affine in the Hawkes state plus a deterministic baseline.
+Trade intensities are affine in the Hawkes state plus an interval-grid deterministic baseline.
 & Event terms are split into a constant baseline part and state-linear endogenous coefficients.
 & This is what makes the generator map an exponential-affine test function to an affine multiple of itself.\\
 Hawkes events shift \(\mathbf Y\) by fixed vectors \(\mathbf k_+\) and \(\mathbf k_-\).
@@ -109,9 +111,9 @@ Primitive innovations are conditionally independent given the current state.
 
 \noindent\textbf{Identity.} On every admissible schedule interval,
 \[
-F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q\mid \mathbf y_0,Z_0)
-=
-\exp\!\left(C(\Delta)+\mathbf D(\Delta)\cdot\mathbf y_0+V(\Delta)Z_0\right),
+    F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q\mid \mathbf y_0,Z_0)
+    =
+    \exp\!\left(C(\Delta)+\mathbf D(\Delta)\cdot\mathbf y_0+V(\Delta)Z_0\right),
 \]
 where \(C(0)=0\), \(V(0)=\xi\), and \(\mathbf D(0)\) is the terminal Hawkes
 loading inherited from later schedule intervals.
@@ -120,44 +122,44 @@ loading inherited from later schedule intervals.
 
 For backward elapsed time \(\tau\), define the test function
 \[
-f_\tau(\mathbf y,z)
-=
-\exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right).
+    f_\tau(\mathbf y,z)
+    =
+    \exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right).
 \]
 
 Affine closure follows by applying the conditional generator over an
 infinitesimal interval and checking that every contribution has the form
 \[
-\frac{\mathcal A f_\tau(\mathbf y,z)}{f_\tau(\mathbf y,z)}
-=
-a_0(\tau)+\mathbf a_Y(\tau)\cdot\mathbf y+a_Z(\tau)z.
+    \frac{\mathcal A f_\tau(\mathbf y,z)}{f_\tau(\mathbf y,z)}
+    =
+    a_0(\tau)+\mathbf a_Y(\tau)\cdot\mathbf y+a_Z(\tau)z.
 \]
 Then \(\partial_\tau f_\tau/f_\tau\) can match this expression by choosing
 \[
-C'(\tau)=a_0(\tau),
-\qquad
-\mathbf D'(\tau)=\mathbf a_Y(\tau),
-\qquad
-V'(\tau)=a_Z(\tau).
+    C'(\tau)=a_0(\tau),
+    \qquad
+    \mathbf D'(\tau)=\mathbf a_Y(\tau),
+    \qquad
+    V'(\tau)=a_Z(\tau).
 \]
 
 The deterministic Hawkes decay gives
 \[
-\sum_{ij}(-\beta y_{ij})\partial_{y_{ij}}f_\tau
-=
-\left[-\beta\mathbf D(\tau)\cdot\mathbf y\right]f_\tau,
+    \sum_{ij}(-\beta y_{ij})\partial_{y_{ij}}f_\tau
+    =
+    \left[-\beta\mathbf D(\tau)\cdot\mathbf y\right]f_\tau,
 \]
 which is linear in \(\mathbf y\).
 
 A buy event changes \(\mathbf y\) by \(\mathbf k_+\), changes \(z\) by
-\(\chi_+\), and contributes the event-count multiplier \(z_+\). The post-event
-test function divided by the pre-event test function is
+\(\chi_+\), and contributes the event-count multiplier \(z_+\).
+The post-event  test function divided by the pre-event test function is
 \[
-z_+\exp\!\left(\mathbf D(\tau)\cdot\mathbf k_+ + V(\tau)\chi_+\right).
+    z_+\exp\!\left(\mathbf D(\tau)\cdot\mathbf k_+ + V(\tau)\chi_+\right).
 \]
 The corresponding sell multiplier is
 \[
-z_-\exp\!\left(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-\right).
+    z_-\exp\!\left(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-\right).
 \]
 Both multipliers are independent of the current state, so multiplying them by
 the affine buy and sell intensities yields only constant and \(\mathbf y\)-linear
@@ -165,59 +167,63 @@ terms.
 
 The baseline return-clock loadings contribute
 \[
--s_k\bar\lambda\left(u_+^B+u_-^B\right)z,
+    -s_k\bar\lambda\left(u_+^B+u_-^B\right)z,
 \]
 because \(B_Z^+\) and \(B_Z^-\) both accrue against the same
-long-variance-scaled baseline opportunity. The endogenous activity loadings
-contribute \(-u_+^E(Y^{++}+Y^{+-})\) and
-\(-u_-^E(Y^{-+}+Y^{--})\). These terms are again affine in
-\((\mathbf y,z)\).
+long-variance-scaled interval-grid baseline opportunity.
+The endogenous activity loadings contribute \(-u_+^E(Y^{++}+Y^{+-})\) and
+\(-u_-^E(Y^{-+}+Y^{--})\).
+These terms are again affine in \((\mathbf y,z)\).
 
 The continuous long-variance generator gives
 \[
-\kappa_z(\bar z-z)\partial_z f_\tau
-+
-\frac{1}{2}\sigma_z^2 z\partial_{zz} f_\tau
-=
-\left(
-\kappa_z\bar z V(\tau)
--\kappa_z V(\tau)z
-+
-\frac{1}{2}\sigma_z^2V(\tau)^2z
-\right)f_\tau,
+    \kappa_z(\bar z-z)\partial_z f_\tau
+    +
+    \frac{1}{2}\sigma_z^2 z\partial_{zz} f_\tau
+    =
+    \left(
+    \kappa_z\bar z V(\tau)
+    -\kappa_z V(\tau)z
+    +
+    \frac{1}{2}\sigma_z^2V(\tau)^2z
+    \right)f_\tau,
 \]
 which contributes one constant term and one \(z\)-linear term.
 
 At a news arrival of component \(c\), the Hawkes state shifts by
-\(\mathbf r a_cU\) and the return receives
+\(\mathbf r a_c U\) and the return receives
 \[
-\zeta_c=m_cU+\sigma_c\sqrt U\,N.
-\]
-Conditional on a news arrival, the mark multiplier is
-\[
-\mathbb E\!\left[
-\exp\!\left((\mathbf D(\tau)\cdot\mathbf r)a_cU
-+q m_cU+q\sigma_c\sqrt U\,N\right)
-\right],
+    \zeta_c=m_c U+\sigma_c\sqrt U\,N.
+    \]
+    Conditional on a news arrival, the mark multiplier is
+    \[
+    \mathbb E\!\left[
+    \exp\!\left(
+        (\mathbf D(\tau)\cdot\mathbf r)a_c U
+        +q m_c U+q\sigma_c\sqrt U\,N
+    \right)
+    \right],
 \]
 which depends on \(\mathbf D(\tau)\) and \(q\), but not on the current
-\(\mathbf y\) or \(z\). Since the news arrival intensities are deterministic
-on the schedule interval, news contributes only to the scalar loading
-\(C(\tau)\).
+\(\mathbf y\) or \(z\).
+Since the news arrival intensities are deterministic on the schedule
+interval, news contributes only to the scalar loading \(C(\tau)\).
 
 All generator terms therefore close on \(1\), the four Hawkes-state
-coordinates, and \(Z\). Matching coefficients proves the
-exponential-affine representation.
+coordinates, and \(Z\).
+Matching coefficients proves the exponential-affine representation.
 
 \section{Domain and validity}
 
 The ansatz is valid while all transform arguments are finite, the
 gamma-normal news mark transform is inside its moment domain, and the
 long-variance Riccati equation has no finite-time pole on
-\([0,\Delta]\). The state inputs satisfy \(\mathbf y_0\ge 0\) componentwise and
-\(Z_0>0\). The Hawkes kernel must satisfy the model's non-negativity and
-stability conditions, and the long-variance parameters must satisfy the
-first-moment guard from \texttt{02\_first\_moment\_guard.tex}.
+\([0,\Delta]\).
+The state inputs satisfy \(\mathbf y_0\ge 0\) componentwise and
+\(Z_0>0\).
+The Hawkes kernel must satisfy the model's non-negativity and stability
+conditions, and the long-variance parameters must satisfy the first-moment
+guard from \texttt{02\_first\_moment\_guard.tex}.
 
 \section{Consequences}
 

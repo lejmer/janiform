@@ -19,36 +19,36 @@
 \section{Purpose}
 
 Derive the characteristic function of terminal log price under the normalized
-terminal pricing measure. This is the transform consumed by the spectral
-vanilla option pricer.
+terminal pricing measure.
+This is the transform consumed by the spectral vanilla option pricer.
 
 \section{Setup}
 
 Let
 \[
-\log S_T
-=
-\log S_t+d_{t,T}+X_{t,T}.
+    \log S_T
+    =
+    \log S_t+d_{t,T}+X_{t,T}.
 \]
 Equivalently, if the deterministic terminal log price conditional on zero
 future stochastic return is
 \[
-\ell_{t,T}^{0}=\log S_t+d_{t,T},
+    \ell_{t,T}^{0}=\log S_t+d_{t,T},
 \]
 then
 \[
-\log S_T=\ell_{t,T}^{0}+X_{t,T}.
+    \log S_T=\ell_{t,T}^{0}+X_{t,T}.
 \]
 The pricing density is
 \[
-M_T(\theta,\pi_+,\pi_-)
-=
-\exp\!\left(
-\theta X_{t,T}
-+\log(\pi_+)N_{t,T}^+
-+\log(\pi_-)N_{t,T}^-
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-\right),
+    M_T(\theta,\pi_+,\pi_-)
+    =
+    \exp\!\left(
+        \theta X_{t,T}
+        +\log(\pi_+)N_{t,T}^+
+        +\log(\pi_-)N_{t,T}^-
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right),
 \]
 where \(\theta\) solves the martingale equation in
 \texttt{09\_martingale\_tilt\_equation.tex}.
@@ -94,13 +94,13 @@ The cumulant is finite at \(\theta+iu\) and \(\theta\).
 \noindent\textbf{Identity.} The risk-neutral characteristic function of
 terminal log price is
 \[
-\phi_Q(u)
-=
-\exp\!\left(
-iu\,\ell_{t,T}^{0}
-+K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-\right).
+    \phi_Q(u)
+    =
+    \exp\!\left(
+        iu\,\ell_{t,T}^{0}
+        +K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right).
 \]
 For terminal log return \(R_{t,T}=d_{t,T}+X_{t,T}\), replace
 \(\ell_{t,T}^{0}\) by \(d_{t,T}\).
@@ -109,75 +109,78 @@ For terminal log return \(R_{t,T}=d_{t,T}+X_{t,T}\), replace
 
 By definition,
 \[
-\phi_Q(u)
-=
-\mathbb E^Q\!\left[e^{iu\log S_T}\mid\mathcal F_t\right].
+    \phi_Q(u)
+    =
+    \mathbb E^Q\!\left[e^{iu\log S_T}\mid\mathcal F_t\right].
 \]
 Using \(\log S_T=\ell_{t,T}^{0}+X_{t,T}\),
 \[
-\phi_Q(u)
-=
-e^{iu\ell_{t,T}^{0}}
-\mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right].
+    \phi_Q(u)
+    =
+    e^{iu\ell_{t,T}^{0}}
+    \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right].
 \]
 Change measure with \(M_T\):
 \[
-\mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
-=
-\mathbb E^P\!\left[
-e^{iuX_{t,T}}M_T(\theta,\pi_+,\pi_-)
-\mid\mathcal F_t
-\right].
+    \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
+    =
+    \mathbb E^P\!\left[
+        e^{iuX_{t,T}}M_T(\theta,\pi_+,\pi_-)
+        \mid\mathcal F_t
+    \right].
 \]
 Substituting the density gives
 \[
-\mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
-=
-\frac{
-\mathbb E^P\!\left[
-\exp\!\left(
-(\theta+iu)X_{t,T}
-+\log(\pi_+)N_{t,T}^+
-+\log(\pi_-)N_{t,T}^-
-\right)
-\mid\mathcal F_t
-\right]
-}{
-\exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\right)
-}.
+    \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
+    =
+    \frac{
+        \mathbb E^P\!\left[
+            \exp\!\left(
+                (\theta+iu)X_{t,T}
+                +\log(\pi_+)N_{t,T}^+
+                +\log(\pi_-)N_{t,T}^-
+            \right)
+            \mid\mathcal F_t
+        \right]
+    }{
+        \exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\right)
+    }.
 \]
 The numerator is
 \[
-\exp\!\left(K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)\right).
+    \exp\!\left(K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)\right).
 \]
 Therefore
 \[
 \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
 =
-\exp\!\left(
-K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-\right),
+    \exp\!\left(
+        K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right),
 \]
 and multiplying by the deterministic phase gives the stated formula.
 
 At \(u=0\),
 \[
-\phi_Q(0)
-=
-\exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-)
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)\right)
-=1,
+    \phi_Q(0)
+    =
+    \exp\!\left(
+        K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right)
+    =1,
 \]
 so the transform is normalized.
 
 \section{Domain and validity}
 
 The formula is valid for real frequencies \(u\) such that the terminal
-cumulant is finite at both \(\theta+iu\) and \(\theta\). The solved
-\(\theta\) must satisfy the martingale equation, the activity premia must be
-strictly positive, and the affine schedule domain must hold along every
-interval. The expression is the terminal-log-price characteristic function.
+cumulant is finite at both \(\theta+iu\) and \(\theta\).
+The solved \(\theta\) must satisfy the martingale equation, the activity premia
+must be strictly positive, and the affine schedule domain must hold along every
+interval.
+The expression is the terminal-log-price characteristic function.
 For terminal log returns, the deterministic phase uses \(d_{t,T}\) instead of
 \(\ell_{t,T}^{0}\).
 

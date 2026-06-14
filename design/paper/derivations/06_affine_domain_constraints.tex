@@ -14,23 +14,25 @@
 \textbf{Plan item.} Affine domain constraints\\
 \textbf{Depends on.} \texttt{02\_first\_moment\_guard.tex},
 \texttt{04\_affine\_transform\_ansatz.tex},
-\texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex}\\
+\texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex},
+\texttt{15\_fourier\_business\_time\_clock\_interval\_factor\_grid.tex}\\
 \textbf{Feeds.} Affine schedule transform, terminal pricing measure, admissibility checks, benchmark governance
 
 \section{Purpose}
 
 State the mathematical domain on which the affine transform is finite and the
-ODE system is well defined. These constraints separate admissible transform
-queries from parameter or argument choices that would make the conditional
-moment explode or leave the model's state domain.
+ODE system is well-defined.
+These constraints separate admissible transform queries from parameter or
+argument choices that would make the conditional moment explode or leave the
+model's state domain.
 
 \section{Setup}
 
 Use the affine schedule transform from
 \texttt{04\_affine\_transform\_ansatz.tex} and the ODE system from
-\texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex}. The domain is checked on
-the whole backward integration interval \(\tau\in[0,\Delta]\), not only at
-the terminal or initial endpoint.
+\texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex}.
+The domain is checked on the whole backward integration interval
+\(\tau\in[0,\Delta]\), not only at the terminal or initial endpoint.
 
 \section{Notation}
 
@@ -80,49 +82,49 @@ admissible if all of the following hold.
 \begin{enumerate}
     \item The Hawkes kernel satisfies
     \[
-    \bar\lambda>0,\qquad
-    \beta>0,\qquad
-    \alpha_{ij}\ge 0,\qquad
-    \rho_{ij}\ge 0,
-    \qquad
-    \rho(\mathbf A_\alpha/\beta)<1.
+        \bar\lambda>0,\qquad
+        \beta>0,\qquad
+        \alpha_{ij}\ge 0,\qquad
+        \rho_{ij}\ge 0,
+        \qquad
+        \rho(\mathbf A_\alpha/\beta)<1.
     \]
     \item The long-variance parameters satisfy
     \[
-    \kappa_z>0,\qquad
-    \sigma_z\ge0,\qquad
-    \chi_+\ge0,\qquad
-    \chi_-\ge0,
+        \kappa_z>0,\qquad
+        \sigma_z\ge0,\qquad
+        \chi_+\ge0,\qquad
+        \chi_-\ge0,
     \]
     and the first-moment guard
     \[
-    \kappa_z
-    >
-    \chi_+\lambda_{\mathrm{stat}}^+
-    +\chi_-\lambda_{\mathrm{stat}}^-,
+        \kappa_z
+        >
+        \chi_+\lambda_{\mathrm{stat}}^+
+        +\chi_-\lambda_{\mathrm{stat}}^-,
     \]
     so that
     \[
-    \bar z
-    =
-    1-
-    \frac{
-    \chi_+\lambda_{\mathrm{stat}}^+
-    +\chi_-\lambda_{\mathrm{stat}}^-
-    }{\kappa_z}
-    >0.
+        \bar z
+        =
+        1-
+            \frac{
+            \chi_+\lambda_{\mathrm{stat}}^+
+            +\chi_-\lambda_{\mathrm{stat}}^-
+        }{\kappa_z}
+        >0.
     \]
     \item The boundary state satisfies
     \[
-    \mathbf y_0\ge0 \quad\hbox{componentwise},
-    \qquad
-    Z_0>0.
+        \mathbf y_0\ge0 \quad\hbox{componentwise},
+        \qquad
+        Z_0>0.
     \]
-    \item The interval and deterministic intensities satisfy
+    \item The interval and deterministic interval-grid intensities satisfy
     \[
-    \Delta>0,\qquad s_k\ge0,\qquad
-    \nu_k^{\mathrm{known}}\ge0,\qquad
-    \nu_k^{\mathrm{surprise}}\ge0.
+        \Delta>0,\qquad s_k\ge0,\qquad
+        \nu_k^{\mathrm{known}}\ge0,\qquad
+        \nu_k^{\mathrm{surprise}}\ge0.
     \]
     \item The terminal loadings and transform arguments are finite complex
     values, and the ODE solution \((C(\tau),\mathbf D(\tau),V(\tau))\) remains
@@ -130,110 +132,115 @@ admissible if all of the following hold.
     \item For every active news component \(c\) and every
     \(\tau\in[0,\Delta]\),
     \[
-    \operatorname{Re} g_c(\tau)<\frac{1}{\theta_U},
+        \operatorname{Re} g_c(\tau)<\frac{1}{\theta_U},
     \]
     where
     \[
-    g_c(\tau)
-    =
-    (\mathbf D(\tau)\cdot\mathbf r)a_c
-    +qm_c+\frac{1}{2}q^2\sigma_c^2.
+        g_c(\tau)
+        =
+        (\mathbf D(\tau)\cdot\mathbf r)a_c
+        +qm_c+\frac{1}{2}q^2\sigma_c^2.
     \]
 \end{enumerate}
 
 Under these conditions, the affine transform is finite and equals
 \[
-\exp\!\left(C(\Delta)+\mathbf D(\Delta)\cdot\mathbf y_0+V(\Delta)Z_0\right).
+    \exp\!\left(C(\Delta)+\mathbf D(\Delta)\cdot\mathbf y_0+V(\Delta)Z_0\right).
 \]
 
 \section{Derivation}
 
 The Hawkes conditions guarantee non-negative event intensities:
 \[
-\lambda_t^+
-=
-s_k\bar\lambda+Y_t^{++}+Y_t^{+-},
-\qquad
-\lambda_t^-
-=
-s_k\bar\lambda+Y_t^{-+}+Y_t^{--}.
+    \lambda_t^+
+    =
+    s_k\bar\lambda+Y_t^{++}+Y_t^{+-},
+    \qquad
+    \lambda_t^-
+    =
+    s_k\bar\lambda+Y_t^{-+}+Y_t^{--}.
 \]
+Here \(s_k\) is the non-negative interval factor materialized from the
+Fourier business-time clock for the schedule interval.
 The spectral-radius condition is the finite-branching condition for the
-linear Hawkes reaction system. It is also needed when stationary side rates
-\(\lambda_{\mathrm{stat}}^\pm\) are used to derive the long-variance
+linear Hawkes reaction system.
+It is also needed when stationary side rates \(\lambda_{\mathrm{stat}}^\pm\) are used to
+derive the long-variance
 mean-reversion level.
 
-The long-variance normalization sets the stationary mean target to one. Taking
-first moments in
+The long-variance normalization sets the stationary mean target to one.
+Taking first moments in
 \[
-dZ_t
-=
-\kappa_z(\bar z-Z_t)\,dt
-+\sigma_z\sqrt{Z_t}\,dW_t^Z
-+\chi_+\,dN_t^+
-+\chi_-\,dN_t^-
+    dZ_t
+    =
+    \kappa_z(\bar z-Z_t)\,dt
+    +\sigma_z\sqrt{Z_t}\,dW_t^Z
+    +\chi_+\,dN_t^+
+    +\chi_-\,dN_t^-
 \]
 gives
 \[
-\bar z
-=
-1-
-\frac{
-\chi_+\lambda_{\mathrm{stat}}^+
-+\chi_-\lambda_{\mathrm{stat}}^-
-}{\kappa_z}.
+    \bar z
+    =
+    1-
+    \frac{
+        \chi_+\lambda_{\mathrm{stat}}^+
+        +\chi_-\lambda_{\mathrm{stat}}^-
+    }{\kappa_z}.
 \]
 The first-moment guard is exactly the condition \(\bar z>0\).
 
-For news marks, condition on a component-\(c\) arrival. The activity and return
-mark multiplier is
+For news marks, condition on a component-\(c\) arrival.
+The activity and return mark multiplier is
 \[
-\mathbb E\!\left[
-\exp\!\left(g_c(\tau)U\right)
-\right],
+    \mathbb E\!\left[
+        \exp\!\left(g_c(\tau)U\right)
+    \right],
 \]
-after the conditional normal return shock has been integrated out. Since
-\(U\sim\Gamma(k_U,\theta_U)\), this expectation is
+after the conditional normal return shock has been integrated out.
+Since \(U\sim\Gamma(k_U,\theta_U)\), this expectation is
 \[
-M_c(q,\mathbf D(\tau)\cdot\mathbf r)
-=
-\left(1-\theta_U g_c(\tau)\right)^{-k_U},
+    M_c(q,\mathbf D(\tau)\cdot\mathbf r)
+    =
+    \left(1-\theta_U g_c(\tau)\right)^{-k_U},
 \]
 which is finite on the moment half-plane
 \[
-\operatorname{Re}g_c(\tau)<\frac{1}{\theta_U}.
+    \operatorname{Re}g_c(\tau)<\frac{1}{\theta_U}.
 \]
 This condition also keeps \(1-\theta_Ug_c(\tau)\) in the right half-plane, so
 the principal power and principal logarithm used for \(M_c\) and \(\ell_c\)
 are single-valued along the integration path.
 
-The remaining domain requirement is finite ODE flow. The \(V\) equation is a
-Riccati equation:
+The remaining domain requirement is finite ODE flow.
+The \(V\) equation is a Riccati equation:
 \[
-V'
-=
--\kappa_zV
-+\frac{1}{2}\sigma_z^2V^2
--s_k\bar\lambda(u_+^B+u_-^B).
+    V'
+    =
+    -\kappa_zV
+    +\frac{1}{2}\sigma_z^2 V^2
+    -s_k\bar\lambda(u_+^B+u_-^B).
 \]
 If this equation develops a finite-time pole before \(\Delta\), then the
-exponent is not finite. The Hawkes loading equations also contain exponential
-Hamiltonians, so non-finite \(D\) or \(V\) invalidates the event multipliers.
+exponent is not finite.
+The Hawkes loading equations also contain exponential Hamiltonians,
+so non-finite \(D\) or \(V\) invalidates the event multipliers.
 Therefore \(C\), \(\mathbf D\), and \(V\) must stay finite on the full
 integration interval.
 
 \section{Domain and validity}
 
-The proposition states the full interval domain. Components with zero news
-intensity do not constrain the active news moment domain, because they do not
-enter the interval transform. The square-root long-variance process is used on
-its non-negative affine diffusion domain with positive boundary state and
-positive derived mean-reversion level. No additional Feller condition is
-needed for affine closure.
+The proposition states the full interval domain.
+Components with zero news intensity do not constrain the active news moment
+domain, because they do not enter the interval transform.
+The square-root long-variance process is used on its non-negative affine
+diffusion domain with positive boundary state and positive derived
+mean-reversion level.
+No additional Feller condition is needed for affine closure.
 
-The condition \(\operatorname{Re}g_c(\tau)<1/\theta_U\) is strict. Equality is
-not admissible because it is the gamma pole. Values beyond the boundary do not
-define finite moments.
+The condition \(\operatorname{Re}g_c(\tau)<1/\theta_U\) is strict.
+Equality is not admissible because it is the gamma pole.
+Values beyond the boundary do not define finite moments.
 
 \section{Consequences}
 

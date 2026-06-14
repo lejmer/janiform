@@ -18,32 +18,32 @@
 \section{Purpose}
 
 Derive the admissibility condition that keeps the unit-mean long-variance
-normalization compatible with a positive mean-reversion level. The guard
-prevents uncompensated event feedback from exhausting the entire stationary
-first-moment budget of \(Z_t\).
+normalization compatible with a positive mean-reversion level.
+The guard prevents uncompensated event feedback from exhausting the entire
+stationary first-moment budget of \(Z_t\).
 
 \section{Setup}
 
 Use the physical long-variance dynamics
 \[
-dZ_t
-=
-\kappa_z(\bar z-Z_t)\,dt
-+\sigma_z\sqrt{Z_t}\,dW_t^Z
-+\chi_+\,dN_t^+
-+\chi_-\,dN_t^-,
+    dZ_t
+    =
+    \kappa_z(\bar z-Z_t)\,dt
+    +\sigma_z\sqrt{Z_t}\,dW_t^Z
+    +\chi_+\,dN_t^+
+    +\chi_-\,dN_t^-,
 \]
 with stationary event-feedback drift
 \[
-b_Z
-=
-\chi_+\lambda_{\mathrm{stat}}^+
-+\chi_-\lambda_{\mathrm{stat}}^-.
+    b_Z
+    =
+    \chi_+\lambda_{\mathrm{stat}}^+
+    +\chi_-\lambda_{\mathrm{stat}}^-.
 \]
 
 From the unit-mean normalization,
 \[
-\bar z=1-\frac{b_Z}{\kappa_z}.
+    \bar z=1-\frac{b_Z}{\kappa_z}.
 \]
 
 \section{Notation}
@@ -88,70 +88,70 @@ Event loadings and stationary event rates are non-negative.
 \noindent\textbf{Proposition.} Under the unit-mean normalization, the
 long-variance first moment is admissible only if
 \[
-\kappa_z
->
-\chi_+\lambda_{\mathrm{stat}}^+
-+\chi_-\lambda_{\mathrm{stat}}^-.
+    \kappa_z
+    >
+    \chi_+\lambda_{\mathrm{stat}}^+
+    +\chi_-\lambda_{\mathrm{stat}}^-.
 \]
 
 Equivalently,
 \[
-b_Z<\kappa_z.
+    b_Z<\kappa_z.
 \]
 
 \section{Derivation}
 
 The unit-mean normalization gives
 \[
-\bar z
-=
-1-\frac{b_Z}{\kappa_z}.
+    \bar z
+    =
+    1-\frac{b_Z}{\kappa_z}.
 \]
 
 The long-variance drift target must satisfy \(\bar z>0\). Substituting the
 normalized level,
 \[
-1-\frac{b_Z}{\kappa_z}>0.
+    1-\frac{b_Z}{\kappa_z}>0.
 \]
 
 Because \(\kappa_z>0\), multiply by \(\kappa_z\) without changing the inequality
 direction:
 \[
-\kappa_z-b_Z>0.
+    \kappa_z-b_Z>0.
 \]
 
 Therefore,
 \[
-\kappa_z>b_Z.
+    \kappa_z>b_Z.
 \]
 
 Replacing \(b_Z\) by the event-feedback drift gives
 \[
-\kappa_z
->
-\chi_+\lambda_{\mathrm{stat}}^+
-+\chi_-\lambda_{\mathrm{stat}}^-.
+    \kappa_z
+    >
+    \chi_+\lambda_{\mathrm{stat}}^+
+    +\chi_-\lambda_{\mathrm{stat}}^-.
 \]
 
 The boundary case \(b_Z=\kappa_z\) gives \(\bar z=0\), which violates the
-strict positive-level contract. The supercritical case \(b_Z>\kappa_z\) gives
-\(\bar z<0\), so the unit-mean target would require a negative mean-reversion
-level.
+strict positive-level contract.
+The supercritical case \(b_Z>\kappa_z\) gives \(\bar z<0\), so the unit-mean
+target would require a negative mean-reversion level.
 
 \section{Domain and validity}
 
 The guard is valid under the same first-moment conditions as the normalization:
 \[
-\kappa_z>0,\qquad
-\chi_+\ge 0,\qquad
-\chi_-\ge 0,\qquad
-\lambda_{\mathrm{stat}}^+\ge 0,\qquad
-\lambda_{\mathrm{stat}}^-\ge 0,
+    \kappa_z>0,\qquad
+    \chi_+\ge 0,\qquad
+    \chi_-\ge 0,\qquad
+    \lambda_{\mathrm{stat}}^+\ge 0,\qquad
+    \lambda_{\mathrm{stat}}^-\ge 0,
 \]
-with finite stationary side event rates. If the Hawkes system is not stationary,
-or if the stationary event rates are not finite, then \(b_Z\) is not a valid
-finite first-moment input and the guard cannot be evaluated as a finite
-inequality.
+with finite stationary side event rates.
+If the Hawkes system is not stationary, or if the stationary event rates are
+not finite, then \(b_Z\) is not a valid finite first-moment input and the guard
+cannot be evaluated as a finite inequality.
 
 \section{Consequences}
 

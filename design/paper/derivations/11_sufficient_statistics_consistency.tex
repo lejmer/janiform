@@ -22,35 +22,36 @@
 
 Show that seeded tick simulation, direct coarse generation,
 sufficient-statistics sampling, and affine pricing preserve the same
-interval decomposition. The point is not that these paths use identical
-numerical algorithms, but that they condition on and propagate the same
-mathematical objects.
+interval decomposition.
+The point is not that these paths use identical numerical algorithms, but that
+they condition on and propagate the same mathematical objects.
 
 \section{Setup}
 
 On an interval \(k=[t_k,t_{k+1})\), define the decomposed sufficient-statistics
 vector
 \[
-\mathcal S_k
-=
-\left(
-B_{Z,k}^+,
-E_k^+,
-B_{Z,k}^-,
-E_k^-,
-N_k^+,
-N_k^-,
-Z_{t_{k+1}}
-\right).
+    \mathcal S_k
+    =
+    \left(
+        B_{Z,k}^+,
+        E_k^+,
+        B_{Z,k}^-,
+        E_k^-,
+        N_k^+,
+        N_k^-,
+        Z_{t_{k+1}}
+    \right).
 \]
 Here \(B_{Z,k}^\pm\) are long-variance-scaled baseline return-clock exposures,
 \(E_k^\pm\) are endogenous activity exposures, \(N_k^\pm\) are side event
 counts, and \(Z_{t_{k+1}}\) is the terminal long-variance state.
 
 Open-news and closed-gap return increments are additional additive return
-components. They are conditionally independent of the NIG trading-time draws
-after their realized marks and routing state are fixed, and they affect future
-activity through their Hawkes news excitation.
+components.
+They are conditionally independent of the NIG trading-time draws after their
+realized marks and routing state are fixed, and they affect future activity
+through their Hawkes news excitation.
 
 \section{Notation}
 
@@ -103,27 +104,27 @@ sufficient-statistics sampling, and affine pricing.
 
 The trading-time return law is
 \[
-X_{\mathrm{tr},h}
-=
-\left(L_{A_k^+}^+-A_k^+m_+\right)
--
-\left(L_{A_k^-}^--A_k^-m_-\right),
-\qquad
-A_k^\pm=B_{Z,k}^\pm+\eta_\pm E_k^\pm.
+    X_{\mathrm{tr},h}
+    =
+    \left(L_{A_k^+}^+-A_k^+m_+\right)
+    -
+    \left(L_{A_k^-}^--A_k^-m_-\right),
+    \qquad
+    A_k^\pm=B_{Z,k}^\pm+\eta_\pm E_k^\pm.
 \]
 The full interval core return is
 \[
-X_k
-=
-X_{\mathrm{tr},h}
-+\Delta M_k+\Delta G_k.
+    X_k
+    =
+    X_{\mathrm{tr},h}
+    +\Delta M_k+\Delta G_k.
 \]
 The Hawkes boundary state is propagated by elapsed decay and side event
 counts:
 \[
-\mathbf Y_{t_{k+1}}
-=
-\Phi_\Delta(\mathbf Y_{t_k};N_k^+,N_k^-,\Delta_k,\text{news shocks}),
+    \mathbf Y_{t_{k+1}}
+    =
+    \Phi_\Delta(\mathbf Y_{t_k};N_k^+,N_k^-,\Delta_k,\text{news shocks}),
 \]
 where \(\Phi_\Delta\) denotes the shared Hawkes transition map.
 
@@ -131,60 +132,63 @@ where \(\Phi_\Delta\) denotes the shared Hawkes transition map.
 
 Start from the Janiform interval return decomposition:
 \[
-X_k
-=
-\left(L_{A_k^+}^+-A_k^+m_+\right)
--
-\left(L_{A_k^-}^--A_k^-m_-\right)
-+\Delta M_k+\Delta G_k.
+    X_k
+    =
+    \left(L_{A_k^+}^+-A_k^+m_+\right)
+    -
+    \left(L_{A_k^-}^--A_k^-m_-\right)
+    +\Delta M_k+\Delta G_k.
 \]
 Given \(\mathcal S_k\), the side return clocks are fixed:
 \[
-A_k^+=B_{Z,k}^++\eta_+E_k^+,
-\qquad
-A_k^-=B_{Z,k}^-+\eta_-E_k^-.
+    A_k^+=B_{Z,k}^++\eta_+E_k^+,
+    \qquad
+    A_k^-=B_{Z,k}^-+\eta_-E_k^-.
 \]
 By the conditional CF/MGF derivation, the NIG trading block depends on the
-interval path only through \(A_k^+\) and \(A_k^-\). Thus any construction that
-preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\) preserves the conditional
-trading-time law.
+interval path only through \(A_k^+\) and \(A_k^-\).
+Thus, any construction that preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\) preserves
+the conditional trading-time law.
 
 The jump and gap components enter additively:
 \[
 X_k=X_{\mathrm{tr},h}+\Delta M_k+\Delta G_k.
 \]
 Open-window news returns are routed through \(\Delta M_k\), while closed-window
-returns are stored as \(\Delta G_k\) until reopening. Once these components
-are fixed, the total return is fixed up to the same trading-time NIG draw.
+returns are stored as \(\Delta G_k\) until reopening.
+Once these components are fixed, the total return is fixed up to the same
+trading-time NIG draw.
 
 For the Hawkes state, the continuous part over the interval is deterministic
-decay between jumps. Side events add fixed excitation increments. Therefore,
-conditional on \(\mathbf Y_{t_k}\), \(\Delta_k\), and the side event counts
-with their news excitation inputs, the terminal state is determined by the
-same transition map:
+decay between jumps.
+Side events add fixed excitation increments.
+Therefore, conditional on \(\mathbf Y_{t_k}\), \(\Delta_k\), and the side event
+counts with their news excitation inputs, the terminal state is determined by
+the same transition map:
 \[
-\mathbf Y_{t_{k+1}}
-=
-e^{-\beta\Delta_k}\mathbf Y_{t_k}
-+\sum_{m=1}^{N_k^+}\mathbf k_+
-+\sum_{m=1}^{N_k^-}\mathbf k_-
-+\text{news-excitation contribution}.
+    \mathbf Y_{t_{k+1}}
+    =
+    e^{-\beta\Delta_k}\mathbf Y_{t_k}
+    +\sum_{m=1}^{N_k^+}\mathbf k_+
+    +\sum_{m=1}^{N_k^-}\mathbf k_-
+    +\text{news-excitation contribution}.
 \]
 Seeded tick aggregation obtains these quantities by summing over generated
-events. Direct coarse and sufficient-statistics paths generate or sample the
-same decomposed quantities directly and then apply the same boundary update.
+events.
+Direct coarse and sufficient-statistics paths generate or sample the same
+decomposed quantities directly and then apply the same boundary update.
 
-Affine pricing uses the same decomposition in transform form. The affine
-schedule transform takes separate loadings for
+Affine pricing uses the same decomposition in transform form.
+The affine schedule transform takes separate loadings for
 \[
-B_Z^+,\quad E^+,\quad B_Z^-,\quad E^-,\quad N^+,\quad N^-,
-\quad Z_T,
+    B_Z^+,\quad E^+,\quad B_Z^-,\quad E^-,\quad N^+,\quad N^-,
+    \quad Z_T,
 \]
 and evaluates the joint transform by propagating \((C,\mathbf D,V)\). The
 terminal cumulant adapter in \texttt{07\_terminal\_cumulant\_adapter.tex}
 maps pricing arguments into those same activity and count loadings.
 
-Therefore the four paths are consistent at the level of the transition law
+Therefore, the four paths are consistent at the level of the transition law
 whenever they preserve \(\mathcal S_k\), the routed news/gap return
 components, and the shared boundary-state transition.
 
