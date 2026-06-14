@@ -2,6 +2,7 @@ import json
 import re
 import shutil
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Final, Optional
@@ -55,6 +56,18 @@ def write_json_document(path: Path, document: dict[str, Any]) -> Path:
     )
 
     return path
+
+
+def datetime_to_utc_nanos(timestamp_utc: datetime) -> int:
+    normalized_timestamp_utc = timestamp_utc.astimezone(UTC)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    delta = normalized_timestamp_utc - epoch
+
+    return (
+        delta.days * 86_400_000_000_000
+        + delta.seconds * 1_000_000_000
+        + delta.microseconds * 1_000
+    )
 
 
 def repository_relative_path_string(
