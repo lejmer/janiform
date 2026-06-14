@@ -30,6 +30,7 @@ pub(crate) fn run_inspect_model(
 ) -> Result<(), CliError> {
     let model_path = context.paths().resolve_process_path(&command.model_path);
     let model = load_json_artifact(&model_path, "model")?;
+
     require_json_object(&model, "model", &model_path)?;
 
     match context.output_mode() {
@@ -113,9 +114,9 @@ fn render_fitted_components(model: &Value, renderer: &TerminalRenderer) -> Strin
 }
 
 fn render_main_parameters(model: &Value, renderer: &TerminalRenderer) -> String {
-    let hawkes = find_object_with_key(model, "kernel_parameters");
-    let nig = find_object_with_key(model, "nig_shared_plus_shift_configuration");
-    let mean_reversion = find_object_with_key(model, "mean_reversion_fitted_parameters");
+    let hawkes = find_value_by_key(model, "kernel_parameters");
+    let nig = find_value_by_key(model, "nig_shared_plus_shift_configuration");
+    let mean_reversion = find_value_by_key(model, "mean_reversion_fitted_parameters");
 
     let rows = vec![
         parameter_row(hawkes, "Hawkes lambda bar", &["lambda_bar"]),
@@ -142,24 +143,24 @@ fn render_main_parameters(model: &Value, renderer: &TerminalRenderer) -> String 
 fn render_parameter_details(model: &Value, renderer: &TerminalRenderer) -> String {
     let mut rows = Vec::new();
 
-    if let Some(hawkes) = find_object_with_key(model, "hawkes_fitted_parameters")
+    if let Some(hawkes) = find_value_by_key(model, "hawkes_fitted_parameters")
         .or_else(|| nested_value(model, &["parameters", "hawkes", "fitted_parameters"]))
     {
         rows.push(KeyValueRow::block("Hawkes", compact_value_string(hawkes)));
     }
 
-    if let Some(nig) = find_object_with_key(model, "nig_shared_plus_shift_configuration") {
+    if let Some(nig) = find_value_by_key(model, "nig_shared_plus_shift_configuration") {
         rows.push(KeyValueRow::block("NIG", compact_value_string(nig)));
     }
 
-    if let Some(mean_reversion) = find_object_with_key(model, "mean_reversion_fitted_parameters") {
+    if let Some(mean_reversion) = find_value_by_key(model, "mean_reversion_fitted_parameters") {
         rows.push(KeyValueRow::block(
             "Mean reversion",
             compact_value_string(mean_reversion),
         ));
     }
 
-    if let Some(news_process) = find_object_with_key(model, "news_process_configuration") {
+    if let Some(news_process) = find_value_by_key(model, "news_process_configuration") {
         rows.push(KeyValueRow::block(
             "News process",
             compact_value_string(news_process),
@@ -170,7 +171,7 @@ fn render_parameter_details(model: &Value, renderer: &TerminalRenderer) -> Strin
         rows.push(KeyValueRow::block("Seasonality", seasonality));
     }
 
-    if let Some(option_refinement) = find_object_with_key(model, "option_calibration_diagnostics") {
+    if let Some(option_refinement) = find_value_by_key(model, "option_calibration_diagnostics") {
         rows.push(KeyValueRow::block(
             "Option refinement",
             compact_value_string(option_refinement),
@@ -295,12 +296,14 @@ fn fitted_components(model: &Value) -> Vec<String> {
 }
 
 fn capabilities(model: &Value) -> Vec<String> {
-    let has_dynamics = find_object_with_key(model, "hawkes_fitted_parameters").is_some()
+    let has_dynamics = find_value_by_key(model, "hawkes_fitted_parameters").is_some()
         || nested_value(model, &["parameters", "hawkes"]).is_some()
         || nested_value(model, &["parameters", "joint_refinement"]).is_some();
-    let has_return_distribution =
-        find_object_with_key(model, "nig_shared_plus_shift_configuration").is_some()
-            || nested_value(model, &["parameters", "return_components"]).is_some();
+
+    let has_return_distribution = find_value_by_key(model, "nig_shared_plus_shift_configuration")
+        .is_some()
+        || nested_value(model, &["parameters", "return_components"]).is_some();
+
     let has_option_pricing = has_option_refinement(model);
 
     let mut capabilities = Vec::new();
@@ -324,10 +327,12 @@ fn capabilities(model: &Value) -> Vec<String> {
 }
 
 fn has_option_refinement(model: &Value) -> bool {
-    let has_pricing_block = find_object_with_key(model, "pricing_block_fitted_parameters")
+    let has_pricing_block = find_value_by_key(model, "pricing_block_fitted_parameters")
         .is_some_and(|value| !value.is_null());
-    let has_option_diagnostics = find_object_with_key(model, "option_calibration_diagnostics")
+
+    let has_option_diagnostics = find_value_by_key(model, "option_calibration_diagnostics")
         .is_some_and(|value| !value.is_null());
+
     let option_scope = string_field(model, "workflow_scope")
         .or_else(|| nested_string(model, &["metadata", "workflow_scope"]))
         .is_some_and(|scope| {
@@ -350,6 +355,7 @@ fn parameter_row(container: Option<&Value>, label: &str, candidate_keys: &[&str]
 
 fn model_warnings(model: &Value) -> Option<WarningBlock> {
     let diagnostics = nested_value(model, &["metadata", "diagnostics"])?.as_array()?;
+
     let warnings = diagnostics
         .iter()
         .filter_map(|diagnostic| {
@@ -377,118 +383,39 @@ fn model_warnings(model: &Value) -> Option<WarningBlock> {
 
 fn seasonality_samples(model: &Value) -> Option<String> {
     let seasonality = nested_value(model, &["parameters", "seasonality"])?;
+    let clock_model = seasonality.get("clock_model")?;
 
-    let mut sections = Vec::new();
+    let harmonic_series = clock_model.get("harmonic_series")?.as_object()?;
 
-    if let Some(intraday) = seasonality
-        .get("intraday_factor_by_bin")
-        .and_then(Value::as_array)
-    {
-        sections.push(format!(
-            "Intraday:\n{}",
-            hourly_samples(intraday.as_slice()).join("\n")
-        ));
-    }
-
-    if let Some(day_of_week) = seasonality
-        .get("day_of_week_factor")
-        .and_then(Value::as_array)
-    {
-        sections.push(format!(
-            "Day of week:\n{}",
-            day_of_week_samples(day_of_week)
-        ));
-    }
-
-    if let Some(day_of_year) = seasonality
-        .get("day_of_year_factor")
-        .and_then(Value::as_array)
-    {
-        sections.push(format!(
-            "Day of year:\n{}",
-            day_of_year_samples(day_of_year)
-        ));
-    }
-
-    if sections.is_empty() {
-        return None;
-    }
-
-    Some(sections.join("\n"))
-}
-
-fn hourly_samples(values: &[Value]) -> Vec<String> {
-    let samples = sample_slots(values, 24);
-
-    samples
-        .chunks(6)
-        .map(|chunk| {
-            chunk
-                .iter()
-                .map(|(position, value)| format!("{position:02} {}", format_sample_value(*value)))
-                .collect::<Vec<_>>()
-                .join("  ")
-        })
-        .collect()
-}
-
-fn day_of_week_samples(values: &[Value]) -> String {
-    let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-    labels
+    let harmonic_order_summary = harmonic_series
         .iter()
-        .enumerate()
-        .filter_map(|(position, label)| {
-            values
-                .get(position)
-                .and_then(Value::as_f64)
-                .map(|value| format!("{label} {}", format_sample_value(value)))
+        .filter_map(|(axis, series)| {
+            let harmonic_order = series.get("harmonic_order")?.as_u64()?;
+
+            Some(format!("{axis} harmonics {harmonic_order}"))
         })
         .collect::<Vec<_>>()
-        .join("  ")
-}
+        .join("  ");
 
-fn day_of_year_samples(values: &[Value]) -> String {
-    let samples = values
-        .iter()
-        .step_by(15)
-        .take(24)
-        .enumerate()
-        .filter_map(|(sample_position, value)| {
-            let day_of_year = sample_position * 15 + 1;
-            value
-                .as_f64()
-                .map(|value| format!("{day_of_year:03} {}", format_sample_value(value)))
-        })
-        .collect::<Vec<_>>();
+    let selected_objective = clock_model
+        .get("selected_objective_value")
+        .and_then(Value::as_f64)?;
 
-    samples
-        .chunks(6)
-        .map(|chunk| chunk.join("  "))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
+    let candidate_count = clock_model
+        .get("evaluated_candidate_count")
+        .and_then(Value::as_u64)?;
 
-fn sample_slots(values: &[Value], sample_count: usize) -> Vec<(usize, f64)> {
-    if values.is_empty() {
-        return Vec::new();
-    }
+    let open_minute_count = clock_model
+        .get("fit_open_minute_count")
+        .and_then(Value::as_u64)?;
 
-    (0..sample_count)
-        .filter_map(|sample_position| {
-            let position = sample_position * values.len() / sample_count;
-            values
-                .get(position)
-                .and_then(Value::as_f64)
-                .map(|value| (sample_position, value))
-        })
-        .collect()
-}
+    let open_event_count = clock_model
+        .get("fit_open_event_count")
+        .and_then(Value::as_u64)?;
 
-fn format_sample_value(value: f64) -> String {
-    format!("{value:.6}")
-}
-
-fn find_object_with_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
-    find_value_by_key(value, key)
+    Some(format!(
+        "Clock model:\n{harmonic_order_summary}\n\
+         candidates {candidate_count}  open minutes {open_minute_count}  open events {open_event_count}\n\
+         selected objective {selected_objective:.6}"
+    ))
 }

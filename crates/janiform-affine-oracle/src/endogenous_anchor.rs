@@ -31,23 +31,23 @@ use nalgebra::{Matrix2, Vector2};
 /// One interval's structural factors used by endogenous-anchor recursion.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct EndogenousAnchorIntervalFactors {
-    pub s_h: f64,
-    pub known_nu_h: f64,
-    pub surprise_nu_h: f64,
+    pub seasonality_factor: f64,
+    pub known_news_intensity: f64,
+    pub surprise_news_intensity: f64,
     pub delta: f64,
 }
 
 impl EndogenousAnchorIntervalFactors {
     pub fn try_new(
-        s_h: f64,
-        known_nu_h: f64,
-        surprise_nu_h: f64,
+        seasonality_factor: f64,
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
         delta: f64,
     ) -> Result<Self, EndogenousAnchorMaterializationError> {
         let factors = Self {
-            s_h,
-            known_nu_h,
-            surprise_nu_h,
+            seasonality_factor,
+            known_news_intensity,
+            surprise_news_intensity,
             delta,
         };
 
@@ -57,16 +57,19 @@ impl EndogenousAnchorIntervalFactors {
     }
 
     pub fn validate(self) -> Result<(), EndogenousAnchorMaterializationError> {
-        if !self.s_h.is_finite() || self.s_h < 0.0 {
+        if !self.seasonality_factor.is_finite() || self.seasonality_factor < 0.0 {
             return Err(
-                EndogenousAnchorMaterializationError::InvalidSeasonalityFactor { value: self.s_h },
+                EndogenousAnchorMaterializationError::InvalidSeasonalityFactor {
+                    value: self.seasonality_factor,
+                },
             );
         }
 
-        ExponentialAffineTransformNewsIntensityInput::try_new(self.known_nu_h, self.surprise_nu_h)
-            .map_err(
-                |source| EndogenousAnchorMaterializationError::InvalidNewsIntensity { source },
-            )?;
+        ExponentialAffineTransformNewsIntensityInput::try_new(
+            self.known_news_intensity,
+            self.surprise_news_intensity,
+        )
+        .map_err(|source| EndogenousAnchorMaterializationError::InvalidNewsIntensity { source })?;
 
         if !self.delta.is_finite() || self.delta <= 0.0 {
             return Err(EndogenousAnchorMaterializationError::InvalidIntervalDelta {
@@ -81,16 +84,19 @@ impl EndogenousAnchorIntervalFactors {
         self,
     ) -> Result<ExponentialAffineTransformNewsIntensityInput, EndogenousAnchorMaterializationError>
     {
-        ExponentialAffineTransformNewsIntensityInput::try_new(self.known_nu_h, self.surprise_nu_h)
-            .map_err(|source| EndogenousAnchorMaterializationError::InvalidNewsIntensity { source })
+        ExponentialAffineTransformNewsIntensityInput::try_new(
+            self.known_news_intensity,
+            self.surprise_news_intensity,
+        )
+        .map_err(|source| EndogenousAnchorMaterializationError::InvalidNewsIntensity { source })
     }
 
     pub fn expected_known_arrival_count(self) -> f64 {
-        self.known_nu_h * self.delta
+        self.known_news_intensity * self.delta
     }
 
     pub fn expected_surprise_arrival_count(self) -> f64 {
-        self.surprise_nu_h * self.delta
+        self.surprise_news_intensity * self.delta
     }
 }
 
@@ -189,7 +195,7 @@ impl Display for EndogenousAnchorMaterializationError {
         match self {
             Self::InvalidSeasonalityFactor { value } => write!(
                 formatter,
-                "endogenous-anchor materialization requires finite non-negative s_h, found {value}"
+                "endogenous-anchor materialization requires finite non-negative seasonality_factor, found {value}"
             ),
             Self::InvalidNewsIntensity { source } => write!(
                 formatter,
@@ -310,7 +316,7 @@ pub fn materialize_endogenous_anchor_path(
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     news_process_configuration: &NewsProcessConfiguration,
     initial_excitation_state: HawkesExcitationState,
-    interval_factors: &[EndogenousAnchorIntervalFactors],
+    interval_factor_grids: &[EndogenousAnchorIntervalFactors],
 ) -> Result<EndogenousAnchorMaterialization, EndogenousAnchorMaterializationError> {
     if !start_anchor_value.is_finite() {
         return Err(
@@ -334,17 +340,17 @@ pub fn materialize_endogenous_anchor_path(
             EndogenousAnchorMaterializationError::InvalidNigSharedPlusShiftConfiguration { source }
         })?;
 
-    let mut expected_hawkes_state_path = Vec::with_capacity(interval_factors.len() + 1);
+    let mut expected_hawkes_state_path = Vec::with_capacity(interval_factor_grids.len() + 1);
 
     expected_hawkes_state_path.push(initial_excitation_state);
 
-    let mut end_anchor_values = Vec::with_capacity(interval_factors.len());
-    let mut interval_deltas = Vec::with_capacity(interval_factors.len());
-    let mut interval_expectations = Vec::with_capacity(interval_factors.len());
+    let mut end_anchor_values = Vec::with_capacity(interval_factor_grids.len());
+    let mut interval_deltas = Vec::with_capacity(interval_factor_grids.len());
+    let mut interval_expectations = Vec::with_capacity(interval_factor_grids.len());
 
     let mut current_anchor_value = start_anchor_value;
 
-    for (interval_index, factors) in interval_factors.iter().copied().enumerate() {
+    for (interval_index, factors) in interval_factor_grids.iter().copied().enumerate() {
         factors.validate()?;
 
         let structural_state_before = *expected_hawkes_state_path
@@ -352,8 +358,8 @@ pub fn materialize_endogenous_anchor_path(
             .unwrap_or(&initial_excitation_state);
 
         let expected_activity_loading_rate = expected_news_activity_loading_rate(
-            factors.known_nu_h,
-            factors.surprise_nu_h,
+            factors.known_news_intensity,
+            factors.surprise_news_intensity,
             news_process_configuration.known_component_mark_scales,
             news_process_configuration.surprise_component_mark_scales,
             news_process_configuration
@@ -492,7 +498,7 @@ pub fn derive_expected_interval_projection_from_first_moment_dynamics(
     structural_state_before: HawkesExcitationState,
 ) -> Result<EndogenousAnchorFirstMomentIntervalProjection, EndogenousAnchorMaterializationError> {
     let expected_activity_loading_rate =
-        (factors.known_nu_h + factors.surprise_nu_h) * expected_severity_mark;
+        (factors.known_news_intensity + factors.surprise_news_intensity) * expected_severity_mark;
 
     expected_interval_projection_from_first_moment_dynamics(
         interval_index,
@@ -554,7 +560,7 @@ fn expected_interval_statistics_from_first_moment_dynamics(
         equation_specification,
         factors,
         structural_state_before,
-        (factors.known_nu_h + factors.surprise_nu_h) * expected_severity_mark,
+        (factors.known_news_intensity + factors.surprise_news_intensity) * expected_severity_mark,
     )?;
 
     expected_interval_statistics_from_target_sum_first_moment(
@@ -579,7 +585,9 @@ fn expected_interval_statistics_from_target_sum_first_moment(
     SufficientStatisticsIntervalStatisticsError,
 > {
     let baseline_expected_business_time =
-        equation_specification.hawkes_kernel_parameters.lambda_bar * factors.s_h * factors.delta;
+        equation_specification.hawkes_kernel_parameters.lambda_bar
+            * factors.seasonality_factor
+            * factors.delta;
 
     SufficientStatisticsExpectedIntervalStatistics::try_new(
         baseline_expected_business_time,
@@ -618,13 +626,15 @@ fn integrate_expected_target_sums(
 
     let initial_state = Vector2::new(target_plus_before, target_minus_before);
 
-    let source_plus =
-        factors.s_h * kernel_parameters.lambda_bar * (alpha.plus_plus + alpha.plus_minus)
-            + news_source_rates.target_plus_source_rate;
+    let source_plus = factors.seasonality_factor
+        * kernel_parameters.lambda_bar
+        * (alpha.plus_plus + alpha.plus_minus)
+        + news_source_rates.target_plus_source_rate;
 
-    let source_minus =
-        factors.s_h * kernel_parameters.lambda_bar * (alpha.minus_plus + alpha.minus_minus)
-            + news_source_rates.target_minus_source_rate;
+    let source_minus = factors.seasonality_factor
+        * kernel_parameters.lambda_bar
+        * (alpha.minus_plus + alpha.minus_minus)
+        + news_source_rates.target_minus_source_rate;
 
     let (target_after, integrated_target) = solve_two_by_two_linear_source_system(
         system_matrix,
@@ -832,10 +842,10 @@ mod tests {
         )
         .expect("news process configuration should construct");
 
-        let interval_factors = EndogenousAnchorIntervalFactors::try_new(0.0, 2.0, 0.0, 0.5)
+        let interval_factor_grids = EndogenousAnchorIntervalFactors::try_new(0.0, 2.0, 0.0, 0.5)
             .expect("interval factors should construct");
 
-        let expected_anchor_increment = interval_factors.expected_known_arrival_count() * 1.2;
+        let expected_anchor_increment = interval_factor_grids.expected_known_arrival_count() * 1.2;
 
         let materialization = materialize_endogenous_anchor_path(
             "explicit_runtime_interval_grid_alignment.v1",
@@ -844,7 +854,7 @@ mod tests {
             nig_configuration,
             &news_process_configuration,
             zero_hawkes_excitation_state(),
-            &[interval_factors],
+            &[interval_factor_grids],
         )
         .expect("endogenous anchor materialization should succeed");
 

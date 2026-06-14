@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use janiform::model::factors::hourly::NANOS_PER_HOUR;
+use janiform::model::factors::interval_factor_grid::NANOS_PER_HOUR;
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::simulation::{MeanReversionBoundaryState, SeededTickEventStateSnapshotCapture};
 use janiform_foundations::time::deserialize_utc_datetime;

@@ -484,7 +484,7 @@ fn tier_pricing_inputs_fingerprint_payload(
 ) -> serde_json::Value {
     json!({
         "runtime_interval_schedule": tier_inputs.runtime_interval_schedule,
-        "interval_factors": tier_inputs.interval_factors,
+        "interval_factor_grids": tier_inputs.interval_factor_grids,
         "grid_batch_pricing_request": tier_inputs.grid_batch_pricing_request,
         "spectral_collocation_node_count_override": tier_inputs
             .spectral_collocation_node_count_override,

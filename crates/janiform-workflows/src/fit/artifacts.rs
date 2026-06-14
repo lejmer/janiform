@@ -650,13 +650,10 @@ fn seasonality_parameters_from_artifact(
     payload: &janiform_calibration_artifacts::SeasonalityStageParameterPayload,
 ) -> Value {
     json!({
-        "schema_version": payload.composition_schema_version,
+        "schema_version": payload.clock_model_schema_version,
         "exchange_code": payload.exchange_code,
-        "intraday_minutes_per_bin": payload.intraday_minutes_per_bin,
-        "intraday_factor_by_bin": payload.intraday_factor_by_bin,
-        "day_of_week_factor": payload.day_of_week_factor,
-        "hour_of_week_factor": payload.hour_of_week_factor,
-        "day_of_year_factor": payload.day_of_year_factor,
+        "clock_model_schema_version": payload.clock_model_schema_version,
+        "clock_model": payload.clock_model,
     })
 }
 

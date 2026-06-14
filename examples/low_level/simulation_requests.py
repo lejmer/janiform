@@ -2,21 +2,23 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from janiform.calendar import CalendarRegistry
-from janiform.hourly_factors import HourlyFactorContract, build_hourly_factor_contract
+from janiform.interval_factor_grids import IntervalFactorGridContract, build_interval_factor_grid
+from janiform.long_variance import LongVarianceParameters, LongVarianceState
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import (
     CoarseSimulationPath,
     CoarseSimulationModelInputs,
     CoarseSimulationRunRequest,
-    SeededTickSimulationHourlyFactorSummary,
+    SeededTickSimulationIntervalFactorGridSummary,
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
-from janiform.sufficient_statistics import SufficientStatisticsModelInputs
 from janiform.simulation.coarse import (
     COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
 )
+from janiform.sufficient_statistics import SufficientStatisticsModelInputs
 
 from examples._contracts import (
     build_excitation_state,
@@ -40,21 +42,22 @@ def datetime_to_utc_nanos(timestamp_utc: datetime) -> int:
     delta = normalized_timestamp_utc - epoch
 
     return (
-            ((delta.days * 24 * 60 * 60) + delta.seconds) * 1_000_000_000
-            + delta.microseconds * 1_000
+        ((delta.days * 24 * 60 * 60) + delta.seconds) * 1_000_000_000
+        + delta.microseconds * 1_000
     )
 
 
 def main() -> None:
     calendar_registry: CalendarRegistry = CalendarRegistry(calendar_registry_json())
 
-    hourly_factor_contract: HourlyFactorContract = build_hourly_factor_contract(
+    interval_factor_grid: IntervalFactorGridContract = build_interval_factor_grid(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=SIMULATION_START_UTC,
         range_end_utc=SIMULATION_START_UTC + timedelta(hours=SIMULATION_INTERVAL_COUNT),
-        seasonality_hourly_factors=[1.0, 1.1],
-        news_intensity_hourly_factors=[0.2, 0.1],
+        interval="1h",
+        seasonality_factors=[1.0, 1.1],
+        news_intensity_factors=[0.2, 0.1],
     )
 
     sufficient_statistics_model_inputs: SufficientStatisticsModelInputs = build_sufficient_statistics_model_inputs(
@@ -71,10 +74,14 @@ def main() -> None:
         model_inputs=CoarseSimulationModelInputs(
             sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
             news_process_configuration=build_news_process_configuration(),
+            return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+            long_variance_parameters=LongVarianceParameters.neutral(),
+            initial_long_variance_state=LongVarianceState.unit(),
+            observed_price_tick_size=None,
             calendar_registry_artifact=calendar_registry_payload(),
             exchange_code="XNYS",
         ),
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid,
     )
 
     (
@@ -99,12 +106,15 @@ def main() -> None:
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-        hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(
-            hourly_factor_contract,
+        interval_factor_grid_summary=SeededTickSimulationIntervalFactorGridSummary.from_contract(
+            interval_factor_grid,
         ),
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
     )
 
-    # The runtime helper attaches the non-serializable hourly-factor handle needed by execution.
+    # The runtime helper attaches the non-serializable interval-grid handle needed by execution.
     runtime_seeded_request: SeededTickSimulationRequest = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=SIMULATION_START_UTC,
@@ -116,7 +126,10 @@ def main() -> None:
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid,
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        initial_long_variance_state=LongVarianceState.unit(),
     )
 
     coarse_path: CoarseSimulationPath = run_coarse_simulation(coarse_request)
@@ -129,7 +142,7 @@ def main() -> None:
         "request summary:",
         {
             "coarse_horizon_interval_count": coarse_request.horizon_interval_count,
-            "seeded_transport_interval_count": direct_seeded_request.hourly_factor_summary.interval_count,
+            "seeded_transport_interval_count": direct_seeded_request.interval_factor_grid_summary.interval_count,
         },
     )
     print(f"coarse intervals simulated: {len(coarse_path.records)}")

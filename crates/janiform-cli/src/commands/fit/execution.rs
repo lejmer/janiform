@@ -63,6 +63,7 @@ pub(crate) fn run_fit_command(
                     .stylized_fact_admissibility_z_threshold,
             },
             no_persist: command.no_persist,
+            keep_terminal_progress_after_preparation: false,
         },
     )?;
 

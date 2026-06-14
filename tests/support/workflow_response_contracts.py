@@ -14,10 +14,10 @@ from janiform.calibration.staged import (
     validate_staged_calibration_request,
     validate_staged_calibration_response,
 )
-from janiform.hourly_factors import (
-    HourlyNewsIntensityProviderExplicitSource,
-    HourlySeasonalityProviderExplicitSource,
-    provide_hourly_factor_contract,
+from janiform.interval_factor_grids import (
+    IntervalNewsIntensityProviderExplicitSource,
+    IntervalSeasonalityProviderExplicitSource,
+    provide_interval_factor_grid,
 )
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import (
@@ -420,18 +420,18 @@ def _build_simulation_boundary_response_payload(
 ) -> dict[str, Any]:
     start_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
 
-    hourly_factor_contract = provide_hourly_factor_contract(
+    interval_factor_grid_contract = provide_interval_factor_grid(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,
         range_end_utc=datetime(2026, 2, 2, 17, tzinfo=UTC),
-        seasonality_source=HourlySeasonalityProviderExplicitSource(
-            hourly_factors=(1.0, 1.15),
-            materialization_method="explicit_hourly_input.v1",
+        seasonality_source=IntervalSeasonalityProviderExplicitSource(
+            interval_factors=(1.0, 1.15),
+            materialization_method="explicit_interval_grid_input.v1",
         ),
-        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
-            hourly_factors=(0.01, 0.02),
-            materialization_method="explicit_hourly_input.v1",
+        news_intensity_source=IntervalNewsIntensityProviderExplicitSource(
+            interval_factors=(0.01, 0.02),
+            materialization_method="explicit_interval_grid_input.v1",
         ),
     )
 
@@ -440,7 +440,7 @@ def _build_simulation_boundary_response_payload(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
     ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
-        hourly_factor_contract=hourly_factor_contract
+        interval_factor_grid=interval_factor_grid_contract
     )
 
     request = SeededTickSimulationRequest.from_runtime_inputs(
@@ -483,7 +483,7 @@ def _build_simulation_boundary_response_payload(
             ),
         ),
         initial_excitation_state=_valid_excitation_state(),
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid_contract,
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),

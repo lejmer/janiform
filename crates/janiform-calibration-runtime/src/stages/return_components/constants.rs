@@ -14,7 +14,6 @@ pub(super) const RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT: &
 pub(super) const RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_PRICE_RANGE_SANITY_FIT: &str =
     "price_range_sanity_fit";
 pub(super) const RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS: usize = 1;
-pub(super) const RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY: &str =
-    "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_with_baseline_shrinkage.v1";
+pub(super) const RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY: &str = "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_with_baseline_shrinkage.v1";
 pub(super) const RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_NORMALIZATION_POLICY: &str =
     "exposure_weighted_mean_one_over_source_window.v1";

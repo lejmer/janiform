@@ -36,8 +36,8 @@ use crate::stages::return_components::{
     prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
 };
 use crate::stages::seasonality::{
-    CalibrationStageExecutionStatus, RuntimeHourlySeasonalityFactorsBuildInput,
-    build_runtime_hourly_seasonality_factors_from_components,
+    CalibrationStageExecutionStatus, RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -859,6 +859,8 @@ fn prepare_bootstrap_context(
                 option_pricing_refinement_enabled,
                 option_pricing_context,
                 runtime_materialization,
+                // Intentional copy so the joint-refinement context can materialize interval grids after stage input borrows end.
+                seasonality_clock_model: stage_input.seasonality_factors_input.clock_model.clone(),
                 baseline_return_components_fitted_parameters,
                 cancellation_token: cancellation_token.shared_handle(),
             })?;
@@ -1025,6 +1027,7 @@ fn build_bootstrap_context(
         option_pricing_refinement_enabled,
         option_pricing_context,
         runtime_materialization,
+        seasonality_clock_model,
         baseline_return_components_fitted_parameters,
         cancellation_token,
     } = input;
@@ -1043,8 +1046,9 @@ fn build_bootstrap_context(
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
         objective_policy: run_spec.objective_policy,
-        runtime_hourly_seasonality_factors: runtime_materialization
-            .runtime_hourly_seasonality_factors,
+        seasonality_clock_model,
+        runtime_interval_seasonality_factors: runtime_materialization
+            .runtime_interval_seasonality_factors,
         observed_data,
         baseline_modeled_open_event_rate_per_hour: resolved_stage_payloads
             .baseline_modeled_open_event_rate_per_hour,
@@ -1102,12 +1106,13 @@ struct BootstrapContextBuildInput<'a> {
     option_pricing_refinement_enabled: bool,
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
     runtime_materialization: RuntimeMaterialization,
+    seasonality_clock_model: crate::stages::seasonality::FourierBusinessTimeClockModel,
     baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
     cancellation_token: CancellationToken,
 }
 
 struct RuntimeMaterialization {
-    runtime_hourly_seasonality_factors: Vec<f64>,
+    runtime_interval_seasonality_factors: Vec<f64>,
     summary_simulation_session_context:
         super::super::summary_simulation::JointRefinementSummarySimulationSessionContext,
 }
@@ -1119,28 +1124,14 @@ fn materialize_runtime_state(
     observed_data: &super::JointRefinementObservedData,
     return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
 ) -> Result<RuntimeMaterialization, JointRefinementStageExecutionFailure> {
-    let runtime_range = runtime_hourly_seasonality_range(observed_data)?;
+    let runtime_range = runtime_interval_seasonality_range(observed_data)?;
 
-    let runtime_hourly_seasonality_factors =
-        build_runtime_hourly_seasonality_factors_from_components(
-            RuntimeHourlySeasonalityFactorsBuildInput {
+    let runtime_interval_seasonality_factors =
+        build_runtime_interval_seasonality_factors_from_components(
+            RuntimeIntervalSeasonalityFactorsBuildInput {
                 calendar_registry,
-                exchange_code: run_spec.data_inputs.exchange_code.as_str(),
-                intraday_minutes_per_bin: stage_input
-                    .seasonality_factors_input
-                    .intraday_minutes_per_bin,
-                intraday_factor_by_bin: stage_input
-                    .seasonality_factors_input
-                    .intraday_factor_by_bin
-                    .as_slice(),
-                day_of_week_factor: stage_input
-                    .seasonality_factors_input
-                    .day_of_week_factor
-                    .as_slice(),
-                day_of_year_factor: stage_input
-                    .seasonality_factors_input
-                    .day_of_year_factor
-                    .as_slice(),
+                exchange_code: stage_input.seasonality_factors_input.exchange_code.as_str(),
+                clock_model: &stage_input.seasonality_factors_input.clock_model,
                 range_start_utc_nanos: runtime_range.0,
                 range_end_utc_nanos: runtime_range.1,
                 interval_duration_nanos: NANOS_PER_HOUR,
@@ -1164,19 +1155,19 @@ fn materialize_runtime_state(
             .known
             .scheduled_event_timestamps_utc_nanos
             .as_slice(),
-        runtime_hourly_seasonality_factors.as_slice(),
+        runtime_interval_seasonality_factors.as_slice(),
     )
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
     })?;
 
     Ok(RuntimeMaterialization {
-        runtime_hourly_seasonality_factors,
+        runtime_interval_seasonality_factors,
         summary_simulation_session_context,
     })
 }
 
-fn runtime_hourly_seasonality_range(
+fn runtime_interval_seasonality_range(
     observed_data: &super::JointRefinementObservedData,
 ) -> Result<(i64, i64), JointRefinementStageExecutionFailure> {
     let Some(range_start_utc_nanos) = observed_data

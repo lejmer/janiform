@@ -30,10 +30,10 @@ class SimulationExecutionError(Exception): ...
 class SeasonalityInputValidationError(ValueError): ...
 
 
-class HourlyFactorProviderMissingInputError(ValueError): ...
+class IntervalFactorGridProviderMissingInputError(ValueError): ...
 
 
-class HourlyFactorProviderUnsupportedRangeError(ValueError): ...
+class IntervalFactorGridProviderUnsupportedRangeError(ValueError): ...
 
 
 def compute_fnv1a_64_hex_lowercase(payload: bytes) -> str: ...
@@ -118,237 +118,7 @@ class TimestampEventPreprocessingResult:
     def sparse_hour_bucket_count(self) -> int: ...
 
 
-class IntradaySeasonalityEstimateResult:
-    @property
-    def schema_version(self) -> str: ...
-
-    @property
-    def minutes_per_bin(self) -> int: ...
-
-    @property
-    def smoothing_kernel(self) -> str: ...
-
-    @property
-    def smoothing_bandwidth_bins(self) -> float: ...
-
-    @property
-    def minimum_bin_events(self) -> int: ...
-
-    @property
-    def pseudocount(self) -> float: ...
-
-    @property
-    def bin_start_minute_of_day(self) -> list[int]: ...
-
-    @property
-    def event_count_by_bin(self) -> list[int]: ...
-
-    @property
-    def sparse_bin_flags(self) -> bytes: ...
-
-    @property
-    def smoothed_density_by_bin(self) -> list[float]: ...
-
-    @property
-    def intraday_log_component_by_bin(self) -> list[float]: ...
-
-    @property
-    def intraday_factor_by_bin(self) -> list[float]: ...
-
-    @property
-    def input_event_count(self) -> int: ...
-
-    @property
-    def bin_count(self) -> int: ...
-
-    @property
-    def zero_event_bin_count(self) -> int: ...
-
-    @property
-    def sparse_bin_count(self) -> int: ...
-
-
-class DayOfWeekSeasonalityEstimateResult:
-    @property
-    def schema_version(self) -> str: ...
-
-    @property
-    def minimum_bucket_events(self) -> int: ...
-
-    @property
-    def pseudocount(self) -> float: ...
-
-    @property
-    def day_of_week_number(self) -> bytes: ...
-
-    @property
-    def event_count_by_day_of_week(self) -> list[int]: ...
-
-    @property
-    def sparse_bucket_flags(self) -> bytes: ...
-
-    @property
-    def fallback_bucket_flags(self) -> bytes: ...
-
-    @property
-    def day_of_week_log_component(self) -> list[float]: ...
-
-    @property
-    def day_of_week_factor(self) -> list[float]: ...
-
-    @property
-    def input_event_count(self) -> int: ...
-
-    @property
-    def bucket_count(self) -> int: ...
-
-    @property
-    def zero_event_bucket_count(self) -> int: ...
-
-    @property
-    def sparse_bucket_count(self) -> int: ...
-
-    @property
-    def fallback_bucket_count(self) -> int: ...
-
-
-class DayOfYearSeasonalityEstimateResult:
-    @property
-    def schema_version(self) -> str: ...
-
-    @property
-    def minimum_bucket_events(self) -> int: ...
-
-    @property
-    def pseudocount(self) -> float: ...
-
-    @property
-    def day_of_year_number(self) -> list[int]: ...
-
-    @property
-    def event_count_by_day_of_year(self) -> list[int]: ...
-
-    @property
-    def sparse_bucket_flags(self) -> bytes: ...
-
-    @property
-    def fallback_bucket_flags(self) -> bytes: ...
-
-    @property
-    def day_of_year_log_component(self) -> list[float]: ...
-
-    @property
-    def day_of_year_factor(self) -> list[float]: ...
-
-    @property
-    def input_event_count(self) -> int: ...
-
-    @property
-    def bucket_count(self) -> int: ...
-
-    @property
-    def zero_event_bucket_count(self) -> int: ...
-
-    @property
-    def sparse_bucket_count(self) -> int: ...
-
-    @property
-    def fallback_bucket_count(self) -> int: ...
-
-
-class DeterministicSeasonalityCompositionResult:
-    @property
-    def schema_version(self) -> str: ...
-
-    @property
-    def intraday_minutes_per_bin(self) -> int: ...
-
-    @property
-    def intraday_bin_index_by_event(self) -> list[int]: ...
-
-    @property
-    def intraday_log_component_by_event(self) -> list[float]: ...
-
-    @property
-    def day_of_week_log_component_by_event(self) -> list[float]: ...
-
-    @property
-    def day_of_year_log_component_by_event(self) -> list[float]: ...
-
-    @property
-    def special_log_component_by_event(self) -> list[float]: ...
-
-    @property
-    def special_overlay_active_flags_by_event(self) -> bytes: ...
-
-    @property
-    def active_overlay_ids_by_event(self) -> list[str]: ...
-
-    @property
-    def combined_log_component_by_event(self) -> list[float]: ...
-
-    @property
-    def combined_factor_by_event(self) -> list[float]: ...
-
-    @property
-    def input_event_count(self) -> int: ...
-
-    @property
-    def normalization_policy(self) -> str: ...
-
-    @property
-    def fit_window_event_count(self) -> int: ...
-
-    @property
-    def target_mean_factor(self) -> float: ...
-
-    @property
-    def pre_normalization_mean_factor(self) -> float: ...
-
-    @property
-    def normalization_constant(self) -> float: ...
-
-    @property
-    def normalization_log_offset(self) -> float: ...
-
-    @property
-    def post_normalization_mean_factor(self) -> float: ...
-
-    @property
-    def mean_anchor_tolerance(self) -> float: ...
-
-    @property
-    def overlays_enabled(self) -> bool: ...
-
-    @property
-    def configured_overlay_count(self) -> int: ...
-
-    @property
-    def enabled_overlay_count(self) -> int: ...
-
-    @property
-    def active_overlay_event_count(self) -> int: ...
-
-    @property
-    def overlay_precedence_policy(self) -> str: ...
-
-    @property
-    def overlay_merge_policy(self) -> str: ...
-
-    @property
-    def overlay_window_boundary_policy(self) -> str: ...
-
-    @property
-    def configured_overlay_ids_in_order(self) -> list[str]: ...
-
-    @property
-    def applied_overlay_ids_in_order(self) -> list[str]: ...
-
-    @property
-    def overlay_source_labels_in_order(self) -> list[str]: ...
-
-
-class HourlyFactorContractResult:
+class IntervalFactorGridContractResult:
     @property
     def schema_version(self) -> str: ...
 
@@ -363,6 +133,9 @@ class HourlyFactorContractResult:
 
     @property
     def request_end_utc_nanos(self) -> int: ...
+
+    @property
+    def interval_duration_nanos(self) -> int: ...
 
     @property
     def interval_indices(self) -> list[int]: ...
@@ -380,16 +153,16 @@ class HourlyFactorContractResult:
     def interval_end_exchange_local(self) -> list[str]: ...
 
     @property
-    def s_h(self) -> list[float]: ...
+    def seasonality_factor(self) -> list[float]: ...
 
     @property
-    def known_component_nu_h(self) -> list[float]: ...
+    def known_news_intensity(self) -> list[float]: ...
 
     @property
-    def surprise_component_nu_h(self) -> list[float]: ...
+    def surprise_news_intensity(self) -> list[float]: ...
 
     @property
-    def nu_h(self) -> list[float]: ...
+    def news_intensity(self) -> list[float]: ...
 
     @property
     def interval_count(self) -> int: ...
@@ -401,10 +174,10 @@ class HourlyFactorContractResult:
     def last_interval_end_utc_nanos(self) -> int: ...
 
     @property
-    def skipped_local_hour_interval_count(self) -> int: ...
+    def skipped_exchange_local_interval_count(self) -> int: ...
 
     @property
-    def repeated_local_hour_interval_count(self) -> int: ...
+    def repeated_exchange_local_interval_count(self) -> int: ...
 
     @property
     def interval_boundary_policy(self) -> str: ...
@@ -428,7 +201,7 @@ class HourlyFactorContractResult:
     def news_intensity_materialization_method(self) -> str: ...
 
 
-class HourlySeasonalityMaterializationResult:
+class IntervalSeasonalityMaterializationResult:
     @property
     def schema_version(self) -> str: ...
 
@@ -443,6 +216,9 @@ class HourlySeasonalityMaterializationResult:
 
     @property
     def request_end_utc_nanos(self) -> int: ...
+
+    @property
+    def interval_duration_nanos(self) -> int: ...
 
     @property
     def interval_indices(self) -> list[int]: ...
@@ -460,7 +236,7 @@ class HourlySeasonalityMaterializationResult:
     def interval_end_exchange_local(self) -> list[str]: ...
 
     @property
-    def s_h(self) -> list[float]: ...
+    def seasonality_factor(self) -> list[float]: ...
 
     @property
     def source_point_count(self) -> int: ...
@@ -478,10 +254,10 @@ class HourlySeasonalityMaterializationResult:
     def fallback_interval_count(self) -> int: ...
 
     @property
-    def skipped_local_hour_interval_count(self) -> int: ...
+    def skipped_exchange_local_interval_count(self) -> int: ...
 
     @property
-    def repeated_local_hour_interval_count(self) -> int: ...
+    def repeated_exchange_local_interval_count(self) -> int: ...
 
     @property
     def interpolation_method(self) -> str: ...
@@ -493,7 +269,7 @@ class HourlySeasonalityMaterializationResult:
     def sparse_fallback_policy(self) -> str: ...
 
     @property
-    def sparse_hour_minimum_observation_count(self) -> int: ...
+    def sparse_interval_minimum_observation_count(self) -> int: ...
 
     @property
     def interval_boundary_policy(self) -> str: ...
@@ -511,7 +287,7 @@ class HourlySeasonalityMaterializationResult:
     def fall_back_policy(self) -> str: ...
 
 
-class HourlyNewsIntensityMaterializationResult:
+class IntervalNewsIntensityMaterializationResult:
     @property
     def schema_version(self) -> str: ...
 
@@ -526,6 +302,9 @@ class HourlyNewsIntensityMaterializationResult:
 
     @property
     def request_end_utc_nanos(self) -> int: ...
+
+    @property
+    def interval_duration_nanos(self) -> int: ...
 
     @property
     def interval_indices(self) -> list[int]: ...
@@ -543,13 +322,13 @@ class HourlyNewsIntensityMaterializationResult:
     def interval_end_exchange_local(self) -> list[str]: ...
 
     @property
-    def known_component_nu_h(self) -> list[float]: ...
+    def known_news_intensity(self) -> list[float]: ...
 
     @property
-    def surprise_component_nu_h(self) -> list[float]: ...
+    def surprise_news_intensity(self) -> list[float]: ...
 
     @property
-    def nu_h(self) -> list[float]: ...
+    def news_intensity(self) -> list[float]: ...
 
     @property
     def interval_count(self) -> int: ...
@@ -570,10 +349,10 @@ class HourlyNewsIntensityMaterializationResult:
     def surprise_multiplier_override_interval_count(self) -> int: ...
 
     @property
-    def skipped_local_hour_interval_count(self) -> int: ...
+    def skipped_exchange_local_interval_count(self) -> int: ...
 
     @property
-    def repeated_local_hour_interval_count(self) -> int: ...
+    def repeated_exchange_local_interval_count(self) -> int: ...
 
     @property
     def materialization_method(self) -> str: ...
@@ -583,6 +362,21 @@ class HourlyNewsIntensityMaterializationResult:
 
     @property
     def arrival_intensity_policy(self) -> str: ...
+
+    @property
+    def known_news_calendar_anchor_policy(self) -> str: ...
+
+    @property
+    def surprise_news_intensity_control_policy(self) -> str: ...
+
+    @property
+    def known_news_calendar_anchor_count(self) -> int: ...
+
+    @property
+    def surprise_open_baseline_intensity(self) -> float: ...
+
+    @property
+    def surprise_closed_baseline_intensity(self) -> float: ...
 
 
 from typing import Optional
@@ -797,79 +591,26 @@ class CalibrationMemoryCheckpointStore:
     def last_checkpoint_reference_for_run(self, run_id: str) -> Optional[str]: ...
 
 
-def estimate_intraday_seasonality(
-    exchange_local_minute_of_day: object,
-    *,
-    minutes_per_bin: int,
-    smoothing_kernel: str,
-    smoothing_bandwidth_bins: float,
-    minimum_bin_events: int,
-    pseudocount: float,
-) -> IntradaySeasonalityEstimateResult: ...
-
-
-def estimate_day_of_week_seasonality(
-    exchange_local_day_of_week: object,
-    *,
-    minimum_bucket_events: int,
-    pseudocount: float,
-) -> DayOfWeekSeasonalityEstimateResult: ...
-
-
-def estimate_day_of_year_seasonality(
-    exchange_local_day_of_year: object,
-    *,
-    minimum_bucket_events: int,
-    pseudocount: float,
-) -> DayOfYearSeasonalityEstimateResult: ...
-
-
-def compose_deterministic_seasonality_signal(
-    timestamp_utc_nanos: object,
-    exchange_local_minute_of_day: object,
-    exchange_local_day_of_week: object,
-    exchange_local_day_of_year: object,
-    intraday_log_component_by_bin: object,
-    day_of_week_log_component: object,
-    day_of_year_log_component: object,
-    *,
-    intraday_minutes_per_bin: int,
-    scheduled_event_overlays: Optional[object] = None,
-) -> DeterministicSeasonalityCompositionResult: ...
-
-
-def generate_seasonality_diagnostics_report(
-    dataset_id: str,
-    preprocessed_events: TimestampEventPreprocessingResult,
-    intraday_estimate: IntradaySeasonalityEstimateResult,
-    day_of_week_estimate: DayOfWeekSeasonalityEstimateResult,
-    day_of_year_estimate: DayOfYearSeasonalityEstimateResult,
-    composition: DeterministicSeasonalityCompositionResult,
-    *,
-    estimator_version: str,
-) -> str: ...
-
-
-def build_hourly_factor_contract(
+def build_interval_factor_grid(
     calendar_registry: CalendarRegistry,
     exchange_code: str,
     range_start_utc: str,
     range_end_utc: str,
     interval_duration_nanos: int,
-    seasonality_hourly_factors: Any,
-    news_intensity_hourly_factors: Any,
+    seasonality_factors: Any,
+    news_intensity_factors: Any,
     *,
-    seasonality_materialization_method: str = "explicit_hourly_input.v1",
-    news_intensity_materialization_method: str = "explicit_hourly_input.v1",
-) -> HourlyFactorContractResult: ...
+    seasonality_materialization_method: str = "explicit_interval_grid_input.v1",
+    news_intensity_materialization_method: str = "explicit_interval_grid_input.v1",
+) -> IntervalFactorGridContractResult: ...
 
 
-def load_hourly_factor_contract_payload(
-    hourly_factor_contract_payload: Any,
-) -> HourlyFactorContractResult: ...
+def load_interval_factor_grid_payload(
+    interval_factor_grid_payload: Any,
+) -> IntervalFactorGridContractResult: ...
 
 
-def materialize_hourly_seasonality_factors(
+def materialize_interval_seasonality_factors(
     calendar_registry: CalendarRegistry,
     exchange_code: str,
     range_start_utc: str,
@@ -881,11 +622,11 @@ def materialize_hourly_seasonality_factors(
     interpolation_method: str = "previous_observation_carry_forward.v1",
     aggregation_method: str = "mean_of_observations.v1",
     sparse_fallback_policy: str = "global_mean.v1",
-    sparse_hour_minimum_observation_count: int = 1,
-) -> HourlySeasonalityMaterializationResult: ...
+    sparse_interval_minimum_observation_count: int = 1,
+) -> IntervalSeasonalityMaterializationResult: ...
 
 
-def materialize_hourly_news_intensity_factors(
+def materialize_interval_news_intensity_factors(
     calendar_registry: CalendarRegistry,
     exchange_code: str,
     range_start_utc: str,
@@ -896,10 +637,10 @@ def materialize_hourly_news_intensity_factors(
     *,
     known_scheduled_event_timestamps_utc: Optional[Any] = None,
     surprise_deterministic_time_multiplier_by_interval_index: Optional[Any] = None,
-) -> HourlyNewsIntensityMaterializationResult: ...
+) -> IntervalNewsIntensityMaterializationResult: ...
 
 
-def provide_hourly_factor_contract(
+def provide_interval_factor_grid(
     calendar_registry: CalendarRegistry,
     exchange_code: str,
     range_start_utc: str,
@@ -908,7 +649,7 @@ def provide_hourly_factor_contract(
     *,
     seasonality_source: Optional[Any] = None,
     news_intensity_source: Optional[Any] = None,
-) -> HourlyFactorContractResult: ...
+) -> IntervalFactorGridContractResult: ...
 
 
 def run_deterministic_regression_harness(
@@ -1024,11 +765,15 @@ def materialize_runtime_structural_seasonality(
     range_start_utc: str,
     range_end_utc: str,
     interval_duration_nanos: int,
-    intraday_minutes_per_bin: int,
-    intraday_factor_by_bin: object,
-    day_of_week_factor: object,
-    hour_of_week_factor: object,
-    day_of_year_factor: object,
+    clock_model: object,
+) -> object: ...
+
+
+def materialize_surprise_news_weekly_profile_multipliers_for_interval_range(
+    range_start_utc: str,
+    range_end_utc: str,
+    interval_duration_nanos: int,
+    surprise_profile: object,
 ) -> object: ...
 
 
@@ -1140,9 +885,9 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
     mean_reversion_fitted_parameters: object,
     interval_alignment_policy: str,
     start_anchor_value: float,
-    s_h: object,
-    known_nu_h: object,
-    surprise_nu_h: object,
+    seasonality_factor: object,
+    known_news_intensity: object,
+    surprise_news_intensity: object,
     interval_deltas: object,
 ) -> object: ...
 

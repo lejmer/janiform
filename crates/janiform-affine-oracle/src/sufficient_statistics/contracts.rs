@@ -25,7 +25,7 @@ use super::validation::validate_excitation_state;
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct SufficientStatisticsTransformSliceContext {
     pub interval_index: usize,
-    pub s_h: f64,
+    pub seasonality_factor: f64,
     pub news_intensity: ExponentialAffineTransformNewsIntensityInput,
     pub delta: f64,
     pub initial_excitation_state: HawkesExcitationState,
@@ -34,14 +34,14 @@ pub struct SufficientStatisticsTransformSliceContext {
 impl SufficientStatisticsTransformSliceContext {
     pub fn try_new(
         interval_index: usize,
-        s_h: f64,
+        seasonality_factor: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
         delta: f64,
         initial_excitation_state: HawkesExcitationState,
     ) -> Result<Self, SufficientStatisticsTransformSliceContextError> {
         let context = Self {
             interval_index,
-            s_h,
+            seasonality_factor,
             news_intensity,
             delta,
             initial_excitation_state,
@@ -53,11 +53,11 @@ impl SufficientStatisticsTransformSliceContext {
     }
 
     pub fn validate(self) -> Result<(), SufficientStatisticsTransformSliceContextError> {
-        if !self.s_h.is_finite() || self.s_h < 0.0 {
+        if !self.seasonality_factor.is_finite() || self.seasonality_factor < 0.0 {
             return Err(
                 SufficientStatisticsTransformSliceContextError::InvalidSeasonalityFactor {
                     interval_index: self.interval_index,
-                    value: self.s_h,
+                    value: self.seasonality_factor,
                 },
             );
         }

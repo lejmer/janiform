@@ -15,10 +15,10 @@ use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
 use crate::bindings::calendar::parse_timestamp_utc;
 use crate::python_value::py_any_to_json_value;
-use crate::types::PyHourlyFactorContractResult;
+use crate::types::PyIntervalFactorGridContractResult;
 
 use super::fields::{
-    parse_required_field, parse_required_hourly_factor_contract, parse_required_json_field,
+    parse_required_field, parse_required_interval_factor_grid, parse_required_json_field,
     parse_required_string_field,
 };
 use super::model_inputs::{
@@ -60,7 +60,7 @@ pub(super) struct CoarseSimulationRunRequestPayload<'py> {
     horizon_interval_count: usize,
     interval_delta: f64,
     model_inputs: CoarseSimulationModelInputs,
-    hourly_factor_contract: PyRef<'py, PyHourlyFactorContractResult>,
+    interval_factor_grid: PyRef<'py, PyIntervalFactorGridContractResult>,
 }
 
 impl<'py> CoarseSimulationRunRequestPayload<'py> {
@@ -91,7 +91,7 @@ impl<'py> CoarseSimulationRunRequestPayload<'py> {
                 "coarse_simulation_request",
                 "model_inputs",
             )?,
-            hourly_factor_contract: parse_required_hourly_factor_contract(
+            interval_factor_grid: parse_required_interval_factor_grid(
                 request,
                 "coarse_simulation_request",
             )?,
@@ -100,16 +100,16 @@ impl<'py> CoarseSimulationRunRequestPayload<'py> {
 
     pub(super) fn into_run_request(self) -> PyResult<CoarseSimulationRunRequest> {
         // Intentional copies because the core interval-factor contract owns
-        // vectors while the hourly factor contract remains borrowed from Python.
-        let interval_factors = SufficientStatisticsIntervalFactors::try_new(
-            self.hourly_factor_contract.output.s_h.clone(),
-            self.hourly_factor_contract
+        // vectors while the interval factor grid contract remains borrowed from Python.
+        let interval_factor_grids = SufficientStatisticsIntervalFactors::try_new(
+            self.interval_factor_grid.output.seasonality_factor.clone(),
+            self.interval_factor_grid
                 .output
-                .known_component_nu_h
+                .known_news_intensity
                 .clone(),
-            self.hourly_factor_contract
+            self.interval_factor_grid
                 .output
-                .surprise_component_nu_h
+                .surprise_news_intensity
                 .clone(),
             Some(self.interval_delta),
         )
@@ -121,7 +121,7 @@ impl<'py> CoarseSimulationRunRequestPayload<'py> {
             self.horizon_interval_count,
             self.interval_delta,
             self.model_inputs,
-            interval_factors,
+            interval_factor_grids,
         )
         .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
     }
@@ -131,7 +131,7 @@ pub(super) struct SeededTickSimulationRunConfigPayload<'py> {
     seed: u64,
     start_time_utc: String,
     horizon_interval_count: usize,
-    hourly_factor_contract: PyRef<'py, PyHourlyFactorContractResult>,
+    interval_factor_grid: PyRef<'py, PyIntervalFactorGridContractResult>,
     model_inputs: SeededTickSimulationModelInputsPayload,
     run_options: SeededTickSimulationRunOptions,
 }
@@ -154,7 +154,7 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
                 "seeded_tick_simulation_request",
                 "horizon_interval_count",
             )?,
-            hourly_factor_contract: parse_required_hourly_factor_contract(
+            interval_factor_grid: parse_required_interval_factor_grid(
                 request,
                 "seeded_tick_simulation_request",
             )?,
@@ -191,14 +191,14 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
 
     pub(super) fn into_run_config(self) -> PyResult<SeededTickSimulationRunConfig> {
         // Intentional copy because the run config owns calendar state
-        // independently of the borrowed hourly factor contract.
+        // independently of the borrowed interval factor grid contract.
         let calendar_registry = self
-            .hourly_factor_contract
+            .interval_factor_grid
             .calendar_registry
             .clone()
             .ok_or_else(|| {
                 SimulationExecutionError::new_err(
-                    "seeded tick-event simulation requires a runtime hourly factor contract with calendar registry state",
+                    "seeded tick-event simulation requires a runtime interval factor grid contract with calendar registry state",
                 )
             })?;
 
@@ -224,7 +224,7 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
                     .initial_mean_reversion_boundary_state,
                 // Intentional copy because the run config owns the factor
                 // contract while the PyRef remains borrowed from Python.
-                hourly_factor_contract: self.hourly_factor_contract.output.clone(),
+                interval_factor_grid: self.interval_factor_grid.output.clone(),
                 return_clock_exposure_parameters: self
                     .model_inputs
                     .return_clock_exposure_parameters,

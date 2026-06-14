@@ -13,7 +13,7 @@ use crate::stages::progress::progress_percent;
 use crate::stages::return_components::{
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageFittedPayload,
 };
-use crate::stages::seasonality::CalibrationStageExecutionStatus;
+use crate::stages::seasonality::{CalibrationStageExecutionStatus, FourierBusinessTimeClockModel};
 use janiform_calibration_artifacts::{
     CalibrationEffortOptions, CalibrationExecutionMode, CalibrationLossTermDiagnostic,
     CalibrationOptimizerSettings, CalibrationStage, CalibrationStagePayloadSource,
@@ -25,11 +25,8 @@ use janiform_calibration_artifacts::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageSeasonalityFactorsInput {
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_factor_by_bin: Vec<f64>,
-    pub day_of_week_factor: Vec<f64>,
-    pub hour_of_week_factor: Vec<f64>,
-    pub day_of_year_factor: Vec<f64>,
+    pub exchange_code: String,
+    pub clock_model: FourierBusinessTimeClockModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]

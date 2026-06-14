@@ -12,8 +12,8 @@ use janiform_work_scheduler::{
 
 use crate::error::WorkflowError;
 use crate::model::{
-    FittedModelContext, build_coarse_simulation_model_inputs, build_hourly_factor_contract,
-    build_sufficient_statistics_interval_factors, build_sufficient_statistics_model_inputs,
+    FittedModelContext, build_coarse_simulation_model_inputs, build_interval_factor_grid,
+    build_sufficient_statistics_interval_factor_grids, build_sufficient_statistics_model_inputs,
     fitted_model_context, materialize_mean_reversion_runtime_inputs, validation_error,
 };
 use crate::progress::bounded_progress_measure;
@@ -267,7 +267,7 @@ fn build_physical_distribution_simulation_request(
     let valuation_time_utc =
         DateTime::<Utc>::from_timestamp_nanos(prepared_snapshot.valuation_time_utc_nanos);
 
-    let hourly_factor_contract = build_hourly_factor_contract(
+    let interval_factor_grid = build_interval_factor_grid(
         context,
         valuation_time_utc,
         context.range_end_utc,
@@ -276,7 +276,7 @@ fn build_physical_distribution_simulation_request(
 
     let (runtime_interval_anchors, _) = materialize_mean_reversion_runtime_inputs(
         context,
-        &hourly_factor_contract,
+        &interval_factor_grid,
         prepared_snapshot.estimated_state.hawkes_excitation_state,
         prepared_snapshot
             .estimated_state
@@ -300,8 +300,8 @@ fn build_physical_distribution_simulation_request(
 
     let coarse_model_inputs = build_coarse_simulation_model_inputs(context, model_inputs)?;
 
-    let interval_factors =
-        build_sufficient_statistics_interval_factors(context, hourly_factor_contract)?;
+    let interval_factor_grids =
+        build_sufficient_statistics_interval_factor_grids(context, interval_factor_grid)?;
 
     CoarseSimulationRunRequest::try_new(
         0,
@@ -309,7 +309,7 @@ fn build_physical_distribution_simulation_request(
         horizon_interval_count,
         context.interval_delta,
         coarse_model_inputs,
-        interval_factors,
+        interval_factor_grids,
     )
     .map_err(|source| validation_error("coarse_interval_request", source.to_string()))
 }

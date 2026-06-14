@@ -1,8 +1,7 @@
 use janiform_foundations::randomness::SimulationRandomnessSubstreamDomain;
 use janiform_model_kernels::news::SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
 
-pub const SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY: &str =
-    "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1";
+pub const SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY: &str = "explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY: &str =
     "positive_u_probes_and_positive_non_unit_z_probes_for_oracle_slice_sampling.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_EXPECTATION_ESTIMATION_POLICY: &str =

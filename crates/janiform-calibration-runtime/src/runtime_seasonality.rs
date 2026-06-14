@@ -4,41 +4,54 @@ use std::fmt::{Display, Formatter};
 use serde::Serialize;
 
 use crate::stages::seasonality::{
-    RuntimeHourlySeasonalityFactorsBuildInput,
-    build_runtime_hourly_seasonality_factors_from_components,
+    FourierBusinessTimeClockModel, RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
+/// Materialization method label for structural runtime seasonality interval factors.
 pub const RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD: &str =
     "runtime_compact_seasonality_parameters_open_time_mean_renormalized.v1";
 
 /// Rust-native input for compact structural runtime seasonality materialization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeStructuralSeasonalityMaterializationInput {
+    /// Exchange calendar identifier used to resolve open-market exposure.
     pub exchange_code: String,
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_factor_by_bin: Vec<f64>,
-    pub day_of_week_factor: Vec<f64>,
-    pub day_of_year_factor: Vec<f64>,
+    /// Fitted Fourier business-time clock model to materialize.
+    pub clock_model: FourierBusinessTimeClockModel,
+    /// Inclusive UTC nanosecond start of the requested interval grid.
     pub range_start_utc_nanos: i64,
+    /// Exclusive UTC nanosecond end of the requested interval grid.
     pub range_end_utc_nanos: i64,
+    /// Fixed UTC interval width in nanoseconds.
     pub interval_duration_nanos: i64,
 }
 
 /// Rust-native output for compact structural runtime seasonality materialization.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RuntimeStructuralSeasonalityMaterializationOutput {
+    /// Materialization method label attached to the interval factors.
+    pub materialization_method: &'static str,
+    /// UTC nanosecond start timestamp for each materialized interval.
     pub interval_start_utc_nanos: Vec<i64>,
+    /// Open-time mean-renormalized structural seasonality factor per interval.
     pub seasonality_factors: Vec<f64>,
 }
 
+/// Errors raised while materializing structural runtime seasonality factors.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeStructuralSeasonalityMaterializationError {
+    /// The shared business-time clock materializer rejected the input.
     FactorMaterializationFailed {
+        /// Human-readable validation or materialization failure reason.
         reason: String,
     },
+    /// Adding the interval duration overflowed the UTC nanosecond grid.
     IntervalGridOverflow {
+        /// Last successfully considered interval start.
         interval_start_utc_nanos: i64,
+        /// Requested fixed interval duration in nanoseconds.
         interval_duration_nanos: i64,
     },
 }
@@ -63,6 +76,7 @@ impl Display for RuntimeStructuralSeasonalityMaterializationError {
 
 impl Error for RuntimeStructuralSeasonalityMaterializationError {}
 
+/// Materialize structural Fourier business-time seasonality onto a fixed UTC interval grid.
 pub fn materialize_runtime_structural_seasonality(
     calendar_registry: &ExchangeCalendarRegistry,
     input: RuntimeStructuralSeasonalityMaterializationInput,
@@ -70,14 +84,11 @@ pub fn materialize_runtime_structural_seasonality(
     RuntimeStructuralSeasonalityMaterializationOutput,
     RuntimeStructuralSeasonalityMaterializationError,
 > {
-    let seasonality_factors = build_runtime_hourly_seasonality_factors_from_components(
-        RuntimeHourlySeasonalityFactorsBuildInput {
+    let seasonality_factors = build_runtime_interval_seasonality_factors_from_components(
+        RuntimeIntervalSeasonalityFactorsBuildInput {
             calendar_registry,
             exchange_code: input.exchange_code.as_str(),
-            intraday_minutes_per_bin: input.intraday_minutes_per_bin,
-            intraday_factor_by_bin: input.intraday_factor_by_bin.as_slice(),
-            day_of_week_factor: input.day_of_week_factor.as_slice(),
-            day_of_year_factor: input.day_of_year_factor.as_slice(),
+            clock_model: &input.clock_model,
             range_start_utc_nanos: input.range_start_utc_nanos,
             range_end_utc_nanos: input.range_end_utc_nanos,
             interval_duration_nanos: input.interval_duration_nanos,
@@ -104,6 +115,7 @@ pub fn materialize_runtime_structural_seasonality(
     }
 
     Ok(RuntimeStructuralSeasonalityMaterializationOutput {
+        materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
         interval_start_utc_nanos,
         seasonality_factors,
     })

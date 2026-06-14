@@ -83,6 +83,25 @@ pub fn representable_positive_f64_log_span() -> f64 {
     f64::MAX.ln() - f64::MIN_POSITIVE.ln()
 }
 
+/// Exponentiate a log-domain value into the finite strictly positive normal `f64` range.
+pub fn saturating_positive_exp(log_value: f64) -> Option<f64> {
+    if log_value.is_nan() {
+        return None;
+    }
+
+    if log_value <= f64::MIN_POSITIVE.ln() {
+        return Some(f64::MIN_POSITIVE);
+    }
+
+    if log_value >= f64::MAX.ln() {
+        return Some(f64::MAX);
+    }
+
+    let value = log_value.exp();
+
+    (value.is_finite() && value > 0.0).then_some(value)
+}
+
 /// Validate that a numeric field is finite.
 pub fn validate_finite_number(
     value: f64,
@@ -182,6 +201,13 @@ pub fn ceil_integer_square_root(value: usize) -> usize {
     }
 }
 
+/// Compute the binary information depth implied by a finite support size.
+pub fn support_information_depth(support_count: usize) -> usize {
+    usize::try_from(support_count.max(1).ilog2())
+        .unwrap_or(usize::MAX)
+        .saturating_add(1)
+}
+
 /// Round while preserving a strictly positive domain after quantization.
 pub fn round_positive_to_domain(value: f64, digits: i32) -> f64 {
     round_to(value.max(strictly_positive_machine_value()), digits)
@@ -199,8 +225,8 @@ mod tests {
         ceil_integer_square_root, clamp_to_open_unit_interval, clamp_to_unit_interval,
         coverage_ratio, integer_square_root, logistic, normalized_pseudocount,
         representable_positive_f64_log_span, round_positive_to_domain, round_to,
-        strictly_positive_machine_value, validate_finite_number, validate_negative_number,
-        validate_non_negative_number, validate_positive_number,
+        saturating_positive_exp, strictly_positive_machine_value, validate_finite_number,
+        validate_negative_number, validate_non_negative_number, validate_positive_number,
     };
 
     #[test]
@@ -263,5 +289,16 @@ mod tests {
             representable_positive_f64_log_span(),
             f64::MAX.ln() - f64::MIN_POSITIVE.ln()
         );
+        assert_eq!(
+            saturating_positive_exp(f64::MIN_POSITIVE.ln() - 1.0),
+            Some(f64::MIN_POSITIVE)
+        );
+        assert_eq!(saturating_positive_exp(f64::MAX.ln() + 1.0), Some(f64::MAX));
+        assert_eq!(saturating_positive_exp(f64::INFINITY), Some(f64::MAX));
+        assert_eq!(
+            saturating_positive_exp(f64::NEG_INFINITY),
+            Some(f64::MIN_POSITIVE)
+        );
+        assert_eq!(saturating_positive_exp(f64::NAN), None);
     }
 }

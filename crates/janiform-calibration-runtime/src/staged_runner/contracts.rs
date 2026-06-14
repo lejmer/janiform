@@ -7,7 +7,7 @@ use super::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageCheckpointMetadata, CalibrationStageExecutionStatus,
     CalibrationStageSeedSource, HawkesStageCandidateInput, HawkesStageExecutionMetadata,
-    HawkesStageExecutionReport, JointRefinementStageExecutionMetadata,
+    HawkesStageExecutionReport, HawkesStageProgressPhase, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageProgressPhase,
     LongVarianceStageExecutionMetadata, LongVarianceStageExecutionReport,
     LongVarianceStageProgressPhase, MeanReversionStageExecutionInput,
@@ -20,6 +20,7 @@ use super::{
     SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
 };
 use crate::JointRefinementStageOptionPricingInput;
+use crate::SeasonalityStageProgressPhase;
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
@@ -30,6 +31,7 @@ use serde::{Serialize, Serializer};
 pub struct CalibrationStagedRunInputs {
     pub seasonality_stage_input: Option<SeasonalityStageExecutionInput>,
     pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
+    pub hawkes_event_side_codes: Option<Vec<u8>>,
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
     pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
@@ -461,10 +463,24 @@ pub struct CalibrationStagedRunReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalibrationStageProgressPhase {
+    Seasonality(SeasonalityStageProgressPhase),
+    Hawkes(HawkesStageProgressPhase),
     ReturnComponents(ReturnComponentsStageProgressPhase),
     LongVariance(LongVarianceStageProgressPhase),
     MeanReversion(MeanReversionStageProgressPhase),
     JointRefinement(JointRefinementStageProgressPhase),
+}
+
+impl From<SeasonalityStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: SeasonalityStageProgressPhase) -> Self {
+        Self::Seasonality(phase)
+    }
+}
+
+impl From<HawkesStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: HawkesStageProgressPhase) -> Self {
+        Self::Hawkes(phase)
+    }
 }
 
 impl From<ReturnComponentsStageProgressPhase> for CalibrationStageProgressPhase {
@@ -497,6 +513,8 @@ impl Serialize for CalibrationStageProgressPhase {
         S: Serializer,
     {
         match self {
+            Self::Seasonality(phase) => phase.serialize(serializer),
+            Self::Hawkes(phase) => phase.serialize(serializer),
             Self::ReturnComponents(phase) => phase.serialize(serializer),
             Self::LongVariance(phase) => phase.serialize(serializer),
             Self::MeanReversion(phase) => phase.serialize(serializer),

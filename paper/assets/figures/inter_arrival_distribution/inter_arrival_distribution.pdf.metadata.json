@@ -27,12 +27,12 @@
     "id": "inter_arrival_distribution_empirical_market_data",
     "title": "Empirical ES continuous futures inter-arrival distribution"
   },
-  "generated_at_utc": "2026-06-11T21:42:22.542906+00:00",
+  "generated_at_utc": "2026-06-13T23:48:29.419691+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\inter_arrival_distribution.py"
     ],
-    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
@@ -96,8 +96,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_distribution/inter_arrival_distribution.pdf",
       "role": "figure",
-      "sha256": "6cfa79fdb1ded931bbebbc22abd0c22871cca1b905a2702077ece01eacf7b4bd",
-      "size_bytes": 16258
+      "sha256": "e50d1fadd68410d36e1363d505f62a6fd5828297b7b261de7238fca6f964cef8",
+      "size_bytes": 16261
     }
   ],
   "parameters": {
@@ -116,7 +116,7 @@
     "curves": [
       {
         "label": "Empirical",
-        "nonzero_density_bin_count": 50
+        "nonzero_density_bin_count": 51
       }
     ],
     "plot_type": "log_log_density_curve",

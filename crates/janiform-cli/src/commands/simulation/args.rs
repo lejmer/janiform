@@ -99,7 +99,7 @@ Use this when another tool has already prepared the interval-level simulation in
     about = "Run from a prepared seeded-tick simulation input.",
     long_about = "Run from a prepared seeded-tick simulation input.
 
-The command exports synthetic tick records in batches and writes a simulation_report.json file next to the output path. The calendar file is required to recover hourly factors."
+The command exports synthetic tick records in batches and writes a simulation_report.json file next to the output path. The calendar file is required to recover interval factor grids."
 )]
 pub(crate) struct SeededTicksCommand {
     #[arg(
@@ -112,7 +112,7 @@ pub(crate) struct SeededTicksCommand {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Calendar file used to recover hourly factors."
+        help = "Calendar file used to recover interval factor grids."
     )]
     pub(crate) calendar_registry_json: Option<PathBuf>,
 

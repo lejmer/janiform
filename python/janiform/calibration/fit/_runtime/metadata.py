@@ -21,17 +21,6 @@ def validate_model_persistence_schema_version(raw_schema_version: Any) -> None:
 
 def normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, Any]:
     parameters = deepcopy(dict(raw_parameters))
-    raw_seasonality = parameters.get("seasonality")
-    if isinstance(raw_seasonality, dict):
-        for field_name in (
-            "intraday_factor_by_bin",
-            "day_of_week_factor",
-            "hour_of_week_factor",
-            "day_of_year_factor",
-        ):
-            raw_value = raw_seasonality.get(field_name)
-            if isinstance(raw_value, list):
-                raw_seasonality[field_name] = tuple(raw_value)
 
     normalize_mean_reversion_model_parameters(parameters)
 

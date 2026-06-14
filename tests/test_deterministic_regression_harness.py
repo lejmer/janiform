@@ -17,28 +17,17 @@ from janiform.validation import (
     VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY,
     run_deterministic_regression_harness,
 )
-from tests.support.fixture_validation import (
-    CalendarRegressionCase,
-    HourlyFactorRegressionCanonicalOutputCase,
-    HourlyFactorRegressionFixtureDocument,
-    STATE_CLASSIFICATION_STRICTNESS_POLICY,
-)
+from tests.support.fixture_validation import CalendarRegressionCase
 
-type HourlyCanonicalOutputCase = HourlyFactorRegressionCanonicalOutputCase
 
 def test_deterministic_regression_harness_matches_shared_fixtures(
     calendar_registry,
     calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
-    tolerance_config = _harness_tolerance_config(hourly_factor_regression_fixture_document)
     report = run_deterministic_regression_harness(
         calendar_registry=calendar_registry,
         calendar_cases=calendar_regression_cases,
-        seasonality_cases=hourly_factor_regression_canonical_cases,
-        seasonality_absolute_tolerance=tolerance_config["s_h_absolute_tolerance"],
-        news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
+        seasonality_cases=[],
     )
 
     summary = report.summary
@@ -56,9 +45,7 @@ def test_deterministic_regression_harness_matches_shared_fixtures(
         fallback_policy.incomplete_fixture_coverage_policy
         == VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
     )
-    assert summary.total_case_count == len(calendar_regression_cases) + len(
-        hourly_factor_regression_canonical_cases,
-    )
+    assert summary.total_case_count == len(calendar_regression_cases)
     assert summary.failed_case_count == 0
     assert summary.passed_case_count == summary.total_case_count
     assert all(case_report.status == "pass" for case_report in case_reports)
@@ -67,136 +54,43 @@ def test_deterministic_regression_harness_matches_shared_fixtures(
 def test_deterministic_regression_harness_reports_fixture_mismatches(
     calendar_registry,
     calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
-    threshold_configuration = _threshold_configuration(hourly_factor_regression_fixture_document)
-    assert (
-        cast(str, threshold_configuration["state_classification_strictness"])
-        == STATE_CLASSIFICATION_STRICTNESS_POLICY
-    )
-    tolerance_config = _harness_tolerance_config(hourly_factor_regression_fixture_document)
     mutated_calendar_cases = _copy_case_list(calendar_regression_cases)
-    mutated_seasonality_cases = _copy_case_list(hourly_factor_regression_canonical_cases)
 
     calendar_failure_fixture_id: str = cast(str, mutated_calendar_cases[0]["fixture_id"])
-    seasonality_failure_fixture_id: str = cast(str, mutated_seasonality_cases[0]["fixture_id"])
     current_expected_state: str = cast(str, mutated_calendar_cases[0]["expected_state"])
     mutated_calendar_cases[0]["expected_state"] = "closed" if current_expected_state == "open" else "open"
-    expected_s_h = cast(list[float], mutated_seasonality_cases[0]["expected_s_h"])
-    expected_s_h[0] = float(expected_s_h[0]) + 0.25
 
     report = run_deterministic_regression_harness(
         calendar_registry=calendar_registry,
         calendar_cases=mutated_calendar_cases,
-        seasonality_cases=mutated_seasonality_cases,
-        seasonality_absolute_tolerance=tolerance_config["s_h_absolute_tolerance"],
-        news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
+        seasonality_cases=[],
     )
 
     calendar_failure_report = _case_report_by_fixture_id(report, calendar_failure_fixture_id)
-    seasonality_failure_report = _case_report_by_fixture_id(report, seasonality_failure_fixture_id)
 
-    assert report.summary.failed_case_count == 2
+    assert report.summary.failed_case_count == 1
     assert calendar_failure_report.status == "fail"
     assert cast(dict[str, Any], calendar_failure_report.failure)["failure_kind"] == "market_state_mismatch"
-    assert seasonality_failure_report.status == "fail"
-    assert cast(dict[str, Any], seasonality_failure_report.failure)["failure_kind"] == (
-        "factor_tolerance_exceeded"
-    )
 
 
 def test_deterministic_regression_harness_report_is_repeatable(
     calendar_registry,
     calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
-    tolerance_config = _harness_tolerance_config(hourly_factor_regression_fixture_document)
     first_report = run_deterministic_regression_harness(
         calendar_registry=calendar_registry,
         calendar_cases=calendar_regression_cases,
-        seasonality_cases=hourly_factor_regression_canonical_cases,
-        seasonality_absolute_tolerance=tolerance_config["s_h_absolute_tolerance"],
-        news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
+        seasonality_cases=[],
     )
     second_report = run_deterministic_regression_harness(
         calendar_registry=calendar_registry,
         calendar_cases=calendar_regression_cases,
-        seasonality_cases=hourly_factor_regression_canonical_cases,
-        seasonality_absolute_tolerance=tolerance_config["s_h_absolute_tolerance"],
-        news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
+        seasonality_cases=[],
     )
 
     assert first_report == second_report
     assert first_report.to_json() == second_report.to_json()
-
-
-def test_deterministic_regression_harness_rejects_invalid_seasonality_timestamp_key(
-    calendar_registry,
-    calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
-) -> None:
-    malformed_seasonality_cases = _copy_case_list(hourly_factor_regression_canonical_cases)
-    malformed_source: dict[str, Any] = cast(
-        dict[str, Any],
-        malformed_seasonality_cases[0]["seasonality_source"],
-    )
-    malformed_source["source_timestamp_utc"] = malformed_source.pop("source_timestamps_utc")
-
-    with pytest.raises(
-        SeasonalityInputValidationError,
-        match="source_timestamps_utc",
-    ):
-        run_deterministic_regression_harness(
-            calendar_registry=calendar_registry,
-            calendar_cases=calendar_regression_cases,
-            seasonality_cases=malformed_seasonality_cases,
-        )
-
-
-def test_deterministic_regression_harness_threshold_boundary_is_inclusive(
-    calendar_registry,
-    calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
-) -> None:
-    tolerance_config = _harness_tolerance_config(hourly_factor_regression_fixture_document)
-    seasonality_tolerance = 0.25
-    boundary_mutated_cases = _copy_case_list(hourly_factor_regression_canonical_cases)
-    boundary_mutated_expected_s_h = cast(list[float], boundary_mutated_cases[0]["expected_s_h"])
-    boundary_mutated_expected_s_h[0] = float(boundary_mutated_expected_s_h[0]) + seasonality_tolerance
-
-    report = run_deterministic_regression_harness(
-        calendar_registry=calendar_registry,
-        calendar_cases=calendar_regression_cases,
-        seasonality_cases=boundary_mutated_cases,
-        seasonality_absolute_tolerance=seasonality_tolerance,
-        news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
-    )
-    assert report.summary.failed_case_count == 0
-
-
-def test_deterministic_regression_harness_threshold_boundary_fails_when_exceeded(
-    calendar_registry,
-    calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
-) -> None:
-    tolerance_config = _harness_tolerance_config(hourly_factor_regression_fixture_document)
-    seasonality_tolerance = 0.25
-    boundary_mutated_cases = _copy_case_list(hourly_factor_regression_canonical_cases)
-    boundary_mutated_expected_s_h = cast(list[float], boundary_mutated_cases[0]["expected_s_h"])
-    boundary_mutated_expected_s_h[0] = float(boundary_mutated_expected_s_h[0]) + seasonality_tolerance + 1e-4
-
-    report = run_deterministic_regression_harness(
-        calendar_registry=calendar_registry,
-        calendar_cases=calendar_regression_cases,
-        seasonality_cases=boundary_mutated_cases,
-        seasonality_absolute_tolerance=seasonality_tolerance,
-        news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
-    )
-    assert report.summary.failed_case_count == 1
 
 
 def test_deterministic_regression_harness_unknown_date_uses_regular_schedule_policy(
@@ -223,7 +117,6 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
     monkeypatch: pytest.MonkeyPatch,
     calendar_registry,
     calendar_regression_cases: list[CalendarRegressionCase],
-    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
     class FakeNativeModule:
         def run_deterministic_regression_harness(
@@ -267,7 +160,7 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
         run_deterministic_regression_harness(
             calendar_registry=calendar_registry,
             calendar_cases=calendar_regression_cases,
-            seasonality_cases=hourly_factor_regression_canonical_cases,
+            seasonality_cases=[],
         )
 
 
@@ -284,22 +177,3 @@ def _case_report_by_fixture_id(
 
 def _copy_case_list(cases: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], orjson.loads(json.dumps(cases)))
-
-
-def _threshold_configuration(
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> Mapping[str, Any]:
-    return cast(
-        Mapping[str, Any],
-        hourly_factor_regression_fixture_document["threshold_configuration"],
-    )
-
-
-def _harness_tolerance_config(
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> Mapping[str, float]:
-    threshold_configuration = _threshold_configuration(hourly_factor_regression_fixture_document)
-    return cast(
-        Mapping[str, float],
-        threshold_configuration["tolerance_config"],
-    )

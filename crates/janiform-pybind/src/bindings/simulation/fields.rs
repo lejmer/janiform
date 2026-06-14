@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
 use crate::python_value::py_any_to_json_value;
-use crate::types::PyHourlyFactorContractResult;
+use crate::types::PyIntervalFactorGridContractResult;
 
 pub(super) fn parse_required_field<'py>(
     parent_mapping: &Bound<'py, PyMapping>,
@@ -51,18 +51,17 @@ pub(super) fn parse_required_string_field(
     })
 }
 
-pub(super) fn parse_required_hourly_factor_contract<'py>(
+pub(super) fn parse_required_interval_factor_grid<'py>(
     parent_mapping: &Bound<'py, PyMapping>,
     parent_context: &str,
-) -> PyResult<PyRef<'py, PyHourlyFactorContractResult>> {
-    let field_value =
-        parse_required_field(parent_mapping, parent_context, "hourly_factor_contract")?;
+) -> PyResult<PyRef<'py, PyIntervalFactorGridContractResult>> {
+    let field_value = parse_required_field(parent_mapping, parent_context, "interval_factor_grid")?;
 
     field_value
-        .extract::<PyRef<'py, PyHourlyFactorContractResult>>()
+        .extract::<PyRef<'py, PyIntervalFactorGridContractResult>>()
         .map_err(|_| {
             SimulationExecutionError::new_err(format!(
-                "{parent_context}.hourly_factor_contract must be a native hourly factor contract"
+                "{parent_context}.interval_factor_grid must be a native interval factor grid contract"
             ))
         })
 }

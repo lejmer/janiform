@@ -19,11 +19,8 @@ pub(super) fn joint_refinement_seasonality_factors_from_payload(
     payload: &crate::stages::seasonality::SeasonalityStageNormalizedPayload,
 ) -> JointRefinementStageSeasonalityFactorsInput {
     JointRefinementStageSeasonalityFactorsInput {
-        intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-        intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
-        day_of_week_factor: payload.day_of_week_factor.clone(),
-        hour_of_week_factor: payload.hour_of_week_factor.clone(),
-        day_of_year_factor: payload.day_of_year_factor.clone(),
+        exchange_code: payload.exchange_code.clone(),
+        clock_model: payload.clock_model.clone(),
     }
 }
 
@@ -36,20 +33,13 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
             payload_state.mean_reversion_seasonality_input = Some(
                 crate::stages::mean_reversion::MeanReversionStageSeasonalityInput {
                     exchange_code: payload.exchange_code.clone(),
-                    intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-                    intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
-                    day_of_week_factor: payload.day_of_week_factor.clone(),
-                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
-                    day_of_year_factor: payload.day_of_year_factor.clone(),
+                    clock_model: payload.clock_model.clone(),
                 },
             );
             payload_state.joint_refinement_seasonality_factors_input =
                 Some(JointRefinementStageSeasonalityFactorsInput {
-                    intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-                    intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
-                    day_of_week_factor: payload.day_of_week_factor.clone(),
-                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
-                    day_of_year_factor: payload.day_of_year_factor.clone(),
+                    exchange_code: payload.exchange_code.clone(),
+                    clock_model: payload.clock_model.clone(),
                 });
         }
         CalibrationStageParameterPayload::Hawkes(payload) => {

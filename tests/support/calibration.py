@@ -71,6 +71,49 @@ def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
     }
 
 
+def build_flat_business_time_clock_model_payload() -> dict[str, Any]:
+    axis_names = ("intraday", "weekly", "annual")
+
+    return {
+        "schema_version": "business_time_clock.fourier_model.v1",
+        "coordinate_system": "exchange_local_minute_of_day_weekday_plus_civil_year_phase.v1",
+        "coefficient_basis": "log_rate_intercept_then_axis_keyed_cos_sin_harmonic_series.v1",
+        "normalization_policy": "fit_open_exposure_weighted_mean_rate_equals_one.v1",
+        "selection_policy": "aicc_over_open_minute_poisson_exposure_likelihood.v1",
+        "intercept": 0.0,
+        "harmonic_series": {
+            axis_name: build_zero_order_harmonic_series_payload()
+            for axis_name in axis_names
+        },
+        "selected_objective_value": 0.0,
+        "selected_negative_log_likelihood": 0.0,
+        "evaluated_candidate_count": 1,
+        "fit_open_minute_count": 1,
+        "fit_open_event_count": 1,
+        "fit_open_exposure_seconds": 60.0,
+    }
+
+
+def build_zero_order_harmonic_series_payload() -> dict[str, Any]:
+    return {
+        "harmonic_order": 0,
+        "cosine_coefficients": [],
+        "sine_coefficients": [],
+    }
+
+
+def build_structural_seasonality_parameters_payload(
+    *,
+    exchange_code: str = "XNYS",
+) -> dict[str, Any]:
+    return {
+        "schema_version": "business_time_clock.fourier_model.v1",
+        "exchange_code": exchange_code,
+        "clock_model_schema_version": "business_time_clock.fourier_model.v1",
+        "clock_model": build_flat_business_time_clock_model_payload(),
+    }
+
+
 def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict[str, Any]) -> None:
     _update_model_parameters_mean_reversion_payload(
         model.parameters,

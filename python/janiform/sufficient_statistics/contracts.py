@@ -29,10 +29,10 @@ from ..contracts.base import (
     require_sequence,
 )
 from ..errors import JaniformValidationError
-from ..hourly_factors import (
-    HourlyFactorContract,
+from ..interval_factor_grids import (
+    IntervalFactorGridContract,
     SeasonalityInputValidationError,
-    load_hourly_factor_contract_payload,
+    load_interval_factor_grid_payload,
 )
 from ..long_variance import LongVarianceParameters, LongVarianceState
 from .._timestamps import hours_to_exact_nanoseconds
@@ -46,48 +46,8 @@ if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
 
 
-def _parse_gamma_severity_mark_configuration(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    field_path: str,
-) -> Any:
-    from ..pricing import GammaSeverityMarkConfiguration
-
-    return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
-
-
-def _parse_nig_shared_plus_shift_configuration(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    field_path: str,
-) -> Any:
-    from ..pricing import NigSharedPlusShiftConfiguration
-
-    return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
-
-
-def _parse_hawkes_kernel_parameters(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    field_path: str,
-) -> Any:
-    from ..simulation import HawkesKernelParameters
-
-    return HawkesKernelParameters.from_mapping(raw_payload, field_path=field_path)
-
-
-def _parse_hawkes_excitation_state(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    field_path: str,
-) -> Any:
-    from ..simulation import HawkesExcitationState
-
-    return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
-
-
 SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY = (
-    "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
+    "explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1"
 )
 SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION = "sufficient_statistics.run_request.v1"
 SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION = "sufficient_statistics.path.v1"
@@ -173,6 +133,46 @@ SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
 
 # Public sufficient-statistics request default in hours, and callers can override it on the request payload.
 DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA = 1.0
+
+
+def _parse_gamma_severity_mark_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..pricing import GammaSeverityMarkConfiguration
+
+    return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_nig_shared_plus_shift_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..pricing import NigSharedPlusShiftConfiguration
+
+    return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_hawkes_kernel_parameters(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..simulation import HawkesKernelParameters
+
+    return HawkesKernelParameters.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_hawkes_excitation_state(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..simulation import HawkesExcitationState
+
+    return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,21 +338,25 @@ class SufficientStatisticsRunRequest(ContractModel):
     horizon_interval_count: int
     interval_delta: float = DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA
     model_inputs: Optional[SufficientStatisticsModelInputs] = None
-    hourly_factor_contract: Optional[HourlyFactorContract] = None
+    interval_factor_grid: Optional[IntervalFactorGridContract] = None
 
     def __post_init__(self) -> None:
         if self.seed < 0:
             raise _sufficient_statistics_error("seed", "must be non-negative")
+
         if self.horizon_interval_count <= 0:
             raise _sufficient_statistics_error("horizon_interval_count", "must be strictly positive")
+
         if self.interval_delta <= 0.0:
             raise _sufficient_statistics_error("interval_delta", "must be strictly positive")
+
         if self.model_inputs is None:
             raise _sufficient_statistics_error("model_inputs", "is required")
-        if self.hourly_factor_contract is None:
-            raise _sufficient_statistics_error("hourly_factor_contract", "is required")
 
-        available_interval_count = self.hourly_factor_contract.interval_count
+        if self.interval_factor_grid is None:
+            raise _sufficient_statistics_error("interval_factor_grid", "is required")
+
+        available_interval_count = self.interval_factor_grid.interval_count
         try:
             expected_interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
         except ValueError as e:
@@ -361,16 +365,17 @@ class SufficientStatisticsRunRequest(ContractModel):
         if self.horizon_interval_count > available_interval_count:
             raise _sufficient_statistics_error(
                 "horizon_interval_count",
-                f"must not exceed available hourly factor interval count ({available_interval_count})",
+                f"must not exceed available interval factor grid interval count ({available_interval_count})",
             )
-        if self.hourly_factor_contract.interval_duration_nanos != expected_interval_duration_nanos:
+
+        if self.interval_factor_grid.interval_duration_nanos != expected_interval_duration_nanos:
             raise _sufficient_statistics_error(
-                "hourly_factor_contract.interval_duration_nanos",
+                "interval_factor_grid.interval_duration_nanos",
                 (
                     "must match interval_delta exactly under explicit factor alignment without implicit "
                     f"resampling (interval_delta={self.interval_delta}, "
-                    "hourly_factor_contract.interval_duration_nanos="
-                    f"{self.hourly_factor_contract.interval_duration_nanos})"
+                    "interval_factor_grid.interval_duration_nanos="
+                    f"{self.interval_factor_grid.interval_duration_nanos})"
                 ),
             )
 
@@ -417,16 +422,16 @@ class SufficientStatisticsRunRequest(ContractModel):
         )
 
         try:
-            hourly_factor_contract = load_hourly_factor_contract_payload(
+            interval_factor_grid = load_interval_factor_grid_payload(
                 require_mapping(
                     raw_payload,
-                    "hourly_factor_contract",
-                    "hourly_factor_contract",
+                    "interval_factor_grid",
+                    "interval_factor_grid",
                     SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 )
             )
         except SeasonalityInputValidationError as e:
-            raise _sufficient_statistics_error("hourly_factor_contract", str(e)) from e
+            raise _sufficient_statistics_error("interval_factor_grid", str(e)) from e
 
         return SufficientStatisticsRunRequest(
             seed=require_non_negative_integer(raw_payload, "seed", "seed", SUFFICIENT_STATISTICS_ERROR_FACTORY),
@@ -440,11 +445,11 @@ class SufficientStatisticsRunRequest(ContractModel):
             model_inputs=SufficientStatisticsModelInputs.from_mapping(
                 require_mapping(raw_payload, "model_inputs", "model_inputs", SUFFICIENT_STATISTICS_ERROR_FACTORY)
             ),
-            hourly_factor_contract=hourly_factor_contract,
+            interval_factor_grid=interval_factor_grid,
         )
 
     def to_payload(self) -> dict[str, Any]:
-        if self.model_inputs is None or self.hourly_factor_contract is None:
+        if self.model_inputs is None or self.interval_factor_grid is None:
             raise _sufficient_statistics_error("sufficient_statistics_run_request", "must be fully initialized before serialization")
 
         return {
@@ -452,7 +457,7 @@ class SufficientStatisticsRunRequest(ContractModel):
             "horizon_interval_count": self.horizon_interval_count,
             "interval_delta": self.interval_delta,
             "model_inputs": self.model_inputs.to_payload(),
-            "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
+            "interval_factor_grid": self.interval_factor_grid.to_payload(),
         }
 
 
@@ -474,6 +479,7 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
             baseline=self.baseline_a_plus,
             endogenous=self.endogenous_a_plus,
         )
+
         _validate_activity_total(
             total_field_path="sufficient_statistics.a_minus",
             total=self.a_minus,
@@ -840,6 +846,7 @@ class SufficientStatisticsPath(ContractModel):
                 SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             )
+
         if "run_request_schema_version" in raw_payload:
             validate_exact_string(
                 raw_payload,
@@ -848,6 +855,7 @@ class SufficientStatisticsPath(ContractModel):
                 SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             )
+
         if "output_schema_metadata" in raw_payload:
             _validate_output_schema_metadata(
                 require_mapping(
@@ -858,11 +866,13 @@ class SufficientStatisticsPath(ContractModel):
                 ),
                 output_schema_metadata,
             )
+
         if "provenance" in raw_payload:
             _validate_path_provenance(
                 require_mapping(raw_payload, "provenance", "provenance", SUFFICIENT_STATISTICS_ERROR_FACTORY),
                 provenance,
             )
+
         if "diagnostics" in raw_payload:
             _validate_path_diagnostics(
                 require_mapping(raw_payload, "diagnostics", "diagnostics", SUFFICIENT_STATISTICS_ERROR_FACTORY),
@@ -958,7 +968,9 @@ def _build_sufficient_statistics_path_diagnostics(
         cumulative_closed_gap_return += record.return_components.closed_gap_return
         cumulative_total_return += record.return_components.total_return
         cumulative_observed_return += record.observed_interval_return
+
         max_abs_total_return = max(max_abs_total_return, abs(record.return_components.total_return))
+
         max_abs_deviation_from_anchor = max(
             max_abs_deviation_from_anchor,
             abs(record.deviation_from_anchor_end),
@@ -999,6 +1011,7 @@ def _validate_output_schema_metadata(
         expected_metadata.schema_version,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "provenance_schema_version",
@@ -1006,6 +1019,7 @@ def _validate_output_schema_metadata(
         expected_metadata.provenance_schema_version,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "diagnostics_schema_version",
@@ -1013,6 +1027,7 @@ def _validate_output_schema_metadata(
         expected_metadata.diagnostics_schema_version,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "artifact_workflow_policy",
@@ -1020,6 +1035,7 @@ def _validate_output_schema_metadata(
         expected_metadata.artifact_workflow_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "environment_metadata_policy",
@@ -1027,6 +1043,7 @@ def _validate_output_schema_metadata(
         expected_metadata.environment_metadata_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_required_field_list(
         raw_payload,
         "required_path_fields",
@@ -1034,6 +1051,7 @@ def _validate_output_schema_metadata(
         expected_metadata.required_path_fields,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_required_field_list(
         raw_payload,
         "required_provenance_fields",
@@ -1041,6 +1059,7 @@ def _validate_output_schema_metadata(
         expected_metadata.required_provenance_fields,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_required_field_list(
         raw_payload,
         "required_diagnostics_fields",
@@ -1061,6 +1080,7 @@ def _validate_path_provenance(
         expected_provenance.schema_version,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "artifact_workflow_policy",
@@ -1068,6 +1088,7 @@ def _validate_path_provenance(
         expected_provenance.artifact_workflow_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "environment_metadata_policy",
@@ -1075,6 +1096,7 @@ def _validate_path_provenance(
         expected_provenance.environment_metadata_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "interval_factor_policy",
@@ -1082,6 +1104,7 @@ def _validate_path_provenance(
         expected_provenance.interval_factor_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "transform_slice_sampling_policy",
@@ -1089,6 +1112,7 @@ def _validate_path_provenance(
         expected_provenance.transform_slice_sampling_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "boundary_state_update_policy",
@@ -1096,6 +1120,7 @@ def _validate_path_provenance(
         expected_provenance.boundary_state_update_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "interval_return_generation_policy",
@@ -1103,6 +1128,7 @@ def _validate_path_provenance(
         expected_provenance.interval_return_generation_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "interval_return_component_routing_policy",
@@ -1110,6 +1136,7 @@ def _validate_path_provenance(
         expected_provenance.interval_return_component_routing_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_string(
         raw_payload,
         "batch_seed_partition_policy",
@@ -1117,6 +1144,7 @@ def _validate_path_provenance(
         expected_provenance.batch_seed_partition_policy,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_required_field_list(
         raw_payload,
         "artifact_workflow_tags",
@@ -1138,6 +1166,7 @@ def _validate_path_diagnostics(
         expected_diagnostics.schema_version,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_integer(
         raw_payload,
         "simulated_interval_count",
@@ -1145,6 +1174,7 @@ def _validate_path_diagnostics(
         expected_diagnostics.simulated_interval_count,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_optional_integer(
         raw_payload,
         "first_interval_index",
@@ -1152,6 +1182,7 @@ def _validate_path_diagnostics(
         expected_diagnostics.first_interval_index,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_optional_integer(
         raw_payload,
         "last_interval_index",
@@ -1159,6 +1190,7 @@ def _validate_path_diagnostics(
         expected_diagnostics.last_interval_index,
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_a_plus",
@@ -1167,6 +1199,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_a_minus",
@@ -1175,6 +1208,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_integer(
         raw_payload,
         "cumulative_n_plus",
@@ -1183,6 +1217,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_integer(
         raw_payload,
         "cumulative_n_minus",
@@ -1191,6 +1226,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_trading_time_return",
@@ -1199,6 +1235,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_open_jump_return",
@@ -1207,6 +1244,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_closed_gap_return",
@@ -1215,6 +1253,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_total_return",
@@ -1223,6 +1262,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "cumulative_observed_return",
@@ -1231,6 +1271,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "max_abs_total_return",
@@ -1239,6 +1280,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "max_abs_deviation_from_anchor",
@@ -1247,6 +1289,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "terminal_observed_log_price",
@@ -1255,6 +1298,7 @@ def _validate_path_diagnostics(
         SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
+
     validate_exact_number(
         raw_payload,
         "terminal_deviation_from_anchor",

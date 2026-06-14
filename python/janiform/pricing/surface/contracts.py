@@ -31,6 +31,7 @@ from ..contracts import (
     VanillaOptionPricingStatus,
     PRICING_ERROR_FACTORY,
     _validate_optional_implied_volatility_inversion_outcome,
+    _validate_interval_factor_grid_covers_runtime_schedule,
     _pricing_error,
 )
 from ..._pricing_field_names import (
@@ -61,7 +62,7 @@ from ...contracts.base import (
 from ...contracts.base import require_str_enum_value
 from ...contracts.base import require_optional_string_value
 from ...errors import JaniformValidationError
-from ...hourly_factors import HourlyFactorContract
+from ...interval_factor_grids import IntervalFactorGridContract
 
 
 type SurfaceNodeRecord = dict[str, Any]
@@ -426,7 +427,7 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
 class VanillaOptionSurfacePricingExecutionInput(ContractModel):
     request: VanillaOptionSurfacePricingRequest
     runtime_interval_schedule: PricingIntervalSchedule
-    hourly_factor_contract: HourlyFactorContract
+    interval_factor_grid: IntervalFactorGridContract
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = field(
         default_factory=VanillaOptionPricingOptionalOutputSelection
     )
@@ -445,10 +446,10 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
                 "must be a PricingIntervalSchedule",
             )
 
-        if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
+        if not isinstance(self.interval_factor_grid, IntervalFactorGridContract):
             raise _pricing_error(
-                "hourly_factor_contract",
-                "must be a HourlyFactorContract runtime artifact",
+                "interval_factor_grid",
+                "must be a IntervalFactorGridContract runtime artifact",
             )
 
         if not isinstance(
@@ -460,9 +461,9 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
                 "must be VanillaOptionPricingOptionalOutputSelection",
             )
 
-        if self.hourly_factor_contract.interval_count == 0:
+        if self.interval_factor_grid.interval_count == 0:
             raise _pricing_error(
-                "hourly_factor_contract.interval_count",
+                "interval_factor_grid.interval_count",
                 "must contain at least one interval",
             )
 
@@ -473,15 +474,10 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
             if self.cpu_count < 0:
                 raise _pricing_error("cpu_count", "must be non-negative")
 
-        if self.hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR:
-            raise _pricing_error(
-                "hourly_factor_contract.interval_duration_nanos",
-                (
-                    "must equal the canonical hourly source interval duration "
-                    "(hourly_factor_contract.interval_duration_nanos="
-                    f"{self.hourly_factor_contract.interval_duration_nanos})"
-                ),
-            )
+        _validate_interval_factor_grid_covers_runtime_schedule(
+            interval_factor_grid=self.interval_factor_grid,
+            runtime_interval_schedule=self.runtime_interval_schedule,
+        )
 
         if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(

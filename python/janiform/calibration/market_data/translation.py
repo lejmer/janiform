@@ -57,7 +57,6 @@ class MarketDataTranslationDiagnostics:
     session_closed_tick_count: int
     known_news_open_event_count: int
     known_news_closed_event_count: int
-    seasonality_overlay_count: int
     hawkes_candidate_count: int
     known_news_return_sample_count: int
     intraday_jump_candidate_count: int
@@ -464,7 +463,6 @@ def _market_data_translation_diagnostics_from_payload(
         session_closed_tick_count=int(raw_payload["session_closed_tick_count"]),
         known_news_open_event_count=int(raw_payload["known_news_open_event_count"]),
         known_news_closed_event_count=int(raw_payload["known_news_closed_event_count"]),
-        seasonality_overlay_count=int(raw_payload["seasonality_overlay_count"]),
         hawkes_candidate_count=int(raw_payload["hawkes_candidate_count"]),
         known_news_return_sample_count=int(raw_payload["known_news_return_sample_count"]),
         intraday_jump_candidate_count=int(raw_payload["intraday_jump_candidate_count"]),

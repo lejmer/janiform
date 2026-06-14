@@ -1,12 +1,10 @@
 pub(crate) mod dev;
 pub(crate) mod fit;
-pub(crate) mod hourly_factors;
 pub(crate) mod inspection;
 pub(crate) mod options;
 pub(crate) mod presets;
 pub(crate) mod pricing;
 pub(crate) mod reporting;
-pub(crate) mod seasonality;
 pub(crate) mod shared;
 pub(crate) mod simulation;
 pub(crate) mod validation;

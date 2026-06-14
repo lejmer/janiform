@@ -196,7 +196,7 @@ fn build_news_shocks_fitted_stage_payload(
             .fitted_parameters
             .news_process_configuration
             .clone(),
-        // Intentional copy because downstream hourly-factor materialization owns the profile.
+        // Intentional copy because downstream interval-factor-grid materialization owns the profile.
         surprise_deterministic_intensity_profile: return_components_stage_payload
             .fitted_parameters
             .surprise_deterministic_intensity_profile

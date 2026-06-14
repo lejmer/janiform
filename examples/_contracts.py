@@ -7,9 +7,11 @@ from janiform.pricing import (
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
+    VanillaOptionPricingKernelParameters,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
 )
+from janiform.return_clock import ReturnClockExposureParameters
 from janiform.sufficient_statistics import (
     SufficientStatisticsEquationSpecification,
     SufficientStatisticsModelInputs,
@@ -140,8 +142,8 @@ def build_mean_reversion_runtime_contracts(
 def build_pricing_market_inputs() -> VanillaOptionPricingMarketInputs:
     return VanillaOptionPricingMarketInputs(
         spot=101.0,
-        strike=100.0,
-        maturity_interval=1.0,
+        strikes=(100.0,),
+        maturity_intervals=(1.0,),
         risk_free_rate=0.02,
         dividend_yield=0.01,
     )
@@ -151,6 +153,7 @@ def build_pricing_boundary_input() -> AnchoredVanillaOptionPricingBoundaryInput:
     return AnchoredVanillaOptionPricingBoundaryInput(
         interval_index=0,
         hawkes_boundary_state=build_excitation_state(),
+        long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=build_mean_reversion_fitted_parameters(),
         interval_delta=1.0,
         observed_boundary_state=MeanReversionBoundaryState(
@@ -167,6 +170,9 @@ def build_pricing_model_parameters() -> VanillaOptionPricingModelParameters:
         hawkes_kernel_parameters=build_kernel_parameters(),
         news_process_configuration=build_news_process_configuration(),
         nig_shared_plus_shift_configuration=build_nig_shared_plus_shift_configuration(),
+        return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        long_variance_parameters=LongVarianceParameters.neutral(),
+        pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
     )
 
 

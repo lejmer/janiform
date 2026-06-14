@@ -42,7 +42,7 @@ from ..contracts.base import (
     require_string,
 )
 from ..errors import JaniformValidationError
-from ..hourly_factors import HourlyFactorContract
+from ..interval_factor_grids import IntervalFactorGridContract
 from ..long_variance import LongVarianceParameters, LongVarianceState
 from ..mean_reversion import (
     MeanReversionAnchorModel,
@@ -78,8 +78,6 @@ DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
 VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION = "pricing.vanilla_option.run_diagnostics.v1"
 VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION = "pricing.vanilla_option.calibration_hooks.v1"
-
-
 VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION = (
     "pricing.vanilla_option.run_output_schema_metadata.v1"
 )
@@ -253,14 +251,18 @@ class NigSharedPlusShiftConfiguration(ContractModel):
             "alpha",
             PRICING_ERROR_FACTORY,
         )
+
         require_finite_number({"beta_0": self.beta_0}, "beta_0", "beta_0", PRICING_ERROR_FACTORY)
+
         require_positive_finite_number(
             {"delta": self.delta},
             "delta",
             "delta",
             PRICING_ERROR_FACTORY,
         )
+
         require_finite_number({"mu": self.mu}, "mu", "mu", PRICING_ERROR_FACTORY)
+
         require_negative_finite_number(
             {"delta_beta": self.delta_beta},
             "delta_beta",
@@ -384,12 +386,14 @@ class VanillaOptionPricingMarketInputs(ContractModel):
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", PRICING_ERROR_FACTORY)
+
         require_finite_number(
             {"risk_free_rate": self.risk_free_rate},
             "risk_free_rate",
             "risk_free_rate",
             PRICING_ERROR_FACTORY,
         )
+
         require_finite_number(
             {"dividend_yield": self.dividend_yield},
             "dividend_yield",
@@ -1262,12 +1266,14 @@ class PricingIntervalScheduleMetadata(ContractModel):
 
     def __post_init__(self) -> None:
         require_string({"policy_id": self.policy_id}, "policy_id", "policy_id", PRICING_ERROR_FACTORY)
+
         require_string(
             {"derivation_policy": self.derivation_policy},
             "derivation_policy",
             "derivation_policy",
             PRICING_ERROR_FACTORY,
         )
+
         require_string(
             {"factor_assignment_policy": self.factor_assignment_policy},
             "factor_assignment_policy",
@@ -1405,6 +1411,7 @@ class PricingIntervalSchedule(ContractModel):
             f"{field_path}.interval_end_timestamps_utc_nanos",
             PRICING_ERROR_FACTORY,
         )
+
         raw_interval_deltas = require_sequence(
             raw_payload,
             "interval_deltas_hours",
@@ -1444,6 +1451,36 @@ class PricingIntervalSchedule(ContractModel):
                     PRICING_ERROR_FACTORY,
                 )
                 for index, value in enumerate(raw_interval_deltas)
+            ),
+        )
+
+
+def _validate_interval_factor_grid_covers_runtime_schedule(
+    *,
+    interval_factor_grid: IntervalFactorGridContract,
+    runtime_interval_schedule: PricingIntervalSchedule,
+) -> None:
+    if (
+        interval_factor_grid.first_interval_start_utc_nanos
+        > runtime_interval_schedule.valuation_time_utc_nanos
+    ):
+        raise _pricing_error(
+            "interval_factor_grid.first_interval_start_utc_nanos",
+            (
+                "must be at or before runtime_interval_schedule.valuation_time_utc_nanos "
+                f"({runtime_interval_schedule.valuation_time_utc_nanos})"
+            ),
+        )
+
+    required_terminal_endpoint_utc_nanos = (
+        runtime_interval_schedule.interval_end_timestamps_utc_nanos[-1]
+    )
+    if interval_factor_grid.last_interval_end_utc_nanos < required_terminal_endpoint_utc_nanos:
+        raise _pricing_error(
+            "interval_factor_grid.last_interval_end_utc_nanos",
+            (
+                "must be at or after the runtime_interval_schedule terminal endpoint "
+                f"({required_terminal_endpoint_utc_nanos})"
             ),
         )
 
@@ -1769,7 +1806,7 @@ class VanillaOptionPricingOptionalOutputSelection(ContractModel):
 class VanillaOptionPricingExecutionInput(ContractModel):
     request: VanillaOptionPricingRequest
     runtime_interval_schedule: PricingIntervalSchedule
-    hourly_factor_contract: HourlyFactorContract
+    interval_factor_grid: IntervalFactorGridContract
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = (
         VanillaOptionPricingOptionalOutputSelection()
     )
@@ -1784,10 +1821,10 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "must be a PricingIntervalSchedule",
             )
 
-        if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
+        if not isinstance(self.interval_factor_grid, IntervalFactorGridContract):
             raise _pricing_error(
-                "hourly_factor_contract",
-                "must be a HourlyFactorContract runtime artifact",
+                "interval_factor_grid",
+                "must be a IntervalFactorGridContract runtime artifact",
             )
 
         if not isinstance(
@@ -1799,21 +1836,16 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "must be VanillaOptionPricingOptionalOutputSelection",
             )
 
-        if self.hourly_factor_contract.interval_count == 0:
+        if self.interval_factor_grid.interval_count == 0:
             raise _pricing_error(
-                "hourly_factor_contract.interval_count",
+                "interval_factor_grid.interval_count",
                 "must contain at least one interval",
             )
 
-        if self.hourly_factor_contract.interval_duration_nanos != NANOS_PER_HOUR:
-            raise _pricing_error(
-                "hourly_factor_contract.interval_duration_nanos",
-                (
-                    "must equal the canonical hourly source interval duration "
-                    "(hourly_factor_contract.interval_duration_nanos="
-                    f"{self.hourly_factor_contract.interval_duration_nanos})"
-                ),
-            )
+        _validate_interval_factor_grid_covers_runtime_schedule(
+            interval_factor_grid=self.interval_factor_grid,
+            runtime_interval_schedule=self.runtime_interval_schedule,
+        )
 
         if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(
@@ -1841,7 +1873,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
         return {
             "request": self.request.to_payload(),
             "runtime_interval_schedule": self.runtime_interval_schedule.to_payload(),
-            "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
+            "interval_factor_grid": self.interval_factor_grid.to_payload(),
             "optional_output_selection": self.optional_output_selection.to_payload(),
         }
 
@@ -1872,6 +1904,7 @@ class VanillaOptionPricingRunOutputSchemaMetadata(ContractModel):
             VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
             PRICING_ERROR_FACTORY,
         )
+
         validate_exact_string(
             raw_payload,
             "run_result_schema_version",
@@ -1879,6 +1912,7 @@ class VanillaOptionPricingRunOutputSchemaMetadata(ContractModel):
             VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
             PRICING_ERROR_FACTORY,
         )
+
         validate_exact_string(
             raw_payload,
             "run_diagnostics_schema_version",
@@ -1886,6 +1920,7 @@ class VanillaOptionPricingRunOutputSchemaMetadata(ContractModel):
             VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
             PRICING_ERROR_FACTORY,
         )
+
         validate_exact_string(
             raw_payload,
             "calibration_hooks_schema_version",
@@ -1893,6 +1928,7 @@ class VanillaOptionPricingRunOutputSchemaMetadata(ContractModel):
             VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
             PRICING_ERROR_FACTORY,
         )
+
         validate_required_field_list(
             raw_payload,
             "required_run_result_fields",
@@ -1900,6 +1936,7 @@ class VanillaOptionPricingRunOutputSchemaMetadata(ContractModel):
             VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS,
             PRICING_ERROR_FACTORY,
         )
+
         validate_required_field_list(
             raw_payload,
             "required_run_diagnostics_fields",
@@ -1907,6 +1944,7 @@ class VanillaOptionPricingRunOutputSchemaMetadata(ContractModel):
             VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
             PRICING_ERROR_FACTORY,
         )
+
         validate_required_field_list(
             raw_payload,
             "required_calibration_hooks_fields",
@@ -1952,8 +1990,10 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
 
         if "transform" not in raw_payload:
             raise _pricing_error(f"{field_path}.transform", "is required")
+
         if "integration_quality" not in raw_payload:
             raise _pricing_error(f"{field_path}.integration_quality", "is required")
+
         if "spectral" not in raw_payload:
             raise _pricing_error(f"{field_path}.spectral", "is required")
 
@@ -2021,6 +2061,7 @@ class VanillaOptionPricingCalibrationHooks(ContractModel):
             VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
             PRICING_ERROR_FACTORY,
         )
+
         validate_exact_string(
             raw_payload,
             HOOK_POLICY_FIELD_NAME,

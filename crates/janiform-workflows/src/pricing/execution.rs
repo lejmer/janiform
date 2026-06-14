@@ -1,23 +1,23 @@
 use std::time::Instant;
 
-use janiform::model::factors::hourly::NANOS_PER_HOUR;
+use janiform::model::factors::interval_factor_grid::NANOS_PER_HOUR;
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
-    materialize_schedule_interval_factors, run_vanilla_option_pricing,
+    materialize_schedule_interval_factor_grids, run_vanilla_option_pricing,
 };
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_terminal_ui::{ProgressEvent, ProgressMeasure, TerminalSummaryPolicy};
 
 use crate::error::WorkflowError;
-use crate::model::{build_hourly_factor_contract, fitted_model_context, model_reference_price};
+use crate::model::{build_interval_factor_grid, fitted_model_context, model_reference_price};
 
 use super::artifacts::{pricing_artifact_paths, write_pricing_artifacts};
 use super::labels::fitted_model_single_option_pricing_progress_scope_label;
 use super::maturity::{
     finalize_single_maturity_resolution, resolve_single_maturity,
-    runtime_schedule_hourly_factor_contract_coverage,
+    runtime_schedule_interval_factor_grid_coverage,
 };
 use super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::output::FittedModelSingleOptionPricingOutput;
@@ -193,7 +193,7 @@ fn emit_completion_summary(
 struct PreparedPricingRuntimeInput {
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     model_parameters: VanillaOptionPricingModelParameters,
-    interval_factors: Vec<janiform::pricing::VanillaOptionPricingIntervalFactors>,
+    interval_factor_grids: Vec<janiform::pricing::VanillaOptionPricingIntervalFactors>,
 }
 
 struct PreparedPricingInput {
@@ -250,7 +250,7 @@ fn prepare_pricing_input(
     context: &crate::model::FittedModelContext,
     initial_maturity_resolution: janiform::pricing::HighLevelPricingMaturityResolution,
 ) -> Result<PreparedPricingInput, WorkflowError> {
-    let boundary_hourly_factor_contract = build_hourly_factor_contract(
+    let boundary_interval_factor_grid = build_interval_factor_grid(
         context,
         request.valuation_time_utc,
         context.range_end_utc,
@@ -258,12 +258,12 @@ fn prepare_pricing_input(
     )?;
 
     let (pricing_coverage_start_utc, pricing_coverage_end_utc) =
-        runtime_schedule_hourly_factor_contract_coverage(
+        runtime_schedule_interval_factor_grid_coverage(
             request.valuation_time_utc,
             &initial_maturity_resolution.pricing_interval_schedule,
         )?;
 
-    let pricing_hourly_factor_contract = build_hourly_factor_contract(
+    let pricing_interval_factor_grid = build_interval_factor_grid(
         context,
         pricing_coverage_start_utc,
         pricing_coverage_end_utc,
@@ -273,7 +273,7 @@ fn prepare_pricing_input(
     let maturity_resolution = finalize_single_maturity_resolution(
         request,
         initial_maturity_resolution,
-        &pricing_hourly_factor_contract,
+        &pricing_interval_factor_grid,
     )?;
 
     let reference_price = model_reference_price(&context.model)?;
@@ -282,7 +282,7 @@ fn prepare_pricing_input(
     let boundary_state = resolve_pricing_boundary_state(
         request,
         context,
-        &boundary_hourly_factor_contract,
+        &boundary_interval_factor_grid,
         observed_log_return,
     )?;
 
@@ -311,9 +311,9 @@ fn prepare_pricing_input(
 
     let model_parameters = build_vanilla_option_pricing_model_parameters(context)?;
 
-    let interval_factors = materialize_schedule_interval_factors(
+    let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &maturity_resolution.pricing_interval_schedule,
-        &pricing_hourly_factor_contract,
+        &pricing_interval_factor_grid,
     )
     .map_err(|source| pricing_validation_error("runtime_interval_schedule", source.to_string()))?;
 
@@ -321,7 +321,7 @@ fn prepare_pricing_input(
         runtime_input: PreparedPricingRuntimeInput {
             boundary_input,
             model_parameters,
-            interval_factors,
+            interval_factor_grids,
         },
         maturity_resolution,
     })
@@ -368,7 +368,7 @@ fn build_execution_input(
     VanillaOptionPricingExecutionInput::try_new(
         pricing_request,
         maturity_resolution.pricing_interval_schedule,
-        runtime_input.interval_factors,
+        runtime_input.interval_factor_grids,
         request.optional_output_selection,
     )
     .map_err(|source| pricing_validation_error("execution_input", source.to_string()))

@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use janiform::model::factors::hourly::{HourlyFactorContractOutput, NANOS_PER_HOUR};
+use janiform::model::factors::interval_factor_grid::{IntervalFactorGrid, NANOS_PER_HOUR};
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::simulation::{
     MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
@@ -13,7 +13,7 @@ use janiform_foundations::cancellation::CancellationToken;
 use crate::error::WorkflowError;
 use crate::model::{
     FittedModelContext, ModelStateObservationData, build_coarse_simulation_model_inputs,
-    build_seeded_tick_simulation_model_inputs, build_sufficient_statistics_interval_factors,
+    build_seeded_tick_simulation_model_inputs, build_sufficient_statistics_interval_factor_grids,
     build_sufficient_statistics_model_inputs, estimate_current_state_from_observation_data,
     fitted_model_context,
 };
@@ -82,7 +82,7 @@ fn prepare_model_artifact_simulation(
 
     cancellation_token.check_cancelled()?;
 
-    let hourly_factor_contract = build_hourly_factor_contract(&request, &context)?;
+    let interval_factor_grid = build_interval_factor_grid(&request, &context)?;
 
     cancellation_token.check_cancelled()?;
 
@@ -90,7 +90,7 @@ fn prepare_model_artifact_simulation(
 
     cancellation_token.check_cancelled()?;
 
-    let prepared_job = build_direct_job(&request, &context, hourly_factor_contract, initial_state)?;
+    let prepared_job = build_direct_job(&request, &context, interval_factor_grid, initial_state)?;
 
     // Intentional copies because normalized workflow execution owns metadata,
     // while model-artifact sidecar writing still needs these identifiers.
@@ -152,11 +152,11 @@ fn runtime_context(
     )
 }
 
-fn build_hourly_factor_contract(
+fn build_interval_factor_grid(
     request: &ModelArtifactSimulationWorkflowRequest,
     context: &FittedModelContext,
-) -> Result<HourlyFactorContractOutput, WorkflowError> {
-    let mut hourly_factor_contract = crate::model::build_hourly_factor_contract(
+) -> Result<IntervalFactorGrid, WorkflowError> {
+    let mut interval_factor_grid = crate::model::build_interval_factor_grid(
         context,
         request.start_time_utc,
         context.range_end_utc,
@@ -164,24 +164,24 @@ fn build_hourly_factor_contract(
     )?;
 
     if request.simulation_kind == ModelArtifactSimulationKind::CoarseInterval {
-        zero_closed_coarse_interval_seasonality_factors(&mut hourly_factor_contract, context)?;
+        zero_closed_coarse_interval_seasonality_factors(&mut interval_factor_grid, context)?;
     }
 
-    Ok(hourly_factor_contract)
+    Ok(interval_factor_grid)
 }
 
 fn zero_closed_coarse_interval_seasonality_factors(
-    hourly_factor_contract: &mut HourlyFactorContractOutput,
+    interval_factor_grid: &mut IntervalFactorGrid,
     context: &FittedModelContext,
 ) -> Result<(), WorkflowError> {
-    if hourly_factor_contract.interval_duration_nanos >= NANOS_PER_HOUR {
+    if interval_factor_grid.interval_duration_nanos >= NANOS_PER_HOUR {
         return Ok(());
     }
 
-    for (interval_start_utc_nanos, seasonality_factor) in hourly_factor_contract
+    for (interval_start_utc_nanos, seasonality_factor) in interval_factor_grid
         .interval_start_utc_nanos
         .iter()
-        .zip(hourly_factor_contract.s_h.iter_mut())
+        .zip(interval_factor_grid.seasonality_factor.iter_mut())
     {
         let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(*interval_start_utc_nanos);
 
@@ -285,14 +285,14 @@ struct PreparedDirectSimulationJob {
 fn build_direct_job(
     request: &ModelArtifactSimulationWorkflowRequest,
     context: &FittedModelContext,
-    hourly_factor_contract: HourlyFactorContractOutput,
+    interval_factor_grid: IntervalFactorGrid,
     initial_state: ResolvedInitialState,
 ) -> Result<PreparedDirectSimulationJob, WorkflowError> {
     let (runtime_interval_anchors, derived_boundary_state) =
         materialize_mean_reversion_runtime_inputs(
             request,
             context,
-            &hourly_factor_contract,
+            &interval_factor_grid,
             initial_state.excitation_state,
             initial_state.start_anchor_value,
         )?;
@@ -308,7 +308,7 @@ fn build_direct_job(
                 initial_state.excitation_state,
                 runtime_interval_anchors,
                 initial_mean_reversion_boundary_state,
-                hourly_factor_contract,
+                interval_factor_grid,
             );
 
             let run_config = janiform::simulation::SeededTickSimulationRunConfig::try_new(
@@ -350,8 +350,8 @@ fn build_direct_job(
 
             let coarse_model_inputs = build_coarse_simulation_model_inputs(context, model_inputs)?;
 
-            let interval_factors =
-                build_sufficient_statistics_interval_factors(context, hourly_factor_contract)?;
+            let interval_factor_grids =
+                build_sufficient_statistics_interval_factor_grids(context, interval_factor_grid)?;
 
             let start_time_utc_nanos =
                 request
@@ -370,7 +370,7 @@ fn build_direct_job(
                 request.horizon_interval_count,
                 context.interval_delta,
                 coarse_model_inputs,
-                interval_factors,
+                interval_factor_grids,
             )
             .map_err(|source| validation_error("coarse_interval_request", source.to_string()))?;
 
@@ -397,7 +397,7 @@ fn build_direct_job(
 fn materialize_mean_reversion_runtime_inputs(
     request: &ModelArtifactSimulationWorkflowRequest,
     context: &FittedModelContext,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
     initial_excitation_state: HawkesExcitationState,
     start_anchor_value: f64,
 ) -> Result<
@@ -409,7 +409,7 @@ fn materialize_mean_reversion_runtime_inputs(
 > {
     crate::model::materialize_mean_reversion_runtime_inputs(
         context,
-        hourly_factor_contract,
+        interval_factor_grid,
         initial_excitation_state,
         start_anchor_value,
         context.interval_delta,

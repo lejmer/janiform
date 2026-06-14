@@ -7,9 +7,9 @@ use janiform_foundations::time::{NANOS_PER_HOUR, floor_to_hour_utc_nanos};
 use crate::calendar::definition::resolve_market_state_for_definition_at_local;
 use crate::calendar::errors::TimestampEventPreprocessingError;
 use crate::calendar::types::{
-    ExchangeCalendarDefinition, MarketState, TimestampEventInputRecord,
-    TimestampEventPreprocessingDiagnostics, TimestampEventPreprocessingOutput,
-    TimestampEventSessionFilter,
+    CLOSED_MARKET_STATE_CODE, ExchangeCalendarDefinition, MarketState, OPEN_MARKET_STATE_CODE,
+    TimestampEventInputRecord, TimestampEventPreprocessingDiagnostics,
+    TimestampEventPreprocessingOutput, TimestampEventSessionFilter,
 };
 use crate::calendar::{
     PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION, TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION,
@@ -24,9 +24,6 @@ struct AcceptedPreprocessedTimestampEventRow {
     exchange_local_day_of_year: u16,
     market_state_code: u8,
 }
-
-const OPEN_MARKET_STATE_CODE: u8 = 1;
-const CLOSED_MARKET_STATE_CODE: u8 = 0;
 
 pub(crate) fn preprocess_timestamp_events(
     definition: &ExchangeCalendarDefinition,

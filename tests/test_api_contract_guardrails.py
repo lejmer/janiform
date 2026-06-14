@@ -104,7 +104,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration": [
                 "CalibrationValidationError",
-                "CalibrationValidationFailure",
                 "JaniformEstimator",
                 "JaniformFitReport",
                 "JaniformFitResult",

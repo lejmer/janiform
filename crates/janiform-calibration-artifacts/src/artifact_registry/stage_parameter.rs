@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
 use janiform_foundations::strings::is_non_empty_string;
+use janiform_market_time::business_time_clock::FourierBusinessTimeClockModel;
 use serde::{Deserialize, Serialize};
 
 use super::super::contracts::{
@@ -15,7 +16,7 @@ use super::super::{
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     LongVarianceStageDiagnostics, MeanReversionStageDiagnostics, NewsShocksStageDiagnostics,
     ReturnBackfitStageDiagnostics, ReturnComponentsStageFittedParameters,
-    SeasonalityStageNormalizationMetadata, SurpriseNewsDeterministicIntensityProfile,
+    SurpriseNewsDeterministicIntensityProfile,
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
@@ -126,16 +127,8 @@ pub struct SeasonalityStageParameterPayload {
     pub estimator_version: String,
     pub timestamp_event_input_schema_version: String,
     pub timestamp_event_preprocessed_schema_version: String,
-    pub intraday_estimate_schema_version: String,
-    pub day_of_week_estimate_schema_version: String,
-    pub day_of_year_estimate_schema_version: String,
-    pub composition_schema_version: String,
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_factor_by_bin: Vec<f64>,
-    pub day_of_week_factor: Vec<f64>,
-    pub hour_of_week_factor: Vec<f64>,
-    pub day_of_year_factor: Vec<f64>,
-    pub normalization_metadata: SeasonalityStageNormalizationMetadata,
+    pub clock_model_schema_version: String,
+    pub clock_model: FourierBusinessTimeClockModel,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -428,15 +421,13 @@ impl CalibrationStageParameterArtifact {
                     },
                 )?;
 
-                if payload.intraday_factor_by_bin.is_empty()
-                    || payload.day_of_week_factor.is_empty()
-                    || payload.hour_of_week_factor.is_empty()
-                    || payload.day_of_year_factor.is_empty()
-                {
-                    return Err(
-                        CalibrationStageParameterArtifactValidationError::MissingSeasonalityFactors,
-                    );
-                }
+                validate_non_empty_artifact_value(
+                    payload.clock_model_schema_version.as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.seasonality.clock_model_schema_version",
+                    },
+                )?;
 
                 if self.optimizer_state.is_some() {
                     return Err(
@@ -809,16 +800,8 @@ pub struct SeasonalityStageParameterArtifactInput {
     pub estimator_version: String,
     pub timestamp_event_input_schema_version: String,
     pub timestamp_event_preprocessed_schema_version: String,
-    pub intraday_estimate_schema_version: String,
-    pub day_of_week_estimate_schema_version: String,
-    pub day_of_year_estimate_schema_version: String,
-    pub composition_schema_version: String,
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_factor_by_bin: Vec<f64>,
-    pub day_of_week_factor: Vec<f64>,
-    pub hour_of_week_factor: Vec<f64>,
-    pub day_of_year_factor: Vec<f64>,
-    pub normalization_metadata: SeasonalityStageNormalizationMetadata,
+    pub clock_model_schema_version: String,
+    pub clock_model: FourierBusinessTimeClockModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1215,7 +1198,7 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         field: &'static str,
     },
-    MissingSeasonalityFactors,
+    MissingSeasonalityClockModel,
     MissingOptimizerState {
         stage: CalibrationStage,
     },
@@ -1309,9 +1292,9 @@ impl Display for CalibrationStageParameterArtifactValidationError {
                 formatter,
                 "stage parameter artifact for `{stage:?}` requires non-empty field `{field}`"
             ),
-            Self::MissingSeasonalityFactors => write!(
+            Self::MissingSeasonalityClockModel => write!(
                 formatter,
-                "seasonality stage parameter artifact requires non-empty fitted factor vectors"
+                "seasonality stage parameter artifact requires a fitted clock model"
             ),
             Self::MissingOptimizerState { stage } => write!(
                 formatter,
@@ -1472,16 +1455,8 @@ fn build_seasonality_stage_parameter_artifact(
                 timestamp_event_input_schema_version: input.timestamp_event_input_schema_version,
                 timestamp_event_preprocessed_schema_version: input
                     .timestamp_event_preprocessed_schema_version,
-                intraday_estimate_schema_version: input.intraday_estimate_schema_version,
-                day_of_week_estimate_schema_version: input.day_of_week_estimate_schema_version,
-                day_of_year_estimate_schema_version: input.day_of_year_estimate_schema_version,
-                composition_schema_version: input.composition_schema_version,
-                intraday_minutes_per_bin: input.intraday_minutes_per_bin,
-                intraday_factor_by_bin: input.intraday_factor_by_bin,
-                day_of_week_factor: input.day_of_week_factor,
-                hour_of_week_factor: input.hour_of_week_factor,
-                day_of_year_factor: input.day_of_year_factor,
-                normalization_metadata: input.normalization_metadata,
+                clock_model_schema_version: input.clock_model_schema_version,
+                clock_model: input.clock_model,
             },
         )),
     })

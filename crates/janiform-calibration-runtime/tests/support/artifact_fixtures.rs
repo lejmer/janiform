@@ -159,16 +159,8 @@ fn regression_seasonality_stage_parameter_input(
         timestamp_event_input_schema_version: payload.timestamp_event_input_schema_version,
         timestamp_event_preprocessed_schema_version: payload
             .timestamp_event_preprocessed_schema_version,
-        intraday_estimate_schema_version: payload.intraday_estimate_schema_version,
-        day_of_week_estimate_schema_version: payload.day_of_week_estimate_schema_version,
-        day_of_year_estimate_schema_version: payload.day_of_year_estimate_schema_version,
-        composition_schema_version: payload.composition_schema_version,
-        intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-        intraday_factor_by_bin: payload.intraday_factor_by_bin,
-        day_of_week_factor: payload.day_of_week_factor,
-        hour_of_week_factor: payload.hour_of_week_factor,
-        day_of_year_factor: payload.day_of_year_factor,
-        normalization_metadata: payload.normalization_metadata,
+        clock_model_schema_version: payload.clock_model_schema_version,
+        clock_model: payload.clock_model,
     }
 }
 
@@ -488,7 +480,7 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
         .expect("regression NIG configuration should validate"),
         news_process_configuration: regression_news_process_configuration(),
         surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-            weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+            weekly_utc_profile_multipliers: vec![1.0; 24 * 7],
             profile_resolution_hours: 1,
             fit_policy: "artifact_regression_fixture.v1".to_string(),
             normalization_policy: "artifact_regression_fixture.v1".to_string(),

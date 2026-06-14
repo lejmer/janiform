@@ -33,7 +33,7 @@ Regression commands compare deterministic fixtures and semantic validation fixtu
     about = "Developer regression harnesses.",
     long_about = "Developer regression harnesses.
 
-Use these commands to validate checked-in regression fixtures for calendar behavior, hourly factors, deterministic outputs, and open/closed gap leakage behavior."
+Use these commands to validate checked-in regression fixtures for calendar behavior, optional interval factor grid cases, deterministic outputs, and open/closed gap leakage behavior."
 )]
 pub(crate) struct RegressionCommand {
     #[command(subcommand)]
@@ -46,7 +46,7 @@ pub(crate) enum RegressionSubcommand {
         about = "Run deterministic regression checks.",
         long_about = "Run deterministic regression checks.
 
-This command checks calendar and hourly-factor regression cases against the native deterministic harness."
+This command checks calendar cases and optional interval-factor-grid cases against the native deterministic harness."
     )]
     Deterministic(DeterministicRegressionCommand),
 
@@ -65,7 +65,7 @@ This command checks calendar fixtures and open/closed gap behavior fixtures agai
     about = "Run deterministic regression checks.",
     long_about = "Run deterministic regression checks.
 
-The command consumes a calendar registry, calendar regression cases, and hourly-factor regression cases. Tolerance options are fixture validation thresholds for this developer harness."
+The command consumes a calendar registry, calendar regression cases, and optional interval-factor-grid regression cases. Tolerance options are fixture validation thresholds for this developer harness."
 )]
 pub(crate) struct DeterministicRegressionCommand {
     #[arg(long, value_name = "PATH", help = "Calendar registry JSON document.")]
@@ -81,7 +81,7 @@ pub(crate) struct DeterministicRegressionCommand {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Hourly-factor regression cases JSON document."
+        help = "Optional interval-factor-grid regression cases JSON document."
     )]
     pub(crate) seasonality_cases_json: Option<PathBuf>,
 

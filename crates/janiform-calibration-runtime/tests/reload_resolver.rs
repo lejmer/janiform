@@ -299,20 +299,12 @@ fn assert_stage_artifact_reload_matches(
                     expected_payload.trade_events_data_reference
                 );
                 assert_eq!(
-                    reloaded_payload.intraday_factor_by_bin.len(),
-                    expected_payload.intraday_factor_by_bin.len()
+                    reloaded_payload.clock_model_schema_version,
+                    expected_payload.clock_model_schema_version
                 );
                 assert_eq!(
-                    reloaded_payload.day_of_week_factor.len(),
-                    expected_payload.day_of_week_factor.len()
-                );
-                assert_eq!(
-                    reloaded_payload.day_of_year_factor.len(),
-                    expected_payload.day_of_year_factor.len()
-                );
-                assert_eq!(
-                    reloaded_payload.normalization_metadata,
-                    expected_payload.normalization_metadata
+                    reloaded_payload.clock_model.harmonic_orders(),
+                    expected_payload.clock_model.harmonic_orders()
                 );
             }
             (

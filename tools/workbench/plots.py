@@ -29,11 +29,11 @@ from janiform.calibration.fit._runtime.payloads import (
     resolved_known_news_event_timestamps,
     surprise_baseline_intensities,
 )
-from janiform.calibration.fit._runtime.seasonality import build_runtime_hourly_seasonality_source_from_model
+from janiform.calibration.fit._runtime.seasonality import build_runtime_interval_seasonality_source_from_model
 from janiform.calibration.fit._runtime.seasonality import surprise_deterministic_time_multiplier_by_interval_index
-from janiform.hourly_factors import (
-    HourlyNewsIntensityProviderMaterializedSource,
-    provide_hourly_factor_contract,
+from janiform.interval_factor_grids import (
+    IntervalNewsIntensityProviderMaterializedSource,
+    provide_interval_factor_grid,
 )
 from janiform.mean_reversion import MeanReversionFittedParameters
 from janiform.model import JaniformModel
@@ -1797,13 +1797,13 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             surprise_baseline_intensities(model)
         )
 
-        hourly_factor_contract = provide_hourly_factor_contract(
+        interval_factor_grid = provide_interval_factor_grid(
             calendar_registry=runtime_factors.calendar_registry,
             exchange_code=runtime_factors.exchange_code,
             range_start_utc=start_time_utc,
             range_end_utc=end_time_utc,
             interval=interval,
-            seasonality_source=build_runtime_hourly_seasonality_source_from_model(
+            seasonality_source=build_runtime_interval_seasonality_source_from_model(
                 model,
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
@@ -1811,7 +1811,7 @@ def _materialize_endogenous_mean_reversion_anchor_values(
                 range_end_utc=end_time_utc,
                 interval=interval,
             ),
-            news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+            news_intensity_source=IntervalNewsIntensityProviderMaterializedSource(
                 known_scheduled_event_timestamps_utc=resolved_known_news_event_timestamps(model),
                 surprise_open_baseline_intensity=surprise_open_baseline_intensity,
                 surprise_closed_baseline_intensity=surprise_closed_baseline_intensity,
@@ -1829,7 +1829,7 @@ def _materialize_endogenous_mean_reversion_anchor_values(
         _, runtime_interval_anchors, _ = prepare_model_mean_reversion_runtime_inputs(
             model,
             runtime_factors=runtime_factors,
-            hourly_factor_contract=hourly_factor_contract,
+            interval_factor_grid=interval_factor_grid,
             initial_excitation_state=HawkesExcitationState(
                 y_plus_plus=0.0,
                 y_plus_minus=0.0,
@@ -1845,7 +1845,7 @@ def _materialize_endogenous_mean_reversion_anchor_values(
         int(timestamp_microseconds_utc[0]): float(runtime_interval_anchors.start_anchor_value)
     }
     for interval_end_utc_nanos, anchor_value in zip(
-        hourly_factor_contract.interval_end_utc_nanos,
+        interval_factor_grid.interval_end_utc_nanos,
         runtime_interval_anchors.end_anchor_values,
         strict=True,
     ):

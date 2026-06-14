@@ -95,7 +95,7 @@ pub fn evaluate_exponential_affine_transform_hamiltonians(
 /// - `D_+-' = -beta * D_+- + H_plus_endogenous`
 /// - `D_-+' = -beta * D_-+ + H_minus_endogenous`
 /// - `D_--' = -beta * D_-- + H_minus_endogenous`
-/// - `C' = s_h * lambda_bar * (H_plus_baseline + H_minus_baseline) + known_news + surprise_news`
+/// - `C' = seasonality_factor * lambda_bar * (H_plus_baseline + H_minus_baseline) + known_news + surprise_news`
 pub fn evaluate_exponential_affine_transform_ode_rhs(
     transform_input: ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
@@ -129,7 +129,10 @@ pub fn evaluate_exponential_affine_transform_ode_rhs(
     let trading_term = hamiltonians
         .h_plus_baseline
         .plus(hamiltonians.h_minus_baseline)
-        .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar);
+        .scale(
+            transform_input.seasonality_factor
+                * equation_specification.hawkes_kernel_parameters.lambda_bar,
+        );
 
     let news_term = evaluate_gamma_moment_news_term(transform_input, d_vector);
 

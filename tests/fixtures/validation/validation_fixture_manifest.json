@@ -23,16 +23,6 @@
       "content_hash": "4a34a859f12c9a46"
     },
     {
-      "fixture_id": "hourly_factor_regression_matrix_v1",
-      "domain": "hourly_factors",
-      "fixture_schema_version": "hourly.factor.regression.v1",
-      "relative_path": "hourly_factors/hourly_factor_regression_matrix.json",
-      "exchange_codes": [
-        "XNYS"
-      ],
-      "content_hash": "ab2a40db3e3d8516"
-    },
-    {
       "fixture_id": "open_closed_gap_behavior_scenarios_v1",
       "domain": "gap_behavior",
       "fixture_schema_version": "gap.behavior.open_closed.scenario_fixture.v1",

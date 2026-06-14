@@ -6,9 +6,9 @@ use janiform_calibration_artifacts::{
 };
 use janiform_calibration_runtime::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent,
+    CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent, HawkesStageProgressPhase,
     JointRefinementProgressCandidateAssessment, JointRefinementStageProgressPhase,
-    ReturnComponentsStageProgressPhase,
+    ReturnComponentsStageProgressPhase, SeasonalityStageProgressPhase,
 };
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
@@ -932,6 +932,9 @@ fn progress_work_item_label(
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         )
+        | CalibrationStageProgressPhase::Hawkes(
+            HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
+        )
         | CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::RestartOptimization
             | JointRefinementStageProgressPhase::CoarseConsistencyEvaluation
@@ -954,6 +957,45 @@ fn phase_ref(token: &str, label: &str) -> RunPhaseRef {
 
 fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
     match phase {
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::InputPreflight) => {
+            "hawkes_input_preflight"
+        }
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::InputPreprocessing,
+        ) => "seasonality_input_preprocessing",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::ClockFitPreparation,
+        ) => "seasonality_clock_fit_preparation",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::ClockCandidateEvaluation,
+        ) => "seasonality_clock_candidate_evaluation",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::EventRateMaterialization,
+        ) => "seasonality_event_rate_materialization",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::ReportAssembly,
+        ) => "seasonality_report_assembly",
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::EventTapePreparation) => {
+            "hawkes_event_tape_preparation"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidatePreparation) => {
+            "hawkes_candidate_preparation"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidateEvaluation) => {
+            "hawkes_candidate_evaluation"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidateRefinement) => {
+            "hawkes_candidate_refinement"
+        }
+        CalibrationStageProgressPhase::Hawkes(
+            HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
+        ) => "hawkes_likelihood_shortlist_evaluation",
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidateSelection) => {
+            "hawkes_candidate_selection"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::ReportAssembly) => {
+            "hawkes_report_assembly"
+        }
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
         ) => "continuous_nig_proxy_em",
@@ -996,6 +1038,45 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
 
 fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
     match phase {
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::InputPreflight) => {
+            "input preflight"
+        }
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::InputPreprocessing,
+        ) => "input preprocessing",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::ClockFitPreparation,
+        ) => "clock fit preparation",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::ClockCandidateEvaluation,
+        ) => "clock candidate evaluation",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::EventRateMaterialization,
+        ) => "event rate materialization",
+        CalibrationStageProgressPhase::Seasonality(
+            SeasonalityStageProgressPhase::ReportAssembly,
+        ) => "report assembly",
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::EventTapePreparation) => {
+            "event tape preparation"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidatePreparation) => {
+            "candidate preparation"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidateEvaluation) => {
+            "candidate evaluation"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidateRefinement) => {
+            "candidate refinement"
+        }
+        CalibrationStageProgressPhase::Hawkes(
+            HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
+        ) => "signed likelihood shortlist",
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::CandidateSelection) => {
+            "candidate selection"
+        }
+        CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::ReportAssembly) => {
+            "report assembly"
+        }
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::InputPreflight,
         ) => "input preflight",

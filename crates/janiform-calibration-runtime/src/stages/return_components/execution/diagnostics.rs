@@ -85,7 +85,9 @@ pub(crate) fn build_surprise_arrival_diagnostic(
     fitted_surprise_deterministic_intensity_profile: &SurpriseIntensityProfile,
 ) -> ReturnComponentsStageSurpriseArrivalDiagnostic {
     let candidate_surprise_profile = SurpriseIntensityProfile {
-        weekly_hour_utc_multipliers: surprise_arrival_family.weekly_hour_utc_multipliers.clone(),
+        weekly_utc_profile_multipliers: surprise_arrival_family
+            .weekly_utc_profile_multipliers
+            .clone(),
         profile_resolution_hours: surprise_arrival_family.profile_resolution_hours,
         fit_policy: fitted_surprise_deterministic_intensity_profile
             .fit_policy
@@ -504,33 +506,35 @@ pub(super) fn collect_return_components_exact_candidate_constraint_violations(
         });
     }
 
-    if fitted_parameters
+    let profile_resolution_hours = fitted_parameters
         .surprise_deterministic_intensity_profile
-        .profile_resolution_hours
-        != RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
-    {
+        .profile_resolution_hours;
+
+    let Some(expected_bucket_count) =
+        super::super::derived_contracts::return_components_stage_surprise_intensity_weekly_profile_bucket_count_for_resolution(
+            profile_resolution_hours,
+        )
+    else {
         violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
             field: "surprise_deterministic_intensity_profile.profile_resolution_hours".to_string(),
             message: format!(
-                "profile_resolution_hours must equal {}",
-                RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
+                "profile_resolution_hours must be a positive divisor of the UTC week length in hours, found {profile_resolution_hours}"
             ),
         });
-    }
+        return violations;
+    };
 
-    let expected_bucket_count =
-        return_components_stage_surprise_intensity_weekly_profile_bucket_count();
     if fitted_parameters
         .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers
+        .weekly_utc_profile_multipliers
         .len()
         != expected_bucket_count
     {
         violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
-            field: "surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers"
+            field: "surprise_deterministic_intensity_profile.weekly_utc_profile_multipliers"
                 .to_string(),
             message: format!(
-                "weekly_hour_utc_multipliers must contain exactly {} values",
+                "weekly_utc_profile_multipliers must contain exactly {} values",
                 expected_bucket_count
             ),
         });
@@ -538,7 +542,7 @@ pub(super) fn collect_return_components_exact_candidate_constraint_violations(
 
     for (bucket_index, multiplier) in fitted_parameters
         .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers
+        .weekly_utc_profile_multipliers
         .iter()
         .copied()
         .enumerate()
@@ -546,7 +550,7 @@ pub(super) fn collect_return_components_exact_candidate_constraint_violations(
         if !multiplier.is_finite() || multiplier <= 0.0 {
             violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
                 field: format!(
-                    "surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers[{bucket_index}]"
+                    "surprise_deterministic_intensity_profile.weekly_utc_profile_multipliers[{bucket_index}]"
                 ),
                 message: format!(
                     "weekly surprise intensity multiplier must be finite and strictly positive, found {multiplier}"
@@ -566,6 +570,7 @@ pub(crate) fn collect_return_components_exact_likelihood_constraint_violations(
     }
 
     let first_failure = fit_breakdown.exact_likelihood_failures.first();
+
     let first_failure_reason = first_failure
         .map(|failure| format!("{:?}", failure.failure_reason))
         .unwrap_or_else(|| "unknown".to_string());
@@ -616,7 +621,7 @@ pub(crate) fn collect_return_components_exact_likelihood_constraint_violations(
 
 pub(crate) fn default_surprise_deterministic_intensity_profile() -> SurpriseIntensityProfile {
     SurpriseIntensityProfile {
-        weekly_hour_utc_multipliers: vec![
+        weekly_utc_profile_multipliers: vec![
             1.0;
             return_components_stage_surprise_intensity_weekly_profile_bucket_count()
         ],

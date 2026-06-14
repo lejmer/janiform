@@ -52,6 +52,7 @@ pub fn mean_diagonal_damped_least_squares_step(
     }
 
     let damping = damping_mean_diagonal_multiplier * diagonal_mean;
+
     for diagonal_position in 0..parameter_count {
         normal_matrix[(diagonal_position, diagonal_position)] += damping;
     }
@@ -106,6 +107,7 @@ pub fn mean_diagonal_damped_least_squares_step_4(
     }
 
     let damping = damping_mean_diagonal_multiplier * diagonal_mean;
+
     for diagonal_position in 0..4 {
         normal_matrix[(diagonal_position, diagonal_position)] += damping;
     }
@@ -145,6 +147,7 @@ pub fn non_negative_least_squares_2(rows: &[[f64; 2]], response: &[f64]) -> Opti
     }
 
     let mut candidates = vec![[0.0, 0.0]];
+
     if let Some(unconstrained_solution) = normal_matrix.lu().solve(&normal_rhs)
         && unconstrained_solution[0] >= 0.0
         && unconstrained_solution[1] >= 0.0
@@ -157,6 +160,7 @@ pub fn non_negative_least_squares_2(rows: &[[f64; 2]], response: &[f64]) -> Opti
     if let Some(first_coordinate_solution) = single_coordinate_solution(rows, response, 0) {
         candidates.push([first_coordinate_solution, 0.0]);
     }
+
     if let Some(second_coordinate_solution) = single_coordinate_solution(rows, response, 1) {
         candidates.push([0.0, second_coordinate_solution]);
     }
@@ -167,6 +171,60 @@ pub fn non_negative_least_squares_2(rows: &[[f64; 2]], response: &[f64]) -> Opti
             squared_residual_norm_2(rows, response, left_candidate)
                 .total_cmp(&squared_residual_norm_2(rows, response, right_candidate))
         })
+}
+
+/// Solve regularized normal equations for a weighted least-squares fit.
+///
+/// The caller owns construction of `X'WX` and `X'Wy`, which keeps hot paths
+/// from materializing large design matrices when sufficient statistics are
+/// already available.
+pub fn weighted_ridge_least_squares_from_normal_equations(
+    normal_matrix_rows: &[Vec<f64>],
+    normal_rhs: &[f64],
+    diagonal_penalties: &[f64],
+) -> Option<Vec<f64>> {
+    let parameter_count = normal_rhs.len();
+    if parameter_count == 0
+        || normal_matrix_rows.len() != parameter_count
+        || diagonal_penalties.len() != parameter_count
+    {
+        return None;
+    }
+
+    let mut normal_matrix = DMatrix::<f64>::zeros(parameter_count, parameter_count);
+    let mut rhs = DVector::<f64>::zeros(parameter_count);
+
+    for (row_position, row) in normal_matrix_rows.iter().enumerate() {
+        if row.len() != parameter_count {
+            return None;
+        }
+
+        for (column_position, value) in row.iter().enumerate() {
+            if !value.is_finite() {
+                return None;
+            }
+
+            normal_matrix[(row_position, column_position)] = *value;
+        }
+    }
+
+    for (position, (rhs_value, diagonal_penalty)) in
+        normal_rhs.iter().zip(diagonal_penalties.iter()).enumerate()
+    {
+        if !rhs_value.is_finite() || !diagonal_penalty.is_finite() || *diagonal_penalty < 0.0 {
+            return None;
+        }
+
+        normal_matrix[(position, position)] += *diagonal_penalty;
+        rhs[position] = *rhs_value;
+    }
+
+    let solution = normal_matrix.cholesky()?.solve(&rhs);
+
+    solution
+        .iter()
+        .all(|value| value.is_finite())
+        .then(|| solution.iter().copied().collect())
 }
 
 fn mean_matrix_diagonal(matrix: &DMatrix<f64>) -> f64 {
@@ -217,7 +275,7 @@ fn squared_residual_norm_2(rows: &[[f64; 2]], response: &[f64], coefficients: &[
 mod tests {
     use super::{
         mean_diagonal_damped_least_squares_step, mean_diagonal_damped_least_squares_step_4,
-        non_negative_least_squares_2,
+        non_negative_least_squares_2, weighted_ridge_least_squares_from_normal_equations,
     };
 
     #[test]
@@ -264,19 +322,44 @@ mod tests {
         )
         .expect("damped normal equation should solve");
 
-        let baseline_norm = squared_residual_norm_4(
+        let baseline_norm = squared_residual_norm(
             sensitivity_matrix.as_slice(),
             residual_vector.as_slice(),
-            &[0.0; 4],
+            [0.0; 4].as_slice(),
         );
 
-        let stepped_norm = squared_residual_norm_4(
+        let stepped_norm = squared_residual_norm(
             sensitivity_matrix.as_slice(),
             residual_vector.as_slice(),
-            &step,
+            step.as_slice(),
         );
 
         assert!(stepped_norm < baseline_norm);
+    }
+
+    #[test]
+    fn normal_equation_solver_solves_weighted_fit() {
+        let normal_matrix_rows = vec![vec![2.0, 0.0], vec![0.0, 4.0]];
+        let normal_rhs = vec![6.0, 8.0];
+        let diagonal_penalties = vec![0.0, 0.0];
+
+        let solution = weighted_ridge_least_squares_from_normal_equations(
+            normal_matrix_rows.as_slice(),
+            normal_rhs.as_slice(),
+            diagonal_penalties.as_slice(),
+        )
+        .expect("positive definite normal equations should solve");
+
+        assert!(
+            (solution[0] - 3.0).abs() <= 3.0 * f64::EPSILON,
+            "first coefficient should solve the diagonal normal equation, found {}",
+            solution[0]
+        );
+        assert!(
+            (solution[1] - 2.0).abs() <= f64::EPSILON,
+            "second coefficient should solve the diagonal normal equation, found {}",
+            solution[1]
+        );
     }
 
     #[test]
@@ -302,38 +385,21 @@ mod tests {
         assert_eq!(coefficients[1], 0.0);
     }
 
-    fn squared_residual_norm(
-        sensitivity_matrix: &[Vec<f64>],
+    fn squared_residual_norm<Row>(
+        sensitivity_matrix: &[Row],
         residual_vector: &[f64],
         step: &[f64],
-    ) -> f64 {
+    ) -> f64
+    where
+        Row: AsRef<[f64]>,
+    {
         sensitivity_matrix
             .iter()
             .zip(residual_vector.iter())
             .map(|(row, residual)| {
                 let stepped_residual = residual
                     + row
-                        .iter()
-                        .zip(step.iter())
-                        .map(|(sensitivity, component)| sensitivity * component)
-                        .sum::<f64>();
-
-                stepped_residual * stepped_residual
-            })
-            .sum()
-    }
-
-    fn squared_residual_norm_4(
-        sensitivity_matrix: &[[f64; 4]],
-        residual_vector: &[f64],
-        step: &[f64; 4],
-    ) -> f64 {
-        sensitivity_matrix
-            .iter()
-            .zip(residual_vector.iter())
-            .map(|(row, residual)| {
-                let stepped_residual = residual
-                    + row
+                        .as_ref()
                         .iter()
                         .zip(step.iter())
                         .map(|(sensitivity, component)| sensitivity * component)

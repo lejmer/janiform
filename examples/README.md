@@ -27,7 +27,7 @@ These examples stay on the curated workflow surface and show preset resolution, 
 ## Low-Level
 
 - `python -m examples.low_level.simulation_requests`
-- `python -m examples.low_level.hourly_factor_contract`
+- `python -m examples.low_level.interval_factor_grid`
 - `python -m examples.low_level.vanilla_option_pricing_request`
 - `python -m examples.low_level.sufficient_statistics_request_contract`
 - `python -m examples.low_level.validation_harness`

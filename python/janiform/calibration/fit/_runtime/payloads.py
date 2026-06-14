@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from typing import Any, TYPE_CHECKING
 
 from ...._timestamps import nanoseconds_to_hours
 from ....calendar import CalendarRegistry
-from ....hourly_factors.workflow import _parse_interval_duration_nanos
+from ....interval_factor_grids.workflow import _parse_interval_duration_nanos
 from ....long_variance import LongVarianceParameters
 from ....mean_reversion import MeanReversionFittedParameters
 from ....pricing import (
@@ -64,9 +64,7 @@ def prepare_model_runtime_factors_for_model(
     )
 
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
-
     exchange_code = model.session_resolution.exchange_code
-
     return_components_fitted_parameters = return_components_fitted_parameters_payload(model)
 
     nig_configuration_payload = require_payload_mapping(
@@ -121,9 +119,15 @@ def prepare_model_runtime_factors_for_model(
             require_payload_mapping(
                 shared_mark_law,
                 "gamma_severity_marks",
-                "return_components.fitted_parameters.news_process_configuration.shared_mark_law.gamma_severity_marks",
+                (
+                    "return_components.fitted_parameters.news_process_configuration."
+                    "shared_mark_law.gamma_severity_marks"
+                ),
             ),
-            field_path="return_components.fitted_parameters.news_process_configuration.shared_mark_law.gamma_severity_marks",
+            field_path=(
+                "return_components.fitted_parameters.news_process_configuration."
+                "shared_mark_law.gamma_severity_marks"
+            ),
         ),
         news_process_configuration=news_process_configuration,
         return_clock_exposure_parameters=ReturnClockExposureParameters.from_mapping(
@@ -366,10 +370,3 @@ def require_payload_numeric_sequence(
         raise RuntimeError(f"JaniformModel payload field `{field_path}` must not be empty")
 
     return tuple(values)
-
-
-def raise_invalid_weekly_surprise_multiplier(bucket_index: int) -> NoReturn:
-    raise RuntimeError(
-        "JaniformModel payload field `return_components.fitted_parameters.surprise_deterministic_intensity_profile."
-        f"weekly_hour_utc_multipliers[{bucket_index}]` must be numeric"
-    )

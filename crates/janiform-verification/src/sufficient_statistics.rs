@@ -601,9 +601,9 @@ fn execute_sufficient_statistics_validation_path(
     for interval_index in 0..run_request.horizon_interval_count {
         let slice_context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
-            run_request.interval_factors.s_h[interval_index],
+            run_request.interval_factor_grids.seasonality_factor[interval_index],
             run_request
-                .interval_factors
+                .interval_factor_grids
                 .news_intensity_input_at(interval_index),
             run_request.interval_delta,
             current_state,

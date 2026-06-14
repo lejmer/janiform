@@ -67,13 +67,13 @@ use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState,
 };
-use janiform_market_time::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
-    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
+use janiform_market_time::interval_factor_grids::{
+    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD,
+    DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
+    INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY, INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+    INTERVAL_FACTOR_GRID_SCHEMA_VERSION, INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+    INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY, IntervalFactorGrid,
+    IntervalFactorGridDiagnostics, IntervalFactorGridMetadata,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
@@ -829,36 +829,35 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     let start_utc_nanos = 1_705_924_800_000_000_000;
     let mut model_inputs = two_interval_zero_event_carryover_model_inputs();
 
-    model_inputs.hourly_factor_contract.request_start_utc_nanos = start_utc_nanos;
-    model_inputs.hourly_factor_contract.request_end_utc_nanos =
-        start_utc_nanos + 2 * NANOS_PER_HOUR;
+    model_inputs.interval_factor_grid.request_start_utc_nanos = start_utc_nanos;
+    model_inputs.interval_factor_grid.request_end_utc_nanos = start_utc_nanos + 2 * NANOS_PER_HOUR;
 
-    model_inputs.hourly_factor_contract.interval_start_utc_nanos =
+    model_inputs.interval_factor_grid.interval_start_utc_nanos =
         vec![start_utc_nanos, start_utc_nanos + NANOS_PER_HOUR];
-    model_inputs.hourly_factor_contract.interval_end_utc_nanos = vec![
+    model_inputs.interval_factor_grid.interval_end_utc_nanos = vec![
         start_utc_nanos + NANOS_PER_HOUR,
         start_utc_nanos + 2 * NANOS_PER_HOUR,
     ];
 
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_start_exchange_local = vec![
         "2024-01-22T07:00:00-05:00".to_string(),
         "2024-01-22T08:00:00-05:00".to_string(),
     ];
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_end_exchange_local = vec![
         "2024-01-22T08:00:00-05:00".to_string(),
         "2024-01-22T09:00:00-05:00".to_string(),
     ];
 
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .diagnostics
         .first_interval_start_utc_nanos = start_utc_nanos;
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .diagnostics
         .last_interval_end_utc_nanos = start_utc_nanos + 2 * NANOS_PER_HOUR;
 
@@ -911,7 +910,7 @@ fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap
     let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
     let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
 
-    override_hourly_factor_contract(
+    override_interval_factor_grid(
         &mut model_inputs,
         &[closed_interval_start_utc_nanos],
         &[closed_interval_start_utc_nanos + NANOS_PER_HOUR],
@@ -963,7 +962,7 @@ fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap
         &run_config.model_inputs.calendar_registry,
         run_config
             .model_inputs
-            .hourly_factor_contract
+            .interval_factor_grid
             .exchange_code
             .as_str(),
         SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
@@ -1101,9 +1100,9 @@ fn seeded_simulation_run_rejects_zero_horizon() {
 }
 
 #[test]
-fn seeded_simulation_run_rejects_incomplete_hourly_factor_payload() {
+fn seeded_simulation_run_rejects_incomplete_interval_factor_grid_payload() {
     let mut model_inputs = valid_model_inputs();
-    model_inputs.hourly_factor_contract.s_h.pop();
+    model_inputs.interval_factor_grid.seasonality_factor.pop();
 
     let error = SeededTickSimulationRunConfig::try_new(
         77,
@@ -1112,12 +1111,12 @@ fn seeded_simulation_run_rejects_incomplete_hourly_factor_payload() {
         model_inputs,
         None,
     )
-    .expect_err("incomplete hourly factor vectors must fail");
+    .expect_err("incomplete interval factor grid vectors must fail");
 
     assert!(matches!(
         error,
-        SeededTickSimulationRunError::HourlyFactorFieldLengthMismatch {
-            field_name: "s_h",
+        SeededTickSimulationRunError::IntervalFactorGridFieldLengthMismatch {
+            field_name: "seasonality_factor",
             expected_interval_count: 2,
             observed_interval_count: 1,
         }
@@ -1125,15 +1124,15 @@ fn seeded_simulation_run_rejects_incomplete_hourly_factor_payload() {
 }
 
 #[test]
-fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
+fn seeded_simulation_run_rejects_non_consecutive_interval_factor_grid_coverage() {
     let mut model_inputs = valid_model_inputs();
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
 
-    model_inputs.hourly_factor_contract.interval_start_utc_nanos[1] += NANOS_PER_HOUR;
-    model_inputs.hourly_factor_contract.interval_end_utc_nanos[1] += NANOS_PER_HOUR;
-    model_inputs.hourly_factor_contract.request_end_utc_nanos += NANOS_PER_HOUR;
+    model_inputs.interval_factor_grid.interval_start_utc_nanos[1] += NANOS_PER_HOUR;
+    model_inputs.interval_factor_grid.interval_end_utc_nanos[1] += NANOS_PER_HOUR;
+    model_inputs.interval_factor_grid.request_end_utc_nanos += NANOS_PER_HOUR;
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .diagnostics
         .last_interval_end_utc_nanos += NANOS_PER_HOUR;
 
@@ -1148,7 +1147,7 @@ fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
 
     assert!(matches!(
         error,
-        SeededTickSimulationRunError::NonConsecutiveHourlyFactorCoverage {
+        SeededTickSimulationRunError::NonConsecutiveIntervalFactorGridCoverage {
             previous_interval_index: 0,
             previous_interval_end_utc_nanos,
             current_interval_index: 1,
@@ -1178,7 +1177,7 @@ fn seeded_simulation_run_accepts_seasonality_scaled_subcritical_hawkes_inputs() 
         },
     )
     .expect("supercritical guard fixture should be valid in kernel domain");
-    model_inputs.hourly_factor_contract.s_h = vec![1.2, 1.2];
+    model_inputs.interval_factor_grid.seasonality_factor = vec![1.2, 1.2];
 
     SeededTickSimulationRunConfig::try_new(
         99,
@@ -1199,14 +1198,16 @@ fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
 
     one_hour_model_inputs.kernel_parameters = kernel_parameters;
     one_hour_model_inputs.initial_excitation_state = two_hour_model_inputs.initial_excitation_state;
-    one_hour_model_inputs.hourly_factor_contract.s_h = vec![0.0];
-    one_hour_model_inputs.hourly_factor_contract.nu_h = vec![0.0];
     one_hour_model_inputs
-        .hourly_factor_contract
-        .known_component_nu_h = vec![0.0];
+        .interval_factor_grid
+        .seasonality_factor = vec![0.0];
+    one_hour_model_inputs.interval_factor_grid.news_intensity = vec![0.0];
     one_hour_model_inputs
-        .hourly_factor_contract
-        .surprise_component_nu_h = vec![0.0];
+        .interval_factor_grid
+        .known_news_intensity = vec![0.0];
+    one_hour_model_inputs
+        .interval_factor_grid
+        .surprise_news_intensity = vec![0.0];
 
     let one_hour_config = SeededTickSimulationRunConfig::try_new(
         10_052,
@@ -1304,8 +1305,8 @@ fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
 #[test]
 fn seeded_simulation_mean_reversion_decay_matches_pure_exponential_reference() {
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
-    model_inputs.hourly_factor_contract.s_h = vec![0.0];
-    model_inputs.hourly_factor_contract.nu_h = vec![0.0];
+    model_inputs.interval_factor_grid.seasonality_factor = vec![0.0];
+    model_inputs.interval_factor_grid.news_intensity = vec![0.0];
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 1.0, 0.0, &[0.0], 1.5);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1345,8 +1346,10 @@ fn seeded_simulation_mean_reversion_decay_matches_pure_exponential_reference() {
 #[test]
 fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
     let mut zero_kappa_model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
-    zero_kappa_model_inputs.hourly_factor_contract.s_h = vec![0.0];
-    zero_kappa_model_inputs.hourly_factor_contract.nu_h = vec![0.0];
+    zero_kappa_model_inputs
+        .interval_factor_grid
+        .seasonality_factor = vec![0.0];
+    zero_kappa_model_inputs.interval_factor_grid.news_intensity = vec![0.0];
     configure_mean_reversion_runtime_inputs(&mut zero_kappa_model_inputs, 0.0, 2.0, &[2.0], 3.0);
 
     let mut positive_kappa_model_inputs = zero_kappa_model_inputs.clone();
@@ -1408,8 +1411,8 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
 #[test]
 fn seeded_simulation_does_not_decay_mean_reversion_during_closed_interval() {
     let mut model_inputs = one_interval_closed_market_model_inputs();
-    model_inputs.hourly_factor_contract.s_h = vec![0.0];
-    model_inputs.hourly_factor_contract.nu_h = vec![0.0];
+    model_inputs.interval_factor_grid.seasonality_factor = vec![0.0];
+    model_inputs.interval_factor_grid.news_intensity = vec![0.0];
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 1.0, 2.0, &[2.0], 3.0);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1489,10 +1492,10 @@ fn seeded_simulation_anchor_reset_applies_exactly_once_per_interval_boundary() {
         y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
-    model_inputs.hourly_factor_contract.s_h = vec![0.0, 0.0];
-    model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
-    model_inputs.hourly_factor_contract.known_component_nu_h = vec![0.0, 0.0];
-    model_inputs.hourly_factor_contract.surprise_component_nu_h = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.seasonality_factor = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.news_intensity = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.known_news_intensity = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.surprise_news_intensity = vec![0.0, 0.0];
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 0.0, 0.0, &[2.0, 2.0], 1.0);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1851,7 +1854,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
 
         for known_timestamps in &known_timestamp_profiles {
             let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 1.75);
-            override_hourly_factor_contract(
+            override_interval_factor_grid(
                 &mut model_inputs,
                 &[start_utc_nanos],
                 &[interval_end_utc_nanos],
@@ -1928,7 +1931,7 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
 
     let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
 
-    override_hourly_factor_contract(
+    override_interval_factor_grid(
         &mut model_inputs,
         &[start_utc_nanos, second_interval_start_utc_nanos],
         &[
@@ -2043,7 +2046,7 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
 
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
 
-    override_hourly_factor_contract(
+    override_interval_factor_grid(
         &mut model_inputs,
         &[interval_start_utc_nanos],
         &[interval_start_utc_nanos + NANOS_PER_HOUR],
@@ -2139,7 +2142,7 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
 
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
 
-    override_hourly_factor_contract(
+    override_interval_factor_grid(
         &mut model_inputs,
         &[interval_start_utc_nanos],
         &[interval_start_utc_nanos + NANOS_PER_HOUR],
@@ -2236,7 +2239,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
 
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
 
-    override_hourly_factor_contract(
+    override_interval_factor_grid(
         &mut model_inputs,
         &[
             interval_start_utc_nanos,
@@ -3295,8 +3298,8 @@ fn one_interval_model_inputs(
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_start_utc_nanos = vec![start_utc_nanos];
     let interval_end_utc_nanos = vec![start_utc_nanos + NANOS_PER_HOUR];
-    let hourly_factor_contract = HourlyFactorContractOutput {
-        schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+    let interval_factor_grid = IntervalFactorGrid {
+        schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
         exchange_code: "XNYS".to_string(),
         exchange_timezone_name: "America/New_York".to_string(),
         request_start_utc_nanos: start_utc_nanos,
@@ -3307,35 +3310,35 @@ fn one_interval_model_inputs(
         interval_end_utc_nanos: interval_end_utc_nanos.clone(),
         interval_start_exchange_local: vec!["2024-01-22T09:00:00-05:00".to_string()],
         interval_end_exchange_local: vec!["2024-01-22T10:00:00-05:00".to_string()],
-        s_h: vec![1.0],
-        known_component_nu_h: vec![0.0],
-        surprise_component_nu_h: vec![news_intensity],
-        nu_h: vec![news_intensity],
-        metadata: HourlyFactorMaterializationMetadata {
-            seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+        seasonality_factor: vec![1.0],
+        known_news_intensity: vec![0.0],
+        surprise_news_intensity: vec![news_intensity],
+        news_intensity: vec![news_intensity],
+        metadata: IntervalFactorGridMetadata {
+            seasonality_materialization_method: DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD
                 .to_string(),
             news_intensity_materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
                 .to_string(),
-            interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-            interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+            interval_boundary_policy: INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+            interval_alignment_policy: INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+            fall_back_policy: INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
         },
-        diagnostics: HourlyFactorContractDiagnostics {
+        diagnostics: IntervalFactorGridDiagnostics {
             interval_count: 1,
             interval_duration_nanos: NANOS_PER_HOUR,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: interval_end_utc_nanos[0],
-            skipped_local_hour_interval_count: 0,
-            repeated_local_hour_interval_count: 0,
+            skipped_exchange_local_interval_count: 0,
+            repeated_exchange_local_interval_count: 0,
         },
     };
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
@@ -3364,7 +3367,7 @@ fn one_interval_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
@@ -3381,24 +3384,23 @@ fn one_interval_closed_market_model_inputs() -> SeededTickSimulationModelInputs 
     let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
     let closed_interval_end_utc_nanos = closed_interval_start_utc_nanos + NANOS_PER_HOUR;
 
-    model_inputs.hourly_factor_contract.request_start_utc_nanos = closed_interval_start_utc_nanos;
-    model_inputs.hourly_factor_contract.request_end_utc_nanos = closed_interval_end_utc_nanos;
-    model_inputs.hourly_factor_contract.interval_start_utc_nanos =
+    model_inputs.interval_factor_grid.request_start_utc_nanos = closed_interval_start_utc_nanos;
+    model_inputs.interval_factor_grid.request_end_utc_nanos = closed_interval_end_utc_nanos;
+    model_inputs.interval_factor_grid.interval_start_utc_nanos =
         vec![closed_interval_start_utc_nanos];
-    model_inputs.hourly_factor_contract.interval_end_utc_nanos =
-        vec![closed_interval_end_utc_nanos];
+    model_inputs.interval_factor_grid.interval_end_utc_nanos = vec![closed_interval_end_utc_nanos];
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_start_exchange_local = vec!["2024-01-22T08:00:00-05:00".to_string()];
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_end_exchange_local = vec!["2024-01-22T09:00:00-05:00".to_string()];
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .diagnostics
         .first_interval_start_utc_nanos = closed_interval_start_utc_nanos;
     model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .diagnostics
         .last_interval_end_utc_nanos = closed_interval_end_utc_nanos;
 
@@ -3433,10 +3435,10 @@ fn two_interval_zero_event_carryover_model_inputs() -> SeededTickSimulationModel
         y_minus_minus: 0.02,
     };
 
-    model_inputs.hourly_factor_contract.s_h = vec![0.0, 0.0];
-    model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
-    model_inputs.hourly_factor_contract.known_component_nu_h = vec![0.0, 0.0];
-    model_inputs.hourly_factor_contract.surprise_component_nu_h = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.seasonality_factor = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.news_intensity = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.known_news_intensity = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.surprise_news_intensity = vec![0.0, 0.0];
 
     model_inputs
 }
@@ -3471,8 +3473,9 @@ fn two_interval_constant_intensity_model_inputs(
         y_minus_minus: 0.0,
     };
 
-    model_inputs.hourly_factor_contract.s_h = vec![1.0, second_interval_seasonality_factor];
-    model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.seasonality_factor =
+        vec![1.0, second_interval_seasonality_factor];
+    model_inputs.interval_factor_grid.news_intensity = vec![0.0, 0.0];
 
     model_inputs
 }
@@ -3505,60 +3508,59 @@ fn two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationModelInp
         y_minus_minus: 0.0,
     };
 
-    model_inputs.hourly_factor_contract.s_h = vec![1.0, 1.0];
-    model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+    model_inputs.interval_factor_grid.seasonality_factor = vec![1.0, 1.0];
+    model_inputs.interval_factor_grid.news_intensity = vec![0.0, 0.0];
 
     model_inputs
 }
 
-fn override_hourly_factor_contract(
+fn override_interval_factor_grid(
     model_inputs: &mut SeededTickSimulationModelInputs,
     interval_start_utc_nanos: &[i64],
     interval_end_utc_nanos: &[i64],
     seasonality_factors: &[f64],
     news_intensity_factors: &[f64],
 ) {
-    let hourly_factor_contract = &mut model_inputs.hourly_factor_contract;
+    let interval_factor_grid = &mut model_inputs.interval_factor_grid;
 
-    hourly_factor_contract.request_start_utc_nanos = interval_start_utc_nanos[0];
-    hourly_factor_contract.request_end_utc_nanos =
+    interval_factor_grid.request_start_utc_nanos = interval_start_utc_nanos[0];
+    interval_factor_grid.request_end_utc_nanos =
         interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
-    hourly_factor_contract.interval_indices = (0..interval_start_utc_nanos.len())
+    interval_factor_grid.interval_indices = (0..interval_start_utc_nanos.len())
         .map(|interval_position| interval_position as u64)
         .collect();
-    hourly_factor_contract.interval_start_utc_nanos = interval_start_utc_nanos.to_vec();
-    hourly_factor_contract.interval_end_utc_nanos = interval_end_utc_nanos.to_vec();
-    hourly_factor_contract.interval_start_exchange_local = interval_start_utc_nanos
+    interval_factor_grid.interval_start_utc_nanos = interval_start_utc_nanos.to_vec();
+    interval_factor_grid.interval_end_utc_nanos = interval_end_utc_nanos.to_vec();
+    interval_factor_grid.interval_start_exchange_local = interval_start_utc_nanos
         .iter()
         .map(|timestamp_utc_nanos| {
             DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
         })
         .collect();
-    hourly_factor_contract.interval_end_exchange_local = interval_end_utc_nanos
+    interval_factor_grid.interval_end_exchange_local = interval_end_utc_nanos
         .iter()
         .map(|timestamp_utc_nanos| {
             DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
         })
         .collect();
-    hourly_factor_contract.interval_duration_nanos =
+    interval_factor_grid.interval_duration_nanos =
         interval_end_utc_nanos[0] - interval_start_utc_nanos[0];
-    hourly_factor_contract.s_h = seasonality_factors.to_vec();
-    hourly_factor_contract.nu_h = news_intensity_factors.to_vec();
-    hourly_factor_contract.diagnostics.interval_count = interval_start_utc_nanos.len();
-    hourly_factor_contract.diagnostics.interval_duration_nanos =
-        hourly_factor_contract.interval_duration_nanos;
-    hourly_factor_contract
+    interval_factor_grid.seasonality_factor = seasonality_factors.to_vec();
+    interval_factor_grid.news_intensity = news_intensity_factors.to_vec();
+    interval_factor_grid.diagnostics.interval_count = interval_start_utc_nanos.len();
+    interval_factor_grid.diagnostics.interval_duration_nanos =
+        interval_factor_grid.interval_duration_nanos;
+    interval_factor_grid
         .diagnostics
         .first_interval_start_utc_nanos = interval_start_utc_nanos[0];
-    hourly_factor_contract
-        .diagnostics
-        .last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
+    interval_factor_grid.diagnostics.last_interval_end_utc_nanos =
+        interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
 
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(interval_factor_grid);
 
     model_inputs.mean_reversion_fitted_parameters = mean_reversion_fitted_parameters;
     model_inputs.mean_reversion_runtime_interval_anchors = mean_reversion_runtime_interval_anchors;
@@ -3580,8 +3582,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         start_utc_nanos + NANOS_PER_HOUR,
         start_utc_nanos + 2 * NANOS_PER_HOUR,
     ];
-    let hourly_factor_contract = HourlyFactorContractOutput {
-        schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+    let interval_factor_grid = IntervalFactorGrid {
+        schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
         exchange_code: "XNYS".to_string(),
         exchange_timezone_name: "America/New_York".to_string(),
         request_start_utc_nanos: start_utc_nanos,
@@ -3598,35 +3600,35 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
             "2024-01-22T10:00:00-05:00".to_string(),
             "2024-01-22T11:00:00-05:00".to_string(),
         ],
-        s_h: vec![0.95, 1.05],
-        known_component_nu_h: vec![0.0, 0.0],
-        surprise_component_nu_h: vec![0.02, 0.03],
-        nu_h: vec![0.02, 0.03],
-        metadata: HourlyFactorMaterializationMetadata {
-            seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+        seasonality_factor: vec![0.95, 1.05],
+        known_news_intensity: vec![0.0, 0.0],
+        surprise_news_intensity: vec![0.02, 0.03],
+        news_intensity: vec![0.02, 0.03],
+        metadata: IntervalFactorGridMetadata {
+            seasonality_materialization_method: DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD
                 .to_string(),
             news_intensity_materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
                 .to_string(),
-            interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-            interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+            interval_boundary_policy: INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+            interval_alignment_policy: INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+            fall_back_policy: INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
         },
-        diagnostics: HourlyFactorContractDiagnostics {
+        diagnostics: IntervalFactorGridDiagnostics {
             interval_count: 2,
             interval_duration_nanos: NANOS_PER_HOUR,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: interval_end_utc_nanos[1],
-            skipped_local_hour_interval_count: 0,
-            repeated_local_hour_interval_count: 0,
+            skipped_exchange_local_interval_count: 0,
+            repeated_exchange_local_interval_count: 0,
         },
     };
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
@@ -3655,7 +3657,7 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
@@ -3668,16 +3670,16 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
 }
 
 fn disabled_mean_reversion_runtime_inputs(
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
     MeanReversionBoundaryState,
 ) {
-    let interval_deltas = hourly_factor_contract
+    let interval_deltas = interval_factor_grid
         .interval_start_utc_nanos
         .iter()
-        .zip(hourly_factor_contract.interval_end_utc_nanos.iter())
+        .zip(interval_factor_grid.interval_end_utc_nanos.iter())
         .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
             (*interval_end_utc_nanos - *interval_start_utc_nanos) as f64 / NANOS_PER_HOUR as f64
         })
@@ -3686,11 +3688,11 @@ fn disabled_mean_reversion_runtime_inputs(
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-gain mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
-            hourly_factor_contract.metadata.interval_alignment_policy,
+            interval_factor_grid.metadata.interval_alignment_policy,
             0.0,
             0.0,
-            vec![0.0; hourly_factor_contract.interval_indices.len()],
-            vec![0.0; hourly_factor_contract.interval_indices.len()],
+            vec![0.0; interval_factor_grid.interval_indices.len()],
+            vec![0.0; interval_factor_grid.interval_indices.len()],
             interval_deltas,
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
@@ -3714,18 +3716,18 @@ fn configure_mean_reversion_runtime_inputs(
 
     model_inputs.mean_reversion_runtime_interval_anchors =
         MeanReversionRuntimeIntervalAnchors::try_new(
-            HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+            INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
             start_anchor_value,
             0.0,
             end_anchor_values.to_vec(),
             vec![0.0; end_anchor_values.len()],
             model_inputs
-                .hourly_factor_contract
+                .interval_factor_grid
                 .interval_start_utc_nanos
                 .iter()
                 .zip(
                     model_inputs
-                        .hourly_factor_contract
+                        .interval_factor_grid
                         .interval_end_utc_nanos
                         .iter(),
                 )

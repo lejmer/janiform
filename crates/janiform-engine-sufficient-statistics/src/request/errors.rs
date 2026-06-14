@@ -53,21 +53,24 @@ impl Display for SufficientStatisticsRunRequestError {
                 write!(formatter, "model_inputs payload is invalid: {source}")
             }
             Self::InvalidIntervalFactors { source } => {
-                write!(formatter, "interval_factors payload is invalid: {source}")
+                write!(
+                    formatter,
+                    "interval_factor_grids payload is invalid: {source}"
+                )
             }
             Self::IntervalDeltaFactorMismatch {
                 requested_interval_delta,
                 available_factor_interval_delta,
             } => write!(
                 formatter,
-                "interval_delta ({requested_interval_delta}) must match interval_factors.interval_delta ({available_factor_interval_delta}) under the explicit-factor policy; implicit factor resampling is unsupported"
+                "interval_delta ({requested_interval_delta}) must match interval_factor_grids.interval_delta ({available_factor_interval_delta}) under the explicit-factor policy; implicit factor resampling is unsupported"
             ),
             Self::HorizonExceedsAvailableIntervals {
                 requested_interval_count,
                 available_interval_count,
             } => write!(
                 formatter,
-                "horizon_interval_count ({requested_interval_count}) exceeds available interval_factors entries ({available_interval_count})"
+                "horizon_interval_count ({requested_interval_count}) exceeds available interval_factor_grids entries ({available_interval_count})"
             ),
             Self::MeanReversionRuntimeAnchorIntervalCountMismatch {
                 expected_interval_count,

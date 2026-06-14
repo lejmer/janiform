@@ -42,7 +42,7 @@ pub use janiform_engine_simulation::{
     SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsRoutingTotals,
     SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
     SeededTickSimulationRunResult, SimulationProgressEvent, SimulationProgressPhase,
-    evolve_hawkes_state, evolve_mean_reversion_pressure_state, load_hourly_factor_contract,
+    evolve_hawkes_state, evolve_mean_reversion_pressure_state, load_interval_factor_grid,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
     project_hawkes_intensities_simulation_interval, run_coarse_simulation,
     run_coarse_simulation_with_observer, run_coarse_simulation_with_randomness_factory,

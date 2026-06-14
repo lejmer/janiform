@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from janiform.calendar import CalendarRegistry
-from janiform.hourly_factors import HourlyFactorContract, build_hourly_factor_contract
+from janiform.interval_factor_grids import IntervalFactorGridContract, build_interval_factor_grid
 from janiform.sufficient_statistics import (
     SufficientStatisticsRunRequest,
     serialize_sufficient_statistics_run_request,
@@ -14,24 +14,29 @@ from examples._shared import calendar_registry_json
 
 def main() -> None:
     calendar_registry: CalendarRegistry = CalendarRegistry(calendar_registry_json())
-    hourly_factor_contract: HourlyFactorContract = build_hourly_factor_contract(
+
+    interval_factor_grid: IntervalFactorGridContract = build_interval_factor_grid(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         range_end_utc=datetime(2026, 2, 2, 16, 0, tzinfo=UTC),
-        seasonality_hourly_factors=[1.1, 0.9],
-        news_intensity_hourly_factors=[0.2, 0.1],
+        interval="1h",
+        seasonality_factors=[1.1, 0.9],
+        news_intensity_factors=[0.2, 0.1],
     )
+
     request: SufficientStatisticsRunRequest = SufficientStatisticsRunRequest(
         seed=17,
         horizon_interval_count=2,
         interval_delta=1.0,
         model_inputs=build_sufficient_statistics_model_inputs(interval_count=2),
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid,
     )
+
     validated_request: SufficientStatisticsRunRequest = validate_sufficient_statistics_run_request(
         request.to_payload(),
     )
+
     serialized_request: str = serialize_sufficient_statistics_run_request(validated_request)
 
     print(

@@ -15,8 +15,9 @@ pub use domain::{
     PositiveNumberValidationError, ceil_integer_square_root, clamp_to_open_unit_interval,
     clamp_to_unit_interval, coverage_ratio, integer_square_root, logistic, normalized_pseudocount,
     representable_positive_f64_log_span, round_positive_to_domain, round_to,
-    strictly_positive_machine_value, validate_finite_number, validate_negative_number,
-    validate_non_negative_number, validate_positive_number,
+    saturating_positive_exp, strictly_positive_machine_value, support_information_depth,
+    validate_finite_number, validate_negative_number, validate_non_negative_number,
+    validate_positive_number,
 };
 pub use l_moments::{
     bowley_skewness_from_sorted, compute_probability_weighted_moment, l_moment_lambda2_from_sorted,

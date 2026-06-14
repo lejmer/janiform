@@ -30,7 +30,7 @@ use super::output::{pricing_result_to_py_object, workflow_error_to_pricing_error
 use super::request::{
     FittedModelSingleOptionPricingWorkflowPayload, ObservedOptionsPricingWorkflowPayload,
     PricingActivityCompressedScheduleRequestPayload, grid_batch_execution_input_from_py,
-    hourly_factor_contract_output_from_payload, surface_execution_input_from_py,
+    interval_factor_grid_output_from_payload, surface_execution_input_from_py,
     vanilla_option_pricing_execution_input_from_py,
 };
 
@@ -136,15 +136,15 @@ fn derive_activity_compressed_pricing_interval_schedule(
         ))
     })?;
 
-    let hourly_factor_contract =
-        hourly_factor_contract_output_from_payload(request.hourly_factor_contract);
+    let interval_factor_grid =
+        interval_factor_grid_output_from_payload(request.interval_factor_grid);
 
     let derived_schedule = py
         .detach(|| {
             derive_activity_compressed_pricing_interval_schedule_core(
                 request.valuation_time_utc_nanos,
                 request.expiry_timestamps_utc_nanos.as_slice(),
-                &hourly_factor_contract,
+                &interval_factor_grid,
             )
         })
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;

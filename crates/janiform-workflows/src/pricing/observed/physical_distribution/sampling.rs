@@ -104,7 +104,7 @@ pub(super) fn execute_physical_distribution_job(
 
     cancellation_token.check_cancelled()?;
 
-    if !context.send_progress(PhysicalDistributionProgress {
+    if !context.emit_progress(PhysicalDistributionProgress {
         completed_path_count: job.path_end - job.path_start,
     }) {
         cancellation_token.check_cancelled()?;

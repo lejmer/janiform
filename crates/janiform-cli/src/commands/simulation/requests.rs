@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use janiform::model::factors::hourly::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
-    HOURLY_FACTOR_FALL_BACK_POLICY, HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-    HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY, HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-    HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HourlyFactorContractDiagnostics,
-    HourlyFactorContractOutput, HourlyFactorContractPayload, HourlyFactorMaterializationMetadata,
-    load_hourly_factor_contract,
+use janiform::model::factors::interval_factor_grid::{
+    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD, INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
+    INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY, INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+    INTERVAL_FACTOR_GRID_SCHEMA_VERSION, INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+    INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY, IntervalFactorGrid,
+    IntervalFactorGridDiagnostics, IntervalFactorGridMetadata, IntervalFactorGridPayload,
+    load_interval_factor_grid,
 };
 use janiform::model::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform::model::long_variance::{LongVarianceParameters, LongVarianceState};
@@ -39,7 +39,7 @@ struct CoarseSimulationRequestDocument {
     horizon_interval_count: usize,
     interval_delta: f64,
     model_inputs: CoarseSimulationModelInputs,
-    hourly_factor_contract: HourlyFactorContractPayload,
+    interval_factor_grid: IntervalFactorGridPayload,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +55,7 @@ struct SeededTickSimulationRequestDocument {
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
-    hourly_factor_summary: SeededTickHourlyFactorSummary,
+    interval_factor_grid_summary: SeededTickIntervalFactorGridSummary,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
@@ -72,15 +72,15 @@ struct SeededTickSimulationRequestDocument {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SeededTickHourlyFactorSummary {
+struct SeededTickIntervalFactorGridSummary {
     schema_version: String,
     exchange_code: String,
     interval_count: usize,
     interval_duration_nanos: i64,
     interval_start_utc_nanos: Vec<i64>,
     interval_end_utc_nanos: Vec<i64>,
-    s_h: Vec<f64>,
-    nu_h: Vec<f64>,
+    seasonality_factor: Vec<f64>,
+    news_intensity: Vec<f64>,
 }
 
 pub(crate) fn load_coarse_simulation_request(
@@ -89,16 +89,18 @@ pub(crate) fn load_coarse_simulation_request(
     let document: CoarseSimulationRequestDocument =
         load_typed_json_artifact(path, SIMULATION_ARTIFACT_NAME)?;
 
-    let hourly_factor_contract = load_hourly_factor_contract(document.hourly_factor_contract)
-        .map_err(|source| CliError::InvalidCommandArgument {
-            argument_name: "--request-json",
-            message: source.to_string(),
+    let interval_factor_grid =
+        load_interval_factor_grid(document.interval_factor_grid).map_err(|source| {
+            CliError::InvalidCommandArgument {
+                argument_name: "--request-json",
+                message: source.to_string(),
+            }
         })?;
 
-    let interval_factors = SufficientStatisticsIntervalFactors::try_new(
-        hourly_factor_contract.s_h,
-        hourly_factor_contract.known_component_nu_h,
-        hourly_factor_contract.surprise_component_nu_h,
+    let interval_factor_grids = SufficientStatisticsIntervalFactors::try_new(
+        interval_factor_grid.seasonality_factor,
+        interval_factor_grid.known_news_intensity,
+        interval_factor_grid.surprise_news_intensity,
         Some(document.interval_delta),
     )
     .map_err(|source| CliError::InvalidCommandArgument {
@@ -112,7 +114,7 @@ pub(crate) fn load_coarse_simulation_request(
         document.horizon_interval_count,
         document.interval_delta,
         document.model_inputs,
-        interval_factors,
+        interval_factor_grids,
     )
     .map_err(|source| CliError::InvalidCommandArgument {
         argument_name: "--request-json",
@@ -128,10 +130,8 @@ pub(crate) fn load_seeded_tick_simulation_request(
         load_typed_json_artifact(request_path, SIMULATION_ARTIFACT_NAME)?;
 
     let calendar_registry = load_calendar_registry_artifact(calendar_registry_path)?;
-
     let start_time_utc = parse_start_time_utc(&document.start_time_utc)?;
-
-    let hourly_factor_contract = document.hourly_factor_summary.into_contract()?;
+    let interval_factor_grid = document.interval_factor_grid_summary.into_contract()?;
 
     let run_options = SeededTickSimulationRunOptions {
         debug_trace_enabled: document.debug_trace_enabled,
@@ -155,7 +155,7 @@ pub(crate) fn load_seeded_tick_simulation_request(
             mean_reversion_runtime_interval_anchors: document
                 .mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state: document.initial_mean_reversion_boundary_state,
-            hourly_factor_contract,
+            interval_factor_grid,
             return_clock_exposure_parameters: document.return_clock_exposure_parameters,
             long_variance_parameters: document.long_variance_parameters,
             initial_long_variance_state: document.initial_long_variance_state,
@@ -170,31 +170,34 @@ pub(crate) fn load_seeded_tick_simulation_request(
     })
 }
 
-impl SeededTickHourlyFactorSummary {
-    fn into_contract(self) -> Result<HourlyFactorContractOutput, CliError> {
+impl SeededTickIntervalFactorGridSummary {
+    fn into_contract(self) -> Result<IntervalFactorGrid, CliError> {
         self.validate()?;
 
         let interval_count = self.interval_count;
+
         let interval_count_u64 =
             u64::try_from(interval_count).map_err(|source| CliError::InvalidCommandArgument {
                 argument_name: "--request-json",
-                message: format!("hourly_factor_summary.interval_count is too large: {source}"),
+                message: format!(
+                    "interval_factor_grid_summary.interval_count is too large: {source}"
+                ),
             })?;
 
         let first_interval_start_utc_nanos = self.interval_start_utc_nanos[0];
         let last_interval_end_utc_nanos = self.interval_end_utc_nanos[interval_count - 1];
 
-        if self.schema_version != HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION {
+        if self.schema_version != INTERVAL_FACTOR_GRID_SCHEMA_VERSION {
             return Err(CliError::InvalidCommandArgument {
                 argument_name: "--request-json",
                 message: format!(
-                    "hourly_factor_summary.schema_version must be {HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION}"
+                    "interval_factor_grid_summary.schema_version must be {INTERVAL_FACTOR_GRID_SCHEMA_VERSION}"
                 ),
             });
         }
 
-        Ok(HourlyFactorContractOutput {
-            schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+        Ok(IntervalFactorGrid {
+            schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
             exchange_code: self.exchange_code,
             exchange_timezone_name: "UTC".to_string(),
             request_start_utc_nanos: first_interval_start_utc_nanos,
@@ -205,30 +208,30 @@ impl SeededTickHourlyFactorSummary {
             interval_end_utc_nanos: self.interval_end_utc_nanos,
             interval_start_exchange_local: Vec::new(),
             interval_end_exchange_local: Vec::new(),
-            s_h: self.s_h,
-            known_component_nu_h: vec![0.0; interval_count],
+            seasonality_factor: self.seasonality_factor,
+            known_news_intensity: vec![0.0; interval_count],
             // The direct seeded summary has combined news intensity only.
             // Store it as surprise intensity and as the combined vector used by the engine.
-            surprise_component_nu_h: self.nu_h.clone(),
-            nu_h: self.nu_h,
-            metadata: HourlyFactorMaterializationMetadata {
-                seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
-                    .to_string(),
-                news_intensity_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
-                    .to_string(),
-                interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-                interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-                timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-                spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-                fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+            surprise_news_intensity: self.news_intensity.clone(),
+            news_intensity: self.news_intensity,
+            metadata: IntervalFactorGridMetadata {
+                seasonality_materialization_method:
+                    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD.to_string(),
+                news_intensity_materialization_method:
+                    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD.to_string(),
+                interval_boundary_policy: INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+                interval_alignment_policy: INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
+                timezone_transition_policy: INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY,
+                spring_forward_policy: INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+                fall_back_policy: INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
             },
-            diagnostics: HourlyFactorContractDiagnostics {
+            diagnostics: IntervalFactorGridDiagnostics {
                 interval_count,
                 interval_duration_nanos: self.interval_duration_nanos,
                 first_interval_start_utc_nanos,
                 last_interval_end_utc_nanos,
-                skipped_local_hour_interval_count: 0,
-                repeated_local_hour_interval_count: 0,
+                skipped_exchange_local_interval_count: 0,
+                repeated_exchange_local_interval_count: 0,
             },
         })
     }
@@ -237,7 +240,7 @@ impl SeededTickHourlyFactorSummary {
         if self.interval_count == 0 {
             return Err(CliError::InvalidCommandArgument {
                 argument_name: "--request-json",
-                message: "hourly_factor_summary.interval_count must be strictly positive"
+                message: "interval_factor_grid_summary.interval_count must be strictly positive"
                     .to_string(),
             });
         }
@@ -245,22 +248,29 @@ impl SeededTickHourlyFactorSummary {
         if self.interval_duration_nanos <= 0 {
             return Err(CliError::InvalidCommandArgument {
                 argument_name: "--request-json",
-                message: "hourly_factor_summary.interval_duration_nanos must be strictly positive"
-                    .to_string(),
+                message:
+                    "interval_factor_grid_summary.interval_duration_nanos must be strictly positive"
+                        .to_string(),
             });
         }
 
         let field_lengths = [
             (
-                "hourly_factor_summary.interval_start_utc_nanos",
+                "interval_factor_grid_summary.interval_start_utc_nanos",
                 self.interval_start_utc_nanos.len(),
             ),
             (
-                "hourly_factor_summary.interval_end_utc_nanos",
+                "interval_factor_grid_summary.interval_end_utc_nanos",
                 self.interval_end_utc_nanos.len(),
             ),
-            ("hourly_factor_summary.s_h", self.s_h.len()),
-            ("hourly_factor_summary.nu_h", self.nu_h.len()),
+            (
+                "interval_factor_grid_summary.seasonality_factor",
+                self.seasonality_factor.len(),
+            ),
+            (
+                "interval_factor_grid_summary.news_intensity",
+                self.news_intensity.len(),
+            ),
         ];
 
         for (field, length) in field_lengths {
@@ -284,7 +294,7 @@ impl SeededTickHourlyFactorSummary {
                     .ok_or_else(|| CliError::InvalidCommandArgument {
                         argument_name: "--request-json",
                         message: format!(
-                            "hourly_factor_summary interval {interval_index} must have increasing bounds"
+                            "interval_factor_grid_summary interval {interval_index} must have increasing bounds"
                         ),
                     })?;
 
@@ -292,7 +302,7 @@ impl SeededTickHourlyFactorSummary {
                 return Err(CliError::InvalidCommandArgument {
                     argument_name: "--request-json",
                     message: format!(
-                        "hourly_factor_summary interval {interval_index} must have width {} nanos",
+                        "interval_factor_grid_summary interval {interval_index} must have width {} nanos",
                         self.interval_duration_nanos
                     ),
                 });
@@ -300,8 +310,14 @@ impl SeededTickHourlyFactorSummary {
         }
 
         for (field, values) in [
-            ("hourly_factor_summary.s_h", self.s_h.as_slice()),
-            ("hourly_factor_summary.nu_h", self.nu_h.as_slice()),
+            (
+                "interval_factor_grid_summary.seasonality_factor",
+                self.seasonality_factor.as_slice(),
+            ),
+            (
+                "interval_factor_grid_summary.news_intensity",
+                self.news_intensity.as_slice(),
+            ),
         ] {
             for (interval_index, value) in values.iter().copied().enumerate() {
                 if !value.is_finite() || value < 0.0 {

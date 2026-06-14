@@ -22,7 +22,7 @@ from janiform.sufficient_statistics import (
     validate_sufficient_statistics_run_request,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
-from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
 from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 
@@ -35,7 +35,7 @@ def test_sufficient_statistics_run_request_model_construction_and_serialization_
     assert deserialized_request == request
     assert deserialized_request.interval_delta == pytest.approx(1.0)
     assert json.loads(serialized_request)["horizon_interval_count"] == 2
-    assert json.loads(serialized_request)["hourly_factor_contract"]["known_component_nu_h"] == [0.12, 0.04]
+    assert json.loads(serialized_request)["interval_factor_grid"]["known_news_intensity"] == [0.12, 0.04]
 
 
 def test_sufficient_statistics_run_request_defaults_interval_delta_to_hourly() -> None:
@@ -50,17 +50,17 @@ def test_sufficient_statistics_run_request_defaults_interval_delta_to_hourly() -
 def test_sufficient_statistics_run_request_accepts_sub_hour_interval_when_interval_factors_are_compatible() -> None:
     request_payload = _valid_run_request_payload()
     request_payload["interval_delta"] = 0.5
-    request_payload["hourly_factor_contract"]["interval_duration_nanos"] = 1_800_000_000_000
-    request_payload["hourly_factor_contract"]["interval_start_utc_nanos"] = [
+    request_payload["interval_factor_grid"]["interval_duration_nanos"] = 1_800_000_000_000
+    request_payload["interval_factor_grid"]["interval_start_utc_nanos"] = [
         1_706_865_000_000_000_000,
         1_706_866_800_000_000_000,
     ]
-    request_payload["hourly_factor_contract"]["interval_end_utc_nanos"] = [
+    request_payload["interval_factor_grid"]["interval_end_utc_nanos"] = [
         1_706_866_800_000_000_000,
         1_706_868_600_000_000_000,
     ]
-    request_payload["hourly_factor_contract"]["request_end_utc_nanos"] = 1_706_868_600_000_000_000
-    request_payload["hourly_factor_contract"]["last_interval_end_utc_nanos"] = 1_706_868_600_000_000_000
+    request_payload["interval_factor_grid"]["request_end_utc_nanos"] = 1_706_868_600_000_000_000
+    request_payload["interval_factor_grid"]["last_interval_end_utc_nanos"] = 1_706_868_600_000_000_000
     (
         _mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
@@ -73,8 +73,8 @@ def test_sufficient_statistics_run_request_accepts_sub_hour_interval_when_interv
     validated_request = validate_sufficient_statistics_run_request(request_payload)
 
     assert validated_request.interval_delta == pytest.approx(0.5)
-    assert validated_request.hourly_factor_contract is not None
-    assert validated_request.hourly_factor_contract.interval_duration_nanos == 1_800_000_000_000
+    assert validated_request.interval_factor_grid is not None
+    assert validated_request.interval_factor_grid.interval_duration_nanos == 1_800_000_000_000
 
 
 def test_sufficient_statistics_run_request_rejects_sub_hour_interval_without_compatible_factor_delta() -> None:
@@ -87,7 +87,7 @@ def test_sufficient_statistics_run_request_rejects_sub_hour_interval_without_com
     assert captured_error.value.failure.error_id == "sufficient_statistics.validation.contract"
     assert captured_error.value.failure.workflow == "sufficient_statistics"
     assert captured_error.value.failure.entrypoint == "contract"
-    assert captured_error.value.failure.field_path == "hourly_factor_contract.interval_duration_nanos"
+    assert captured_error.value.failure.field_path == "interval_factor_grid.interval_duration_nanos"
     assert "must match interval_delta exactly" in captured_error.value.failure.message
 
 
@@ -180,13 +180,13 @@ def test_sufficient_statistics_run_request_rejects_incomplete_payload_with_struc
 
 def test_sufficient_statistics_run_request_rejects_known_intensity_length_mismatch() -> None:
     request_payload = _valid_run_request_payload()
-    request_payload["hourly_factor_contract"]["known_component_nu_h"] = [0.2]
+    request_payload["interval_factor_grid"]["known_news_intensity"] = [0.2]
 
     with pytest.raises(SufficientStatisticsValidationError) as captured_error:
         validate_sufficient_statistics_run_request(request_payload)
 
-    assert captured_error.value.failure.field_path == "hourly_factor_contract"
-    assert "known_component_nu_h must have length 2" in captured_error.value.failure.message
+    assert captured_error.value.failure.field_path == "interval_factor_grid"
+    assert "known_news_intensity must have length 2" in captured_error.value.failure.message
 
 
 def test_sufficient_statistics_path_rejects_non_sequential_interval_index_with_structured_error() -> None:
@@ -293,11 +293,11 @@ def _valid_run_request_model() -> SufficientStatisticsRunRequest:
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         ),
-        hourly_factor_contract=build_hourly_factor_contract(
+        interval_factor_grid=build_interval_factor_grid_contract(
             request_start_utc_nanos=1_706_865_000_000_000_000,
-            s_h=(1.1, 0.9),
-            known_component_nu_h=(0.12, 0.04),
-            surprise_component_nu_h=(0.08, 0.06),
+            seasonality_factor=(1.1, 0.9),
+            known_news_intensity=(0.12, 0.04),
+            surprise_news_intensity=(0.08, 0.06),
         ),
     )
 

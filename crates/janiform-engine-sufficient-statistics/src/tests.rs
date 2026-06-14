@@ -75,7 +75,7 @@ fn run_request_round_trip_serialization_preserves_contract_shape() {
 }
 
 #[test]
-fn interval_factors_component_news_intensity_round_trip_and_context_consistency() {
+fn interval_factor_grids_component_news_intensity_round_trip_and_context_consistency() {
     let factors = SufficientStatisticsIntervalFactors::try_new(
         vec![1.1, 0.9],
         vec![0.12, 0.03],
@@ -84,7 +84,7 @@ fn interval_factors_component_news_intensity_round_trip_and_context_consistency(
     )
     .expect("component-aware interval factors should construct");
 
-    assert_eq!(factors.nu_h.as_ref(), &[0.2, 0.1]);
+    assert_eq!(factors.news_intensity.as_ref(), &[0.2, 0.1]);
 
     let first_interval_news_intensity = factors.news_intensity_input_at(0);
 
@@ -96,8 +96,14 @@ fn interval_factors_component_news_intensity_round_trip_and_context_consistency(
 
     let serialized = serde_json::to_value(&factors).expect("interval factors should serialize");
 
-    assert_eq!(serialized["nu_h_known"], serde_json::json!([0.12, 0.03]));
-    assert_eq!(serialized["nu_h_surprise"], serde_json::json!([0.08, 0.07]));
+    assert_eq!(
+        serialized["known_news_intensity"],
+        serde_json::json!([0.12, 0.03])
+    );
+    assert_eq!(
+        serialized["surprise_news_intensity"],
+        serde_json::json!([0.08, 0.07])
+    );
 
     let parsed: SufficientStatisticsIntervalFactors =
         serde_json::from_value(serialized).expect("serialized interval factors should parse");
@@ -106,13 +112,13 @@ fn interval_factors_component_news_intensity_round_trip_and_context_consistency(
 }
 
 #[test]
-fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
+fn interval_factor_grids_reject_inconsistent_total_and_component_news_intensity() {
     let factors = SufficientStatisticsIntervalFactors {
         interval_delta: Some(1.0),
-        s_h: vec![1.1].into_boxed_slice(),
-        nu_h: vec![0.3].into_boxed_slice(),
-        nu_h_known: vec![0.1].into_boxed_slice(),
-        nu_h_surprise: vec![0.1].into_boxed_slice(),
+        seasonality_factor: vec![1.1].into_boxed_slice(),
+        news_intensity: vec![0.3].into_boxed_slice(),
+        known_news_intensity: vec![0.1].into_boxed_slice(),
+        surprise_news_intensity: vec![0.1].into_boxed_slice(),
     };
 
     let error = factors
@@ -329,7 +335,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         0,
         1.0,
         build_model_inputs(),
-        build_interval_factors(),
+        build_interval_factor_grids(),
     )
     .expect_err("zero horizon must fail validation");
 
@@ -343,7 +349,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         1,
         0.0,
         build_model_inputs(),
-        build_interval_factors(),
+        build_interval_factor_grids(),
     )
     .expect_err("non-positive interval delta must fail validation");
 
@@ -357,7 +363,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         1,
         0.5,
         build_model_inputs_for_grid(1, 0.5),
-        build_interval_factors(),
+        build_interval_factor_grids(),
     )
     .expect_err("non-hourly interval delta without compatible factor metadata must fail");
 
@@ -374,7 +380,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         1,
         0.5,
         build_model_inputs_for_grid(1, 0.5),
-        build_interval_factors_with_interval_delta(0.5),
+        build_interval_factor_grids_with_interval_delta(0.5),
     )
     .expect("non-hourly interval delta with compatible factor metadata should pass");
 
@@ -387,10 +393,10 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
         "seed": 17,
         "horizon_interval_count": 2,
         "interval_delta": 1.0,
-        "interval_factors": {
-            "s_h": [1.1, 0.9],
-            "nu_h_known": [0.12, 0.03],
-            "nu_h_surprise": [0.08, 0.07]
+        "interval_factor_grids": {
+            "seasonality_factor": [1.1, 0.9],
+            "known_news_intensity": [0.12, 0.03],
+            "surprise_news_intensity": [0.08, 0.07]
         }
     });
 
@@ -409,22 +415,20 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
         "horizon_interval_count": 2,
         "interval_delta": 1.0,
         "model_inputs": build_model_inputs_payload(),
-        "interval_factors": {
-            "s_h": [1.1, 0.9],
-            "nu_h_known": [0.2],
-            "nu_h_surprise": [0.0, 0.1]
+        "interval_factor_grids": {
+            "seasonality_factor": [1.1, 0.9],
+            "known_news_intensity": [0.2],
+            "surprise_news_intensity": [0.0, 0.1]
         }
     });
 
     let malformed_factors_error =
         serde_json::from_value::<SufficientStatisticsRunRequest>(malformed_factors_payload)
-            .expect_err("mismatched interval_factors lengths must fail deserialization");
+            .expect_err("mismatched interval_factor_grids lengths must fail deserialization");
 
-    assert!(
-        malformed_factors_error
-            .to_string()
-            .contains("interval_factors.nu_h_known length must match s_h length")
-    );
+    assert!(malformed_factors_error.to_string().contains(
+        "interval_factor_grids.known_news_intensity length must match seasonality_factor length"
+    ));
 }
 
 #[test]
@@ -433,10 +437,10 @@ fn run_request_deserialization_defaults_interval_delta_to_hourly() {
         "seed": 17,
         "horizon_interval_count": 2,
         "model_inputs": build_model_inputs_payload(),
-        "interval_factors": {
-            "s_h": [1.1, 0.9],
-            "nu_h_known": [0.12, 0.03],
-            "nu_h_surprise": [0.08, 0.07]
+        "interval_factor_grids": {
+            "seasonality_factor": [1.1, 0.9],
+            "known_news_intensity": [0.12, 0.03],
+            "surprise_news_intensity": [0.08, 0.07]
         }
     });
 
@@ -456,19 +460,24 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
         "seed": 17,
         "horizon_interval_count": 2,
         "model_inputs": build_model_inputs_payload(),
-        "interval_factors": {
-            "s_h": [1.1, 0.9],
-            "nu_h_known": [0.12, 0.03],
-            "nu_h_surprise": [0.08, 0.07]
+        "interval_factor_grids": {
+            "seasonality_factor": [1.1, 0.9],
+            "known_news_intensity": [0.12, 0.03],
+            "surprise_news_intensity": [0.08, 0.07]
         }
     });
 
     let parsed_request: SufficientStatisticsRunRequest = serde_json::from_value(payload)
         .expect("component-only news-intensity payload should parse");
 
-    assert_eq!(parsed_request.interval_factors.nu_h.as_ref(), &[0.2, 0.1]);
     assert_eq!(
-        parsed_request.interval_factors.news_intensity_input_at(1),
+        parsed_request.interval_factor_grids.news_intensity.as_ref(),
+        &[0.2, 0.1]
+    );
+    assert_eq!(
+        parsed_request
+            .interval_factor_grids
+            .news_intensity_input_at(1),
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.07)
             .expect("expected news-intensity input should construct")
     );
@@ -1309,25 +1318,28 @@ fn build_valid_run_request() -> SufficientStatisticsRunRequest {
         2,
         1.0,
         build_model_inputs(),
-        build_interval_factors(),
+        build_interval_factor_grids(),
     )
     .expect("run request should be valid")
 }
 
 fn build_transform_slice_context(
     interval_index: usize,
-    s_h: f64,
-    total_nu_h: f64,
+    seasonality_factor: f64,
+    total_news_intensity: f64,
     delta: f64,
 ) -> SufficientStatisticsTransformSliceContext {
-    let known_nu_h = total_nu_h * 0.5;
-    let surprise_nu_h = total_nu_h - known_nu_h;
+    let known_news_intensity = total_news_intensity * 0.5;
+    let surprise_news_intensity = total_news_intensity - known_news_intensity;
 
     SufficientStatisticsTransformSliceContext::try_new(
         interval_index,
-        s_h,
-        ExponentialAffineTransformNewsIntensityInput::try_new(known_nu_h, surprise_nu_h)
-            .expect("slice context news_intensity should be valid"),
+        seasonality_factor,
+        ExponentialAffineTransformNewsIntensityInput::try_new(
+            known_news_intensity,
+            surprise_news_intensity,
+        )
+        .expect("slice context news_intensity should be valid"),
         delta,
         build_initial_state(),
     )
@@ -1438,7 +1450,7 @@ fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDrive
         .expect("nig driver parameters should derive from shared-plus-shift configuration")
 }
 
-fn build_interval_factors() -> SufficientStatisticsIntervalFactors {
+fn build_interval_factor_grids() -> SufficientStatisticsIntervalFactors {
     SufficientStatisticsIntervalFactors::try_new(
         vec![1.1, 0.9],
         vec![0.12, 0.03],
@@ -1448,7 +1460,7 @@ fn build_interval_factors() -> SufficientStatisticsIntervalFactors {
     .expect("interval factors should be valid")
 }
 
-fn build_interval_factors_with_interval_delta(
+fn build_interval_factor_grids_with_interval_delta(
     interval_delta: f64,
 ) -> SufficientStatisticsIntervalFactors {
     SufficientStatisticsIntervalFactors::try_new(

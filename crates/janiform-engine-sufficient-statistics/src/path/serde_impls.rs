@@ -30,7 +30,7 @@ struct SufficientStatisticsRunRequestPayload {
     #[serde(default = "default_intraday_sufficient_statistics_interval_delta")]
     interval_delta: f64,
     model_inputs: SufficientStatisticsModelInputs,
-    interval_factors: SufficientStatisticsIntervalFactors,
+    interval_factor_grids: SufficientStatisticsIntervalFactors,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsRunRequest {
@@ -44,7 +44,7 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRunRequest {
             payload.horizon_interval_count,
             payload.interval_delta,
             payload.model_inputs,
-            payload.interval_factors,
+            payload.interval_factor_grids,
         )
         .map_err(serde::de::Error::custom)
     }

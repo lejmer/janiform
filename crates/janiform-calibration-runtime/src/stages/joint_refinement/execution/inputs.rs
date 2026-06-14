@@ -32,7 +32,6 @@ use crate::stages::tick_objective_data::{
 use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
-use super::super::setup::build_surprise_multipliers_for_interval_grid;
 use super::super::summary_simulation::JointRefinementSummarySimulationSessionContext;
 use super::{JointRefinementObservedData, build_exchange_calendar_registry_artifact};
 
@@ -213,12 +212,6 @@ pub(crate) fn build_observed_data(
 
     let observed_hourly_tick_counts = tick_count_series(tick_hourly_intervals.as_slice());
 
-    let surprise_multiplier_by_hour_index = build_surprise_multipliers_by_hour_index(
-        hourly_simulation_start_utc,
-        hourly_simulation_interval_count,
-        return_components_fitted_parameters,
-    );
-
     let observed_tick_continuous_return_calibration_sample = observed_signal_preparation
         .continuous_return_calibration_sample
         .clone();
@@ -265,10 +258,9 @@ pub(crate) fn build_observed_data(
         hourly_simulation_start_utc,
         hourly_simulation_end_utc,
         hourly_simulation_interval_count,
-        surprise_weekly_hour_utc_multipliers: surprise_multiplier_by_hour_index
-            .into_iter()
-            .map(|(_, multiplier)| multiplier)
-            .collect(),
+        surprise_deterministic_intensity_profile: return_components_fitted_parameters
+            .surprise_deterministic_intensity_profile
+            .clone(),
         simulated_5m_interval_template: zeroed_interval_observation_template(
             observed_5m_intervals.as_slice(),
         ),
@@ -318,7 +310,7 @@ pub(crate) fn build_summary_simulation_session_context(
     context: &JointRefinementObservedData,
     exchange_code: &str,
     known_scheduled_event_timestamps_utc_nanos: &[i64],
-    runtime_hourly_seasonality_factors: &[f64],
+    runtime_interval_seasonality_factors: &[f64],
 ) -> Result<JointRefinementSummarySimulationSessionContext, String> {
     let calendar_registry_artifact = build_exchange_calendar_registry_artifact(
         calendar_registry,
@@ -332,7 +324,7 @@ pub(crate) fn build_summary_simulation_session_context(
         exchange_code: exchange_code.to_string(),
         known_scheduled_event_timestamps_utc_nanos: known_scheduled_event_timestamps_utc_nanos
             .to_vec(),
-        runtime_hourly_seasonality_factors: runtime_hourly_seasonality_factors.to_vec(),
+        runtime_interval_seasonality_factors: runtime_interval_seasonality_factors.to_vec(),
         hourly_simulation_start_utc_nanos: context
             .hourly_simulation_start_utc
             .timestamp_nanos_opt()
@@ -340,7 +332,9 @@ pub(crate) fn build_summary_simulation_session_context(
                 "joint refinement hourly simulation start timestamp is out of range".to_string()
             })?,
         hourly_simulation_interval_count: context.hourly_simulation_interval_count,
-        surprise_weekly_hour_utc_multipliers: context.surprise_weekly_hour_utc_multipliers.clone(),
+        surprise_deterministic_intensity_profile: context
+            .surprise_deterministic_intensity_profile
+            .clone(),
         simulated_5m_interval_template: context.simulated_5m_interval_template.clone(),
         simulated_15m_interval_template: context.simulated_15m_interval_template.clone(),
         simulated_hourly_interval_template: context.simulated_hourly_interval_template.clone(),
@@ -350,20 +344,4 @@ pub(crate) fn build_summary_simulation_session_context(
             .observed_15m_business_time_bucket_thresholds,
         observed_tick_shape_target_count: context.observed_tick_shape_returns.len(),
     })
-}
-
-fn build_surprise_multipliers_by_hour_index(
-    hourly_simulation_start_utc: DateTime<Utc>,
-    hourly_simulation_interval_count: usize,
-    return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
-) -> Vec<(u64, f64)> {
-    build_surprise_multipliers_for_interval_grid(
-        hourly_simulation_start_utc,
-        hourly_simulation_interval_count,
-        NANOS_PER_HOUR,
-        return_components_fitted_parameters
-            .surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
-            .as_slice(),
-    )
 }

@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
+use crate::stages::progress::StageProgressUpdate;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
 };
@@ -11,10 +12,24 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource, HawkesStageFittedParameters,
 };
+use janiform_foundations::time::SECONDS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameterValidationReport, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
+
+/// Compact event-side code for a buy-side Hawkes event.
+pub const HAWKES_EVENT_SIDE_CODE_BUY: u8 = 1;
+
+/// Compact event-side code for a sell-side Hawkes event.
+pub const HAWKES_EVENT_SIDE_CODE_SELL: u8 = 2;
+
+// One hour is the existing continuity boundary for the open-event Hawkes state recursion.
+pub(super) const HAWKES_MAX_CONTINUOUS_OPEN_GAP_SECONDS: f64 = SECONDS_PER_HOUR;
+
+// Seasonality factors are positive by construction, but persisted artifacts can
+// contain machine-scale edge values near sparse windows.
+pub(super) const HAWKES_MINIMUM_POSITIVE_SEASONALITY_FACTOR: f64 = 1.0e-9;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -451,6 +466,7 @@ impl HawkesStageSeasonalityInput {
 pub struct HawkesStageExecutionInput {
     pub seasonality_input: HawkesStageSeasonalityInput,
     pub candidate_inputs: Vec<HawkesStageCandidateInput>,
+    pub event_side_codes: Vec<u8>,
 }
 
 impl HawkesStageExecutionInput {
@@ -463,6 +479,7 @@ impl HawkesStageExecutionInput {
                 payload: seasonality_payload,
             },
             candidate_inputs,
+            event_side_codes: Vec::new(),
         }
     }
 
@@ -477,7 +494,72 @@ impl HawkesStageExecutionInput {
                 payload: seasonality_payload,
             },
             candidate_inputs,
+            event_side_codes: Vec::new(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HawkesStageProgressPhase {
+    InputPreflight,
+    EventTapePreparation,
+    CandidatePreparation,
+    CandidateEvaluation,
+    CandidateRefinement,
+    LikelihoodShortlistEvaluation,
+    CandidateSelection,
+    ReportAssembly,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HawkesStageProgressUpdate {
+    pub phase: HawkesStageProgressPhase,
+    pub completed_units: usize,
+    pub total_units: usize,
+    pub aggregate_progress_percent: Option<usize>,
+    pub current_item_label: Option<String>,
+    pub current_evaluation_count: Option<usize>,
+    pub total_evaluation_budget: Option<usize>,
+    pub evaluation_progress_percent: Option<usize>,
+    pub current_weighted_objective: Option<f64>,
+    pub best_weighted_objective: Option<f64>,
+    pub current_convergence_ratio: Option<f64>,
+}
+
+impl HawkesStageProgressUpdate {
+    pub(crate) fn new(
+        phase: HawkesStageProgressPhase,
+        completed_units: usize,
+        total_units: usize,
+    ) -> Self {
+        Self {
+            phase,
+            completed_units,
+            total_units,
+            aggregate_progress_percent: None,
+            current_item_label: None,
+            current_evaluation_count: None,
+            total_evaluation_budget: None,
+            evaluation_progress_percent: None,
+            current_weighted_objective: None,
+            best_weighted_objective: None,
+            current_convergence_ratio: None,
+        }
+    }
+
+    pub(crate) fn stage_progress_percent(&self) -> usize {
+        StageProgressUpdate {
+            phase: self.phase,
+            completed_units: self.completed_units,
+            total_units: self.total_units,
+            aggregate_progress_percent: self.aggregate_progress_percent,
+            current_item_label: self.current_item_label.clone(),
+            current_evaluation_count: self.current_evaluation_count,
+            total_evaluation_budget: self.total_evaluation_budget,
+            evaluation_progress_percent: self.evaluation_progress_percent,
+        }
+        .stage_progress_percent()
     }
 }
 
@@ -500,7 +582,7 @@ pub struct HawkesStageImpliedMetricsDiagnostic {
     pub observed_open_event_rate_per_hour: f64,
     pub deseasonalized_open_event_rate_per_hour_target: f64,
     pub lambda_bar_scaling_ratio_applied: f64,
-    pub max_runtime_hourly_seasonality_factor: f64,
+    pub max_runtime_interval_seasonality_factor: f64,
     pub max_runtime_effective_branching_ratio: f64,
     pub runtime_effective_branching_margin: f64,
     pub model_implied_open_event_rate_per_hour: f64,
@@ -591,6 +673,9 @@ pub enum HawkesStageExecutionFailure {
     SeasonalityArtifactReferenceMismatch {
         expected_artifact_reference: String,
         provided_artifact_reference: String,
+    },
+    InvalidSeasonalityPayload {
+        error_message: String,
     },
     MissingHawkesCandidateInputs,
     DuplicateCandidateId {

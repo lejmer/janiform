@@ -33,13 +33,13 @@ pub enum SeededTickSimulationRunError {
     InvalidHorizonIntervalCount {
         value: usize,
     },
-    MissingHourlyFactorIntervals,
-    HourlyFactorFieldLengthMismatch {
+    MissingIntervalFactorGridIntervals,
+    IntervalFactorGridFieldLengthMismatch {
         field_name: &'static str,
         expected_interval_count: usize,
         observed_interval_count: usize,
     },
-    HourlyFactorDiagnosticsIntervalCountMismatch {
+    IntervalFactorGridDiagnosticsIntervalCountMismatch {
         expected_interval_count: usize,
         diagnostics_interval_count: usize,
     },
@@ -50,11 +50,11 @@ pub enum SeededTickSimulationRunError {
     StartTimeOutOfNanosecondRange {
         value: DateTime<Utc>,
     },
-    StartTimeDoesNotMatchHourlyFactorCoverage {
+    StartTimeDoesNotMatchIntervalFactorGridCoverage {
         start_time_utc_nanos: i64,
         first_interval_start_utc_nanos: i64,
     },
-    InvalidHourlyFactorIntervalBounds {
+    InvalidIntervalFactorGridIntervalBounds {
         interval_index: usize,
         interval_start_utc_nanos: i64,
         interval_end_utc_nanos: i64,
@@ -64,7 +64,7 @@ pub enum SeededTickSimulationRunError {
         requested_capacity: usize,
         detail: String,
     },
-    NonConsecutiveHourlyFactorCoverage {
+    NonConsecutiveIntervalFactorGridCoverage {
         previous_interval_index: usize,
         previous_interval_end_utc_nanos: i64,
         current_interval_index: usize,
@@ -211,50 +211,50 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "horizon_interval_count must be greater than 0, found {value}"
             ),
-            Self::MissingHourlyFactorIntervals => write!(
+            Self::MissingIntervalFactorGridIntervals => write!(
                 formatter,
-                "hourly_factor_contract.interval_count must be greater than 0"
+                "interval_factor_grid.interval_count must be greater than 0"
             ),
-            Self::HourlyFactorFieldLengthMismatch {
+            Self::IntervalFactorGridFieldLengthMismatch {
                 field_name,
                 expected_interval_count,
                 observed_interval_count,
             } => write!(
                 formatter,
-                "hourly_factor_contract.{field_name} length must match interval_count ({expected_interval_count}), found {observed_interval_count}"
+                "interval_factor_grid.{field_name} length must match interval_count ({expected_interval_count}), found {observed_interval_count}"
             ),
-            Self::HourlyFactorDiagnosticsIntervalCountMismatch {
+            Self::IntervalFactorGridDiagnosticsIntervalCountMismatch {
                 expected_interval_count,
                 diagnostics_interval_count,
             } => write!(
                 formatter,
-                "hourly_factor_contract.diagnostics.interval_count must match interval_count ({expected_interval_count}), found {diagnostics_interval_count}"
+                "interval_factor_grid.diagnostics.interval_count must match interval_count ({expected_interval_count}), found {diagnostics_interval_count}"
             ),
             Self::HorizonExceedsAvailableIntervals {
                 requested_interval_count,
                 available_interval_count,
             } => write!(
                 formatter,
-                "horizon_interval_count ({requested_interval_count}) exceeds hourly factor interval_count ({available_interval_count})"
+                "horizon_interval_count ({requested_interval_count}) exceeds interval factor grid interval_count ({available_interval_count})"
             ),
             Self::StartTimeOutOfNanosecondRange { value } => write!(
                 formatter,
                 "start_time_utc cannot be represented in nanoseconds, found {value}"
             ),
-            Self::StartTimeDoesNotMatchHourlyFactorCoverage {
+            Self::StartTimeDoesNotMatchIntervalFactorGridCoverage {
                 start_time_utc_nanos,
                 first_interval_start_utc_nanos,
             } => write!(
                 formatter,
-                "start_time_utc nanos ({start_time_utc_nanos}) must match hourly factor first interval start ({first_interval_start_utc_nanos})"
+                "start_time_utc nanos ({start_time_utc_nanos}) must match interval factor grid first interval start ({first_interval_start_utc_nanos})"
             ),
-            Self::InvalidHourlyFactorIntervalBounds {
+            Self::InvalidIntervalFactorGridIntervalBounds {
                 interval_index,
                 interval_start_utc_nanos,
                 interval_end_utc_nanos,
             } => write!(
                 formatter,
-                "hourly_factor_contract interval {interval_index} has invalid bounds, start={interval_start_utc_nanos}, end={interval_end_utc_nanos}"
+                "interval_factor_grid interval {interval_index} has invalid bounds, start={interval_start_utc_nanos}, end={interval_end_utc_nanos}"
             ),
             Self::BufferAllocationFailed {
                 buffer_name,
@@ -264,14 +264,14 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "failed to reserve buffer `{buffer_name}` with requested_capacity={requested_capacity}: {detail}"
             ),
-            Self::NonConsecutiveHourlyFactorCoverage {
+            Self::NonConsecutiveIntervalFactorGridCoverage {
                 previous_interval_index,
                 previous_interval_end_utc_nanos,
                 current_interval_index,
                 current_interval_start_utc_nanos,
             } => write!(
                 formatter,
-                "hourly_factor_contract interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
+                "interval_factor_grid interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
             ),
             Self::SeasonalityScaledEndogenousInstability {
                 spectral_radius_alpha_over_beta,
@@ -365,7 +365,7 @@ impl Display for SeededTickSimulationRunError {
                 observed_policy,
             } => write!(
                 formatter,
-                "mean_reversion_runtime_interval_anchors.interval_alignment_policy must match hourly_factor_contract.metadata.interval_alignment_policy, expected `{expected_policy}`, found `{observed_policy}`"
+                "mean_reversion_runtime_interval_anchors.interval_alignment_policy must match interval_factor_grid.metadata.interval_alignment_policy, expected `{expected_policy}`, found `{observed_policy}`"
             ),
             Self::MeanReversionBoundaryStateStartAnchorMismatch {
                 boundary_anchor_value,
@@ -380,7 +380,7 @@ impl Display for SeededTickSimulationRunError {
                 observed_interval_delta,
             } => write!(
                 formatter,
-                "mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must match the hourly factor interval delta in hours, expected {expected_interval_delta}, found {observed_interval_delta}"
+                "mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must match the interval factor grid interval delta in hours, expected {expected_interval_delta}, found {observed_interval_delta}"
             ),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
                 formatter,

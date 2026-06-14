@@ -42,7 +42,7 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
     pricing_request: &VanillaOptionPricingRequest,
     maturity_count: usize,
     interval_deltas: &[f64],
-    interval_factors: &[VanillaOptionPricingIntervalFactors],
+    interval_factor_grids: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<TerminalAffineMeanReversionPath, VanillaOptionPricingRunError> {
     let boundary_input = &pricing_request.boundary_input;
@@ -78,7 +78,7 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
 
         let physical_projection = derive_terminal_affine_physical_projection(
             pricing_request,
-            interval_factors[interval_offset],
+            interval_factor_grids[interval_offset],
             boundary_input.interval_index + interval_offset,
             current_hawkes_state,
             interval_delta,
@@ -208,16 +208,16 @@ fn log_price_path_span_from_reference(
 
 fn derive_terminal_affine_physical_projection(
     pricing_request: &VanillaOptionPricingRequest,
-    interval_factors: VanillaOptionPricingIntervalFactors,
+    interval_factor_grids: VanillaOptionPricingIntervalFactors,
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
     interval_delta: f64,
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<TerminalAffinePhysicalProjection, VanillaOptionPricingRunError> {
     let endogenous_factors = EndogenousAnchorIntervalFactors::try_new(
-        interval_factors.s_h,
-        interval_factors.nu_h_known,
-        interval_factors.nu_h_surprise,
+        interval_factor_grids.seasonality_factor,
+        interval_factor_grids.known_news_intensity,
+        interval_factor_grids.surprise_news_intensity,
         interval_delta,
     )
     .map_err(

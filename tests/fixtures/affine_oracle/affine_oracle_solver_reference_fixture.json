@@ -86,10 +86,10 @@
           "real": 0.0,
           "imaginary": 0.0
         },
-        "s_h": 1.1,
+        "seasonality_factor": 1.1,
         "news_intensity": {
-          "known_nu_h": 0.0,
-          "surprise_nu_h": 0.0
+          "known_news_intensity": 0.0,
+          "surprise_news_intensity": 0.0
         },
         "known_news_component_mark_scales": {
           "activity_coupling_scale": 1.0,
@@ -214,10 +214,10 @@
           "real": 0.0,
           "imaginary": 0.0
         },
-        "s_h": 1.1,
+        "seasonality_factor": 1.1,
         "news_intensity": {
-          "known_nu_h": 0.0,
-          "surprise_nu_h": 0.08
+          "known_news_intensity": 0.0,
+          "surprise_news_intensity": 0.08
         },
         "known_news_component_mark_scales": {
           "activity_coupling_scale": 1.0,
@@ -342,10 +342,10 @@
           "real": 0.0,
           "imaginary": 0.0
         },
-        "s_h": 1.1,
+        "seasonality_factor": 1.1,
         "news_intensity": {
-          "known_nu_h": 0.0,
-          "surprise_nu_h": 0.08
+          "known_news_intensity": 0.0,
+          "surprise_news_intensity": 0.08
         },
         "known_news_component_mark_scales": {
           "activity_coupling_scale": 1.0,

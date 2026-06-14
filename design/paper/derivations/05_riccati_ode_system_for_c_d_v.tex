@@ -58,8 +58,8 @@ Symbol & Meaning & Units or domain\\
 \(\chi_\pm\) & Long-variance event-jump loading by side & Non-negative\\
 \(M_c(q,r)\) & Gamma-normal news mark transform for component \(c\) & Moment domain\\
 \(\ell_c(q,r)\) & \(\log M_c(q,r)\) on the principal branch & Moment domain\\
-\(\nu_h^{\mathrm{known}}\) & Equivalent rate for scheduled known-news timestamps & Non-negative\\
-\(\nu_h^{\mathrm{surprise}}\) & Surprise-news Poisson rate & Non-negative\\
+\(\nu_k^{\mathrm{known}}\) & Equivalent rate for scheduled known-news timestamps & Non-negative\\
+\(\nu_k^{\mathrm{surprise}}\) & Surprise-news Poisson rate & Non-negative\\
 \bottomrule
 \end{tabularx}
 
@@ -75,7 +75,7 @@ The affine ansatz holds for the interval transform.
 Buy endogenous intensity is \(Y^{++}+Y^{+-}\), and sell endogenous intensity is \(Y^{-+}+Y^{--}\).
 & Assigning \(H_+^E\) to \(D_{++},D_{+-}\) and \(H_-^E\) to \(D_{-+},D_{--}\).
 & The side intensity convention determines which state coordinates get each Hamiltonian.\\
-Baseline event intensities are both \(s_h\bar\lambda\).
+Baseline event intensities are both \(s_k\bar\lambda\).
 & Deriving the scalar baseline event term and the \(Z\)-linear baseline clock term.
 & Baseline arrivals affect \(C\), while baseline return clocks affect \(V\).\\
 The long-variance diffusion is CIR affine.
@@ -131,18 +131,18 @@ V'(\tau)
 &=
 -\kappa_zV(\tau)
 +\frac{1}{2}\sigma_z^2V(\tau)^2
--s_h\bar\lambda\big(u_+^B+u_-^B\big),\\
+-s_k\bar\lambda\big(u_+^B+u_-^B\big),\\
 C'(\tau)
 &=
 \kappa_z\bar zV(\tau)
-+s_h\bar\lambda\Big(
++s_k\bar\lambda\Big(
 H_+^B(\mathbf D(\tau),V(\tau))+u_+^B
 +H_-^B(\mathbf D(\tau),V(\tau))+u_-^B
 \Big)\\
 &\quad
-+\nu_h^{\mathrm{known}}\ell_{\mathrm{known}}
++\nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
 \left(q,\mathbf D(\tau)\cdot\mathbf r\right)
-+\nu_h^{\mathrm{surprise}}
++\nu_k^{\mathrm{surprise}}
 \left(
 M_{\mathrm{surprise}}\left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
 \right).
@@ -183,10 +183,10 @@ For endogenous activity, this yields \(H_+^E\) multiplying
 \(Y^{++}+Y^{+-}\) and \(H_-^E\) multiplying \(Y^{-+}+Y^{--}\). Combining with
 Hawkes decay gives the four \(\mathbf D\) equations.
 
-For baseline arrivals, the event intensities are both \(s_h\bar\lambda\).
+For baseline arrivals, the event intensities are both \(s_k\bar\lambda\).
 Their pure event contribution is
 \[
-s_h\bar\lambda
+s_k\bar\lambda
 \left[
 z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) -1
 +z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) -1
@@ -195,13 +195,13 @@ z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) -1
 Because \(H_\pm^B+u_\pm^B=z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1\),
 this is the baseline term in \(C'\):
 \[
-s_h\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
+s_k\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
 \]
 
 The baseline return clocks are long-variance scaled, so their transform
 loadings contribute
 \[
--s_h\bar\lambda(u_+^B+u_-^B)z.
+-s_k\bar\lambda(u_+^B+u_-^B)z.
 \]
 This term is \(z\)-linear and therefore enters \(V'\), not \(C'\).
 
@@ -230,12 +230,12 @@ M_c\left(q,\mathbf D(\tau)\cdot\mathbf r\right)
 Known-news timestamps are deterministic conditional on the schedule, so their
 equivalent rate contributes the log transform
 \[
-\nu_h^{\mathrm{known}}\ell_{\mathrm{known}}
+\nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
 \left(q,\mathbf D(\tau)\cdot\mathbf r\right).
 \]
 Surprise news is compound Poisson, so it contributes
 \[
-\nu_h^{\mathrm{surprise}}
+\nu_k^{\mathrm{surprise}}
 \left(
 M_{\mathrm{surprise}}
 \left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
@@ -276,7 +276,7 @@ Schedule RHS equations
 & \texttt{evaluate\_schedule\_base\_rhs} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
 Event Hamiltonians with \(V\chi_\pm\)
 & Buy and sell event multipliers include both \(\mathbf D\cdot\mathbf k_\pm\) and \(V\chi_\pm\).
-& \texttt{evaluate\_long\_variance\_schedule\_hamiltonians} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
+& \texttt{evaluate\_long\_variance\_schedule\_kamiltonians} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
 Known-news arrival transform
 & Known news uses the deterministic-arrival log transform.
 & Test \texttt{known\_news\_uses\_deterministic\_arrival\_log\_transform}\\

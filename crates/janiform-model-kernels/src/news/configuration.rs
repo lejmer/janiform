@@ -411,19 +411,21 @@ impl NewsComponentMarkScaleConfiguration {
 
 /// Derive the expected news activity-loading rate from component intensities and mark scales.
 pub fn expected_news_activity_loading_rate(
-    known_nu_h: f64,
-    surprise_nu_h: f64,
+    known_news_intensity: f64,
+    surprise_news_intensity: f64,
     known_component_mark_scales: NewsComponentMarkScaleConfiguration,
     surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
 ) -> Result<f64, NewsActivityLoadingRateError> {
-    if !known_nu_h.is_finite() || known_nu_h < 0.0 {
-        return Err(NewsActivityLoadingRateError::InvalidKnownIntensity { value: known_nu_h });
+    if !known_news_intensity.is_finite() || known_news_intensity < 0.0 {
+        return Err(NewsActivityLoadingRateError::InvalidKnownIntensity {
+            value: known_news_intensity,
+        });
     }
 
-    if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
+    if !surprise_news_intensity.is_finite() || surprise_news_intensity < 0.0 {
         return Err(NewsActivityLoadingRateError::InvalidSurpriseIntensity {
-            value: surprise_nu_h,
+            value: surprise_news_intensity,
         });
     }
 
@@ -443,10 +445,11 @@ pub fn expected_news_activity_loading_rate(
             |source| NewsActivityLoadingRateError::InvalidGammaSeverityMarkConfiguration { source },
         )?;
 
-    let expected_known_loading_rate =
-        known_nu_h * known_component_mark_scales.activity_coupling_scale * expected_severity_mark;
+    let expected_known_loading_rate = known_news_intensity
+        * known_component_mark_scales.activity_coupling_scale
+        * expected_severity_mark;
 
-    let expected_surprise_loading_rate = surprise_nu_h
+    let expected_surprise_loading_rate = surprise_news_intensity
         * surprise_component_mark_scales.activity_coupling_scale
         * expected_severity_mark;
 

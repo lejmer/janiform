@@ -15,7 +15,7 @@ use serde::Serialize;
 use super::contracts::RegressionCaseStatus;
 
 const INTERVAL_RATIO_TOLERANCE: f64 = 1.0e-9;
-const FLOAT_ZERO_TOLERANCE: f64 = 1.0e-12;
+const FLOAT_ZERO_TOLERANCE: f64 = 1.0e-16;
 
 pub const SEEDED_TICK_COARSE_COMPARABLE_PATH_SCHEMA_VERSION: &str =
     "validation.seeded_tick.coarse_comparable_path.v1";
@@ -1305,9 +1305,11 @@ fn reconstruct_fine_interval_records(
 ) -> Result<Vec<SeededTickCoarseComparableIntervalRecord>, SeededTickCoarseAggregationError> {
     let horizon_interval_count = run_config.horizon_interval_count;
     let kernel_parameters = run_config.model_inputs.kernel_parameters;
+
     let lambda_bar = kernel_parameters.lambda_bar;
     let beta = kernel_parameters.beta;
-    let contract = &run_config.model_inputs.hourly_factor_contract;
+
+    let contract = &run_config.model_inputs.interval_factor_grid;
 
     let fine_path_by_transition_index = run_result
         .fine_path
@@ -1352,7 +1354,7 @@ fn reconstruct_fine_interval_records(
 
         let interval_start_utc_nanos = contract.interval_start_utc_nanos[interval_index];
         let interval_end_utc_nanos = contract.interval_end_utc_nanos[interval_index];
-        let seasonality_factor = contract.s_h[interval_index];
+        let seasonality_factor = contract.seasonality_factor[interval_index];
 
         let mut current_state = interval_start_state;
 
@@ -1444,12 +1446,14 @@ fn reconstruct_fine_interval_records(
         let interval_open_jump_return = boundary_trace_record
             .cumulative_open_window_return_jump_m_t_increment
             - cumulative_open_jump_return;
+
         let interval_closed_gap_return = boundary_trace_record
             .cumulative_closed_window_gap_g_t_increment
             - cumulative_closed_gap_return;
 
         cumulative_open_jump_return =
             boundary_trace_record.cumulative_open_window_return_jump_m_t_increment;
+
         cumulative_closed_gap_return =
             boundary_trace_record.cumulative_closed_window_gap_g_t_increment;
 
@@ -1507,6 +1511,7 @@ fn aggregate_fine_records_to_coarse_records(
     fine_subinterval_count_per_coarse_interval: usize,
 ) -> Vec<SeededTickCoarseComparableIntervalRecord> {
     let coarse_interval_count = fine_records.len() / fine_subinterval_count_per_coarse_interval;
+
     let mut coarse_records = Vec::with_capacity(coarse_interval_count);
 
     for coarse_interval_index in 0..coarse_interval_count {
@@ -1615,6 +1620,7 @@ fn flatten_trace_records(
         .iter()
         .flat_map(|trace_chunk| trace_chunk.records.iter())
         .collect::<Vec<_>>();
+
     trace_records.sort_by_key(|trace_record| trace_record.transition_index);
 
     trace_records
@@ -1624,7 +1630,7 @@ fn derive_uniform_interval_delta_hours(
     run_config: &SeededTickSimulationRunConfig,
     horizon_interval_count: usize,
 ) -> Result<f64, SeededTickCoarseAggregationError> {
-    let contract = &run_config.model_inputs.hourly_factor_contract;
+    let contract = &run_config.model_inputs.interval_factor_grid;
 
     let first_interval_delta_nanos =
         contract.interval_end_utc_nanos[0] - contract.interval_start_utc_nanos[0];

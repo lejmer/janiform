@@ -1,7 +1,7 @@
 use janiform::model::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, materialize_endogenous_anchor_path,
 };
-use janiform::model::factors::hourly::HourlyFactorContractOutput;
+use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::simulation::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
@@ -17,7 +17,7 @@ const DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION: f64 = 0.0;
 
 pub(crate) fn materialize_mean_reversion_runtime_inputs(
     context: &FittedModelContext,
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
     initial_excitation_state: HawkesExcitationState,
     start_anchor_value: f64,
     interval_delta: f64,
@@ -29,13 +29,13 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
     ),
     WorkflowError,
 > {
-    let interval_factors =
-        janiform_calibration_runtime::endogenous_interval_factors_from_hourly_contract(
-            hourly_factor_contract,
+    let interval_factor_grids =
+        janiform_calibration_runtime::endogenous_interval_factor_grids_from_interval_factor_grid(
+            interval_factor_grid,
         )
-        .map_err(|source| validation_error("hourly_factor_contract", source))?;
+        .map_err(|source| validation_error("interval_factor_grid", source))?;
 
-    let interval_alignment_policy = hourly_factor_contract.metadata.interval_alignment_policy;
+    let interval_alignment_policy = interval_factor_grid.metadata.interval_alignment_policy;
 
     let anchor_materialization = materialize_endogenous_anchor_path(
         interval_alignment_policy,
@@ -66,7 +66,7 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
             .return_components_fitted_parameters
             .news_process_configuration,
         initial_excitation_state,
-        interval_factors.as_slice(),
+        interval_factor_grids.as_slice(),
     )
     .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
 

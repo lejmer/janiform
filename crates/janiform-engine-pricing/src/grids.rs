@@ -145,7 +145,7 @@ pub struct VanillaOptionGridBatchPricingExecutionInput {
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub runtime_interval_schedule: PricingIntervalSchedule,
     pub interval_delta: f64,
-    pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+    pub interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spectral_collocation_node_count_override: Option<usize>,
@@ -199,21 +199,21 @@ impl VanillaOptionGridBatchPricingExecutionInput {
             );
         }
 
-        if self.interval_factors.is_empty() {
+        if self.interval_factor_grids.is_empty() {
             return Err(VanillaOptionGridBatchPricingExecutionInputError::EmptyIntervalFactors);
         }
 
-        for interval_factor in &self.interval_factors {
+        for interval_factor in &self.interval_factor_grids {
             interval_factor.validate().map_err(|source| {
                 VanillaOptionGridBatchPricingExecutionInputError::InvalidIntervalFactors { source }
             })?;
         }
 
-        if self.interval_factors.len() != self.runtime_interval_schedule.interval_count() {
+        if self.interval_factor_grids.len() != self.runtime_interval_schedule.interval_count() {
             return Err(
                 VanillaOptionGridBatchPricingExecutionInputError::IntervalFactorShapeMismatch {
                     expected_interval_factor_count: self.runtime_interval_schedule.interval_count(),
-                    found_interval_factor_count: self.interval_factors.len(),
+                    found_interval_factor_count: self.interval_factor_grids.len(),
                 },
             );
         }
@@ -291,7 +291,7 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             ),
             Self::InvalidIntervalFactors { source } => write!(
                 formatter,
-                "grid batch pricing interval_factors are invalid: {source}"
+                "grid batch pricing interval_factor_grids are invalid: {source}"
             ),
             Self::InvalidRuntimeIntervalSchedule { message } => write!(
                 formatter,
@@ -306,14 +306,14 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             ),
             Self::EmptyIntervalFactors => write!(
                 formatter,
-                "grid batch pricing interval_factors must contain at least one interval"
+                "grid batch pricing interval_factor_grids must contain at least one interval"
             ),
             Self::IntervalFactorShapeMismatch {
                 expected_interval_factor_count,
                 found_interval_factor_count,
             } => write!(
                 formatter,
-                "grid batch pricing interval_factors must contain exactly {expected_interval_factor_count} entries implied by the runtime schedule, found {found_interval_factor_count}"
+                "grid batch pricing interval_factor_grids must contain exactly {expected_interval_factor_count} entries implied by the runtime schedule, found {found_interval_factor_count}"
             ),
             Self::InvalidCollocationNodeCount { value } => write!(
                 formatter,
@@ -425,7 +425,7 @@ pub struct VanillaOptionSurfacePricingExecutionInput {
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub runtime_interval_schedule: PricingIntervalSchedule,
     pub interval_delta: f64,
-    pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+    pub interval_factor_grids: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spectral_collocation_node_count_override: Option<usize>,
@@ -449,7 +449,7 @@ impl VanillaOptionSurfacePricingExecutionInput {
             model_parameters: self.model_parameters.clone(),
             runtime_interval_schedule: self.runtime_interval_schedule.clone(),
             interval_delta: self.interval_delta,
-            interval_factors: self.interval_factors.clone(),
+            interval_factor_grids: self.interval_factor_grids.clone(),
             optional_output_selection: self.optional_output_selection,
             spectral_collocation_node_count_override: self.spectral_collocation_node_count_override,
             cpu_count: self.cpu_count,
@@ -648,7 +648,7 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
             model_parameters: execution_input.model_parameters,
             runtime_interval_schedule: execution_input.runtime_interval_schedule,
             interval_delta: execution_input.interval_delta,
-            interval_factors: execution_input.interval_factors,
+            interval_factor_grids: execution_input.interval_factor_grids,
             optional_output_selection: execution_input.optional_output_selection,
             spectral_collocation_node_count_override: execution_input
                 .spectral_collocation_node_count_override,

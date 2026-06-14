@@ -7,7 +7,6 @@ mod checkpointing;
 mod current_state;
 mod diagnostics;
 mod execution_bridge;
-mod information_depth;
 mod market_data;
 mod objective;
 mod optimizer_adapter;
@@ -15,13 +14,14 @@ mod runtime_seasonality;
 mod shock_mark_fitting;
 mod staged_runner;
 mod stages;
+mod surprise_profile;
 mod temporal;
 
 pub use adapters::{
     OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
     build_option_surface_calibration_observation_from_pricing_hooks,
     evaluate_calibration_martingale_condition_under_esscher_tilt,
-    evolve_hawkes_state_for_calibration_step, load_hourly_factor_contract_for_calibration,
+    evolve_hawkes_state_for_calibration_step, load_interval_factor_grid_for_calibration,
     precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
     project_hawkes_intensities_for_calibration_interval,
     transform_nig_exponent_for_calibration_under_esscher_tilt,
@@ -37,11 +37,8 @@ pub use current_state::{
 pub use diagnostics::types::{CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind};
 pub use execution_bridge::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-    CalibrationDayOfWeekSeasonalityEstimatorSettings,
-    CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
-    CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
-    CalibrationJointRefinementCurrentStateEstimationInput,
+    CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+    CalibrationJointRefinementCarryInput, CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
     CalibrationMeanReversionStageObservation,
@@ -56,7 +53,7 @@ pub use execution_bridge::{
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
-    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationScheduledEventOverlay,
+    CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
     CalibrationSharedNewsMarkLawConfiguration, CalibrationStagedExecutionBridgeError,
     CalibrationStagedExecutionInput, CalibrationStagedExecutionPlan,
@@ -164,7 +161,8 @@ pub use stages::hawkes::{
     HawkesStageExecutionReport, HawkesStageFittedPayload, HawkesStageHandoffOutput,
     HawkesStageImpliedMetricsDiagnostic, HawkesStageObjectiveTermDiagnostic,
     HawkesStageObservedSourceRegime, HawkesStageObservedSourceRegimeError,
-    HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
+    HawkesStageProgressPhase, HawkesStageProgressUpdate, HawkesStageSeasonalityInput,
+    run_hawkes_calibration_stage,
 };
 pub use stages::joint_refinement::{
     CloseSessionRequest, CloseSessionResponse, InitializeSessionRequest, InitializeSessionResponse,
@@ -182,7 +180,7 @@ pub use stages::joint_refinement::{
     JointRefinementSummarySimulationSessionContext, JointRefinementSummarySimulationSessionState,
     JointRefinementSummarySimulationWorkerRequest, JointRefinementSummarySimulationWorkerResponse,
     JointRefinementWorkerRequestedOutput, RunCandidateRequest, RunCandidateResponse,
-    current_process_resident_bytes, endogenous_interval_factors_from_hourly_contract,
+    current_process_resident_bytes, endogenous_interval_factor_grids_from_interval_factor_grid,
     initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
     run_joint_refinement_calibration_stage, run_joint_refinement_candidate_in_session,
     simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
@@ -251,5 +249,12 @@ pub use stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
     SeasonalityStageExecutionReport, SeasonalityStageExecutionSettings,
     SeasonalityStageHandoffOutput, SeasonalityStageNormalizedPayload,
-    SeasonalityStageOverlayMetadata, run_seasonality_calibration_stage,
+    SeasonalityStageProgressPhase, SeasonalityStageProgressUpdate,
+    run_seasonality_calibration_stage,
+};
+pub use surprise_profile::{
+    SurpriseNewsWeeklyProfileError, average_surprise_news_weekly_profile_multiplier_over_interval,
+    materialize_surprise_news_weekly_profile_multipliers_for_interval_grid,
+    materialize_surprise_news_weekly_profile_multipliers_for_interval_range,
+    validate_surprise_news_weekly_profile,
 };

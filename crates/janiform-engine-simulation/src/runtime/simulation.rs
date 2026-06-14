@@ -98,7 +98,7 @@ where
         &run_config.model_inputs.calendar_registry,
         run_config
             .model_inputs
-            .hourly_factor_contract
+            .interval_factor_grid
             .exchange_code
             .as_str(),
     )?;
@@ -107,11 +107,11 @@ where
         &market_state_resolver,
         &run_config
             .model_inputs
-            .hourly_factor_contract
+            .interval_factor_grid
             .interval_start_utc_nanos[..run_config.horizon_interval_count],
         &run_config
             .model_inputs
-            .hourly_factor_contract
+            .interval_factor_grid
             .interval_end_utc_nanos[..run_config.horizon_interval_count],
     )?;
 
@@ -131,7 +131,7 @@ where
 
     let interval_duration_nanos = run_config
         .model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_duration_nanos;
 
     emit_progress_event(
@@ -291,17 +291,17 @@ fn build_interval_simulation_inputs<'a>(
 ) -> Result<IntervalSimulationInputs<'a>, SeededTickSimulationRunError> {
     let interval_start_utc_nanos = run_config
         .model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_start_utc_nanos[interval_index];
 
     let interval_end_utc_nanos = run_config
         .model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_end_utc_nanos[interval_index];
 
     if interval_end_utc_nanos <= interval_start_utc_nanos {
         return Err(
-            SeededTickSimulationRunError::InvalidHourlyFactorIntervalBounds {
+            SeededTickSimulationRunError::InvalidIntervalFactorGridIntervalBounds {
                 interval_index,
                 interval_start_utc_nanos,
                 interval_end_utc_nanos,
@@ -334,7 +334,7 @@ fn build_interval_simulation_inputs<'a>(
             )?;
 
     let interval_news_arrival_decomposition = derive_interval_news_arrival_decomposition(
-        run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0),
+        run_config.model_inputs.interval_factor_grid.news_intensity[interval_index].max(0.0),
         interval_duration_in_hours,
         interval_known_news_event_count,
     );
@@ -345,9 +345,11 @@ fn build_interval_simulation_inputs<'a>(
         interval_end_utc_nanos,
         interval_duration_nanos,
         interval_duration_in_hours,
-        interval_seasonality_factor: run_config.model_inputs.hourly_factor_contract.s_h
-            [interval_index],
-        interval_news_intensity: run_config.model_inputs.hourly_factor_contract.nu_h
+        interval_seasonality_factor: run_config
+            .model_inputs
+            .interval_factor_grid
+            .seasonality_factor[interval_index],
+        interval_news_intensity: run_config.model_inputs.interval_factor_grid.news_intensity
             [interval_index]
             .max(0.0),
         interval_known_news_intensity: interval_news_arrival_decomposition
@@ -1044,7 +1046,7 @@ fn build_stream_completion(
 ) -> SeededTickSimulationStreamCompletion {
     let horizon_end_utc_nanos = run_config
         .model_inputs
-        .hourly_factor_contract
+        .interval_factor_grid
         .interval_end_utc_nanos[run_config.horizon_interval_count - 1];
 
     SeededTickSimulationStreamCompletion {

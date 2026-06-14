@@ -13,11 +13,11 @@ from janiform._timestamps import NANOS_PER_HOUR
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import run_staged_calibration
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
-from janiform.hourly_factors import (
-    HourlyFactorContract,
-    HourlyNewsIntensityProviderExplicitSource,
-    HourlySeasonalityProviderExplicitSource,
-    provide_hourly_factor_contract,
+from janiform.interval_factor_grids import (
+    IntervalFactorGridContract,
+    IntervalNewsIntensityProviderExplicitSource,
+    IntervalSeasonalityProviderExplicitSource,
+    provide_interval_factor_grid,
 )
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.mean_reversion import (
@@ -131,15 +131,15 @@ def test_validation_error_string_format_is_stable() -> None:
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-            hourly_factor_summary=simulation_module.SeededTickSimulationHourlyFactorSummary(
-                schema_version="seasonality.hourly_factor.contract.v1",
+            interval_factor_grid_summary=simulation_module.SeededTickSimulationIntervalFactorGridSummary(
+                schema_version="seasonality.interval_factor_grid.contract.v1",
                 exchange_code="XNYS",
                 interval_count=2,
                 interval_duration_nanos=NANOS_PER_HOUR,
                 interval_start_utc_nanos=(1, 2),
                 interval_end_utc_nanos=(2, 3),
-                s_h=(1.0, 1.1),
-                nu_h=(0.2, 0.1),
+                seasonality_factor=(1.0, 1.1),
+                news_intensity=(0.2, 0.1),
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
             sample_every_nth_transition=0,
@@ -615,25 +615,25 @@ def test_calendar_registry_resolve_does_not_mask_runtime_errors_when_native_exce
         registry.resolve_market_state("XNYS", START_TIME_UTC)
 
 
-def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> HourlyFactorContract:
-    return provide_hourly_factor_contract(
+def _valid_interval_factor_grid_contract(calendar_registry: CalendarRegistry) -> IntervalFactorGridContract:
+    return provide_interval_factor_grid(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=START_TIME_UTC,
         range_end_utc=START_TIME_UTC + timedelta(hours=2),
-        seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=[1.0, 1.0]),
-        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=[0.1, 0.1]),
+        seasonality_source=IntervalSeasonalityProviderExplicitSource(interval_factors=[1.0, 1.0]),
+        news_intensity_source=IntervalNewsIntensityProviderExplicitSource(interval_factors=[0.1, 0.1]),
     )
 
 
 def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTickSimulationRequest:
-    hourly_factor_contract = _valid_hourly_factor_contract(calendar_registry)
+    interval_factor_grid_contract = _valid_interval_factor_grid_contract(calendar_registry)
     (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
     ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
-        hourly_factor_contract=hourly_factor_contract
+        interval_factor_grid=interval_factor_grid_contract
     )
 
     return SeededTickSimulationRequest.from_runtime_inputs(
@@ -676,7 +676,7 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
             ),
         ),
         initial_excitation_state=_valid_excitation_state(),
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid_contract,
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
@@ -689,7 +689,7 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
 def _valid_coarse_simulation_request(
     calendar_registry: CalendarRegistry,
 ) -> CoarseSimulationRunRequest:
-    hourly_factor_contract = _valid_hourly_factor_contract(calendar_registry)
+    interval_factor_grid_contract = _valid_interval_factor_grid_contract(calendar_registry)
     (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
@@ -723,7 +723,7 @@ def _valid_coarse_simulation_request(
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         ),
-        hourly_factor_contract=hourly_factor_contract,
+        interval_factor_grid=interval_factor_grid_contract,
         news_process_configuration=_valid_news_process_configuration(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),

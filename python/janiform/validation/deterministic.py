@@ -4,7 +4,7 @@ from typing import Any, Optional, cast
 from ._errors import VALIDATION_ERROR_FACTORY
 from .enum import (
     DeterministicRegressionCaseKind,
-    HourlySourceKind,
+    IntervalFactorGridSourceKind,
     MarketState,
     RegressionStatus,
     require_enum_member,
@@ -98,24 +98,28 @@ def normalize_seasonality_cases(
 
     for case_position, seasonality_case in enumerate(seasonality_cases):
         context: str = f"seasonality_cases[{case_position}]"
+
         fixture_id: str = require_non_empty_string(
             seasonality_case,
             "fixture_id",
             f"{context}.fixture_id",
             VALIDATION_ERROR_FACTORY,
         )
+
         exchange_code: str = require_non_empty_string(
             seasonality_case,
             "exchange_code",
             f"{context}.exchange_code",
             VALIDATION_ERROR_FACTORY,
         )
+
         range_start_utc: str = require_non_empty_string(
             seasonality_case,
             "range_start_utc",
             f"{context}.range_start_utc",
             VALIDATION_ERROR_FACTORY,
         )
+
         range_end_utc: str = require_non_empty_string(
             seasonality_case,
             "range_end_utc",
@@ -129,23 +133,26 @@ def normalize_seasonality_cases(
             f"{context}.seasonality_source",
             VALIDATION_ERROR_FACTORY,
         )
+
         news_intensity_source: Mapping[str, Any] = require_mapping(
             seasonality_case,
             "news_intensity_source",
             f"{context}.news_intensity_source",
             VALIDATION_ERROR_FACTORY,
         )
-        expected_s_h: list[float] = require_finite_number_sequence(
+
+        expected_seasonality_factor: list[float] = require_finite_number_sequence(
             seasonality_case,
-            "expected_s_h",
-            f"{context}.expected_s_h",
+            "expected_seasonality_factor",
+            f"{context}.expected_seasonality_factor",
             VALIDATION_ERROR_FACTORY,
             require_non_empty=True,
         )
-        expected_nu_h: list[float] = require_finite_number_sequence(
+
+        expected_news_intensity: list[float] = require_finite_number_sequence(
             seasonality_case,
-            "expected_nu_h",
-            f"{context}.expected_nu_h",
+            "expected_news_intensity",
+            f"{context}.expected_news_intensity",
             VALIDATION_ERROR_FACTORY,
             require_non_empty=True,
         )
@@ -158,8 +165,8 @@ def normalize_seasonality_cases(
                 "range_end_utc": range_end_utc,
                 "seasonality_source": validate_seasonality_source(seasonality_source, context),
                 "news_intensity_source": validate_news_intensity_source(news_intensity_source, context),
-                "expected_s_h": expected_s_h,
-                "expected_nu_h": expected_nu_h,
+                "expected_seasonality_factor": expected_seasonality_factor,
+                "expected_news_intensity": expected_news_intensity,
             },
         )
 
@@ -171,22 +178,23 @@ def validate_seasonality_source(
     case_context: str,
 ) -> dict[str, Any]:
     context: str = f"{case_context}.seasonality_source"
+
     source_kind = require_enum_member(
         seasonality_source,
         "source_kind",
         context,
-        HourlySourceKind,
+        IntervalFactorGridSourceKind,
         error_message=f"{context}.source_kind must be either 'explicit' or 'materialized'",
     )
 
     match source_kind:
-        case HourlySourceKind.EXPLICIT:
+        case IntervalFactorGridSourceKind.EXPLICIT:
             return {
                 "source_kind": source_kind.value,
-                "hourly_factors": require_finite_number_sequence(
+                "interval_factor_grids": require_finite_number_sequence(
                     seasonality_source,
-                    "hourly_factors",
-                    f"{context}.hourly_factors",
+                    "interval_factor_grids",
+                    f"{context}.interval_factor_grids",
                     VALIDATION_ERROR_FACTORY,
                     require_non_empty=True,
                 ),
@@ -197,7 +205,7 @@ def validate_seasonality_source(
                     VALIDATION_ERROR_FACTORY,
                 ),
             }
-        case HourlySourceKind.MATERIALIZED:
+        case IntervalFactorGridSourceKind.MATERIALIZED:
             if "source_timestamp_utc" in seasonality_source:
                 raise SeasonalityInputValidationError(
                     f"{context} uses unsupported field 'source_timestamp_utc'; use 'source_timestamps_utc'",
@@ -238,10 +246,10 @@ def validate_seasonality_source(
                     f"{context}.sparse_fallback_policy",
                     VALIDATION_ERROR_FACTORY,
                 ),
-                "sparse_hour_minimum_observation_count": require_non_negative_integer(
+                "sparse_interval_minimum_observation_count": require_non_negative_integer(
                     seasonality_source,
-                    "sparse_hour_minimum_observation_count",
-                    f"{context}.sparse_hour_minimum_observation_count",
+                    "sparse_interval_minimum_observation_count",
+                    f"{context}.sparse_interval_minimum_observation_count",
                     VALIDATION_ERROR_FACTORY,
                 ),
             }
@@ -252,22 +260,23 @@ def validate_news_intensity_source(
     case_context: str,
 ) -> dict[str, Any]:
     context: str = f"{case_context}.news_intensity_source"
+
     source_kind = require_enum_member(
         news_intensity_source,
         "source_kind",
         context,
-        HourlySourceKind,
+        IntervalFactorGridSourceKind,
         error_message=f"{context}.source_kind must be either 'explicit' or 'materialized'",
     )
 
     match source_kind:
-        case HourlySourceKind.EXPLICIT:
+        case IntervalFactorGridSourceKind.EXPLICIT:
             return {
                 "source_kind": source_kind.value,
-                "hourly_factors": require_finite_number_sequence(
+                "interval_factor_grids": require_finite_number_sequence(
                     news_intensity_source,
-                    "hourly_factors",
-                    f"{context}.hourly_factors",
+                    "interval_factor_grids",
+                    f"{context}.interval_factor_grids",
                     VALIDATION_ERROR_FACTORY,
                     require_non_empty=True,
                 ),
@@ -278,7 +287,7 @@ def validate_news_intensity_source(
                     VALIDATION_ERROR_FACTORY,
                 ),
             }
-        case HourlySourceKind.MATERIALIZED:
+        case IntervalFactorGridSourceKind.MATERIALIZED:
             raw_multiplier_mapping: Mapping[str, Any] = require_mapping(
                 news_intensity_source,
                 "surprise_deterministic_time_multiplier_by_interval_index",
@@ -287,6 +296,7 @@ def validate_news_intensity_source(
             )
 
             normalized_multipliers: dict[str, float] = {}
+
             for raw_interval_index, raw_multiplier_value in raw_multiplier_mapping.items():
                 if not isinstance(raw_interval_index, str) or not raw_interval_index.isdigit():
                     raise SeasonalityInputValidationError(
@@ -437,6 +447,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         "deterministic regression harness report.tolerance_config",
         VALIDATION_ERROR_FACTORY,
     )
+
     tolerance_config = RegressionHarnessToleranceConfig(
         seasonality_absolute_tolerance=require_non_negative_finite_scalar(
             require_field(
@@ -466,6 +477,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         "deterministic regression harness report.summary",
         VALIDATION_ERROR_FACTORY,
     )
+
     summary = RegressionHarnessSummary(
         total_case_count=require_non_negative_integer(
             summary_mapping,
@@ -499,6 +511,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         )
 
     case_reports: list[RegressionCaseReport] = []
+
     for case_position, raw_case_report in enumerate(case_reports_raw):
         if not isinstance(raw_case_report, Mapping):
             raise SeasonalityInputValidationError(
@@ -508,6 +521,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         case_report_context: str = (
             f"deterministic regression harness report.case_reports[{case_position}]"
         )
+
         case_kind = require_enum_member(
             raw_case_report,
             "case_kind",
@@ -515,6 +529,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             DeterministicRegressionCaseKind,
             error_message=f"{case_report_context}.case_kind has unsupported value: {{value}}",
         )
+
         status = require_enum_member(
             raw_case_report,
             "status",

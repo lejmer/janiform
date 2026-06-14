@@ -232,7 +232,7 @@ def test_market_profile_explicit_configuration_roundtrip_serialization_is_determ
             known_news_policy=MarketProfileKnownNewsPolicy.SUGGEST_ONLY,
             timestamp_timezone_name="UTC",
             tick_size=0.00001,
-            column_alias_hints=(
+            column_aliaseasonality_factorints=(
                 MarketProfileColumnAliasHint(
                     canonical_name="timestamp",
                     aliases=("event_timestamp_utc", "ts_utc"),

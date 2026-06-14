@@ -36,12 +36,12 @@ use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };
-use crate::information_depth::support_information_depth;
 use crate::stages::return_components::contracts::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageExactLikelihoodEvaluatorKind,
     ReturnComponentsStageExactLikelihoodFailureReason,
     ReturnComponentsStageExactLikelihoodFailureScope,
 };
+use janiform_foundations::numeric::support_information_depth;
 
 const TEST_OPTIMIZER_SAMPLE_COUNT: usize = 96;
 const TEST_OPTIMIZER_MAX_ITERATIONS: usize = 12;

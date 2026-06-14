@@ -37,7 +37,7 @@ pub struct HawkesIntensityProjection {
     pub seasonality_scaled: HawkesSideIntensities,
 }
 
-/// Structured failure when resolving seasonality from hourly contract intervals.
+/// Structured failure when resolving seasonality from interval factor grid entries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HawkesSeasonalityIntervalError {
     pub interval_index: usize,
@@ -48,7 +48,7 @@ impl Display for HawkesSeasonalityIntervalError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             formatter,
-            "interval_index {} is out of range for hourly seasonality factor count {}",
+            "interval_index {} is out of range for seasonality factor count {}",
             self.interval_index, self.interval_count
         )
     }
@@ -294,8 +294,8 @@ impl HawkesExcitationState {
         }
     }
 
-    /// Project intensities for an interval index using shared hourly factor contract `s_h`.
-    pub fn project_intensities_for_hourly_interval(
+    /// Project intensities for an interval index using interval factor grid `seasonality_factor`.
+    pub fn project_intensities_for_interval_factor(
         self,
         lambda_bar: f64,
         seasonality_factors: &[f64],

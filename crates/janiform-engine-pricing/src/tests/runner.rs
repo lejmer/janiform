@@ -28,7 +28,7 @@ fn nontrivial_hawkes_state() -> HawkesExcitationState {
     }
 }
 
-fn nontrivial_interval_factors() -> VanillaOptionPricingIntervalFactors {
+fn nontrivial_interval_factor_grids() -> VanillaOptionPricingIntervalFactors {
     VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
         .expect("non-trivial interval factors should construct")
 }
@@ -38,6 +38,7 @@ fn theta_warm_start_state_records_terminal_theta_hint() {
     let warm_start_key = SpectralThetaWarmStartKey::new(0.0_f64.to_bits(), 0.0_f64.to_bits(), 7);
 
     let mut warm_start_state = SpectralThetaWarmStartState::new();
+
     assert_eq!(warm_start_state.theta_hint(warm_start_key), None);
 
     warm_start_state.record_theta_solution(warm_start_key, 0.7, -0.2, 0.3);
@@ -48,7 +49,6 @@ fn theta_warm_start_state_records_terminal_theta_hint() {
 #[test]
 fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
     let base_model_parameters = valid_model_parameters();
-
     let execution_input = single_node_grid_execution_input(base_model_parameters.clone(), true);
 
     let pricing_result =
@@ -65,6 +65,7 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
     let log_premium_step = 1.0e-5_f64;
 
     let mut model_parameters = base_model_parameters.clone();
+
     model_parameters.pricing_kernel_parameters =
         VanillaOptionPricingKernelParameters::try_new(log_premium_step.exp(), 1.0)
             .expect("positive buy activity premium perturbation should stay valid");
@@ -76,8 +77,8 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
             .expect("negative buy activity premium perturbation should stay valid");
 
     let negative_price = single_node_price(model_parameters);
-
     let finite_difference = (positive_price - negative_price) / (2.0 * log_premium_step);
+
     assert!(
         (node_sensitivity.buy_activity_premium_derivative - finite_difference).abs() <= 1.0e-4,
         "analytic buy activity premium sensitivity {} should match finite difference {}",
@@ -86,6 +87,7 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
     );
 
     let mut model_parameters = base_model_parameters.clone();
+
     model_parameters.pricing_kernel_parameters =
         VanillaOptionPricingKernelParameters::try_new(1.0, log_premium_step.exp())
             .expect("positive sell activity premium perturbation should stay valid");
@@ -97,8 +99,8 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
             .expect("negative sell activity premium perturbation should stay valid");
 
     let negative_price = single_node_price(model_parameters);
-
     let finite_difference = (positive_price - negative_price) / (2.0 * log_premium_step);
+
     assert!(
         (node_sensitivity.sell_activity_premium_derivative - finite_difference).abs() <= 1.0e-4,
         "analytic sell activity premium sensitivity {} should match finite difference {}",
@@ -129,7 +131,7 @@ fn single_node_grid_execution_input(
         model_parameters,
         runtime_interval_schedule,
         interval_delta: 1.0,
-        interval_factors: vec![nontrivial_interval_factors()],
+        interval_factor_grids: vec![nontrivial_interval_factor_grids()],
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
             include_transform_diagnostics: false,
             include_integration_quality_diagnostics: false,

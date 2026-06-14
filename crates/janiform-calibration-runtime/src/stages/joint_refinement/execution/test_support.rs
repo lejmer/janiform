@@ -65,7 +65,7 @@ pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParame
         )
         .expect("test news process configuration should validate"),
         surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-            weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+            weekly_utc_profile_multipliers: vec![1.0; 24 * 7],
             profile_resolution_hours: 1,
             fit_policy: "test".to_string(),
             normalization_policy: "test".to_string(),

@@ -120,10 +120,10 @@ fn reference_transform_input_payload() -> Value {
             "real": 0.0,
             "imaginary": 0.0
         },
-        "s_h": 1.1,
+        "seasonality_factor": 1.1,
         "news_intensity": {
-            "known_nu_h": 0.03,
-            "surprise_nu_h": 0.05
+            "known_news_intensity": 0.03,
+            "surprise_news_intensity": 0.05
         },
         "known_news_component_mark_scales": {
             "activity_coupling_scale": 0.0,
@@ -477,12 +477,12 @@ fn transform_input_deserialization_reports_missing_required_field() {
 #[test]
 fn transform_input_deserialization_reports_malformed_field_type() {
     let mut payload = reference_transform_input_payload();
-    payload["s_h"] = json!("high");
+    payload["seasonality_factor"] = json!("high");
 
     let parse_result = serde_json::from_value::<ExponentialAffineTransformInput>(payload);
 
     let error_text = parse_result
-        .expect_err("malformed s_h field type must fail")
+        .expect_err("malformed seasonality_factor field type must fail")
         .to_string();
 
     assert!(
@@ -817,7 +817,7 @@ fn default_solver_executes_deterministic_closed_form_fixture() {
             .hawkes_kernel_parameters
             .beta;
 
-    let expected_c = transform_input.s_h
+    let expected_c = transform_input.seasonality_factor
         * transform_input
             .equation_specification
             .hawkes_kernel_parameters

@@ -5,7 +5,6 @@ use chrono::DateTime;
 use chrono::Utc;
 use janiform::calibration::market_data::MarketDataInputFileReference;
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
-use janiform_foundations::strings::validate_non_empty_string;
 use janiform_foundations::time::parse_duration_spec_nanos;
 use janiform_foundations::time::parse_utc_datetime;
 
@@ -24,31 +23,6 @@ pub(crate) fn required_input_file(
         .ok_or(CliError::MissingRequiredArgument { argument_name })?;
 
     context.paths().input_file(argument_name, path)
-}
-
-pub(crate) fn required_non_empty_argument(
-    argument_name: &'static str,
-    value: Option<String>,
-) -> Result<String, CliError> {
-    let value = value.ok_or(CliError::MissingRequiredArgument { argument_name })?;
-
-    require_non_empty_string(argument_name, &value)?;
-
-    Ok(value)
-}
-
-pub(crate) fn require_non_empty_string<'a>(
-    argument_name: &'static str,
-    value: &'a str,
-) -> Result<&'a str, CliError> {
-    validate_non_empty_string(value, argument_name).map_err(|source| {
-        CliError::InvalidCommandArgument {
-            argument_name,
-            message: source.message().to_string(),
-        }
-    })?;
-
-    Ok(value)
 }
 
 pub(crate) fn parse_utc_timestamp_argument(

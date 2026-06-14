@@ -6,13 +6,11 @@ import pytest
 
 from tests.support.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
-    HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
     OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
     SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID,
     STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
-    HourlyFactorRegressionFixtureDocument,
     OpenClosedGapBehaviorFixtureDocument,
     ScaleConsistencyRegressionFixtureDocument,
     SeededTickSimulationParityFixtureDocument,
@@ -21,7 +19,6 @@ from tests.support.fixture_validation import (
     ValidationFixtureManifestEntry,
     compute_content_hash_hex,
     load_calendar_regression_fixture_document,
-    load_hourly_factor_regression_fixture_document,
     load_open_closed_gap_behavior_fixture_document,
     load_scale_consistency_regression_fixture_document,
     load_manifest_entry_payload,
@@ -30,7 +27,6 @@ from tests.support.fixture_validation import (
     sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
     validate_open_closed_gap_behavior_calendar_integration,
-    validate_hourly_factor_regression_fixture_document,
     validate_open_closed_gap_behavior_fixture_document,
     validate_scale_consistency_regression_fixture_document,
     validate_seeded_tick_simulation_parity_fixture_document,
@@ -48,18 +44,6 @@ def test_manifest_calendar_fixture_entry_has_multiple_exchanges(
     )
 
     assert len(calendar_entry["exchange_codes"]) >= 2
-
-
-def test_manifest_hourly_fixture_entry_is_present(
-    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
-) -> None:
-    hourly_entry: ValidationFixtureManifestEntry = _find_entry_by_fixture_id(
-        validation_fixture_manifest_entries,
-        HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
-    )
-
-    assert hourly_entry["domain"] == "hourly_factors"
-    assert len(hourly_entry["exchange_codes"]) >= 1
 
 
 def test_manifest_open_closed_gap_fixture_entry_is_present(
@@ -134,32 +118,6 @@ def test_calendar_fixture_loading_order_and_content_hash_are_deterministic(
     second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
 
     assert first_case_order == second_case_order
-    assert first_content_hash == second_content_hash
-
-
-def test_hourly_fixture_loading_order_and_content_hash_are_deterministic(
-    hourly_factor_regression_fixture_path: Path,
-) -> None:
-    fixture_payload_bytes: bytes = hourly_factor_regression_fixture_path.read_bytes()
-
-    first_document: HourlyFactorRegressionFixtureDocument = load_hourly_factor_regression_fixture_document(
-        fixture_payload_bytes,
-    )
-    second_document: HourlyFactorRegressionFixtureDocument = load_hourly_factor_regression_fixture_document(
-        fixture_payload_bytes,
-    )
-
-    first_canonical_case_order: list[str] = [
-        regression_case["fixture_id"] for regression_case in first_document["canonical_output_cases"]
-    ]
-    second_canonical_case_order: list[str] = [
-        regression_case["fixture_id"] for regression_case in second_document["canonical_output_cases"]
-    ]
-
-    first_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
-    second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
-
-    assert first_canonical_case_order == second_canonical_case_order
     assert first_content_hash == second_content_hash
 
 
@@ -403,7 +361,7 @@ def test_calendar_fixture_rejects_invalid_expected_state_values(
         validate_calendar_regression_fixture_document(invalid_document)
 
 
-def test_calendar_fixture_historical_holiday_cases_have_unique_exchange_timestamp_pairs(
+def test_calendar_fixture_historical_holiday_caseseasonality_factorave_unique_exchange_timestamp_pairs(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
     historical_holiday_cases: list[CalendarRegressionCase] = [
@@ -473,61 +431,6 @@ def test_calendar_fixture_rejects_incomplete_fixture_coverage_for_stable_tag_set
         match="stable_fixture_ids_by_tag does not match observed fixture ids",
     ):
         validate_calendar_regression_fixture_document(invalid_document)
-
-
-def test_hourly_fixture_rejects_malformed_canonical_metadata(
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> None:
-    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
-
-    canonical_metadata: dict[str, Any] = invalid_document["canonical_regression_metadata"]
-    canonical_metadata["stable_canonical_output_fixture_ids"] = ["missing_fixture_id"]
-
-    with pytest.raises(
-        ValueError,
-        match="stable_canonical_output_fixture_ids does not match observed fixture ids",
-    ):
-        validate_hourly_factor_regression_fixture_document(invalid_document)
-
-
-def test_hourly_fixture_rejects_unsupported_state_classification_strictness_policy(
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> None:
-    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
-
-    threshold_configuration: dict[str, Any] = invalid_document["threshold_configuration"]
-    threshold_configuration["state_classification_strictness"] = "fuzzy_match.v1"
-
-    with pytest.raises(ValueError, match="unsupported state classification strictness policy"):
-        validate_hourly_factor_regression_fixture_document(invalid_document)
-
-
-def test_hourly_fixture_rejects_factor_range_policies_with_inverted_bounds(
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> None:
-    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
-    threshold_configuration: dict[str, Any] = invalid_document["threshold_configuration"]
-
-    factor_range_by_fixture_class: dict[str, dict[str, float]] = threshold_configuration[
-        "factor_range_by_fixture_class"
-    ]
-    factor_range_by_fixture_class["normal_session"]["s_h_min"] = 2.5
-    factor_range_by_fixture_class["normal_session"]["s_h_max"] = 2.0
-
-    with pytest.raises(ValueError, match="s_h_min greater than s_h_max"):
-        validate_hourly_factor_regression_fixture_document(invalid_document)
-
-
-def test_hourly_fixture_rejects_threshold_change_log_without_current_policy_version(
-    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> None:
-    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
-
-    threshold_configuration: dict[str, Any] = invalid_document["threshold_configuration"]
-    threshold_configuration["policy_version"] = "2.0.0"
-
-    with pytest.raises(ValueError, match="change_log must include an entry for policy_version"):
-        validate_hourly_factor_regression_fixture_document(invalid_document)
 
 
 def test_open_closed_gap_fixture_rejects_missing_required_fields(

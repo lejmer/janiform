@@ -7,19 +7,19 @@ use janiform::pricing::{
     HighLevelPricingMaturityResolutionRequest, PricingIntervalSchedulePolicy, PricingProgressEvent,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest,
-    materialize_schedule_interval_factors, resolve_high_level_pricing_maturity_inputs,
+    materialize_schedule_interval_factor_grids, resolve_high_level_pricing_maturity_inputs,
     run_vanilla_option_grid_batch_pricing,
 };
 use janiform_terminal_ui::ProgressAdapter;
 
 use crate::error::WorkflowError;
 use crate::model::{
-    build_hourly_factor_contract, fitted_model_context, model_reference_price, validation_error,
+    build_interval_factor_grid, fitted_model_context, model_reference_price, validation_error,
 };
 use crate::progress::bounded_progress_measure;
 
 use super::super::maturity::{
-    finalize_maturity_resolution, runtime_schedule_hourly_factor_contract_coverage,
+    finalize_maturity_resolution, runtime_schedule_interval_factor_grid_coverage,
 };
 use super::super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::super::validation::pricing_validation_error;
@@ -147,12 +147,12 @@ fn build_grid_batch_execution_input(
     )?;
 
     let (pricing_coverage_start_utc, pricing_coverage_end_utc) =
-        runtime_schedule_hourly_factor_contract_coverage(
+        runtime_schedule_interval_factor_grid_coverage(
             valuation_time_utc,
             &maturity_resolution.pricing_interval_schedule,
         )?;
 
-    let pricing_hourly_factor_contract = build_hourly_factor_contract(
+    let pricing_interval_factor_grid = build_interval_factor_grid(
         &context,
         pricing_coverage_start_utc,
         pricing_coverage_end_utc,
@@ -162,7 +162,7 @@ fn build_grid_batch_execution_input(
     let maturity_resolution = finalize_maturity_resolution(
         &request.pricing_interval_schedule_policy,
         maturity_resolution,
-        &pricing_hourly_factor_contract,
+        &pricing_interval_factor_grid,
     )?;
 
     let reference_price = model_reference_price(&context.model)?;
@@ -202,9 +202,9 @@ fn build_grid_batch_execution_input(
 
     let model_parameters = build_vanilla_option_pricing_model_parameters(&context)?;
 
-    let interval_factors = materialize_schedule_interval_factors(
+    let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &maturity_resolution.pricing_interval_schedule,
-        &pricing_hourly_factor_contract,
+        &pricing_interval_factor_grid,
     )
     .map_err(|source| pricing_validation_error("runtime_interval_schedule", source.to_string()))?;
 
@@ -227,7 +227,7 @@ fn build_grid_batch_execution_input(
         model_parameters,
         runtime_interval_schedule: maturity_resolution.pricing_interval_schedule,
         interval_delta,
-        interval_factors,
+        interval_factor_grids,
         optional_output_selection: request.optional_output_selection,
         spectral_collocation_node_count_override: request.spectral_collocation_node_count_override,
         cpu_count,
@@ -274,12 +274,12 @@ fn resolve_prepared_snapshot_progress_plan(
     )?;
 
     let (pricing_coverage_start_utc, pricing_coverage_end_utc) =
-        runtime_schedule_hourly_factor_contract_coverage(
+        runtime_schedule_interval_factor_grid_coverage(
             valuation_time_utc,
             &maturity_resolution.pricing_interval_schedule,
         )?;
 
-    let pricing_hourly_factor_contract = build_hourly_factor_contract(
+    let pricing_interval_factor_grid = build_interval_factor_grid(
         &context,
         pricing_coverage_start_utc,
         pricing_coverage_end_utc,
@@ -289,7 +289,7 @@ fn resolve_prepared_snapshot_progress_plan(
     let maturity_resolution = finalize_maturity_resolution(
         &request.pricing_interval_schedule_policy,
         maturity_resolution,
-        &pricing_hourly_factor_contract,
+        &pricing_interval_factor_grid,
     )?;
 
     surface_task_progress_plan_from_resolution(prepared_snapshot, &maturity_resolution)

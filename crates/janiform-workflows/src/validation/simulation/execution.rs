@@ -257,7 +257,7 @@ fn simulate_validation_paths_parallel(
             let worker_cancellation_token = context.cancellation_token();
             worker_cancellation_token.check_cancelled()?;
 
-            if !context.send_progress(SimulationPathProgressMessage::Started {
+            if !context.emit_progress(SimulationPathProgressMessage::Started {
                 path_position,
                 seed,
             }) {
@@ -279,7 +279,7 @@ fn simulate_validation_paths_parallel(
                     return;
                 }
 
-                let _ = context.send_progress(SimulationPathProgressMessage::Progress {
+                let _ = context.emit_progress(SimulationPathProgressMessage::Progress {
                     path_position,
                     seed,
                     event,

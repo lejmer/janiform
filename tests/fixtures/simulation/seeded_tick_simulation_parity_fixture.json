@@ -51,11 +51,11 @@
         "y_minus_plus": 0.15,
         "y_minus_minus": 0.3
       },
-      "seasonality_hourly_factors": [
+      "seasonality_interval_factor_grids": [
         0.95,
         1.05
       ],
-      "news_intensity_hourly_factors": [
+      "news_intensity_interval_factor_grids": [
         0.02,
         0.03
       ],
@@ -119,7 +119,7 @@
         "y_minus_plus": 0.15,
         "y_minus_minus": 0.3
       },
-      "seasonality_hourly_factors": [
+      "seasonality_interval_factor_grids": [
         1.0,
         1.0,
         1.0,
@@ -133,7 +133,7 @@
         1.0,
         1.0
       ],
-      "news_intensity_hourly_factors": [
+      "news_intensity_interval_factor_grids": [
         0.02,
         0.02,
         0.02,

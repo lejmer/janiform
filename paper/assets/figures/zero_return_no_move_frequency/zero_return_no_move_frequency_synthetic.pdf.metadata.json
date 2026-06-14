@@ -1,24 +1,24 @@
 {
   "data_summary": {
     "synthetic_model_output": {
-      "event_count": 13919886,
+      "event_count": 12066398,
       "label": "Janiform synthetic",
-      "move_count": 1569207,
-      "no_move_count": 12350678,
+      "move_count": 1821493,
+      "no_move_count": 10244904,
       "no_move_profile": {
         "empty_bucket_count": 0,
-        "maximum_bucket_no_move_frequency": 0.8971998862372986,
-        "maximum_bucket_observation_count": 1954157,
-        "minimum_bucket_no_move_frequency": 0.8829382067049497,
-        "minimum_bucket_observation_count": 77354,
+        "maximum_bucket_no_move_frequency": 0.8800705846908692,
+        "maximum_bucket_observation_count": 1564202,
+        "minimum_bucket_no_move_frequency": 0.8366395806434155,
+        "minimum_bucket_observation_count": 83441,
         "nonempty_bucket_count": 24
       },
       "original_timestamp_order_is_monotonic": true,
-      "overall_no_move_frequency": 0.8872686807398193,
+      "overall_no_move_frequency": 0.8490441678655194,
       "price_column": "price",
-      "price_comparison_count": 13919885,
+      "price_comparison_count": 12066397,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.228947429+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.269032407+00:00",
       "timestamp_null_count": 0,
       "value_column": "price",
       "value_null_count": 0
@@ -28,12 +28,12 @@
     "id": "zero_return_no_move_frequency_synthetic_model_output",
     "title": "Janiform synthetic ES no-move frequency"
   },
-  "generated_at_utc": "2026-06-11T21:43:22.189312+00:00",
+  "generated_at_utc": "2026-06-13T23:49:34.746261+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\zero_return_no_move_frequency.py"
     ],
-    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
@@ -58,11 +58,11 @@
         "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 13919886,
-      "parquet_row_group_count": 14,
+      "parquet_row_count": 12066398,
+      "parquet_row_group_count": 12,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 140996455,
+      "size_bytes": 126990425,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -78,8 +78,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/zero_return_no_move_frequency/zero_return_no_move_frequency_synthetic.pdf",
       "role": "figure",
-      "sha256": "73b0b267ed3864ddae9a47d6bb8a7c40d641fff8bde26eef68e8b3e67a22d1ee",
-      "size_bytes": 19058
+      "sha256": "054ca6aae362641d411c842795ea47fc7973d20edb0170dc25ee0e77fce65092",
+      "size_bytes": 19065
     }
   ],
   "parameters": {

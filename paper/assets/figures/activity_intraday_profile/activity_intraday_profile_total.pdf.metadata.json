@@ -48,12 +48,12 @@
     "id": "activity_intraday_profile_total_empirical_market_data",
     "title": "Empirical ES continuous futures total activity intraday profile"
   },
-  "generated_at_utc": "2026-06-11T21:42:19.093956+00:00",
+  "generated_at_utc": "2026-06-13T23:48:25.934739+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\activity_intraday_profile.py"
     ],
-    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/activity_intraday_profile.py"
@@ -119,7 +119,7 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/activity_intraday_profile/activity_intraday_profile_total.pdf",
       "role": "figure",
-      "sha256": "a3384b4c407599368f962114125b20f9f9f1693b352b9c87210e4a467cfb6c87",
+      "sha256": "78e34d030aa0a6e0d6cab5676b9f49129b8dc38d9221f4adbb7b12e7e6f8ce6e",
       "size_bytes": 21172
     }
   ],

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_BACKFIT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_HANDOFF_POLICY,
@@ -29,6 +29,7 @@ use crate::stages::return_components::{
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageFittedPayload,
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
+use crate::surprise_profile::average_surprise_news_weekly_profile_multiplier_over_interval;
 
 const RETURN_BACKFIT_ESTIMATION_POLICY: &str =
     "deterministic_long_variance_clock_residual_nig_scale_backfit.v1";
@@ -494,13 +495,12 @@ fn stationary_mean_reversion_level_for_backfit(
         return Err("return-backfit requires a positive source-window duration".to_string());
     }
 
-    let surprise_time_multiplier = surprise_profile_source_window_mean_multiplier(
-        source_window.window_start_utc_nanos,
-        source_window.window_end_utc_nanos,
-        surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
-            .as_slice(),
-    )?;
+    let surprise_time_multiplier = average_surprise_news_weekly_profile_multiplier_over_interval(
+        DateTime::<Utc>::from_timestamp_nanos(source_window.window_start_utc_nanos),
+        DateTime::<Utc>::from_timestamp_nanos(source_window.window_end_utc_nanos),
+        surprise_deterministic_intensity_profile,
+    )
+    .map_err(|source| format!("return-backfit surprise intensity profile invalid: {source}"))?;
 
     let news_intensities = news_process_configuration
         .arrivals
@@ -540,85 +540,6 @@ fn stationary_mean_reversion_level_for_backfit(
         .map_err(|source| {
             format!("return-backfit long-variance stationary level evaluation failed: {source}")
         })
-}
-
-fn surprise_profile_source_window_mean_multiplier(
-    window_start_utc_nanos: i64,
-    window_end_utc_nanos: i64,
-    weekly_hour_utc_multipliers: &[f64],
-) -> Result<f64, String> {
-    if weekly_hour_utc_multipliers.len() != 7 * 24 {
-        return Err(format!(
-            "return-backfit requires 168 surprise intensity multipliers, found {}",
-            weekly_hour_utc_multipliers.len()
-        ));
-    }
-
-    if window_end_utc_nanos <= window_start_utc_nanos {
-        return Err("return-backfit requires an increasing source window".to_string());
-    }
-
-    let mut current = DateTime::<Utc>::from_timestamp_nanos(window_start_utc_nanos);
-
-    let window_end = DateTime::<Utc>::from_timestamp_nanos(window_end_utc_nanos);
-
-    let mut weighted_multiplier_sum = 0.0;
-    let mut weighted_duration_nanos = 0.0;
-
-    while current < window_end {
-        let hour_start = current
-            .date_naive()
-            .and_hms_opt(current.hour(), 0, 0)
-            .ok_or_else(|| {
-                "return-backfit could not construct source-window hour boundary".to_string()
-            })?
-            .and_utc();
-
-        let next_hour = if current == hour_start {
-            current + Duration::hours(1)
-        } else {
-            hour_start + Duration::hours(1)
-        };
-
-        let segment_end = next_hour.min(window_end);
-
-        let Some(segment_duration_nanos) = (segment_end - current).num_nanoseconds() else {
-            return Err(
-                "return-backfit source-window segment duration overflowed nanoseconds".to_string(),
-            );
-        };
-
-        if segment_duration_nanos <= 0 {
-            return Err(
-                "return-backfit source-window segment duration must be positive".to_string(),
-            );
-        }
-
-        let multiplier = weekly_hour_utc_multipliers[weekly_hour_bucket_index(current)];
-        if !multiplier.is_finite() || multiplier < 0.0 {
-            return Err(format!(
-                "return-backfit surprise intensity multiplier is invalid: {multiplier}"
-            ));
-        }
-
-        weighted_multiplier_sum += multiplier * segment_duration_nanos as f64;
-        weighted_duration_nanos += segment_duration_nanos as f64;
-
-        current = segment_end;
-    }
-
-    let mean = weighted_multiplier_sum / weighted_duration_nanos;
-    if !mean.is_finite() || mean < 0.0 {
-        return Err(format!(
-            "return-backfit surprise intensity multiplier mean is invalid: {mean}"
-        ));
-    }
-
-    Ok(mean)
-}
-
-fn weekly_hour_bucket_index(timestamp_utc: DateTime<Utc>) -> usize {
-    timestamp_utc.weekday().num_days_from_monday() as usize * 24 + timestamp_utc.hour() as usize
 }
 
 fn failure_report(

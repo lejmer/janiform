@@ -3,15 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from math import isfinite
-from typing import Any, Optional
+from typing import Any, Final, Optional
 
-from ...seasonality import IntradaySmoothingKernel, SessionFilter
-from ..errors import calibration_error
-from ..staged.contracts import (
-    DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
-    CalibrationExecutionMode,
-    _parse_calibration_execution_mode,
-)
 from ...contracts import ContractModel
 from ...contracts.base import (
     require_boolean,
@@ -19,16 +12,35 @@ from ...contracts.base import (
     require_finite_number,
     require_mapping,
     require_non_empty_string,
+    require_non_negative_integer_value,
     require_only_supported_fields,
     require_positive_finite_number,
     require_positive_integer,
     require_str_enum_value,
     require_string,
 )
+from ...seasonality import SessionFilter
+from ..errors import calibration_error
+from ..staged.contracts import (
+    DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
+    CalibrationExecutionMode,
+    _parse_calibration_execution_mode,
+)
 
 
 CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION = "calibration.market_data.request.v1"
 CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION = "calibration.market_data.preparation.v1"
+FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAME_SEQUENCE: Final[tuple[str, ...]] = (
+    "intraday",
+    "weekly",
+    "annual",
+)
+FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES: Final[frozenset[str]] = frozenset(
+    FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAME_SEQUENCE
+)
+FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES_LABEL: Final[str] = ", ".join(
+    FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAME_SEQUENCE
+)
 
 
 class CalibrationInputFileFormat(StrEnum):
@@ -204,50 +216,23 @@ class CalibrationMeanReversionConfiguration(ContractModel):
 class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
     session_filter: SessionFilter = SessionFilter.OPEN_ONLY
     sparse_hour_event_threshold: int = 1
-    known_news_overlay_log_adjustment: float = 0.0
-    intraday_minutes_per_bin: int = 1
-    intraday_smoothing_kernel: IntradaySmoothingKernel = IntradaySmoothingKernel.GAUSSIAN
-    intraday_smoothing_bandwidth_bins: float = 3.0
-    intraday_minimum_bin_events: int = 1
-    day_of_week_minimum_bucket_events: int = 1
-    day_of_year_minimum_bucket_events: int = 1
+    maximum_harmonic_orders: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.sparse_hour_event_threshold < 1:
             raise calibration_error("sparse_hour_event_threshold", "must be at least 1")
 
-        if self.intraday_minutes_per_bin < 1:
-            raise calibration_error("intraday_minutes_per_bin", "must be at least 1")
+        validated_maximum_harmonic_orders = _validate_maximum_harmonic_orders(
+            self.maximum_harmonic_orders,
+            "maximum_harmonic_orders",
+        )
 
-        if not isfinite(self.known_news_overlay_log_adjustment):
-            raise calibration_error(
-                "known_news_overlay_log_adjustment",
-                "must be finite",
-            )
-
-        if (
-            not isfinite(self.intraday_smoothing_bandwidth_bins)
-            or self.intraday_smoothing_bandwidth_bins <= 0.0
-        ):
-            raise calibration_error(
-                "intraday_smoothing_bandwidth_bins",
-                "must be finite and strictly positive",
-            )
-
-        if self.intraday_minimum_bin_events < 1:
-            raise calibration_error("intraday_minimum_bin_events", "must be at least 1")
-
-        if self.day_of_week_minimum_bucket_events < 1:
-            raise calibration_error(
-                "day_of_week_minimum_bucket_events",
-                "must be at least 1",
-            )
-
-        if self.day_of_year_minimum_bucket_events < 1:
-            raise calibration_error(
-                "day_of_year_minimum_bucket_events",
-                "must be at least 1",
-            )
+        # Frozen dataclass fields still allow dict mutation, so store a validated copy.
+        object.__setattr__(
+            self,
+            "maximum_harmonic_orders",
+            validated_maximum_harmonic_orders,
+        )
 
     @staticmethod
     def from_mapping(
@@ -260,69 +245,75 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
 
         return CalibrationMarketDataSeasonalityPreprocessingSettings(
             session_filter=SessionFilter(
-                require_string(
-                    raw_payload,
+                raw_payload.get(
                     "session_filter",
-                    f"{field_path}.session_filter",
-                    calibration_error,
+                    SessionFilter.OPEN_ONLY.value,
                 )
             ),
-            sparse_hour_event_threshold=require_positive_integer(
-                raw_payload,
-                "sparse_hour_event_threshold",
-                f"{field_path}.sparse_hour_event_threshold",
-                calibration_error,
-            ),
-            known_news_overlay_log_adjustment=(
-                require_finite_number(
+            sparse_hour_event_threshold=(
+                require_positive_integer(
                     raw_payload,
-                    "known_news_overlay_log_adjustment",
-                    f"{field_path}.known_news_overlay_log_adjustment",
+                    "sparse_hour_event_threshold",
+                    f"{field_path}.sparse_hour_event_threshold",
                     calibration_error,
                 )
-                if "known_news_overlay_log_adjustment" in raw_payload
-                and raw_payload["known_news_overlay_log_adjustment"] is not None
-                else 0.0
+                if raw_payload.get("sparse_hour_event_threshold") is not None
+                else 1
             ),
-            intraday_minutes_per_bin=require_positive_integer(
-                raw_payload,
-                "intraday_minutes_per_bin",
-                f"{field_path}.intraday_minutes_per_bin",
-                calibration_error,
-            ),
-            intraday_smoothing_kernel=IntradaySmoothingKernel(
-                require_string(
-                    raw_payload,
-                    "intraday_smoothing_kernel",
-                    f"{field_path}.intraday_smoothing_kernel",
-                    calibration_error,
-                )
-            ),
-            intraday_smoothing_bandwidth_bins=require_positive_finite_number(
-                raw_payload,
-                "intraday_smoothing_bandwidth_bins",
-                f"{field_path}.intraday_smoothing_bandwidth_bins",
-                calibration_error,
-            ),
-            intraday_minimum_bin_events=require_positive_integer(
-                raw_payload,
-                "intraday_minimum_bin_events",
-                f"{field_path}.intraday_minimum_bin_events",
-                calibration_error,
-            ),
-            day_of_week_minimum_bucket_events=require_positive_integer(
-                raw_payload,
-                "day_of_week_minimum_bucket_events",
-                f"{field_path}.day_of_week_minimum_bucket_events",
-                calibration_error,
-            ),
-            day_of_year_minimum_bucket_events=require_positive_integer(
-                raw_payload,
-                "day_of_year_minimum_bucket_events",
-                f"{field_path}.day_of_year_minimum_bucket_events",
-                calibration_error,
+            maximum_harmonic_orders=(
+                _parse_maximum_harmonic_orders(raw_payload, field_path)
+                if raw_payload.get("maximum_harmonic_orders") is not None
+                else {}
             ),
         )
+
+
+def _parse_maximum_harmonic_orders(
+    raw_payload: dict[str, Any],
+    field_path: str,
+) -> dict[str, int]:
+    raw_maximum_harmonic_orders = require_mapping(
+        raw_payload,
+        "maximum_harmonic_orders",
+        f"{field_path}.maximum_harmonic_orders",
+        calibration_error,
+    )
+
+    return _validate_maximum_harmonic_orders(
+        raw_maximum_harmonic_orders,
+        f"{field_path}.maximum_harmonic_orders",
+    )
+
+
+def _validate_maximum_harmonic_orders(
+    raw_maximum_harmonic_orders: dict[str, int] | Any,
+    field_path: str,
+) -> dict[str, int]:
+    if not isinstance(raw_maximum_harmonic_orders, dict):
+        raise calibration_error(field_path, "must be an object")
+
+    maximum_harmonic_orders: dict[str, int] = {}
+
+    for axis, raw_harmonic_order in raw_maximum_harmonic_orders.items():
+        if not isinstance(axis, str):
+            raise calibration_error(
+                field_path,
+                "keys must be Fourier clock axis names",
+            )
+
+        if axis not in FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES:
+            raise calibration_error(
+                f"{field_path}.{axis}",
+                f"must be one of: {FOURIER_BUSINESS_TIME_CLOCK_AXIS_NAMES_LABEL}",
+            )
+
+        maximum_harmonic_orders[axis] = require_non_negative_integer_value(
+            raw_harmonic_order,
+            f"{field_path}.{axis}",
+            calibration_error,
+        )
+
+    return maximum_harmonic_orders
 
 
 @dataclass(frozen=True, slots=True)

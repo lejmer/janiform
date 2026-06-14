@@ -44,9 +44,9 @@ from .native import (
     run_model_vanilla_option_surface_pricing,
 )
 from .support import (
-    build_model_pricing_hourly_factor_contract,
+    build_model_pricing_interval_factor_grid,
     price_observed_log_return_from_spot,
-    runtime_schedule_hourly_factor_contract_coverage,
+    runtime_schedule_interval_factor_grid_coverage,
 )
 from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
 from ..payloads import (
@@ -134,6 +134,7 @@ def price_option_for_model(
             progress_mode=progress_mode,
         ),
     }
+
     if pricing_interval_schedule_policy is not None:
         request_payload["pricing_interval_schedule_policy"] = (
             pricing_interval_schedule_policy.to_payload()
@@ -155,6 +156,7 @@ def price_option_for_model(
             raise calibration_error("pricing", str(e)) from e
 
         raise
+
     if not isinstance(raw_result, dict):
         raise calibration_error(
             "pricing_result",
@@ -195,6 +197,7 @@ def price_option_grid_for_model(
         silent=silent,
         progress_mode=progress_mode,
     )
+
     if progress_callback is None:
         return run_model_vanilla_option_grid_batch_pricing(
             native_execution_input,
@@ -239,6 +242,7 @@ def price_option_grid_surface_for_model(
         silent=silent,
         progress_mode=progress_mode,
     )
+
     if progress_callback is None:
         return run_model_vanilla_option_surface_pricing(
             native_execution_input,
@@ -305,7 +309,7 @@ def prepare_model_pricing_execution_input(
 
     finalized_maturity_inputs = finalize_runtime_pricing_schedule(
         resolved_maturity_inputs=resolved_maturity_inputs,
-        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        interval_factor_grid=runtime_input.interval_factor_grid,
         pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         field_path="maturity_input",
     )
@@ -343,7 +347,7 @@ def prepare_model_pricing_execution_input(
             interval_delta=finalized_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
         ),
         runtime_interval_schedule=finalized_maturity_inputs.pricing_interval_schedule,
-        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        interval_factor_grid=runtime_input.interval_factor_grid,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
@@ -369,25 +373,26 @@ def prepare_model_pricing_runtime_input(
         prefer_joint_pricing_block=True,
     )
 
-    boundary_hourly_factor_contract = build_model_pricing_hourly_factor_contract(
+    boundary_interval_factor_grid = build_model_pricing_interval_factor_grid(
         model,
         runtime_factors=runtime_factors,
         range_start_utc=valuation_time_utc,
         range_end_utc=runtime_factors.range_end_utc,
     )
 
-    pricing_hourly_coverage_start_utc, pricing_hourly_coverage_end_utc = (
-        runtime_schedule_hourly_factor_contract_coverage(
+    pricing_grid_coverage_start_utc, pricing_grid_coverage_end_utc = (
+        runtime_schedule_interval_factor_grid_coverage(
             valuation_time_utc,
             runtime_interval_schedule,
+            interval_duration_nanos=runtime_factors.interval_duration_nanos,
         )
     )
 
-    pricing_hourly_factor_contract = build_model_pricing_hourly_factor_contract(
+    pricing_interval_factor_grid = build_model_pricing_interval_factor_grid(
         model,
         runtime_factors=runtime_factors,
-        range_start_utc=pricing_hourly_coverage_start_utc,
-        range_end_utc=pricing_hourly_coverage_end_utc,
+        range_start_utc=pricing_grid_coverage_start_utc,
+        range_end_utc=pricing_grid_coverage_end_utc,
     )
 
     mean_reversion_fitted_parameters = mean_reversion_fitted_parameters_for_model(model)
@@ -399,7 +404,7 @@ def prepare_model_pricing_runtime_input(
         (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
             model,
             runtime_factors=runtime_factors,
-            hourly_factor_contract=boundary_hourly_factor_contract,
+            interval_factor_grid=boundary_interval_factor_grid,
             initial_excitation_state=effective_boundary_state,
             start_anchor_value=price_observed_log_return_from_spot(model, spot=spot),
         )
@@ -422,14 +427,14 @@ def prepare_model_pricing_runtime_input(
             (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
                 model,
                 runtime_factors=runtime_factors,
-                hourly_factor_contract=boundary_hourly_factor_contract,
+                interval_factor_grid=boundary_interval_factor_grid,
                 initial_excitation_state=effective_boundary_state,
                 start_anchor_value=price_observed_log_return_from_spot(model, spot=spot),
             )
 
     return PreparedModelPricingRuntimeInput(
         runtime_factors=runtime_factors,
-        hourly_factor_contract=pricing_hourly_factor_contract,
+        interval_factor_grid=pricing_interval_factor_grid,
         effective_boundary_state=effective_boundary_state,
         effective_long_variance_state=effective_long_variance_state,
         effective_observed_boundary_state=effective_observed_boundary_state,
@@ -493,7 +498,7 @@ def prepare_model_grid_batch_pricing_native_input(
 
     finalized_runtime_schedule_resolution = finalize_runtime_pricing_schedule(
         resolved_maturity_inputs=runtime_schedule_resolution,
-        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        interval_factor_grid=runtime_input.interval_factor_grid,
         pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         field_path="batch.runtime_interval_schedule",
     )
@@ -523,7 +528,7 @@ def prepare_model_grid_batch_pricing_native_input(
         "model_parameters": runtime_input.model_parameters.to_payload(),
         "runtime_interval_schedule": finalized_runtime_schedule_resolution.pricing_interval_schedule.to_payload(),
         "interval_delta": finalized_runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
-        "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
+        "interval_factor_grid": runtime_input.interval_factor_grid.to_payload(),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
@@ -565,7 +570,7 @@ def prepare_model_surface_pricing_native_input(
 
     finalized_surface_maturity_inputs = finalize_runtime_pricing_schedule(
         resolved_maturity_inputs=resolved_surface_maturity_inputs,
-        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        interval_factor_grid=runtime_input.interval_factor_grid,
         pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         field_path="surface",
     )
@@ -594,7 +599,7 @@ def prepare_model_surface_pricing_native_input(
         "model_parameters": runtime_input.model_parameters.to_payload(),
         "runtime_interval_schedule": finalized_surface_maturity_inputs.pricing_interval_schedule.to_payload(),
         "interval_delta": finalized_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
-        "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
+        "interval_factor_grid": runtime_input.interval_factor_grid.to_payload(),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,

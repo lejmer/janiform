@@ -18,13 +18,13 @@ use janiform_foundations::randomness::{
 };
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use janiform_market_time::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
-    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
+use janiform_market_time::interval_factor_grids::{
+    DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD,
+    DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
+    INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY, INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+    INTERVAL_FACTOR_GRID_SCHEMA_VERSION, INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+    INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY, IntervalFactorGrid,
+    IntervalFactorGridDiagnostics, IntervalFactorGridMetadata,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -1297,7 +1297,7 @@ fn build_run_config_with_options(
         options,
     } = input;
 
-    let hourly_factor_contract = build_uniform_factor_contract(
+    let interval_factor_grid = build_uniform_factor_contract(
         START_TIME_UTC_NANOS,
         interval_duration_nanos,
         interval_count,
@@ -1309,7 +1309,7 @@ fn build_run_config_with_options(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationRunConfig::try_new(
         seed,
@@ -1321,7 +1321,7 @@ fn build_run_config_with_options(
             mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
-            hourly_factor_contract,
+            interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
@@ -1342,7 +1342,7 @@ fn build_uniform_factor_contract(
     interval_count: usize,
     seasonality_factor: f64,
     news_intensity: f64,
-) -> HourlyFactorContractOutput {
+) -> IntervalFactorGrid {
     let mut interval_indices: Vec<u64> = Vec::with_capacity(interval_count);
     let mut interval_start_utc_nanos: Vec<i64> = Vec::with_capacity(interval_count);
     let mut interval_end_utc_nanos: Vec<i64> = Vec::with_capacity(interval_count);
@@ -1370,8 +1370,8 @@ fn build_uniform_factor_contract(
         .copied()
         .expect("uniform factor contract should include at least one interval");
 
-    HourlyFactorContractOutput {
-        schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+    IntervalFactorGrid {
+        schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
         exchange_code: "XNYS".to_owned(),
         exchange_timezone_name: "America/New_York".to_owned(),
         request_start_utc_nanos: start_time_utc_nanos,
@@ -1382,28 +1382,28 @@ fn build_uniform_factor_contract(
         interval_end_utc_nanos: interval_end_utc_nanos.clone(),
         interval_start_exchange_local,
         interval_end_exchange_local,
-        s_h: vec![seasonality_factor; interval_count],
-        known_component_nu_h: vec![0.0; interval_count],
-        surprise_component_nu_h: vec![news_intensity; interval_count],
-        nu_h: vec![news_intensity; interval_count],
-        metadata: HourlyFactorMaterializationMetadata {
-            seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+        seasonality_factor: vec![seasonality_factor; interval_count],
+        known_news_intensity: vec![0.0; interval_count],
+        surprise_news_intensity: vec![news_intensity; interval_count],
+        news_intensity: vec![news_intensity; interval_count],
+        metadata: IntervalFactorGridMetadata {
+            seasonality_materialization_method: DEFAULT_INTERVAL_FACTOR_GRID_MATERIALIZATION_METHOD
                 .to_owned(),
             news_intensity_materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
                 .to_owned(),
-            interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-            interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+            interval_boundary_policy: INTERVAL_FACTOR_GRID_INTERVAL_BOUNDARY_POLICY,
+            interval_alignment_policy: INTERVAL_FACTOR_GRID_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: INTERVAL_FACTOR_GRID_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: INTERVAL_FACTOR_GRID_SPRING_FORWARD_POLICY,
+            fall_back_policy: INTERVAL_FACTOR_GRID_FALL_BACK_POLICY,
         },
-        diagnostics: HourlyFactorContractDiagnostics {
+        diagnostics: IntervalFactorGridDiagnostics {
             interval_count,
             interval_duration_nanos,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: request_end_utc_nanos,
-            skipped_local_hour_interval_count: 0,
-            repeated_local_hour_interval_count: 0,
+            skipped_exchange_local_interval_count: 0,
+            repeated_exchange_local_interval_count: 0,
         },
     }
 }
@@ -1512,7 +1512,7 @@ fn collect_debug_trace_records(
 fn build_multi_hour_zero_event_carryover_model_inputs(
     interval_count: usize,
 ) -> SeededTickSimulationModelInputs {
-    let hourly_factor_contract = build_uniform_factor_contract(
+    let interval_factor_grid = build_uniform_factor_contract(
         START_TIME_UTC_NANOS,
         NANOS_PER_HOUR,
         interval_count,
@@ -1524,7 +1524,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
@@ -1553,7 +1553,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
@@ -1569,14 +1569,14 @@ fn build_one_interval_ordering_model_inputs(
     start_time_utc_nanos: i64,
     news_intensity: f64,
 ) -> SeededTickSimulationModelInputs {
-    let hourly_factor_contract =
+    let interval_factor_grid =
         build_uniform_factor_contract(start_time_utc_nanos, NANOS_PER_HOUR, 1, 1.0, news_intensity);
 
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
@@ -1605,7 +1605,7 @@ fn build_one_interval_ordering_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
@@ -1620,14 +1620,14 @@ fn build_one_interval_ordering_model_inputs(
 fn build_two_interval_boundary_adjacent_model_inputs(
     start_time_utc_nanos: i64,
 ) -> SeededTickSimulationModelInputs {
-    let hourly_factor_contract =
+    let interval_factor_grid =
         build_uniform_factor_contract(start_time_utc_nanos, NANOS_PER_HOUR, 2, 1.0, 0.0);
 
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+    ) = disabled_mean_reversion_runtime_inputs(&interval_factor_grid);
 
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
@@ -1656,7 +1656,7 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-        hourly_factor_contract,
+        interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
@@ -1669,7 +1669,7 @@ fn build_two_interval_boundary_adjacent_model_inputs(
 }
 
 fn disabled_mean_reversion_runtime_inputs(
-    hourly_factor_contract: &HourlyFactorContractOutput,
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -1679,14 +1679,14 @@ fn disabled_mean_reversion_runtime_inputs(
         MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
-            hourly_factor_contract.metadata.interval_alignment_policy,
+            interval_factor_grid.metadata.interval_alignment_policy,
             0.0,
             0.0,
-            vec![0.0; hourly_factor_contract.interval_indices.len()],
-            vec![0.0; hourly_factor_contract.interval_indices.len()],
+            vec![0.0; interval_factor_grid.interval_indices.len()],
+            vec![0.0; interval_factor_grid.interval_indices.len()],
             vec![
-                hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
-                hourly_factor_contract.interval_indices.len()
+                interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
+                interval_factor_grid.interval_indices.len()
             ],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),

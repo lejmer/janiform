@@ -26,7 +26,7 @@ pub(crate) fn evaluate_gamma_normal_news_transform(
         components.activity_loading,
         components.return_loading,
     )
-    .scale(components.news_intensity.known_nu_h)
+    .scale(components.news_intensity.known_news_intensity)
     .plus(
         evaluate_component_transform(
             components.gamma_severity_mark_configuration,
@@ -35,7 +35,7 @@ pub(crate) fn evaluate_gamma_normal_news_transform(
             components.return_loading,
         )
         .subtract(ComplexScalar::new(1.0, 0.0))
-        .scale(components.news_intensity.surprise_nu_h),
+        .scale(components.news_intensity.surprise_news_intensity),
     )
 }
 
@@ -52,7 +52,7 @@ pub(crate) fn evaluate_gamma_normal_news_transform_tangent(
         activity_loading_tangent,
         return_loading_tangent,
     )
-    .scale(components.news_intensity.known_nu_h)
+    .scale(components.news_intensity.known_news_intensity)
     .plus(
         evaluate_component_transform_tangent(
             components.gamma_severity_mark_configuration,
@@ -62,7 +62,7 @@ pub(crate) fn evaluate_gamma_normal_news_transform_tangent(
             activity_loading_tangent,
             return_loading_tangent,
         )
-        .scale(components.news_intensity.surprise_nu_h),
+        .scale(components.news_intensity.surprise_news_intensity),
     )
 }
 
@@ -82,8 +82,8 @@ pub(crate) fn gamma_normal_news_domain_metric(
     );
 
     match (
-        components.news_intensity.known_nu_h > 0.0,
-        components.news_intensity.surprise_nu_h > 0.0,
+        components.news_intensity.known_news_intensity > 0.0,
+        components.news_intensity.surprise_news_intensity > 0.0,
     ) {
         (true, true) if surprise_metric.real > known_metric.real => surprise_metric,
         (true, true) => known_metric,
@@ -268,12 +268,15 @@ mod tests {
         assert_eq!(tangent, ComplexScalar::new(expected_tangent, 0.0));
     }
 
-    fn test_components(known_nu_h: f64, surprise_nu_h: f64) -> GammaNormalNewsTransformComponents {
+    fn test_components(
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
+    ) -> GammaNormalNewsTransformComponents {
         GammaNormalNewsTransformComponents {
             gamma_severity_mark_configuration: GammaSeverityMarkConfiguration { shape_k: 2.0 },
             news_intensity: ExponentialAffineTransformNewsIntensityInput {
-                known_nu_h,
-                surprise_nu_h,
+                known_news_intensity,
+                surprise_news_intensity,
             },
             known_component_mark_scales: test_component_mark_scales(),
             surprise_component_mark_scales: test_component_mark_scales(),

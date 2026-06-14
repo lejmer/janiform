@@ -1109,26 +1109,15 @@ fn assert_stage_artifact_matches(
                 fixture_id
             );
             assert_eq!(
-                loaded_payload.intraday_factor_by_bin.len(),
-                expected_payload.intraday_factor_by_bin.len(),
-                "fixture_id={} seasonality intraday factor length drifted",
+                loaded_payload.clock_model_schema_version,
+                expected_payload.clock_model_schema_version,
+                "fixture_id={} seasonality clock model schema drifted",
                 fixture_id
             );
             assert_eq!(
-                loaded_payload.day_of_week_factor.len(),
-                expected_payload.day_of_week_factor.len(),
-                "fixture_id={} seasonality day-of-week factor length drifted",
-                fixture_id
-            );
-            assert_eq!(
-                loaded_payload.day_of_year_factor.len(),
-                expected_payload.day_of_year_factor.len(),
-                "fixture_id={} seasonality day-of-year factor length drifted",
-                fixture_id
-            );
-            assert_eq!(
-                loaded_payload.normalization_metadata, expected_payload.normalization_metadata,
-                "fixture_id={} seasonality normalization metadata drifted",
+                loaded_payload.clock_model.harmonic_orders(),
+                expected_payload.clock_model.harmonic_orders(),
+                "fixture_id={} seasonality harmonic orders drifted",
                 fixture_id
             );
         }

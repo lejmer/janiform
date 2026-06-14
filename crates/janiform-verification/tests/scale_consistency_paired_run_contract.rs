@@ -212,9 +212,9 @@ fn scale_consistency_run_spec_rejects_invalid_interval_relationships() {
 fn scale_consistency_run_spec_rejects_implicit_fine_factor_interval_defaults() {
     let mut serialized =
         serde_json::to_value(build_valid_run_spec()).expect("fixture should serialize");
-    serialized["scenarios"][0]["parameter_set"]["fine_interval_factors"]
+    serialized["scenarios"][0]["parameter_set"]["fine_interval_factor_grids"]
         .as_object_mut()
-        .expect("fine_interval_factors should be an object")
+        .expect("fine_interval_factor_grids should be an object")
         .remove("interval_delta");
 
     let parsed: ScaleConsistencyPairedRunSpec =
@@ -233,7 +233,7 @@ fn scale_consistency_run_spec_rejects_implicit_fine_factor_interval_defaults() {
     assert!(
         error
             .to_string()
-            .contains("fine_interval_factors.interval_delta must be provided explicitly"),
+            .contains("fine_interval_factor_grids.interval_delta must be provided explicitly"),
         "unexpected error: {error}"
     );
 }
@@ -323,7 +323,7 @@ fn build_parameter_set() -> janiform_verification::ScaleConsistencyExperimentPar
     janiform_verification::ScaleConsistencyExperimentParameterSet {
         parameter_set_id: "baseline_regime".to_string(),
         model_inputs: build_model_inputs(),
-        fine_interval_factors: SufficientStatisticsIntervalFactors::try_new(
+        fine_interval_factor_grids: SufficientStatisticsIntervalFactors::try_new(
             vec![1.0, 1.1, 0.9, 1.0, 1.2, 1.0, 0.95, 1.05],
             vec![0.2, 0.25, 0.15, 0.2, 0.3, 0.25, 0.2, 0.2],
             vec![0.05, 0.04, 0.03, 0.02, 0.05, 0.05, 0.04, 0.03],

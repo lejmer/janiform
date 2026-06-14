@@ -1,6 +1,5 @@
-use janiform::model::factors::hourly::{
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
+use janiform::model::factors::interval_factor_grid::{
+    IntervalFactorGrid, IntervalFactorGridDiagnostics, IntervalFactorGridMetadata,
 };
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -8,7 +7,7 @@ use janiform::pricing::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
-    materialize_schedule_interval_factors,
+    materialize_schedule_interval_factor_grids,
 };
 use janiform_workflows::pricing::{
     FittedModelSingleOptionPricingRequest, ObservedOptionsPricingRequest,
@@ -25,7 +24,7 @@ use crate::python_value::py_any_to_json_value;
 pub(super) struct VanillaOptionPricingExecutionInputPayload {
     pub(super) request: VanillaOptionPricingRequest,
     pub(super) runtime_interval_schedule: PricingIntervalSchedule,
-    pub(super) hourly_factor_contract: PricingHourlyFactorContractPayload,
+    pub(super) interval_factor_grid: PricingIntervalFactorGridPayload,
     #[serde(default)]
     pub(super) optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
 }
@@ -38,7 +37,7 @@ struct VanillaOptionGridBatchPricingExecutionInputPayload {
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
-    hourly_factor_contract: PricingHourlyFactorContractPayload,
+    interval_factor_grid: PricingIntervalFactorGridPayload,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default)]
@@ -54,7 +53,7 @@ struct VanillaOptionSurfacePricingExecutionInputPayload {
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
-    hourly_factor_contract: PricingHourlyFactorContractPayload,
+    interval_factor_grid: PricingIntervalFactorGridPayload,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     #[serde(default)]
@@ -63,7 +62,7 @@ struct VanillaOptionSurfacePricingExecutionInputPayload {
 }
 
 #[derive(serde::Deserialize)]
-pub(super) struct PricingHourlyFactorContractPayload {
+pub(super) struct PricingIntervalFactorGridPayload {
     exchange_code: String,
     exchange_timezone_name: String,
     request_start_utc_nanos: i64,
@@ -74,9 +73,9 @@ pub(super) struct PricingHourlyFactorContractPayload {
     interval_end_utc_nanos: Vec<i64>,
     interval_start_exchange_local: Vec<String>,
     interval_end_exchange_local: Vec<String>,
-    s_h: Vec<f64>,
-    known_component_nu_h: Vec<f64>,
-    surprise_component_nu_h: Vec<f64>,
+    seasonality_factor: Vec<f64>,
+    known_news_intensity: Vec<f64>,
+    surprise_news_intensity: Vec<f64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -84,7 +83,7 @@ pub(super) struct PricingHourlyFactorContractPayload {
 pub(super) struct PricingActivityCompressedScheduleRequestPayload {
     pub(super) valuation_time_utc_nanos: i64,
     pub(super) expiry_timestamps_utc_nanos: Vec<i64>,
-    pub(super) hourly_factor_contract: PricingHourlyFactorContractPayload,
+    pub(super) interval_factor_grid: PricingIntervalFactorGridPayload,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -115,19 +114,19 @@ pub(super) fn vanilla_option_pricing_execution_input_from_py(
             ))
         })?;
 
-    let hourly_factor_contract =
-        hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
+    let interval_factor_grid =
+        interval_factor_grid_output_from_payload(execution_input.interval_factor_grid);
 
-    let interval_factors = materialize_schedule_interval_factors(
+    let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &execution_input.runtime_interval_schedule,
-        &hourly_factor_contract,
+        &interval_factor_grid,
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     VanillaOptionPricingExecutionInput::try_new(
         execution_input.request,
         execution_input.runtime_interval_schedule,
-        interval_factors,
+        interval_factor_grids,
         execution_input.optional_output_selection,
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))
@@ -143,12 +142,12 @@ pub(super) fn grid_batch_execution_input_from_py(
             ))
         })?;
 
-    let hourly_factor_contract =
-        hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
+    let interval_factor_grid =
+        interval_factor_grid_output_from_payload(execution_input.interval_factor_grid);
 
-    let interval_factors = materialize_schedule_interval_factors(
+    let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &execution_input.runtime_interval_schedule,
-        &hourly_factor_contract,
+        &interval_factor_grid,
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -158,7 +157,7 @@ pub(super) fn grid_batch_execution_input_from_py(
         model_parameters: execution_input.model_parameters,
         runtime_interval_schedule: execution_input.runtime_interval_schedule,
         interval_delta: execution_input.interval_delta,
-        interval_factors,
+        interval_factor_grids,
         optional_output_selection: execution_input.optional_output_selection,
         spectral_collocation_node_count_override: execution_input
             .spectral_collocation_node_count_override,
@@ -176,12 +175,12 @@ pub(super) fn surface_execution_input_from_py(
             ))
         })?;
 
-    let hourly_factor_contract =
-        hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
+    let interval_factor_grid =
+        interval_factor_grid_output_from_payload(execution_input.interval_factor_grid);
 
-    let interval_factors = materialize_schedule_interval_factors(
+    let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &execution_input.runtime_interval_schedule,
-        &hourly_factor_contract,
+        &interval_factor_grid,
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
@@ -191,7 +190,7 @@ pub(super) fn surface_execution_input_from_py(
         model_parameters: execution_input.model_parameters,
         runtime_interval_schedule: execution_input.runtime_interval_schedule,
         interval_delta: execution_input.interval_delta,
-        interval_factors,
+        interval_factor_grids,
         optional_output_selection: execution_input.optional_output_selection,
         spectral_collocation_node_count_override: execution_input
             .spectral_collocation_node_count_override,
@@ -199,9 +198,9 @@ pub(super) fn surface_execution_input_from_py(
     })
 }
 
-pub(super) fn hourly_factor_contract_output_from_payload(
-    payload: PricingHourlyFactorContractPayload,
-) -> HourlyFactorContractOutput {
+pub(super) fn interval_factor_grid_output_from_payload(
+    payload: PricingIntervalFactorGridPayload,
+) -> IntervalFactorGrid {
     let interval_count = payload.interval_start_utc_nanos.len();
 
     let first_interval_start_utc_nanos = payload
@@ -216,7 +215,7 @@ pub(super) fn hourly_factor_contract_output_from_payload(
         .copied()
         .unwrap_or_default();
 
-    HourlyFactorContractOutput {
+    IntervalFactorGrid {
         schema_version: "",
         exchange_code: payload.exchange_code,
         exchange_timezone_name: payload.exchange_timezone_name,
@@ -228,18 +227,18 @@ pub(super) fn hourly_factor_contract_output_from_payload(
         interval_end_utc_nanos: payload.interval_end_utc_nanos,
         interval_start_exchange_local: payload.interval_start_exchange_local,
         interval_end_exchange_local: payload.interval_end_exchange_local,
-        nu_h: payload
-            .known_component_nu_h
+        news_intensity: payload
+            .known_news_intensity
             .iter()
-            .zip(payload.surprise_component_nu_h.iter())
-            .map(|(known_component_nu_h, surprise_component_nu_h)| {
-                known_component_nu_h + surprise_component_nu_h
+            .zip(payload.surprise_news_intensity.iter())
+            .map(|(known_news_intensity, surprise_news_intensity)| {
+                known_news_intensity + surprise_news_intensity
             })
             .collect(),
-        s_h: payload.s_h,
-        known_component_nu_h: payload.known_component_nu_h,
-        surprise_component_nu_h: payload.surprise_component_nu_h,
-        metadata: HourlyFactorMaterializationMetadata {
+        seasonality_factor: payload.seasonality_factor,
+        known_news_intensity: payload.known_news_intensity,
+        surprise_news_intensity: payload.surprise_news_intensity,
+        metadata: IntervalFactorGridMetadata {
             seasonality_materialization_method: String::new(),
             news_intensity_materialization_method: String::new(),
             interval_boundary_policy: "",
@@ -248,13 +247,13 @@ pub(super) fn hourly_factor_contract_output_from_payload(
             spring_forward_policy: "",
             fall_back_policy: "",
         },
-        diagnostics: HourlyFactorContractDiagnostics {
+        diagnostics: IntervalFactorGridDiagnostics {
             interval_count,
             interval_duration_nanos: payload.interval_duration_nanos,
             first_interval_start_utc_nanos,
             last_interval_end_utc_nanos,
-            skipped_local_hour_interval_count: 0,
-            repeated_local_hour_interval_count: 0,
+            skipped_exchange_local_interval_count: 0,
+            repeated_exchange_local_interval_count: 0,
         },
     }
 }

@@ -1,10 +1,14 @@
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use serde::{Deserialize, Serialize};
+
+use janiform_market_time::business_time_clock::FourierBusinessTimeClockAxis;
+
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-    CalibrationIntradaySmoothingKernel, CalibrationMeanReversionStageObservation,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationTimestampEventSessionFilter,
 };
@@ -46,13 +50,8 @@ pub struct MarketDataTranslationPreprocessingSettings {
 pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
     pub session_filter: CalibrationTimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
-    pub known_news_overlay_log_adjustment: f64,
-    pub intraday_minutes_per_bin: u16,
-    pub intraday_smoothing_kernel: CalibrationIntradaySmoothingKernel,
-    pub intraday_smoothing_bandwidth_bins: f64,
-    pub intraday_minimum_bin_events: usize,
-    pub day_of_week_minimum_bucket_events: usize,
-    pub day_of_year_minimum_bucket_events: usize,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub maximum_harmonic_orders: BTreeMap<FourierBusinessTimeClockAxis, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -133,6 +132,8 @@ pub struct MarketDataTranslationPreprocessingOutput {
     pub seasonality_stage_input: CalibrationSeasonalityStageExecutionInput,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_candidate_inputs: Option<Vec<CalibrationHawkesStageCandidateInput>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hawkes_event_side_codes: Option<Vec<u8>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,

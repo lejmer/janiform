@@ -28,9 +28,6 @@ SYNTHETIC_EURUSD_TICK_DATA_PATH: Final[Path] = (
 CALENDAR_FIXTURE_PATH: Final[Path] = (
     TEST_FIXTURE_ROOT / "calendar" / "calendar_service_regression_matrix.json"
 )
-HOURLY_FACTOR_FIXTURE_PATH: Final[Path] = (
-    TEST_FIXTURE_ROOT / "hourly_factors" / "hourly_factor_regression_matrix.json"
-)
 STAGED_PREPARED_EXECUTION_PAYLOAD_PATH: Final[Path] = (
     TEST_FIXTURE_ROOT / "calibration" / "staged_prepared_execution_payload.json"
 )
@@ -94,18 +91,6 @@ def calendar_regression_cases() -> list[dict[str | bytes, Any]]:
     raw_cases: Any = calendar_fixture_document()["cases"]
     if not isinstance(raw_cases, list):
         raise ValueError("calendar fixture cases must be a JSON array")
-
-    return [dict(case) for case in raw_cases]
-
-
-def hourly_factor_fixture_document() -> dict[str, Any]:
-    return load_json_document(HOURLY_FACTOR_FIXTURE_PATH)
-
-
-def hourly_factor_regression_canonical_cases() -> list[dict[str | bytes, Any]]:
-    raw_cases: Any = hourly_factor_fixture_document()["canonical_output_cases"]
-    if not isinstance(raw_cases, list):
-        raise ValueError("hourly-factor canonical_output_cases must be a JSON array")
 
     return [dict(case) for case in raw_cases]
 

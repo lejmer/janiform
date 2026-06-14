@@ -628,25 +628,25 @@ fn precheck_deterministic_intensity_scales(
         ));
     }
 
-    if context.runtime_hourly_seasonality_factors.is_empty() {
-        return Err("runtime_hourly_seasonality_factors_empty".to_string());
+    if context.runtime_interval_seasonality_factors.is_empty() {
+        return Err("runtime_interval_seasonality_factors_empty".to_string());
     }
 
-    for (hour_index, factor) in context
-        .runtime_hourly_seasonality_factors
+    for (interval_index, factor) in context
+        .runtime_interval_seasonality_factors
         .iter()
         .enumerate()
     {
         if !factor.is_finite() || *factor < 0.0 {
             return Err(format!(
-                "runtime_hourly_seasonality_factor_invalid hour_index={hour_index} value={factor}"
+                "runtime_interval_seasonality_factor_invalid interval_index={interval_index} value={factor}"
             ));
         }
 
-        let hourly_activity_scale = modeled_open_event_rate_per_hour * *factor;
-        if !hourly_activity_scale.is_finite() || hourly_activity_scale < 0.0 {
+        let interval_activity_scale = modeled_open_event_rate_per_hour * *factor;
+        if !interval_activity_scale.is_finite() || interval_activity_scale < 0.0 {
             return Err(format!(
-                "runtime_hourly_activity_scale_invalid hour_index={hour_index} value={hourly_activity_scale}"
+                "runtime_interval_activity_scale_invalid interval_index={interval_index} value={interval_activity_scale}"
             ));
         }
     }
@@ -701,16 +701,23 @@ fn precheck_deterministic_intensity_scales(
         ));
     }
 
-    let surprise_weekly_hour_utc_multipliers = fitted_parameters
+    crate::surprise_profile::validate_surprise_news_weekly_profile(
+        &fitted_parameters
+            .return_components_fitted_parameters
+            .surprise_deterministic_intensity_profile,
+    )
+    .map_err(|source| format!("surprise_weekly_profile_invalid {source}"))?;
+
+    let surprise_weekly_profile_multipliers = fitted_parameters
         .return_components_fitted_parameters
         .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers
+        .weekly_utc_profile_multipliers
         .as_slice();
-    if surprise_weekly_hour_utc_multipliers.is_empty() {
+    if surprise_weekly_profile_multipliers.is_empty() {
         return Err("surprise_weekly_multipliers_empty".to_string());
     }
 
-    for (bucket_index, multiplier) in surprise_weekly_hour_utc_multipliers.iter().enumerate() {
+    for (bucket_index, multiplier) in surprise_weekly_profile_multipliers.iter().enumerate() {
         if !multiplier.is_finite() || *multiplier < 0.0 {
             return Err(format!(
                 "surprise_weekly_multiplier_invalid bucket_index={bucket_index} value={multiplier}"

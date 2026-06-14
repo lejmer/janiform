@@ -4,35 +4,36 @@ use janiform_affine_oracle::endogenous_anchor::{
 };
 use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
 use janiform_foundations::time::NANOS_PER_HOUR;
-use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
+use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 
-/// Convert an hourly factor contract into endogenous anchor interval factors.
-pub fn endogenous_interval_factors_from_hourly_contract(
-    hourly_factor_contract: &HourlyFactorContractOutput,
+/// Convert an interval factor grid contract into endogenous anchor interval factors.
+pub fn endogenous_interval_factor_grids_from_interval_factor_grid(
+    interval_factor_grid: &IntervalFactorGrid,
 ) -> Result<Vec<EndogenousAnchorIntervalFactors>, String> {
-    let interval_count = hourly_factor_contract.interval_indices.len();
-    if hourly_factor_contract.s_h.len() != interval_count
-        || hourly_factor_contract.known_component_nu_h.len() != interval_count
-        || hourly_factor_contract.surprise_component_nu_h.len() != interval_count
+    let interval_count = interval_factor_grid.interval_indices.len();
+    if interval_factor_grid.seasonality_factor.len() != interval_count
+        || interval_factor_grid.known_news_intensity.len() != interval_count
+        || interval_factor_grid.surprise_news_intensity.len() != interval_count
     {
         return Err(
-            "joint refinement hourly factor contract has inconsistent interval lengths".to_string(),
+            "joint refinement interval factor grid contract has inconsistent interval lengths"
+                .to_string(),
         );
     }
 
     let interval_delta =
-        hourly_factor_contract.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
+        interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
 
-    hourly_factor_contract
-        .s_h
+    interval_factor_grid
+        .seasonality_factor
         .iter()
-        .zip(hourly_factor_contract.known_component_nu_h.iter())
-        .zip(hourly_factor_contract.surprise_component_nu_h.iter())
+        .zip(interval_factor_grid.known_news_intensity.iter())
+        .zip(interval_factor_grid.surprise_news_intensity.iter())
         .map(
             |((seasonality_factor, known_intensity), surprise_intensity)| {
                 EndogenousAnchorIntervalFactors::try_new(
@@ -51,7 +52,7 @@ pub(super) fn materialize_joint_refinement_mean_reversion_runtime_inputs(
     interval_alignment_policy: &str,
     fitted_parameters: &JointRefinementStageFittedParameters,
     initial_excitation_state: HawkesExcitationState,
-    interval_factors: &[EndogenousAnchorIntervalFactors],
+    interval_factor_grids: &[EndogenousAnchorIntervalFactors],
 ) -> Result<
     (
         MeanReversionRuntimeIntervalAnchors,
@@ -81,7 +82,7 @@ pub(super) fn materialize_joint_refinement_mean_reversion_runtime_inputs(
             .return_components_fitted_parameters
             .news_process_configuration,
         initial_excitation_state,
-        interval_factors,
+        interval_factor_grids,
     )
     .map_err(|source| source.to_string())?;
 

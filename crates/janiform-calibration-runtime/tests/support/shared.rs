@@ -119,12 +119,11 @@ pub(crate) use janiform_calibration_artifacts::{
     MeanReversionStageParameterPayload, MeanReversionStageSeriesSummary,
     NewsShocksStageParameterArtifactInput, ReturnBackfitStageParameterArtifactInput,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    ReturnComponentsStageParameterPayload, SeasonalityStageNormalizationMetadata,
-    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
-    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
-    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
-    calibration_committed_artifact_run_directory,
+    ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
+    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -159,11 +158,8 @@ pub(crate) use janiform_calibration_runtime::{
     CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_SELECTION_POLICY,
     CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION,
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-    CalibrationDayOfWeekSeasonalityEstimatorSettings,
-    CalibrationDayOfYearSeasonalityEstimatorSettings,
     CalibrationDirectionalLabelDiagnosticsPayload, CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesStageCandidateInput, CalibrationIntradaySeasonalityEstimatorSettings,
-    CalibrationIntradaySmoothingKernel, CalibrationJointRefinementCarryInput,
+    CalibrationHawkesStageCandidateInput, CalibrationJointRefinementCarryInput,
     CalibrationJointRefinementCurrentStateEstimationInput,
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
@@ -188,7 +184,7 @@ pub(crate) use janiform_calibration_runtime::{
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
-    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationScheduledEventOverlay,
+    CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
     CalibrationSharedNewsMarkLawConfiguration, CalibrationStageExecutionStatus,
     CalibrationStagedExecutionBridgeError, CalibrationStagedExecutionInput,
@@ -268,13 +264,10 @@ pub(crate) use janiform_calibration_runtime::{
     ReturnComponentsStageSignalSourceWindow, ReturnComponentsStageSurpriseArrivalDiagnostic,
     ReturnComponentsStageSurpriseEpisodeSelectionPolicy,
     ReturnComponentsSurpriseNewsArrivalCandidateFamily, RunCandidateRequest, RunCandidateResponse,
-    RuntimeStructuralSeasonalityMaterializationError,
-    RuntimeStructuralSeasonalityMaterializationInput,
-    RuntimeStructuralSeasonalityMaterializationOutput, SeasonalityStageExecutionFailure,
-    SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
-    SeasonalityStageExecutionReport, SeasonalityStageExecutionSettings,
-    SeasonalityStageHandoffOutput, SeasonalityStageNormalizedPayload,
-    SeasonalityStageOverlayMetadata,
+    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
+    SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
+    SeasonalityStageExecutionSettings, SeasonalityStageHandoffOutput,
+    SeasonalityStageNormalizedPayload,
     build_option_surface_calibration_observation_from_pricing_hooks,
     compose_calibration_weighted_objective, current_process_resident_bytes,
     estimate_current_state_from_observed_data,
@@ -283,17 +276,16 @@ pub(crate) use janiform_calibration_runtime::{
     evaluate_return_components_exact_candidate_from_bridge,
     evolve_hawkes_state_for_calibration_step,
     initialize_joint_refinement_summary_simulation_session,
-    load_and_preprocess_market_data_translation_request,
-    load_hourly_factor_contract_for_calibration, materialize_runtime_structural_seasonality,
-    normalize_market_data_source, precheck_hawkes_kernel_parameter_domain,
-    precheck_structured_hawkes_kernel_parameter_domain, prepare_market_data_loading_from_phases,
-    preprocess_market_data_translation_request, probe_market_data_source,
-    project_hawkes_intensities_for_calibration_interval, read_joint_refinement_worker_frame,
-    resolve_market_data_session_configuration, run_constrained_optimizer_adapter,
-    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage,
-    run_joint_refinement_candidate_in_session, run_mean_reversion_calibration_stage,
-    run_return_components_calibration_stage, run_seasonality_calibration_stage,
-    run_staged_calibration_from_execution_input,
+    load_and_preprocess_market_data_translation_request, load_interval_factor_grid_for_calibration,
+    materialize_runtime_structural_seasonality, normalize_market_data_source,
+    precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
+    prepare_market_data_loading_from_phases, preprocess_market_data_translation_request,
+    probe_market_data_source, project_hawkes_intensities_for_calibration_interval,
+    read_joint_refinement_worker_frame, resolve_market_data_session_configuration,
+    run_constrained_optimizer_adapter, run_hawkes_calibration_stage,
+    run_joint_refinement_calibration_stage, run_joint_refinement_candidate_in_session,
+    run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
@@ -875,23 +867,23 @@ fn assert_return_components_fitted_parameters_match(
     assert_eq!(
         actual_parameters
             .surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .len(),
         expected_parameters
             .surprise_deterministic_intensity_profile
-            .weekly_hour_utc_multipliers
+            .weekly_utc_profile_multipliers
             .len(),
-        "{context} surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers length drifted"
+        "{context} surprise_deterministic_intensity_profile.weekly_utc_profile_multipliers length drifted"
     );
 
     for (position, (actual_multiplier, expected_multiplier)) in actual_parameters
         .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers
+        .weekly_utc_profile_multipliers
         .iter()
         .zip(
             expected_parameters
                 .surprise_deterministic_intensity_profile
-                .weekly_hour_utc_multipliers
+                .weekly_utc_profile_multipliers
                 .iter(),
         )
         .enumerate()
@@ -900,7 +892,7 @@ fn assert_return_components_fitted_parameters_match(
             *actual_multiplier,
             *expected_multiplier,
             &format!(
-                "{context} surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers[{position}]"
+                "{context} surprise_deterministic_intensity_profile.weekly_utc_profile_multipliers[{position}]"
             ),
         );
     }
@@ -1600,22 +1592,8 @@ fn stage_parameter_artifact_input(
                     timestamp_event_preprocessed_schema_version: payload
                         .timestamp_event_preprocessed_schema_version
                         .clone(),
-                    intraday_estimate_schema_version: payload
-                        .intraday_estimate_schema_version
-                        .clone(),
-                    day_of_week_estimate_schema_version: payload
-                        .day_of_week_estimate_schema_version
-                        .clone(),
-                    day_of_year_estimate_schema_version: payload
-                        .day_of_year_estimate_schema_version
-                        .clone(),
-                    composition_schema_version: payload.composition_schema_version.clone(),
-                    intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-                    intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
-                    day_of_week_factor: payload.day_of_week_factor.clone(),
-                    hour_of_week_factor: payload.hour_of_week_factor.clone(),
-                    day_of_year_factor: payload.day_of_year_factor.clone(),
-                    normalization_metadata: payload.normalization_metadata.clone(),
+                    clock_model_schema_version: payload.clock_model_schema_version.clone(),
+                    clock_model: payload.clock_model.clone(),
                 }),
             ))
         }
@@ -2436,6 +2414,7 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        hawkes_event_side_codes: None,
         return_components_candidate_generation_input: if include_return_candidate_generation_input {
             Some(return_components_stage_candidate_generation_fixture())
         } else {
@@ -2528,21 +2507,22 @@ pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExec
 }
 
 pub(crate) fn temporary_checkpoint_directory(test_name: &str) -> PathBuf {
-    let unique_suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time should be after UNIX epoch")
-        .as_nanos();
-    let checkpoint_directory =
-        std::env::temp_dir().join(format!("janiform-checkpoints-{test_name}-{unique_suffix}"));
+    loop {
+        let unique_suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after UNIX epoch")
+            .as_nanos();
+        let checkpoint_directory =
+            std::env::temp_dir().join(format!("janiform-checkpoints-{test_name}-{unique_suffix}"));
 
-    if checkpoint_directory.exists() {
-        let _ = fs::remove_dir_all(checkpoint_directory.as_path());
+        match fs::create_dir(checkpoint_directory.as_path()) {
+            Ok(()) => return checkpoint_directory,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::thread::yield_now();
+            }
+            Err(error) => panic!("temporary checkpoint directory should be created: {error}"),
+        }
     }
-
-    fs::create_dir_all(checkpoint_directory.as_path())
-        .expect("temporary checkpoint directory should be created");
-
-    checkpoint_directory
 }
 
 pub(crate) fn ensure_joint_refinement_worker_executable() -> PathBuf {
@@ -2870,11 +2850,8 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
                     seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                        hour_of_week_factor: seasonality_payload.hour_of_week_factor,
-                        day_of_week_factor: seasonality_payload.day_of_week_factor,
-                        day_of_year_factor: seasonality_payload.day_of_year_factor,
+                        exchange_code: seasonality_payload.exchange_code,
+                        clock_model: seasonality_payload.clock_model,
                     },
                     hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: build_hawkes_stage_success_payload(),

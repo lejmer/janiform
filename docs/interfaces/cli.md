@@ -8,18 +8,17 @@ The CLI is built around explicit, durable workflows that remain easy to audit af
 
 The top-level commands are organized by task:
 
-| Command          | Purpose                                                               |
-|------------------|-----------------------------------------------------------------------|
-| `fit`            | Model fitting workflows.                                              |
-| `inspect`        | Inspection workflows for saved Janiform artifacts.                    |
-| `report`         | Reporting workflows for saved Janiform outputs.                       |
-| `simulate`       | Simulation workflows.                                                 |
-| `price`          | Derivative pricing workflows.                                         |
-| `validate`       | Model validation workflows.                                           |
-| `presets`        | Preset workflows.                                                     |
-| `seasonality`    | Seasonality workflows.                                                |
-| `hourly-factors` | Workflows for preparing hourly seasonality and news-intensity inputs. |
-| `dev`            | Developer-oriented workflows.                                         |
+| Command                 | Purpose                                                               |
+|-------------------------|-----------------------------------------------------------------------|
+| `fit`                   | Model fitting workflows.                                              |
+| `inspect`               | Inspection workflows for saved Janiform artifacts.                    |
+| `report`                | Reporting workflows for saved Janiform outputs.                       |
+| `simulate`              | Simulation workflows.                                                 |
+| `price`                 | Derivative pricing workflows.                                         |
+| `validate`              | Model validation workflows.                                           |
+| `presets`               | Preset workflows.                                                     |
+| `seasonality`           | Seasonality workflows.                                                |
+| `dev`                   | Developer-oriented workflows.                                         |
 
 The main workflow starts with `fit`, then moves outward:
 

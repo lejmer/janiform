@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use janiform_terminal_ui::CompletionSummary;
 use janiform_terminal_ui::CompletionSummaryStatus;
 use janiform_terminal_ui::KeyValueRow;
@@ -101,15 +99,10 @@ where
     }
 }
 
-pub(crate) fn output_path_rows(output_path: Option<&Path>) -> Vec<KeyValueRow> {
-    let mut rows = Vec::new();
-
-    append_output_path_row(&mut rows, output_path);
-
-    rows
-}
-
-pub(crate) fn append_output_path_row(rows: &mut Vec<KeyValueRow>, output_path: Option<&Path>) {
+pub(crate) fn append_output_path_row(
+    rows: &mut Vec<KeyValueRow>,
+    output_path: Option<&std::path::Path>,
+) {
     if let Some(output_path) = output_path {
         rows.push(KeyValueRow::new(
             "Output",

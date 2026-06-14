@@ -294,11 +294,16 @@ fn fit_start_summary_from_parts(
 
 fn known_news_participation(execution_input: &CalibrationStagedExecutionInput) -> String {
     execution_input
-        .seasonality_stage_input
+        .return_components_candidate_generation_input
         .as_ref()
-        .map(|input| input.scheduled_event_overlays.len())
+        .map(|input| {
+            input
+                .known_news_calendar
+                .scheduled_event_timestamps_utc_nanos
+                .len()
+        })
         .filter(|count| *count > 0)
-        .map(|count| format!("{count} overlays"))
+        .map(|count| format!("{count} events"))
         .unwrap_or_else(|| "none".to_string())
 }
 

@@ -43,22 +43,8 @@ pub(super) fn build_stage_parameter_artifact_input(
                         timestamp_event_preprocessed_schema_version: payload
                             .timestamp_event_preprocessed_schema_version
                             .clone(),
-                        intraday_estimate_schema_version: payload
-                            .intraday_estimate_schema_version
-                            .clone(),
-                        day_of_week_estimate_schema_version: payload
-                            .day_of_week_estimate_schema_version
-                            .clone(),
-                        day_of_year_estimate_schema_version: payload
-                            .day_of_year_estimate_schema_version
-                            .clone(),
-                        composition_schema_version: payload.composition_schema_version.clone(),
-                        intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
-                        intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
-                        day_of_week_factor: payload.day_of_week_factor.clone(),
-                        hour_of_week_factor: payload.hour_of_week_factor.clone(),
-                        day_of_year_factor: payload.day_of_year_factor.clone(),
-                        normalization_metadata: payload.normalization_metadata.clone(),
+                        clock_model_schema_version: payload.clock_model_schema_version.clone(),
+                        clock_model: payload.clock_model.clone(),
                     },
                 ),
             ))

@@ -3,12 +3,10 @@ use clap::Subcommand;
 
 use crate::commands::dev::DevCommand;
 use crate::commands::fit::FitCommand;
-use crate::commands::hourly_factors::HourlyFactorsCommand;
 use crate::commands::inspection::InspectCommand;
 use crate::commands::presets::PresetsCommand;
 use crate::commands::pricing::PriceCommand;
 use crate::commands::reporting::ReportCommand;
-use crate::commands::seasonality::SeasonalityCommand;
 use crate::commands::simulation::SimulateCommand;
 use crate::commands::validation::ValidateCommand;
 use crate::context::GlobalCliOptions;
@@ -69,15 +67,6 @@ pub(crate) enum RootCommand {
 
     #[command(about = "Inspect bundled and user-registered presets.")]
     Presets(Box<PresetsCommand>),
-
-    #[command(about = "Prepare and diagnose seasonality inputs.")]
-    Seasonality(Box<SeasonalityCommand>),
-
-    #[command(
-        name = "hourly-factors",
-        about = "Prepare hourly seasonality and news-intensity factors."
-    )]
-    HourlyFactors(Box<HourlyFactorsCommand>),
 
     #[command(about = "Validate fitted models against empirical behavior.")]
     Validate(Box<ValidateCommand>),

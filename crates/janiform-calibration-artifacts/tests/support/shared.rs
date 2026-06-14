@@ -1,5 +1,7 @@
 #![allow(dead_code, unused_imports)]
 
+use std::collections::BTreeMap;
+
 pub(crate) use std::fs;
 pub(crate) use std::path::PathBuf;
 pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
@@ -112,13 +114,12 @@ pub(crate) use janiform_calibration_artifacts::{
     MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
     MeanReversionStageParameterPayload, MeanReversionStageSeriesSummary,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    ReturnComponentsStageParameterPayload, SeasonalityStageNormalizationMetadata,
-    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    build_calibration_stage_parameter_artifact, calibration_artifact_manifest_path,
-    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
-    calibration_committed_artifact_run_directory,
+    ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
+    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
+    TickGridObservationModel, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -147,6 +148,12 @@ pub(crate) use janiform_calibration_artifacts::{
     update_calibration_experiment_index_for_run,
 };
 pub(crate) use janiform_foundations::time::utc_nanos;
+use janiform_market_time::business_time_clock::{
+    FOURIER_BUSINESS_TIME_CLOCK_BASIS, FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM,
+    FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
+    FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY, FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY,
+    FourierBusinessTimeClockModel, zero_order_harmonic_series_by_axis,
+};
 pub(crate) use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -158,6 +165,24 @@ use janiform_model_kernels::news::{
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 pub(crate) use serde_json::json;
+
+pub(crate) fn flat_business_time_clock_model() -> FourierBusinessTimeClockModel {
+    FourierBusinessTimeClockModel {
+        schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION.to_string(),
+        coordinate_system: FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM.to_string(),
+        coefficient_basis: FOURIER_BUSINESS_TIME_CLOCK_BASIS.to_string(),
+        normalization_policy: FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY.to_string(),
+        selection_policy: FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY.to_string(),
+        intercept: 0.0,
+        harmonic_series: zero_order_harmonic_series_by_axis(),
+        selected_objective_value: 0.0,
+        selected_negative_log_likelihood: 0.0,
+        evaluated_candidate_count: 1,
+        fit_open_minute_count: 1,
+        fit_open_event_count: 1,
+        fit_open_exposure_seconds: 60.0,
+    }
+}
 
 pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
     CalibrationRunDataInputs::try_new(
@@ -694,29 +719,9 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
                     .to_string(),
                 timestamp_event_preprocessed_schema_version:
                     "calibration.timestamp_event_preprocessed.v1".to_string(),
-                intraday_estimate_schema_version: "calibration.seasonality.intraday_estimate.v1"
+                clock_model_schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION
                     .to_string(),
-                day_of_week_estimate_schema_version:
-                    "calibration.seasonality.day_of_week_estimate.v1".to_string(),
-                day_of_year_estimate_schema_version:
-                    "calibration.seasonality.day_of_year_estimate.v1".to_string(),
-                composition_schema_version: "calibration.seasonality.composition.v1".to_string(),
-                intraday_minutes_per_bin: 60,
-                intraday_factor_by_bin: vec![0.9, 1.1],
-                day_of_week_factor: vec![1.0, 0.98, 1.01, 1.02, 0.99],
-                hour_of_week_factor: vec![1.0; 168],
-                day_of_year_factor: vec![0.97, 1.03],
-                normalization_metadata: SeasonalityStageNormalizationMetadata {
-                    normalization_policy: "unit_mean_rescaling_with_log_offset_guard.v1"
-                        .to_string(),
-                    fit_window_event_count: 2,
-                    target_mean_factor: 1.0,
-                    pre_normalization_mean_factor: 1.05,
-                    normalization_constant: 0.9523809524,
-                    normalization_log_offset: 1e-9,
-                    post_normalization_mean_factor: 1.0,
-                    mean_anchor_tolerance: 1e-9,
-                },
+                clock_model: flat_business_time_clock_model(),
             },
         )),
     )
@@ -770,12 +775,12 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
         )
         .expect("news process configuration should validate"),
         surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
-            weekly_hour_utc_multipliers: (0..168)
+            weekly_utc_profile_multipliers: (0..168)
                 .map(|hour_index| if hour_index == 14 { 2.0 } else { 1.0 })
                 .collect(),
             profile_resolution_hours: 1,
             fit_policy:
-                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_with_baseline_shrinkage.v1"
+                "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_with_baseline_shrinkage.v1"
                     .to_string(),
             normalization_policy: "exposure_weighted_mean_one_over_source_window.v1"
                 .to_string(),

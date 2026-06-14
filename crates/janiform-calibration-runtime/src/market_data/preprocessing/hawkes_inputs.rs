@@ -6,16 +6,34 @@ use super::shared::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
     HawkesStageObservedSourceRegime, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy, MarketState,
-    OpenTickRecord, ResolvedKnownNewsRecord, ResolvedTickRecord, arithmetic_mean,
+    OpenTickRecord, ResolvedKnownNewsRecord, ResolvedTickRecord, TradeSign, arithmetic_mean,
     clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation, logistic,
     observation_window_hours, round_positive_to_domain, round_to, smallest_positive_value,
     strictly_positive_machine_value, unique_sorted_values,
 };
 use crate::stages::hawkes::short_gap_ratio_from_threshold;
+use crate::stages::hawkes::{HAWKES_EVENT_SIDE_CODE_BUY, HAWKES_EVENT_SIDE_CODE_SELL};
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, baseline_intensity_for_stationary_total_intensity,
 };
+
+pub(super) fn build_hawkes_event_side_codes(
+    resolved_ticks: &[ResolvedTickRecord],
+) -> Result<Vec<u8>, MarketDataTranslationPreprocessingError> {
+    resolved_ticks
+        .iter()
+        .map(|resolved_tick| match resolved_tick.trade_sign {
+            Some(TradeSign::Buy) => Ok(HAWKES_EVENT_SIDE_CODE_BUY),
+            Some(TradeSign::Sell) => Ok(HAWKES_EVENT_SIDE_CODE_SELL),
+            None => Err(
+                MarketDataTranslationPreprocessingError::HawkesRequiresResolvedTradeSigns {
+                    source_row_number: resolved_tick.source_row_number,
+                },
+            ),
+        })
+        .collect()
+}
 
 pub(super) fn build_hawkes_candidate_inputs(
     input: HawkesCandidateInputsBuildInput<'_>,

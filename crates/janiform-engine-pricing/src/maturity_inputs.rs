@@ -203,19 +203,9 @@ pub fn resolve_high_level_pricing_maturity_inputs(
         HighLevelPricingMaturityResolutionError::InvalidPricingIntervalSchedule { source }
     })?;
 
-    let maturity_intervals = derived_schedule
-        .maturity_terminal_interval_indices
-        .iter()
-        .copied()
-        .map(|terminal_interval_index| {
-            derived_schedule
-                .schedule
-                .maturity_interval_hours(terminal_interval_index)
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|source| {
-            HighLevelPricingMaturityResolutionError::InvalidPricingIntervalSchedule { source }
-        })?;
+    let maturity_intervals = derived_schedule.maturity_intervals().map_err(|source| {
+        HighLevelPricingMaturityResolutionError::InvalidPricingIntervalSchedule { source }
+    })?;
 
     Ok(HighLevelPricingMaturityResolution {
         maturity_intervals,

@@ -11,15 +11,12 @@ use support::stylized_fact_regression_fixture::{
     validate_stylized_fact_metric_regression_fixture_document,
 };
 use support::validation_fixture::{
-    CalendarRegressionFixtureDocument, HourlyFactorRegressionFixtureDocument,
-    OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID, OpenClosedGapBehaviorScenarioFixtureDocument,
-    ValidationFixtureManifestDocument, fixtures_root_path,
-    load_calendar_regression_fixture_from_manifest,
-    load_hourly_factor_regression_fixture_from_manifest, load_manifest_entry_payload,
-    load_open_closed_gap_behavior_scenario_fixture_from_manifest,
+    CalendarRegressionFixtureDocument, OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID,
+    OpenClosedGapBehaviorScenarioFixtureDocument, ValidationFixtureManifestDocument,
+    fixtures_root_path, load_calendar_regression_fixture_from_manifest,
+    load_manifest_entry_payload, load_open_closed_gap_behavior_scenario_fixture_from_manifest,
     load_validation_fixture_manifest_document, sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
-    validate_hourly_factor_regression_fixture_document,
     validate_open_closed_gap_behavior_calendar_integration,
     validate_open_closed_gap_behavior_scenario_fixture_document,
     validate_validation_fixture_manifest_document,
@@ -80,19 +77,6 @@ fn calendar_regression_fixture_document_is_valid_for_multiple_exchanges() {
             .exchange_codes
             .iter()
             .all(|exchange_code| exchange_codes.contains(exchange_code))
-    );
-}
-
-#[test]
-fn hourly_factor_regression_fixture_document_is_valid_for_manifest_exchange_coverage() {
-    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
-        .expect("hourly factor regression fixture should load from shared manifest");
-
-    assert!(
-        loaded_fixture
-            .manifest_entry
-            .exchange_codes
-            .contains(&"XNYS".to_string())
     );
 }
 
@@ -418,90 +402,6 @@ fn calendar_regression_fixture_rejects_incomplete_fixture_coverage_for_stable_ta
         .expect("calendar regression fixture with missing stable case should still parse");
 
     let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
-
-    assert!(validation_result.is_err());
-}
-
-#[test]
-fn hourly_factor_regression_fixture_rejects_malformed_canonical_metadata() {
-    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
-        .expect("hourly factor regression fixture should load from shared manifest");
-
-    let mut fixture_value: Value =
-        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
-            .expect("hourly factor regression fixture should be valid JSON");
-    fixture_value["canonical_regression_metadata"]["stable_canonical_output_fixture_ids"] =
-        Value::Array(vec![Value::String("missing_fixture".to_string())]);
-
-    let parsed_fixture =
-        serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(fixture_value).expect(
-            "hourly factor regression fixture with malformed canonical metadata should still parse",
-        );
-
-    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
-
-    assert!(validation_result.is_err());
-}
-
-#[test]
-fn hourly_factor_regression_fixture_rejects_unsupported_state_classification_strictness_policy() {
-    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
-        .expect("hourly factor regression fixture should load from shared manifest");
-
-    let mut fixture_value: Value =
-        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
-            .expect("hourly factor regression fixture should be valid JSON");
-    fixture_value["threshold_configuration"]["state_classification_strictness"] =
-        Value::String("fuzzy_match.v1".to_string());
-
-    let parsed_fixture = serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(
-        fixture_value,
-    )
-    .expect("hourly factor regression fixture with unsupported strictness should still parse");
-
-    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
-
-    assert!(validation_result.is_err());
-}
-
-#[test]
-fn hourly_factor_regression_fixture_rejects_factor_range_with_inverted_bounds() {
-    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
-        .expect("hourly factor regression fixture should load from shared manifest");
-
-    let mut fixture_value: Value =
-        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
-            .expect("hourly factor regression fixture should be valid JSON");
-    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]["s_h_min"] =
-        Value::from(2.5);
-    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]["s_h_max"] =
-        Value::from(2.0);
-
-    let parsed_fixture =
-        serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(fixture_value)
-            .expect("hourly factor regression fixture with inverted bounds should still parse");
-
-    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
-
-    assert!(validation_result.is_err());
-}
-
-#[test]
-fn hourly_factor_regression_fixture_rejects_change_log_without_current_policy_version() {
-    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
-        .expect("hourly factor regression fixture should load from shared manifest");
-
-    let mut fixture_value: Value =
-        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
-            .expect("hourly factor regression fixture should be valid JSON");
-    fixture_value["threshold_configuration"]["policy_version"] = Value::String("2.0.0".to_string());
-
-    let parsed_fixture = serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(
-        fixture_value,
-    )
-    .expect("hourly factor regression fixture with missing current policy log should still parse");
-
-    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
 
     assert!(validation_result.is_err());
 }

@@ -6,7 +6,7 @@ validation errors. Fitted model, pricing, simulation, state, preset,
 market-data, and staged contracts live in their ownership submodules.
 """
 
-from .errors import CalibrationValidationError, CalibrationValidationFailure
+from .errors import CalibrationValidationError
 from .fit import (
     JaniformEstimator,
     JaniformFitReport,
@@ -15,7 +15,6 @@ from .fit import (
 
 __all__ = [
     "CalibrationValidationError",
-    "CalibrationValidationFailure",
     "JaniformEstimator",
     "JaniformFitReport",
     "JaniformFitResult",

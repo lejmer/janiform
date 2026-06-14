@@ -5,12 +5,12 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::{GOLDEN_RATIO, strictly_positive_machine_value};
 use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
 
-use crate::information_depth::support_information_depth;
 use crate::stages::joint_refinement::pricing_block_search_coordinate_count;
 use crate::stages::long_variance::{
     LONG_VARIANCE_ACTIVE_PARAMETER_COUNT, LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
     LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
 };
+use janiform_foundations::numeric::support_information_depth;
 
 use super::loading::MarketDataLoadingOutput;
 
@@ -121,17 +121,11 @@ fn stage_solver_geometry(
                 .timestamp_event_records
                 .len();
 
-            let overlay_count = loading_output
-                .preprocessing_output
-                .seasonality_stage_input
-                .scheduled_event_overlays
-                .len();
-
             StageSolverGeometry {
-                parameter_dimension: 3,
-                objective_term_count: 3,
+                parameter_dimension: 2,
+                objective_term_count: 1,
                 support_count: timestamp_record_count,
-                candidate_geometry_count: overlay_count,
+                candidate_geometry_count: 0,
                 scale_reference: 1.0,
             }
         }
@@ -488,6 +482,8 @@ fn derived_mean_reversion_iteration_budget(tolerance: f64) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use janiform_calibration_artifacts::CalibrationStage;
 
     use super::{
@@ -497,7 +493,6 @@ mod tests {
     };
     use crate::{
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-        CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsKnownNewsCalendarInput,
         CalibrationReturnComponentsObjectiveMetricWeights,
@@ -567,25 +562,10 @@ mod tests {
             preprocessing_output: MarketDataTranslationPreprocessingOutput {
                 seasonality_stage_input: CalibrationSeasonalityStageExecutionInput {
                     timestamp_event_records: Vec::new(),
-                    scheduled_event_overlays: Vec::new(),
                     settings: Some(CalibrationSeasonalityStageExecutionSettings {
                         session_filter: CalibrationTimestampEventSessionFilter::OpenOnly,
                         sparse_hour_event_threshold: 1,
-                        intraday_settings: CalibrationIntradaySeasonalityEstimatorSettings {
-                            minutes_per_bin: 1,
-                            smoothing_kernel: CalibrationIntradaySmoothingKernel::Gaussian,
-                            smoothing_bandwidth_bins: 1.0,
-                            minimum_bin_events: 1,
-                            pseudocount: 1.0,
-                        },
-                        day_of_week_settings: crate::CalibrationDayOfWeekSeasonalityEstimatorSettings {
-                            minimum_bucket_events: 1,
-                            pseudocount: 1.0,
-                        },
-                        day_of_year_settings: crate::CalibrationDayOfYearSeasonalityEstimatorSettings {
-                            minimum_bucket_events: 1,
-                            pseudocount: 1.0,
-                        },
+                        maximum_harmonic_orders: BTreeMap::new(),
                     }),
                     dataset_id_override: None,
                     estimator_version_override: None,
@@ -633,6 +613,7 @@ mod tests {
                         price_down_inference_count: 5,
                     },
                 }]),
+                hawkes_event_side_codes: None,
                 return_components_candidate_generation_input: Some(
                     CalibrationReturnComponentsStageCandidateGenerationInput {
                         known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {
