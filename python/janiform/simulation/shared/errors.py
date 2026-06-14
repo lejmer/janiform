@@ -47,8 +47,8 @@ def _simulation_error(
     entrypoint: str = "contract",
     error_id: str = SIMULATION_VALIDATION_ERROR_ID,
     context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> ContractValidationFailure:
-    return ContractValidationFailure(
+) -> SeededTickSimulationValidationError:
+    return SeededTickSimulationValidationError(
         _simulation_failure(
             field_path,
             message,

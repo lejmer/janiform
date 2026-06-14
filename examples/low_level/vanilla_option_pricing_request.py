@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 
-from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calendar import CalendarRegistry
 from janiform.interval_factor_grids import IntervalFactorGridContract, build_interval_factor_grid
 from janiform.pricing import (
@@ -19,7 +18,7 @@ from examples._contracts import (
     build_pricing_model_parameters,
     build_pricing_payoff,
 )
-from examples._shared import calendar_registry_json
+from examples._shared import calendar_registry_json, datetime_to_utc_nanos
 
 
 def main() -> None:
@@ -31,6 +30,7 @@ def main() -> None:
         payoff=build_pricing_payoff(),
         boundary_input=build_pricing_boundary_input(),
         model_parameters=build_pricing_model_parameters(),
+        interval_delta=1.0,
     )
 
     calendar_registry: CalendarRegistry = CalendarRegistry(calendar_registry_json())

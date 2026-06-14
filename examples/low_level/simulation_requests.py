@@ -3,12 +3,13 @@ from typing import Final
 
 from janiform.calendar import CalendarRegistry
 from janiform.interval_factor_grids import IntervalFactorGridContract, build_interval_factor_grid
-from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import (
-    CoarseSimulationPath,
     CoarseSimulationModelInputs,
+    CoarseSimulationPath,
     CoarseSimulationRunRequest,
+    LongVarianceParameters,
+    LongVarianceState,
     SeededTickSimulationIntervalFactorGridSummary,
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
@@ -28,23 +29,16 @@ from examples._contracts import (
     build_nig_shared_plus_shift_configuration,
     build_sufficient_statistics_model_inputs,
 )
-from examples._shared import calendar_registry_json, calendar_registry_payload
+from examples._shared import (
+    calendar_registry_json,
+    calendar_registry_payload,
+    datetime_to_utc_nanos,
+)
 
 
 SIMULATION_START_UTC: Final[datetime] = datetime(2026, 2, 2, 14, 0, tzinfo=UTC)
 SIMULATION_INTERVAL_COUNT: Final[int] = 2
 SIMULATION_INTERVAL_DELTA: Final[float] = 1.0
-
-
-def datetime_to_utc_nanos(timestamp_utc: datetime) -> int:
-    normalized_timestamp_utc = timestamp_utc.astimezone(UTC)
-    epoch = datetime(1970, 1, 1, tzinfo=UTC)
-    delta = normalized_timestamp_utc - epoch
-
-    return (
-        ((delta.days * 24 * 60 * 60) + delta.seconds) * 1_000_000_000
-        + delta.microseconds * 1_000
-    )
 
 
 def main() -> None:

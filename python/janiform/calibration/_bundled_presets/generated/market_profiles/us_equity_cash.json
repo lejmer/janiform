@@ -38,7 +38,7 @@
     "provenance": {
       "bundle_id": "janiform_bundled_presets",
       "bundle_version": "v1",
-      "content_hash": "sha256:76a9fc95c1119d679d196e3c68ff5475d1a33399c940b13330717989fed7536a",
+      "content_hash": "sha256:ab4ec048f5fb42c54c5461d7e3886196c953743e2b7288be2777caa4339925bc",
       "generated_on": "2026-05-30",
       "generator_id": "janiform.curated_preset_generator",
       "generator_version": "1.0.0",

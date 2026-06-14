@@ -118,35 +118,9 @@
         "timestamp_utc_nanos": 1770046200000000000
       }
     ],
-    "scheduled_event_overlays": [
-      {
-        "overlay_id": "macro_release",
-        "start_timestamp_utc_nanos": 1770042300000000000,
-        "end_timestamp_utc_nanos": 1770042900000000000,
-        "log_adjustment": 0.05,
-        "precedence": 1,
-        "enabled": true,
-        "source_label": "known_macro_calendar"
-      }
-    ],
     "settings": {
       "session_filter": "open_only",
-      "sparse_hour_event_threshold": 1,
-      "intraday_settings": {
-        "minutes_per_bin": 1,
-        "smoothing_kernel": "gaussian",
-        "smoothing_bandwidth_bins": 3.0,
-        "minimum_bin_events": 1,
-        "pseudocount": 1e-06
-      },
-      "day_of_week_settings": {
-        "minimum_bucket_events": 1,
-        "pseudocount": 1e-06
-      },
-      "day_of_year_settings": {
-        "minimum_bucket_events": 1,
-        "pseudocount": 1e-06
-      }
+      "sparse_hour_event_threshold": 1
     }
   },
   "hawkes_candidate_inputs": [
