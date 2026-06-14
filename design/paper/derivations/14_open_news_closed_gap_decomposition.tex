@@ -32,12 +32,12 @@ Each event has a shared severity mark \(U_m^c\) and a coupled return-jump
 mark \(\zeta_m^c\).
 The activity shock always enters the news activity accumulator,
 \[
-J_t^c=\sum_{\tau_m^c\le t}a_cU_m^c.
+    J_t^c=\sum_{\tau_m^c\le t}a_c U_m^c.
 \]
 
 Let \(O(\tau)\) be the open-market indicator at event time \(\tau\), and let
 \[
-C(\tau)=1-O(\tau)
+    C(\tau)=1-O(\tau)
 \]
 be the closed-market indicator.
 For a closed-market event, let \(r(\tau)\) be the first reopening time
@@ -93,45 +93,45 @@ Activity shock routing is independent of open or closed return routing.
 
 \noindent\textbf{Identity.} For each news component \(c\),
 \[
-M_t^c
-=
-\sum_{\tau_m^c\le t}O(\tau_m^c)\zeta_m^c,
-\qquad
-G_t^c
-=
-\sum_{r(\tau_m^c)\le t}C(\tau_m^c)\zeta_m^c.
+    M_t^c
+    =
+    \sum_{\tau_m^c\le t}O(\tau_m^c)\zeta_m^c,
+    \qquad
+    G_t^c
+    =
+    \sum_{r(\tau_m^c)\le t}C(\tau_m^c)\zeta_m^c.
 \]
 The total open-news and closed-gap accumulators are
 \[
-M_t=M_t^{\mathrm{known}}+M_t^{\mathrm{surprise}},
-\qquad
-G_t=G_t^{\mathrm{known}}+G_t^{\mathrm{surprise}}.
+    M_t=M_t^{\mathrm{known}}+M_t^{\mathrm{surprise}},
+    \qquad
+    G_t=G_t^{\mathrm{known}}+G_t^{\mathrm{surprise}}.
 \]
 For one event at time \(\tau\), with \(r(\tau)\) used only when
 \(C(\tau)=1\), the return mark contribution is routed as
 \[
-\Delta M_\tau^c=O(\tau)\zeta^c,
-\qquad
-\Delta G_{r(\tau)}^c=C(\tau)\zeta^c,
-\qquad
-\Delta M_\tau^c\Delta G_{r(\tau)}^c=0.
+    \Delta M_\tau^c=O(\tau)\zeta^c,
+    \qquad
+    \Delta G_{r(\tau)}^c=C(\tau)\zeta^c,
+    \qquad
+    \Delta M_\tau^c\Delta G_{r(\tau)}^c=0.
 \]
 
 \section{Derivation}
 
 For a single event at time \(\tau\), the market is either open or closed, so
 \[
-O(\tau)\in\{0,1\},
-\qquad
-C(\tau)=1-O(\tau),
-\qquad
-O(\tau)C(\tau)=0.
+    O(\tau)\in\{0,1\},
+    \qquad
+    C(\tau)=1-O(\tau),
+    \qquad
+    O(\tau)C(\tau)=0.
 \]
 The same coupled return mark \(\zeta^c\) must be observed through exactly one
 return channel.
 Therefore, the open-channel increment at the event time is
 \[
-\Delta M_\tau^c=O(\tau)\zeta^c.
+    \Delta M_\tau^c=O(\tau)\zeta^c.
 \]
 If \(O(\tau)=1\), this equals \(\zeta^c\). If \(O(\tau)=0\), it equals zero.
 
@@ -139,7 +139,7 @@ For a closed event, the return mark is not an open-market direct jump at
 \(\tau\).
 It is carried to the first reopening time \(r(\tau)\), giving
 \[
-\Delta G_{r(\tau)}^c=C(\tau)\zeta^c.
+    \Delta G_{r(\tau)}^c=C(\tau)\zeta^c.
 \]
 If \(C(\tau)=1\), this equals \(\zeta^c\) at reopening. If \(C(\tau)=0\), it
 equals zero.
@@ -147,32 +147,32 @@ equals zero.
 Summing open-channel increments over events whose event time is at or before
 \(t\) gives
 \[
-M_t^c
-=
-\sum_{\tau_m^c\le t}O(\tau_m^c)\zeta_m^c.
+    M_t^c
+    =
+    \sum_{\tau_m^c\le t}O(\tau_m^c)\zeta_m^c.
 \]
 Summing closed-channel increments over events whose reopening time is at or
 before \(t\) gives
 \[
-G_t^c
-=
-\sum_{r(\tau_m^c)\le t}C(\tau_m^c)\zeta_m^c.
+    G_t^c
+    =
+    \sum_{r(\tau_m^c)\le t}C(\tau_m^c)\zeta_m^c.
 \]
 Since \(O(\tau)C(\tau)=0\), no single event can contribute a nonzero return
 mark to both channels:
 \[
-\Delta M_\tau^c\Delta G_{r(\tau)}^c
-=
-O(\tau)C(\tau)(\zeta^c)^2
-=0.
+    \Delta M_\tau^c\Delta G_{r(\tau)}^c
+    =
+    O(\tau)C(\tau)(\zeta^c)^2
+    =0.
 \]
 
 The activity shock is not decomposed by return-jump timing.
 It is accumulated from every event:
 \[
-J_t^c
-=
-\sum_{\tau_m^c\le t}a_cU_m^c.
+    J_t^c
+    =
+    \sum_{\tau_m^c\le t}a_cU_m^c.
 \]
 Thus, the news event has one shared severity channel for activity and one
 return-jump mark routed by market state.

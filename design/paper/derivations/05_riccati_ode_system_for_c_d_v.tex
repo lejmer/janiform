@@ -12,36 +12,38 @@
 
 \noindent\textbf{Status.} Draft\\
 \textbf{Plan item.} Riccati/ODE system for \((C,D,V)\)\\
-\textbf{Depends on.} \texttt{04\_affine\_transform\_ansatz.tex}\\
+\textbf{Depends on.} \texttt{04\_affine\_transform\_ansatz.tex},
+\texttt{15\_fourier\_business\_time\_clock\_interval\_factor\_grid.tex}\\
 \textbf{Feeds.} Affine schedule transform, affine domain constraints, terminal pricing measure
 
 \section{Purpose}
 
 Derive the deterministic equations for the affine schedule loadings
-\((C,\mathbf D,V)\). These equations are the actual transform recursion used
-once the affine ansatz has reduced the conditional expectation to a finite
-system of coefficient equations.
+\((C,\mathbf D,V)\).
+These equations are the actual transform recursion used once the affine
+ansatz has reduced the conditional expectation to a finite system of
+coefficient equations.
 
 \section{Setup}
 
-Use the same one-interval setup as
-\texttt{04\_affine\_transform\_ansatz.tex}. Let \(\tau\in[0,\Delta]\) denote
-backward elapsed time from the terminal condition. The terminal conditions are
+Use the same one-interval setup as \texttt{04\_affine\_transform\_ansatz.tex}.
+Let \(\tau\in[0,\Delta]\) denote backward elapsed time from the terminal condition.
+The terminal conditions are
 \[
-C(0)=0,
-\qquad
-\mathbf D(0)=\mathbf D_{\mathrm{term}},
-\qquad
-V(0)=\xi.
+    C(0)=0,
+    \qquad
+    \mathbf D(0)=\mathbf D_{\mathrm{term}},
+    \qquad
+    V(0)=\xi.
 \]
 
 The Hawkes jump vectors and news loading vector are
 \[
-\mathbf{k}_+=(\alpha_{++},0,\alpha_{-+},0),
-\qquad
-\mathbf{k}_-=(0,\alpha_{+-},0,\alpha_{--}),
-\qquad
-\mathbf r=(\rho_{++},\rho_{+-},\rho_{-+},\rho_{--}).
+    \mathbf{k}_+=(\alpha_{++},0,\alpha_{-+},0),
+    \qquad
+    \mathbf{k}_-=(0,\alpha_{+-},0,\alpha_{--}),
+    \qquad
+    \mathbf r=(\rho_{++},\rho_{+-},\rho_{-+},\rho_{--}).
 \]
 
 \section{Notation}
@@ -75,7 +77,7 @@ The affine ansatz holds for the interval transform.
 Buy endogenous intensity is \(Y^{++}+Y^{+-}\), and sell endogenous intensity is \(Y^{-+}+Y^{--}\).
 & Assigning \(H_+^E\) to \(D_{++},D_{+-}\) and \(H_-^E\) to \(D_{-+},D_{--}\).
 & The side intensity convention determines which state coordinates get each Hamiltonian.\\
-Baseline event intensities are both \(s_k\bar\lambda\).
+Baseline event intensities are both \(s_k\bar\lambda\) under the interval-grid convention.
 & Deriving the scalar baseline event term and the \(Z\)-linear baseline clock term.
 & Baseline arrivals affect \(C\), while baseline return clocks affect \(V\).\\
 The long-variance diffusion is CIR affine.
@@ -91,126 +93,127 @@ Known news is deterministic-arrival random-mark and surprise news is compound Po
 
 \noindent\textbf{Identity.} Define
 \[
-\begin{aligned}
-H_+^B(\mathbf D,V)
-&=
-z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^B,\\
-H_-^B(\mathbf D,V)
-&=
-z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^B,\\
-H_+^E(\mathbf D,V)
-&=
-z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^E,\\
-H_-^E(\mathbf D,V)
-&=
-z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^E.
-\end{aligned}
+    \begin{aligned}
+    H_+^B(\mathbf D,V)
+    &=
+    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^B,\\
+    H_-^B(\mathbf D,V)
+    &=
+    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^B,\\
+    H_+^E(\mathbf D,V)
+    &=
+    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^E,\\
+    H_-^E(\mathbf D,V)
+    &=
+    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^E.
+    \end{aligned}
 \]
 For \(c\in\{\mathrm{known},\mathrm{surprise}\}\), define
 \[
-M_c(q,r)
-=
-\left(
-1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
-\right)^{-k_U},
-\qquad
-\ell_c(q,r)=\log M_c(q,r).
+    M_c(q,r)
+    =
+    \left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right)^{-k_U},
+    \qquad
+    \ell_c(q,r)=\log M_c(q,r).
 \]
 Then the affine schedule loadings solve
 \[
-\begin{aligned}
-D_{++}'(\tau) &= -\beta D_{++}(\tau)
-    +H_+^E(\mathbf D(\tau),V(\tau)),\\
-D_{+-}'(\tau) &= -\beta D_{+-}(\tau)
-    +H_+^E(\mathbf D(\tau),V(\tau)),\\
-D_{-+}'(\tau) &= -\beta D_{-+}(\tau)
-    +H_-^E(\mathbf D(\tau),V(\tau)),\\
-D_{--}'(\tau) &= -\beta D_{--}(\tau)
-    +H_-^E(\mathbf D(\tau),V(\tau)),\\
-V'(\tau)
-&=
--\kappa_zV(\tau)
-+\frac{1}{2}\sigma_z^2V(\tau)^2
--s_k\bar\lambda\big(u_+^B+u_-^B\big),\\
-C'(\tau)
-&=
-\kappa_z\bar zV(\tau)
-+s_k\bar\lambda\Big(
-H_+^B(\mathbf D(\tau),V(\tau))+u_+^B
-+H_-^B(\mathbf D(\tau),V(\tau))+u_-^B
-\Big)\\
-&\quad
-+\nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
-\left(q,\mathbf D(\tau)\cdot\mathbf r\right)
-+\nu_k^{\mathrm{surprise}}
-\left(
-M_{\mathrm{surprise}}\left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
-\right).
-\end{aligned}
+    \begin{aligned}
+        D_{++}'(\tau) &= -\beta D_{++}(\tau)
+            +H_+^E(\mathbf D(\tau),V(\tau)),\\
+        D_{+-}'(\tau) &= -\beta D_{+-}(\tau)
+            +H_+^E(\mathbf D(\tau),V(\tau)),\\
+        D_{-+}'(\tau) &= -\beta D_{-+}(\tau)
+            +H_-^E(\mathbf D(\tau),V(\tau)),\\
+        D_{--}'(\tau) &= -\beta D_{--}(\tau)
+            +H_-^E(\mathbf D(\tau),V(\tau)),\\
+        V'(\tau)
+        &=
+        -\kappa_zV(\tau)
+        +\frac{1}{2}\sigma_z^2V(\tau)^2
+        -s_k\bar\lambda\big(u_+^B+u_-^B\big),\\
+        C'(\tau)
+        &=
+        \kappa_z\bar zV(\tau)
+        +s_k\bar\lambda\Big(
+        H_+^B(\mathbf D(\tau),V(\tau))+u_+^B
+        +H_-^B(\mathbf D(\tau),V(\tau))+u_-^B
+        \Big)\\
+        &\quad
+        +\nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
+        \left(q,\mathbf D(\tau)\cdot\mathbf r\right)
+        +\nu_k^{\mathrm{surprise}}
+        \left(
+            M_{\mathrm{surprise}}\left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
+        \right).
+    \end{aligned}
 \]
 
 \section{Derivation}
 
 Use
 \[
-f_\tau(\mathbf y,z)
-=
-\exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right).
+    f_\tau(\mathbf y,z)
+    =
+    \exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right).
 \]
 The left side of the Kolmogorov equation gives
 \[
-\frac{\partial_\tau f_\tau}{f_\tau}
-=
-C'(\tau)+\mathbf D'(\tau)\cdot\mathbf y+V'(\tau)z.
+    \frac{\partial_\tau f_\tau}{f_\tau}
+    =
+    C'(\tau)+\mathbf D'(\tau)\cdot\mathbf y+V'(\tau)z.
 \]
 
 Hawkes decay contributes
 \[
--\beta\mathbf D(\tau)\cdot\mathbf y.
+    -\beta\mathbf D(\tau)\cdot\mathbf y.
 \]
 
 A buy event has multiplier
 \[
-z_+\exp(\mathbf D(\tau)\cdot\mathbf k_+ + V(\tau)\chi_+),
+    z_+\exp(\mathbf D(\tau)\cdot\mathbf k_+ + V(\tau)\chi_+),
 \]
 and a sell event has multiplier
 \[
-z_-\exp(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-).
+    z_-\exp(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-).
 \]
-Subtracting one gives the usual jump-generator increment. Subtracting the
-activity clock loading gives the Hamiltonian associated with the clock type.
+Subtracting one gives the usual jump-generator increment.
+Subtracting the activity clock loading gives the Hamiltonian associated with
+the clock type.
 For endogenous activity, this yields \(H_+^E\) multiplying
-\(Y^{++}+Y^{+-}\) and \(H_-^E\) multiplying \(Y^{-+}+Y^{--}\). Combining with
-Hawkes decay gives the four \(\mathbf D\) equations.
+\(Y^{++}+Y^{+-}\) and \(H_-^E\) multiplying \(Y^{-+}+Y^{--}\).
+Combining with Hawkes decay gives the four \(\mathbf D\) equations.
 
-For baseline arrivals, the event intensities are both \(s_k\bar\lambda\).
+For baseline arrivals, the interval-grid event intensities are both \(s_k\bar\lambda\).
 Their pure event contribution is
 \[
-s_k\bar\lambda
-\left[
-z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) -1
-+z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) -1
-\right].
+    s_k\bar\lambda
+    \left[
+        z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) -1
+        +z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) -1
+    \right].
 \]
 Because \(H_\pm^B+u_\pm^B=z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1\),
 this is the baseline term in \(C'\):
 \[
-s_k\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
+    s_k\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
 \]
 
 The baseline return clocks are long-variance scaled, so their transform
 loadings contribute
 \[
--s_k\bar\lambda(u_+^B+u_-^B)z.
+    -s_k\bar\lambda(u_+^B+u_-^B)z.
 \]
 This term is \(z\)-linear and therefore enters \(V'\), not \(C'\).
 
 The continuous long-variance generator contributes
 \[
-\kappa_z\bar zV(\tau)
-+\left(
--\kappa_zV(\tau)+\frac{1}{2}\sigma_z^2V(\tau)^2
-\right)z.
+    \kappa_z\bar zV(\tau)
+    +\left(
+        -\kappa_zV(\tau)+\frac{1}{2}\sigma_z^2V(\tau)^2
+    \right)z.
 \]
 The constant part enters \(C'\), and the \(z\)-linear part enters \(V'\).
 Adding the baseline clock term gives the stated Riccati equation for \(V\).
@@ -218,28 +221,28 @@ Adding the baseline clock term gives the stated Riccati equation for \(V\).
 For news component \(c\), the activity jump and return jump have conditional
 mark transform
 \[
-M_c\left(q,\mathbf D(\tau)\cdot\mathbf r\right)
-=
-\left(
-1-\theta_U\left(
-(\mathbf D(\tau)\cdot\mathbf r)a_c
-+qm_c+\frac{1}{2}q^2\sigma_c^2
-\right)
-\right)^{-k_U}.
+    M_c\left(q,\mathbf D(\tau)\cdot\mathbf r\right)
+    =
+    \left(
+        1-\theta_U\left(
+            (\mathbf D(\tau)\cdot\mathbf r)a_c
+            +qm_c+\frac{1}{2}q^2\sigma_c^2
+        \right)
+    \right)^{-k_U}.
 \]
 Known-news timestamps are deterministic conditional on the schedule, so their
 equivalent rate contributes the log transform
 \[
-\nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
-\left(q,\mathbf D(\tau)\cdot\mathbf r\right).
+    \nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
+    \left(q,\mathbf D(\tau)\cdot\mathbf r\right).
 \]
 Surprise news is compound Poisson, so it contributes
 \[
-\nu_k^{\mathrm{surprise}}
-\left(
-M_{\mathrm{surprise}}
-\left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
-\right).
+    \nu_k^{\mathrm{surprise}}
+    \left(
+        M_{\mathrm{surprise}}
+        \left(q,\mathbf D(\tau)\cdot\mathbf r\right)-1
+    \right).
 \]
 Both news terms are state independent after conditioning, so both enter
 \(C'\).
@@ -251,10 +254,10 @@ the stated system.
 
 The ODE system is valid on the maximal interval where \(C(\tau)\),
 \(\mathbf D(\tau)\), and \(V(\tau)\) remain finite and the news mark
-transforms stay inside the gamma-normal moment domain. The terminal conditions
-must be finite. The model parameters must satisfy the Hawkes, news,
-long-variance, and first-moment constraints listed in
-\texttt{06\_affine\_domain\_constraints.tex}.
+transforms stay inside the gamma-normal moment domain.
+The terminal conditions must be finite.
+The model parameters must satisfy the Hawkes, news, long-variance, and
+first-moment constraints listed in \texttt{06\_affine\_domain\_constraints.tex}.
 
 \section{Consequences}
 

@@ -1,0 +1,180 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Fourier business-time clock and interval factor grid}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Deterministic seasonality materialization\\
+\textbf{Depends on.} Calendar and market-state conventions\\
+\textbf{Feeds.} Hawkes activity, return clocks, affine schedule transform, simulation, pricing
+
+\section{Purpose}
+
+Connect the fitted recurring Fourier business-time clock to the interval
+factor grid consumed by simulation, sufficient statistics, and pricing.
+The result is a single interval materialization contract for deterministic
+baseline activity exposure.
+
+\section{Setup}
+
+Let \(O(t)\in\{0,1\}\) be the open-market indicator.
+The source deterministic activity clock is a positive recurring rate \(s_\star(t)\)
+defined in exchange-local calendar coordinates.
+Each consumer requests an ordered interval family
+\[
+    I_k=[t_k,t_{k+1}),\qquad \Delta_k=t_{k+1}-t_k>0.
+\]
+
+\section{Fourier clock}
+
+The Fourier clock uses the canonical recurring axes
+\[
+    \mathcal A
+    =
+    \{\mathrm{intraday},\mathrm{weekly},\mathrm{annual}\}.
+\]
+For axis \(a\in\mathcal A\), let \(\phi_a(t)\in[0,1)\) be the exchange-local
+phase and let \(K_a\) be the selected harmonic order.
+The normalized log-rate is
+\[
+    \ell(t)
+    =
+    c_0
+    +
+    \sum_{a\in\mathcal A}
+    \sum_{n=1}^{K_a}
+    \left[
+        c_{a,n}\cos(2\pi n\phi_a(t))
+        +
+        d_{a,n}\sin(2\pi n\phi_a(t))
+    \right],
+\]
+and the source clock rate is
+\[
+    s_\star(t)=\exp(\ell(t)).
+\]
+
+The fitted model is selected and normalized on open exposure so that the
+source clock has unit open-time mean on the fit support:
+\[
+    \frac{
+        \int_{\mathcal R_{\mathrm{fit}}}O(u)s_\star(u)\,du
+    }{
+        \int_{\mathcal R_{\mathrm{fit}}}O(u)\,du
+    }
+    =
+    1.
+\]
+
+\section{Interval materialization}
+
+For a requested interval family, define the raw clock exposure
+\[
+    E_k^{s}
+    =
+    \int_{I_k}O(u)s_\star(u)\,du,
+\]
+and the open-time exposure
+\[
+    E_k^{O}
+    =
+    \int_{I_k}O(u)\,du.
+\]
+The materialized grid applies an open-time renormalization over the requested
+range:
+\[
+    n_{\mathcal K}
+    =
+    \frac{\sum_j E_j^{s}}{\sum_j E_j^{O}},
+\]
+when \(\sum_jE_j^O>0\).
+If the requested range contains no open exposure, all seasonality factors
+are zero.
+Otherwise the stored interval factor is
+\[
+    s_k
+    =
+    \frac{E_k^{s}}{\Delta_k\,n_{\mathcal K}}.
+\]
+Thus \(s_k\ge0\), closed intervals receive \(s_k=0\), and the quantity
+\(s_k\Delta_k\) is the normalized deterministic baseline exposure represented
+by the interval factor grid.
+
+\section{News intensity factors}
+
+The same interval factor grid carries separate news-intensity channels:
+\[
+    \nu_k^{\mathrm{known}}\ge0,
+    \qquad
+    \nu_k^{\mathrm{surprise}}\ge0,
+    \qquad
+    \nu_k^{\mathrm{news}}
+    =
+    \nu_k^{\mathrm{known}}+\nu_k^{\mathrm{surprise}}.
+\]
+Known-news intensity is the deterministic, scheduled arrival count represented
+as an interval rate.
+Surprise-news intensity is the open/closed market-state exposure weighted baseline
+intensity multiplied by any deterministic interval control.
+
+\section{Runtime interpretation}
+
+On interval \(I_k\), the deterministic baseline opportunity is represented by
+\[
+    \bar\lambda\,s_k\Delta_k.
+\]
+Equivalently, consumers may work directly with the integrated exposure
+\[
+    \bar\lambda
+    \frac{E_k^{s}}{n_{\mathcal K}},
+\]
+provided they use the same interval alignment policy.
+The Fourier clock remains the source of truth.
+The interval factor grid is a deterministic, materialized view with its own
+interval duration and alignment metadata.
+
+\section{Domain and validity}
+
+The Fourier coefficients must be finite and the harmonic series must be
+defined on exactly the canonical axes.
+The log-rate envelope must remain inside the representable positive
+floating-point domain.
+Requested intervals must be ordered, non-decreasing, and have positive
+duration for fixed-grid materialization.
+The stored factors and news intensities must be finite and non-negative.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item Interval duration is a runtime or pricing policy carried by the requested grid.
+    \item The interval factor \(s_k\) is an integrated Fourier-clock exposure per requested interval.
+    \item Pricing, sufficient statistics, and simulation should consume the same interval-grid fields: \(s_k\), \(\nu_k^{\mathrm{known}}\), and \(\nu_k^{\mathrm{surprise}}\).
+    \item Fine tick/event consumers can request a finer interval grid or integrate the Fourier clock directly.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Fourier source model
+& Log-rate uses an intercept plus axis-keyed cosine/sine harmonic series over intraday, weekly, and annual phases.
+& \texttt{fourier\_log\_rate} in \texttt{crates/janiform-market-time/src/business\_time\_clock/coordinates.rs}\\
+Ordered interval exposure
+& Integrated normalized clock exposure is computed over ordered UTC intervals and exchange-local phases.
+& \texttt{integrate\_fourier\_business\_time\_clock\_ordered\_interval\_exposures} in \texttt{crates/janiform-market-time/src/business\_time\_clock/materialization.rs}\\
+Interval factor output
+& The runtime contract carries \texttt{seasonality\_factor}, \texttt{known\_news\_intensity}, and \texttt{surprise\_news\_intensity} with interval metadata.
+& \texttt{IntervalFactorGrid} in \texttt{crates/janiform-market-time/src/interval\_factor\_grids/contract/types.rs}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

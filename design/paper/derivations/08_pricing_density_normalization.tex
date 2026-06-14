@@ -18,17 +18,17 @@
 \section{Purpose}
 
 Derive the normalized terminal density used to change from the physical
-terminal law to the pricing terminal law. The goal is to show that activity
-premia and the scalar return tilt define a valid likelihood ratio when the
-terminal cumulant is finite.
+terminal law to the pricing terminal law.
+The goal is to show that activity premia and the scalar return tilt define a
+valid likelihood ratio when the terminal cumulant is finite.
 
 \section{Setup}
 
 Let
 \[
-K_{t,T}(v,\gamma_+,\gamma_-)
-=
-\log\mathbb E^P\!\left[
+    K_{t,T}(v,\gamma_+,\gamma_-)
+    =
+    \log\mathbb E^P\!\left[
 \exp\!\left(
 vX_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
 \right)
@@ -36,14 +36,14 @@ vX_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
 \right]
 \]
 be the physical stochastic terminal cumulant produced by the adapter in
-\texttt{07\_terminal\_cumulant\_adapter.tex}. The deterministic terminal
-component \(d_{t,T}\) is not included in \(K_{t,T}\).
+\texttt{07\_terminal\_cumulant\_adapter.tex}.
+The deterministic terminal component \(d_{t,T}\) is not included in \(K_{t,T}\).
 
 Let \(\pi_+,\pi_->0\), and write
 \[
-\gamma_+=\log\pi_+,
-\qquad
-\gamma_-=\log\pi_-.
+    \gamma_+=\log\pi_+,
+    \qquad
+    \gamma_-=\log\pi_-.
 \]
 
 \section{Notation}
@@ -88,76 +88,77 @@ The density is normalized conditionally on \(\mathcal F_t\).
 \noindent\textbf{Identity.} For every admissible real \(\theta\) and
 strictly positive \(\pi_\pm\), define
 \[
-M_T(\theta,\pi_+,\pi_-)
-=
-\exp\!\left(
-\theta X_{t,T}
-+\log(\pi_+)N_{t,T}^+
-+\log(\pi_-)N_{t,T}^-
--K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-\right).
+    M_T(\theta,\pi_+,\pi_-)
+    =
+    \exp\!\left(
+        \theta X_{t,T}
+        +\log(\pi_+)N_{t,T}^+
+        +\log(\pi_-)N_{t,T}^-
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+    \right).
 \]
 Then
 \[
-\mathbb E^P\!\left[
-M_T(\theta,\pi_+,\pi_-)\mid\mathcal F_t
-\right]
-=1.
+    \mathbb E^P\!\left[
+        M_T(\theta,\pi_+,\pi_-)\mid\mathcal F_t
+    \right]
+    =1.
 \]
 
 \section{Derivation}
 
 By definition of \(K_{t,T}\),
 \[
-\exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
-=
-\mathbb E^P\!\left[
-\exp\!\left(
-\theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
-\right)
-\mid\mathcal F_t
-\right].
+    \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
+    =
+    \mathbb E^P\!\left[
+        \exp\!\left(
+            \theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+        \right)
+        \mid\mathcal F_t
+    \right].
 \]
 Set \(\gamma_\pm=\log\pi_\pm\). The density is
 \[
-M_T
-=
-\frac{
-\exp\!\left(
-\theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
-\right)
-}{
-\exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
-}.
+    M_T
+    =
+    \frac{
+        \exp\!\left(
+            \theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+        \right)
+    }{
+        \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
+    }.
 \]
 Taking the conditional physical expectation gives
 \[
-\mathbb E^P[M_T\mid\mathcal F_t]
-=
-\frac{
-\mathbb E^P\!\left[
-\exp\!\left(
-\theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
-\right)
-\mid\mathcal F_t
-\right]
-}{
-\exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
-}
-=1.
+    \mathbb E^P[M_T\mid\mathcal F_t]
+    =
+    \frac{
+        \mathbb E^P\!\left[
+            \exp\!\left(
+                \theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+            \right)
+            \mid\mathcal F_t
+        \right]
+    }{
+        \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
+    }
+    =1.
 \]
 
 Since \(\theta\), \(\gamma_+\), and \(\gamma_-\) are real, and since
-\(\pi_\pm>0\), the numerator is strictly positive. Therefore \(M_T\) is a
-positive normalized terminal density on the admissible domain.
+\(\pi_\pm>0\), the numerator is strictly positive.
+Therefore, \(M_T\) is a positive normalized terminal density on the
+admissible domain.
 
 \section{Domain and validity}
 
 The result is valid when \(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\) is finite,
 the affine schedule domain constraints hold for the corresponding adapted
-query, \(\theta\) is real, and \(\pi_\pm>0\). The normalized density alone
-does not impose the martingale condition. That condition determines which
-\(\theta\) is used for pricing.
+query, \(\theta\) is real, and \(\pi_\pm>0\).
+The normalized density alone does not impose the martingale condition.
+That condition determines which \(\theta\) is used for pricing.
 
 \section{Consequences}
 

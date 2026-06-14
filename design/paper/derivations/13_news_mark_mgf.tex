@@ -26,11 +26,11 @@ simultaneously contributes an activity shock and a return jump.
 Fix a news component \(c\in\{\mathrm{known},\mathrm{surprise}\}\).
 At one arrival time, draw a shared severity mark and a return-shock mark
 \[
-U\sim\Gamma(k_U,\theta_U),
-\qquad
-\theta_U=\frac{1}{k_U},
-\qquad
-Z^N\sim\mathcal N(0,1),
+    U\sim\Gamma(k_U,\theta_U),
+    \qquad
+    \theta_U=\frac{1}{k_U},
+    \qquad
+    Z^N\sim\mathcal N(0,1),
 \]
 with \(U\) independent of \(Z^N\).
 The gamma law uses the shape-scale parameterization,
@@ -40,9 +40,9 @@ The component scales are \(a_c\ge0\), \(m_c\in\mathbb R\), and
 \(\sigma_c\ge0\).
 The activity shock and return jump are
 \[
-J^c=a_c U,
-\qquad
-\zeta^c=m_c U+\sigma_c\sqrt{U}\,Z^N.
+    J^c=a_c U,
+    \qquad
+    \zeta^c=m_c U+\sigma_c\sqrt{U}\,Z^N.
 \]
 The transform arguments are \(r\), the loading on the activity shock, and
 \(q\), the loading on the return jump.
@@ -92,24 +92,24 @@ The transform argument lies inside the gamma moment domain.
 
 \noindent\textbf{Identity.} For a news component \(c\),
 \[
-M_c(q,r)
-=
-\mathbb E\left[\exp\left(rJ^c+q\zeta^c\right)\right]
-=
-\left(
-1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
-\right)^{-k_U}.
+    M_c(q,r)
+    =
+    \mathbb E\left[\exp\left(rJ^c+q\zeta^c\right)\right]
+    =
+    \left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right)^{-k_U}.
 \]
 
 Equivalently, the log mark MGF is
 \[
-\ell_c(q,r)
-=
-\log M_c(q,r)
-=
--k_U\log\left(
-1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
-\right).
+    \ell_c(q,r)
+    =
+    \log M_c(q,r)
+    =
+    -k_U\log\left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right).
 \]
 
 \section{Derivation}
@@ -119,62 +119,62 @@ Start from the joint transform of the activity shock and return jump:
 M_c(q,r)
 =
 \mathbb E\left[
-\exp\left(ra_cU+q\left(m_cU+\sigma_c\sqrt{U}\,Z^N\right)\right)
+    \exp\left(ra_cU+q\left(m_cU+\sigma_c\sqrt{U}\,Z^N\right)\right)
 \right].
 \]
 Condition on \(U\):
 \[
-M_c(q,r)
-=
-\mathbb E\left[
-\exp\left((ra_c+qm_c)U\right)
-\mathbb E\left[
-\exp\left(q\sigma_c\sqrt{U}\,Z^N\right)\mid U
-\right]
-\right].
+    M_c(q,r)
+    =
+    \mathbb E\left[
+        \exp\left((ra_c+qm_c)U\right)
+        \mathbb E\left[
+            \exp\left(q\sigma_c\sqrt{U}\,Z^N\right)\mid U
+        \right]
+    \right].
 \]
 For a standard normal \(Z^N\),
 \[
-\mathbb E\left[
-\exp\left(q\sigma_c\sqrt{U}\,Z^N\right)\mid U
-\right]
-=
-\exp\left(\frac{1}{2}q^2\sigma_c^2U\right),
+    \mathbb E\left[
+        \exp\left(q\sigma_c\sqrt{U}\,Z^N\right)\mid U
+    \right]
+    =
+    \exp\left(\frac{1}{2}q^2\sigma_c^2U\right),
 \]
 where the formula is interpreted by analytic continuation for complex
 arguments within the transform domain.
 
 Therefore
 \[
-M_c(q,r)
-=
-\mathbb E\left[
-\exp\left(
-\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)U
-\right)
-\right].
+    M_c(q,r)
+    =
+    \mathbb E\left[
+        \exp\left(
+            \left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)U
+        \right)
+    \right].
 \]
 Let
 \[
-s_c(q,r)
-=
-ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2.
+    s_c(q,r)
+    =
+    ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2.
 \]
 The gamma MGF for \(U\sim\Gamma(k_U,\theta_U)\) is
 \[
-\mathbb E[e^{sU}]=(1-\theta_U s)^{-k_U},
-\qquad
-\operatorname{Re}(s)<\frac{1}{\theta_U}.
+    \mathbb E[e^{sU}]=(1-\theta_U s)^{-k_U},
+    \qquad
+    \operatorname{Re}(s)<\frac{1}{\theta_U}.
 \]
 Substituting \(s=s_c(q,r)\) gives
 \[
-M_c(q,r)
-=
-\left(1-\theta_U s_c(q,r)\right)^{-k_U}
-=
-\left(
-1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
-\right)^{-k_U}.
+    M_c(q,r)
+    =
+    \left(1-\theta_U s_c(q,r)\right)^{-k_U}
+    =
+    \left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right)^{-k_U}.
 \]
 
 \section{Domain and validity}
@@ -183,11 +183,11 @@ The result requires \(k_U>0\), \(\theta_U=1/k_U\), \(a_c\ge0\),
 \(\sigma_c\ge0\), and finite \(m_c\).
 The transform is valid when
 \[
-\operatorname{Re}\left(
-ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2
-\right)
-<
-\frac{1}{\theta_U}.
+    \operatorname{Re}\left(
+        ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2
+    \right)
+    <
+    \frac{1}{\theta_U}.
 \]
 For the affine schedule transform, \(r\) is supplied by the Hawkes loading,
 typically \(r=\mathbf D(\tau)\cdot\mathbf r\), and this domain condition must
