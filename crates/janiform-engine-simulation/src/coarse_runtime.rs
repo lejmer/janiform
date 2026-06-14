@@ -1194,6 +1194,9 @@ mod tests {
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
+            timestamp_batching_observation_model:
+                janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                ),
             calendar_registry_artifact: ExchangeCalendarRegistryArtifact {
                 schema_version: "calendar.registry.v1".to_string(),
                 artifact_date: "2024-01-02".to_string(),

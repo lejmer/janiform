@@ -30,6 +30,10 @@ from .seeded import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
     run_seeded_tick_event_simulation,
 )
+from .timestamp_observation import (
+    TimestampBatchingObservationMode,
+    TimestampBatchingObservationModel,
+)
 from ..mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
@@ -60,6 +64,8 @@ __all__ = [
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",
     "SimulationKind",
+    "TimestampBatchingObservationMode",
+    "TimestampBatchingObservationModel",
     "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "run_coarse_simulation",
     "run_seeded_tick_event_simulation",

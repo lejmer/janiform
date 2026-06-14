@@ -612,6 +612,7 @@ fn build_coarse_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
         calendar_registry_artifact: build_calendar_registry_artifact(),
         exchange_code: "XNYS".to_string(),
     })
@@ -640,6 +641,7 @@ fn build_seeded_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
         calendar_registry: ExchangeCalendarRegistry::from_artifact(
             build_calendar_registry_artifact(),
         )

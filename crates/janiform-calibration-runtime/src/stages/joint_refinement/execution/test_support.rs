@@ -79,6 +79,9 @@ pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParame
             inference_policy: "test".to_string(),
             observation_policy: "test".to_string(),
         },
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
     };

@@ -445,7 +445,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         };
 
         accumulate_return_into_intervals_with_cursor(
-            record.timestamp_utc_nanos,
+            record.observed_timestamp_utc_nanos,
             record.return_components.total_return,
             tick_increment,
             sell_share_increment,
@@ -454,7 +454,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         );
 
         accumulate_return_into_intervals_with_cursor(
-            record.timestamp_utc_nanos,
+            record.observed_timestamp_utc_nanos,
             record.return_components.total_return,
             tick_increment,
             sell_share_increment,
@@ -463,7 +463,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         );
 
         accumulate_return_into_intervals_with_cursor(
-            record.timestamp_utc_nanos,
+            record.observed_timestamp_utc_nanos,
             record.return_components.total_return,
             tick_increment,
             sell_share_increment,
@@ -476,7 +476,7 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
                 .retain_return(record.return_components.total_return);
 
             let hour_index = record
-                .timestamp_utc_nanos
+                .observed_timestamp_utc_nanos
                 .div_euclid(NANOS_PER_HOUR)
                 .rem_euclid(24) as usize;
 
@@ -813,6 +813,10 @@ fn build_seeded_summary_simulation_run_config(
                 .return_components_fitted_parameters
                 .tick_grid_observation_model
                 .tick_size,
+            timestamp_batching_observation_model: fitted_parameters
+                .return_components_fitted_parameters
+                .timestamp_batching_observation_model
+                .clone(),
             calendar_registry: session_state.calendar_registry.clone(),
         },
         Some(janiform_engine_simulation::SeededTickSimulationRunOptions {
@@ -1807,10 +1811,14 @@ pub(crate) mod tests {
             workspace_root.join("Cargo.lock"),
             workspace_root.join("crates/janiform-joint-refinement-worker/Cargo.toml"),
             workspace_root.join("crates/janiform-joint-refinement-worker/src"),
+            workspace_root.join("crates/janiform-calibration-artifacts/Cargo.toml"),
+            workspace_root.join("crates/janiform-calibration-artifacts/src"),
             workspace_root.join("crates/janiform-calibration-runtime/Cargo.toml"),
             workspace_root.join("crates/janiform-calibration-runtime/src/stages/joint_refinement"),
             workspace_root.join("crates/janiform-engine-simulation/Cargo.toml"),
             workspace_root.join("crates/janiform-engine-simulation/src"),
+            workspace_root.join("crates/janiform-model-kernels/Cargo.toml"),
+            workspace_root.join("crates/janiform-model-kernels/src"),
         ]
         .into_iter()
         .filter_map(|path| latest_path_modified_at(path.as_path()))
@@ -2285,6 +2293,9 @@ pub(crate) mod tests {
                 inference_policy: "test".to_string(),
                 observation_policy: "test".to_string(),
             },
+            timestamp_batching_observation_model:
+                janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                ),
             objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             ),

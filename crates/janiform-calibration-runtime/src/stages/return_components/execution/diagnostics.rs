@@ -12,6 +12,7 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, SharedNewsMarkLawCo
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 #[cfg(test)]
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::super::constants::{
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
@@ -436,6 +437,7 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             long_variance_parameters:
                 janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
             tick_grid_observation_model,
+            timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
             mean_reversion_fitted_parameters:
                 MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
         },

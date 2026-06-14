@@ -52,6 +52,7 @@ use super::news::{
 };
 use super::observed_state::{SeededObservedState, SeededProjectedCoreIncrement};
 use super::results::estimate_seeded_result_capacities;
+use super::timing_diagnostics::SeededTickSimulationTimingDiagnosticsAccumulator;
 use super::trading_time::{
     TransitionTradingTimeReturnInput, build_interval_open_market_segments,
     integrate_open_market_elapsed_hours, sample_transition_trading_time_return,
@@ -91,8 +92,16 @@ where
             },
         )?;
 
-    let fine_path_metadata = build_seeded_fine_path_metadata(state_snapshot_capture);
-    let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
+    let timestamp_batching_observation_model =
+        &run_config.model_inputs.timestamp_batching_observation_model;
+    let fine_path_metadata = build_seeded_fine_path_metadata(
+        state_snapshot_capture,
+        timestamp_batching_observation_model,
+    );
+    let event_tape_metadata = build_seeded_tick_event_tape_metadata(
+        state_snapshot_capture,
+        timestamp_batching_observation_model,
+    );
 
     let market_state_resolver = SeededSimulationMarketStateResolver::new(
         &run_config.model_inputs.calendar_registry,
@@ -213,7 +222,7 @@ where
     ))
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct SeededTickSimulationStaticState {
     lambda_bar: f64,
     mean_reversion_kappa: f64,
@@ -234,6 +243,7 @@ struct SeededTickSimulationRuntimeState {
     pending_open_jump_return: f64,
     pending_closed_gap_return: f64,
     observed_state: SeededObservedState,
+    timing_diagnostics_accumulator: SeededTickSimulationTimingDiagnosticsAccumulator,
     debug_trace_collector: Option<SeededTickEventDebugTraceCollector>,
 }
 
@@ -271,6 +281,7 @@ fn initialize_runtime_state(
                 .model_inputs
                 .initial_mean_reversion_boundary_state,
         ),
+        timing_diagnostics_accumulator: SeededTickSimulationTimingDiagnosticsAccumulator::default(),
         debug_trace_collector: if run_config.options.debug_trace_enabled {
             Some(SeededTickEventDebugTraceCollector::new(
                 run_config.options.debug_trace_options,
@@ -731,6 +742,27 @@ where
     } = input;
 
     let previous_state = runtime_state.next_state;
+    let latent_transition_time_utc_nanos = interval_update.timestamp_utc_nanos();
+
+    let apply_timestamp_batching = matches!(
+        interval_update,
+        IntervalStochasticUpdate::EndogenousEvent { .. }
+    );
+
+    let observed_timestamp_utc_nanos = run_config
+        .model_inputs
+        .timestamp_batching_observation_model
+        .observed_timestamp_for_transition(
+            latent_transition_time_utc_nanos,
+            interval_inputs.interval_start_utc_nanos,
+            interval_inputs.interval_end_utc_nanos,
+            apply_timestamp_batching,
+        )
+        .map_err(|source| {
+            SeededTickSimulationRunError::InvalidTimestampBatchingObservationModel {
+                source: Box::new(source),
+            }
+        })?;
 
     let transition_return =
         prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
@@ -741,7 +773,7 @@ where
             runtime_state,
             interval_inputs,
             previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+            timestamp_utc_nanos: latent_transition_time_utc_nanos,
             transition_state: previous_state,
         })?;
 
@@ -758,6 +790,13 @@ where
         IntervalStochasticUpdate::EndogenousEvent { .. } => Some(runtime_state.next_event_index),
         IntervalStochasticUpdate::ExogenousNews { .. } => None,
     };
+
+    if event_index_for_update.is_some() {
+        runtime_state.timing_diagnostics_accumulator.record_event(
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
+        );
+    }
 
     runtime_state.next_state = evolve_hawkes_state(
         runtime_state.next_state,
@@ -792,9 +831,10 @@ where
         SeededTickEventDebugTraceCaptureInput {
             transition_index: runtime_state.next_transition_index,
             interval_index: interval_inputs.interval_index,
-            previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
-            elapsed_hours_since_previous_update: transition_return
+            previous_latent_transition_time_utc_nanos: previous_timestamp_utc_nanos,
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
+            elapsed_hours_since_previous_latent_update: transition_return
                 .elapsed_hours_since_previous_update,
             transition_kind: interval_update.transition_kind(),
             generation_order: Some(interval_update.generation_order()),
@@ -823,7 +863,8 @@ where
 
     let fine_path_record = SeededFinePathRecord {
         transition_index,
-        timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+        latent_transition_time_utc_nanos,
+        observed_timestamp_utc_nanos,
         transition_kind,
         side,
         news_arrival_component,
@@ -850,7 +891,7 @@ where
 
     consumer.consume_transition(fine_path_record, emission)?;
 
-    Ok(interval_update.timestamp_utc_nanos())
+    Ok(latent_transition_time_utc_nanos)
 }
 
 struct IntervalBoundaryTransitionInput<'a, 'registry, 'interval, F, C> {
@@ -883,6 +924,8 @@ where
     } = input;
 
     let previous_state = runtime_state.next_state;
+    let latent_transition_time_utc_nanos = interval_inputs.interval_end_utc_nanos;
+    let observed_timestamp_utc_nanos = latent_transition_time_utc_nanos;
 
     let transition_return =
         prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
@@ -893,7 +936,7 @@ where
             runtime_state,
             interval_inputs,
             previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
+            timestamp_utc_nanos: latent_transition_time_utc_nanos,
             transition_state: previous_state,
         })?;
 
@@ -927,9 +970,10 @@ where
         SeededTickEventDebugTraceCaptureInput {
             transition_index: runtime_state.next_transition_index,
             interval_index: interval_inputs.interval_index,
-            previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
-            elapsed_hours_since_previous_update: transition_return
+            previous_latent_transition_time_utc_nanos: previous_timestamp_utc_nanos,
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
+            elapsed_hours_since_previous_latent_update: transition_return
                 .elapsed_hours_since_previous_update,
             transition_kind: SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift,
             generation_order: None,
@@ -945,7 +989,8 @@ where
 
     let boundary_record = SeededFinePathRecord {
         transition_index: runtime_state.next_transition_index,
-        timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
+        latent_transition_time_utc_nanos,
+        observed_timestamp_utc_nanos,
         transition_kind: SeededFinePathTransitionKind::IntervalBoundaryDrift,
         side: None,
         news_arrival_component: None,
@@ -1049,6 +1094,10 @@ fn build_stream_completion(
         .interval_factor_grid
         .interval_end_utc_nanos[run_config.horizon_interval_count - 1];
 
+    let timing_diagnostics = runtime_state
+        .timing_diagnostics_accumulator
+        .finish(&run_config);
+
     SeededTickSimulationStreamCompletion {
         schema_version: SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION,
         determinism_policy: SEEDED_TICK_EVENT_DETERMINISM_POLICY,
@@ -1062,6 +1111,7 @@ fn build_stream_completion(
         simulated_interval_count: run_config.horizon_interval_count,
         fine_path_metadata: fine_path_state.fine_path_metadata,
         event_tape_metadata: fine_path_state.event_tape_metadata,
+        timing_diagnostics,
         final_excitation_state: runtime_state.next_state,
         news_routing_totals: runtime_state.news_routing_totals,
         cumulative_core_log_return: runtime_state.observed_state.cumulative_core_log_return,

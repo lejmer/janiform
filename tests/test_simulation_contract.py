@@ -27,12 +27,17 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
+    TimestampBatchingObservationModel,
     deserialize_seeded_tick_simulation_response,
     run_seeded_tick_event_simulation,
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
-from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
+from tests.support.calibration import build_disabled_timestamp_batching_observation_model_payload
+from tests.support.simulation import (
+    build_endogenous_mean_reversion_runtime_contracts,
+    build_seeded_timing_diagnostics_payload,
+)
 
 
 def test_simulation_request_model_validates_construction() -> None:
@@ -77,6 +82,7 @@ def test_simulation_request_model_validates_construction() -> None:
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.POST_EVENT_TRANSITION,
     )
 
@@ -106,6 +112,7 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+            timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
             sample_every_nth_transition=0,
         )
 
@@ -190,6 +197,7 @@ def test_simulation_entrypoint_rejects_request_without_runtime_interval_factor_g
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
     )
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
@@ -290,7 +298,12 @@ def _valid_response_payload() -> dict[str, Any]:
             "path_record_schema_version": "simulation.seeded_tick_event.record.v1",
             "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
             "transition_ordering_policy": "deterministic_tie_break.v1",
-            "timestamp_representation_policy": "utc_nanos.v1",
+            "timestamp_representation_policy": (
+                "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            ),
+            "timestamp_batching_observation_model": (
+                build_disabled_timestamp_batching_observation_model_payload()
+            ),
             "side_encoding_policy": "buy_sell.v1",
             "state_snapshot_capture": "disabled",
             "state_snapshot_capture_point_policy": None,
@@ -300,7 +313,12 @@ def _valid_response_payload() -> dict[str, Any]:
             "event_record_schema_version": "simulation.seeded_tick_event.record.v1",
             "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
             "event_ordering_policy": "deterministic_tie_break.v1",
-            "timestamp_representation_policy": "utc_nanos.v1",
+            "timestamp_representation_policy": (
+                "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            ),
+            "timestamp_batching_observation_model": (
+                build_disabled_timestamp_batching_observation_model_payload()
+            ),
             "side_encoding_policy": "buy_sell.v1",
             "state_snapshot_capture": "disabled",
             "state_snapshot_capture_point_policy": None,
@@ -314,6 +332,7 @@ def _valid_response_payload() -> dict[str, Any]:
             "python_materialization_seconds": 0.0,
             "boundary_transport_bytes": 0,
             "native_estimated_retained_bytes": 0,
+            "timing_diagnostics": build_seeded_timing_diagnostics_payload(),
             "materialized_transition_count": 1,
             "materialized_event_count": 1,
             "boundary_transport_policy": "materialized_payload_projection.v1",
@@ -322,7 +341,8 @@ def _valid_response_payload() -> dict[str, Any]:
         "fine_path": [
             {
                 "transition_index": 0,
-                "timestamp_utc_nanos": 100,
+                "latent_transition_time_utc_nanos": 100,
+                "observed_timestamp_utc_nanos": 100,
                 "transition_kind": "buy_trade",
                 "side": SeededTickEventSide.BUY.value,
                 "news_arrival_component": None,
@@ -346,7 +366,8 @@ def _valid_response_payload() -> dict[str, Any]:
         "event_tape": [
             {
                 "event_index": 0,
-                "timestamp_utc_nanos": 100,
+                "latent_event_time_utc_nanos": 100,
+                "observed_timestamp_utc_nanos": 100,
                 "side": SeededTickEventSide.BUY.value,
                 "core_total_return_increment": 0.1,
                 "observed_log_price": 0.1,

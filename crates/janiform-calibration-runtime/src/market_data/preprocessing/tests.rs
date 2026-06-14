@@ -1,5 +1,5 @@
 use chrono::{TimeZone, Utc};
-use janiform_foundations::time::utc_nanos;
+use janiform_foundations::time::{NANOS_PER_SECOND, utc_nanos};
 
 use super::close_open_boundaries::derive_close_open_boundary_observations;
 use super::hawkes_inputs::{
@@ -8,7 +8,9 @@ use super::hawkes_inputs::{
 };
 use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::activity_lift;
-use super::return_components_inputs::infer_tick_size_from_open_prices;
+use super::return_components_inputs::{
+    infer_tick_size_from_open_prices, infer_timestamp_batch_width_nanos_from_open_ticks,
+};
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::OpenTickRecord;
 use janiform_market_time::calendar::{
@@ -477,6 +479,59 @@ fn tick_size_inference_uses_chronological_same_session_price_changes() {
         .expect("same-session price changes should identify a tick size");
 
     assert_eq!(inferred_tick_size, 0.25);
+}
+
+#[test]
+fn timestamp_batching_inference_uses_same_session_duplicates_and_timestamp_quantum() {
+    let session_open = utc_nanos(2026, 3, 2, 9, 30, 0);
+    let session_close = utc_nanos(2026, 3, 2, 16, 0, 0);
+    let next_session_open = utc_nanos(2026, 3, 3, 9, 30, 0);
+    let next_session_close = utc_nanos(2026, 3, 3, 16, 0, 0);
+    let batch_width_nanos = 5 * NANOS_PER_SECOND;
+
+    let open_price_ticks = vec![
+        OpenTickRecord {
+            timestamp_utc_nanos: session_open,
+            price: 6817.00,
+            trade_sign: None,
+            session_open_utc_nanos: session_open,
+            session_close_utc_nanos: session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: session_open + batch_width_nanos,
+            price: 6817.25,
+            trade_sign: None,
+            session_open_utc_nanos: session_open,
+            session_close_utc_nanos: session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: session_open + batch_width_nanos,
+            price: 6817.50,
+            trade_sign: None,
+            session_open_utc_nanos: session_open,
+            session_close_utc_nanos: session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: session_open + 3 * batch_width_nanos,
+            price: 6817.75,
+            trade_sign: None,
+            session_open_utc_nanos: session_open,
+            session_close_utc_nanos: session_close,
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: next_session_open,
+            price: 6818.00,
+            trade_sign: None,
+            session_open_utc_nanos: next_session_open,
+            session_close_utc_nanos: next_session_close,
+        },
+    ];
+
+    let inferred_batch_width =
+        infer_timestamp_batch_width_nanos_from_open_ticks(open_price_ticks.as_slice())
+            .expect("same-session duplicate timestamps should identify a timestamp batch width");
+
+    assert_eq!(inferred_batch_width, batch_width_nanos);
 }
 
 fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

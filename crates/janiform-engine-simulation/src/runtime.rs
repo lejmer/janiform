@@ -8,6 +8,7 @@ mod news;
 mod observed_state;
 mod results;
 mod simulation;
+mod timing_diagnostics;
 mod trading_time;
 mod updates;
 mod validation;

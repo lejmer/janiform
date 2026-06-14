@@ -1,4 +1,5 @@
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use crate::artifacts::{
     SeededFinePathMetadata, SeededTickEventDebugTraceMetadata, SeededTickEventStateSnapshot,
@@ -31,8 +32,9 @@ pub(crate) const fn build_event_state_snapshot(
     }
 }
 
-pub(crate) const fn build_seeded_tick_event_tape_metadata(
+pub(crate) fn build_seeded_tick_event_tape_metadata(
     state_snapshot_capture: SeededTickEventStateSnapshotCapture,
+    timestamp_batching_observation_model: &TimestampBatchingObservationModel,
 ) -> SeededTickEventTapeMetadata {
     SeededTickEventTapeMetadata {
         schema_version: SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
@@ -40,14 +42,17 @@ pub(crate) const fn build_seeded_tick_event_tape_metadata(
         state_snapshot_schema_version: SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
         event_ordering_policy: SEEDED_TICK_EVENT_ORDERING_POLICY,
         timestamp_representation_policy: SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
+        // Metadata is persisted independently from the run config.
+        timestamp_batching_observation_model: timestamp_batching_observation_model.clone(),
         side_encoding_policy: SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
         state_snapshot_capture,
         state_snapshot_capture_point_policy: state_snapshot_capture.capture_point_policy(),
     }
 }
 
-pub(crate) const fn build_seeded_fine_path_metadata(
+pub(crate) fn build_seeded_fine_path_metadata(
     state_snapshot_capture: SeededTickEventStateSnapshotCapture,
+    timestamp_batching_observation_model: &TimestampBatchingObservationModel,
 ) -> SeededFinePathMetadata {
     SeededFinePathMetadata {
         schema_version: SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
@@ -55,6 +60,8 @@ pub(crate) const fn build_seeded_fine_path_metadata(
         event_projection_record_schema_version: SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION,
         transition_ordering_policy: SEEDED_TICK_EVENT_ORDERING_POLICY,
         timestamp_representation_policy: SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
+        // Metadata is persisted independently from the run config.
+        timestamp_batching_observation_model: timestamp_batching_observation_model.clone(),
         side_encoding_policy: SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
         state_snapshot_capture,
         state_snapshot_capture_point_policy: state_snapshot_capture.capture_point_policy(),

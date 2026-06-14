@@ -93,15 +93,16 @@ use janiform_model_kernels::return_decomposition::{
 };
 
 const SEEDED_TEST_START_UTC_NANOS: i64 = 1_705_932_000_000_000_000;
-const EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT: [&str; 8] = [
+const EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT: [&str; 9] = [
     "anchor_value",
     "core_total_return_increment",
     "deviation_from_anchor",
     "event_index",
+    "latent_event_time_utc_nanos",
     "observed_log_price",
+    "observed_timestamp_utc_nanos",
     "pressure_state",
     "side",
-    "timestamp_utc_nanos",
 ];
 
 #[test]
@@ -652,9 +653,9 @@ fn seeded_simulation_debug_trace_schema_exposes_required_fields() {
     for required_record_field in [
         "transition_index",
         "interval_index",
-        "previous_timestamp_utc_nanos",
-        "timestamp_utc_nanos",
-        "elapsed_hours_since_previous_update",
+        "previous_latent_transition_time_utc_nanos",
+        "observed_timestamp_utc_nanos",
+        "elapsed_hours_since_previous_latent_update",
         "transition_kind",
         "cumulative_news_activity_coupling_j_t_increment",
         "cumulative_open_window_return_jump_m_t_increment",
@@ -731,7 +732,7 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
         trace_records
             .last()
             .expect("trace record set should include interval-end drift")
-            .timestamp_utc_nanos,
+            .observed_timestamp_utc_nanos,
         expected_interval_end_utc_nanos
     );
 
@@ -900,7 +901,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
         SeededTickSimulationNewsEventMarketState::Open
     );
     assert_eq!(
-        public_fine_path[0].timestamp_utc_nanos,
+        public_fine_path[0].observed_timestamp_utc_nanos,
         start_utc_nanos + 2 * NANOS_PER_HOUR
     );
 }
@@ -1294,7 +1295,7 @@ fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
     assert!(
         muted_second_hour_event_path
             .iter()
-            .all(|event_record| event_record.timestamp_utc_nanos < boundary_utc_nanos)
+            .all(|event_record| event_record.observed_timestamp_utc_nanos < boundary_utc_nanos)
     );
     assert_eq!(
         &baseline_event_path[..muted_second_hour_event_path.len()],
@@ -1621,7 +1622,8 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
     assert_eq!(no_feedback_event_path.len(), 1);
     assert!(feedback_event_path.len() >= 2);
     assert!(
-        feedback_event_path[1].timestamp_utc_nanos > feedback_event_path[0].timestamp_utc_nanos
+        feedback_event_path[1].observed_timestamp_utc_nanos
+            > feedback_event_path[0].observed_timestamp_utc_nanos
     );
 }
 
@@ -1659,7 +1661,7 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
     let observed_timestamps: Vec<i64> = run_result
         .projected_event_path()
         .iter()
-        .map(|event_record| event_record.timestamp_utc_nanos)
+        .map(|event_record| event_record.observed_timestamp_utc_nanos)
         .collect();
 
     assert_ne!(observed_timestamps, legacy_uniform_timestamps);
@@ -1705,7 +1707,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
     let mut aggregated_fine_buy_counts = [0_usize; 2];
     let mut aggregated_fine_sell_counts = [0_usize; 2];
     for event_record in run_result.projected_event_path() {
-        let interval_index = ((event_record.timestamp_utc_nanos - start_utc_nanos)
+        let interval_index = ((event_record.observed_timestamp_utc_nanos - start_utc_nanos)
             .div_euclid(NANOS_PER_HOUR)) as usize;
         match event_record.side {
             SeededTickEventSide::Buy => {
@@ -1811,11 +1813,11 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
         Some(NewsArrivalComponent::Surprise)
     );
     assert_eq!(
-        exogenous_records[0].timestamp_utc_nanos,
-        exogenous_records[1].timestamp_utc_nanos
+        exogenous_records[0].observed_timestamp_utc_nanos,
+        exogenous_records[1].observed_timestamp_utc_nanos
     );
     assert_eq!(
-        exogenous_records[0].timestamp_utc_nanos,
+        exogenous_records[0].observed_timestamp_utc_nanos,
         tied_timestamp_utc_nanos
     );
 }
@@ -1898,7 +1900,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
                         && trace_record.exogenous_news_arrival_component
                             == Some(NewsArrivalComponent::Known)
                 })
-                .map(|trace_record| trace_record.timestamp_utc_nanos)
+                .map(|trace_record| trace_record.observed_timestamp_utc_nanos)
                 .collect();
             let observed_surprise_timestamps: Vec<i64> = trace_records
                 .iter()
@@ -1908,7 +1910,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
                         && trace_record.exogenous_news_arrival_component
                             == Some(NewsArrivalComponent::Surprise)
                 })
-                .map(|trace_record| trace_record.timestamp_utc_nanos)
+                .map(|trace_record| trace_record.observed_timestamp_utc_nanos)
                 .collect();
 
             assert_eq!(observed_known_timestamps, *known_timestamps);
@@ -2305,7 +2307,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
 
     assert_eq!(trace_records.len(), 2);
     assert_eq!(
-        trace_records[0].timestamp_utc_nanos,
+        trace_records[0].observed_timestamp_utc_nanos,
         open_window_timestamp_utc_nanos
     );
     assert_eq!(
@@ -2317,7 +2319,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
         Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
     );
     assert_eq!(
-        trace_records[1].timestamp_utc_nanos,
+        trace_records[1].observed_timestamp_utc_nanos,
         early_close_boundary_timestamp_utc_nanos
     );
     assert_eq!(
@@ -2542,8 +2544,8 @@ fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges
     let projected_event_path = run_result.projected_event_path();
     assert_eq!(projected_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = projected_event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = projected_event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = projected_event_path[0].observed_timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = projected_event_path[1].observed_timestamp_utc_nanos;
 
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
     assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
@@ -2671,7 +2673,7 @@ fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
         .expect("fine-path record must serialize as an object");
     for required_field in [
         "transition_index",
-        "timestamp_utc_nanos",
+        "observed_timestamp_utc_nanos",
         "transition_kind",
         "market_state",
         "return_components",
@@ -2952,10 +2954,10 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
 
     assert_eq!(second_events.len(), 1);
 
-    let first_timestamp = first_events[0]["timestamp_utc_nanos"]
+    let first_timestamp = first_events[0]["observed_timestamp_utc_nanos"]
         .as_i64()
         .expect("first timestamp should parse");
-    let second_timestamp = second_events[0]["timestamp_utc_nanos"]
+    let second_timestamp = second_events[0]["observed_timestamp_utc_nanos"]
         .as_i64()
         .expect("second timestamp should parse");
 
@@ -2981,7 +2983,8 @@ fn is_non_decreasing_timestamp_path(run_result: &super::SeededTickSimulationRunR
         .projected_event_path()
         .windows(2)
         .all(|event_window| {
-            event_window[0].timestamp_utc_nanos <= event_window[1].timestamp_utc_nanos
+            event_window[0].observed_timestamp_utc_nanos
+                <= event_window[1].observed_timestamp_utc_nanos
         })
 }
 
@@ -3373,6 +3376,9 @@ fn one_interval_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -3663,6 +3669,9 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),

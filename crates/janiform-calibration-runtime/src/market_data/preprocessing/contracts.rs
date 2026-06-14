@@ -181,6 +181,9 @@ pub enum MarketDataTranslationPreprocessingError {
     InvalidTickGridReferencePrice {
         reference_price: Option<f64>,
     },
+    InvalidTimestampBatchingObservationModel {
+        error_message: String,
+    },
     InvalidSessionBoundary {
         exchange_code: String,
         timestamp_utc_nanos: i64,
@@ -250,6 +253,10 @@ impl Display for MarketDataTranslationPreprocessingError {
             Self::InvalidTickGridReferencePrice { reference_price } => write!(
                 formatter,
                 "tick-grid observation preprocessing requires a finite positive reference price, found `{reference_price:?}`"
+            ),
+            Self::InvalidTimestampBatchingObservationModel { error_message } => write!(
+                formatter,
+                "timestamp batching observation preprocessing produced an invalid model: {error_message}"
             ),
             Self::InvalidSessionBoundary {
                 exchange_code,

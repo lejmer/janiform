@@ -54,6 +54,7 @@ def run_seeded_tick_event_simulation(
         long_variance_parameters=request.long_variance_parameters,
         initial_long_variance_state=request.initial_long_variance_state,
         observed_price_tick_size=request.observed_price_tick_size,
+        timestamp_batching_observation_model=request.timestamp_batching_observation_model,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
         max_records_per_chunk=request.max_records_per_chunk,
@@ -116,6 +117,9 @@ def run_seeded_tick_event_simulation(
                     normalized_request.initial_long_variance_state.to_payload()
                 ),
                 "observed_price_tick_size": normalized_request.observed_price_tick_size,
+                "timestamp_batching_observation_model": (
+                    normalized_request.timestamp_batching_observation_model.to_payload()
+                ),
                 "debug_trace_enabled": normalized_request.debug_trace_enabled,
                 "sample_every_nth_transition": normalized_request.sample_every_nth_transition,
                 "max_records_per_chunk": normalized_request.max_records_per_chunk,

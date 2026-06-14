@@ -71,6 +71,22 @@ def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
     }
 
 
+def build_disabled_timestamp_batching_observation_model_payload() -> dict[str, Any]:
+    return {
+        "schema_version": "model.timestamp_batching_observation.v1",
+        "mode": "disabled",
+        "bucket_width_nanos": None,
+        "bucket_width_source": "unavailable",
+        "inference_policy": (
+            "same_session_duplicate_timestamps_with_positive_timestamp_quantum_gcd.v1"
+        ),
+        "observation_policy": "latent_event_time_equals_observed_timestamp.v1",
+        "coarse_interval_compatibility_policy": (
+            "observed_timestamp_ownership_constrained_to_latent_interval_for_direct_coarse_consistency.v1"
+        ),
+    }
+
+
 def build_flat_business_time_clock_model_payload() -> dict[str, Any]:
     axis_names = ("intraday", "weekly", "annual")
 

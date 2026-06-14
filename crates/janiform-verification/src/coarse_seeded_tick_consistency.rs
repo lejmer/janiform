@@ -270,7 +270,7 @@ pub enum SeededTickCoarseAggregationError {
     BoundaryTimestampMismatch {
         interval_index: usize,
         expected_interval_end_utc_nanos: i64,
-        observed_timestamp_utc_nanos: i64,
+        latent_transition_time_utc_nanos: i64,
     },
     MissingFinePathTransitionRecord {
         transition_index: u64,
@@ -339,10 +339,10 @@ impl Display for SeededTickCoarseAggregationError {
             Self::BoundaryTimestampMismatch {
                 interval_index,
                 expected_interval_end_utc_nanos,
-                observed_timestamp_utc_nanos,
+                latent_transition_time_utc_nanos,
             } => write!(
                 formatter,
-                "fine interval {interval_index} boundary timestamp mismatch, expected {expected_interval_end_utc_nanos}, found {observed_timestamp_utc_nanos}"
+                "fine interval {interval_index} boundary latent timestamp mismatch, expected {expected_interval_end_utc_nanos}, found {latent_transition_time_utc_nanos}"
             ),
             Self::MissingFinePathTransitionRecord { transition_index } => write!(
                 formatter,
@@ -1371,7 +1371,7 @@ fn reconstruct_fine_interval_records(
         let mut core_total_return = 0.0;
 
         for trace_record in trace_records {
-            let elapsed_hours = trace_record.elapsed_hours_since_previous_update;
+            let elapsed_hours = trace_record.elapsed_hours_since_previous_latent_update;
 
             a_plus += integrate_side_intensity(
                 current_state,
@@ -1433,12 +1433,13 @@ fn reconstruct_fine_interval_records(
             );
         }
 
-        if boundary_trace_record.timestamp_utc_nanos != interval_end_utc_nanos {
+        if boundary_trace_record.latent_transition_time_utc_nanos != interval_end_utc_nanos {
             return Err(
                 SeededTickCoarseAggregationError::BoundaryTimestampMismatch {
                     interval_index,
                     expected_interval_end_utc_nanos: interval_end_utc_nanos,
-                    observed_timestamp_utc_nanos: boundary_trace_record.timestamp_utc_nanos,
+                    latent_transition_time_utc_nanos: boundary_trace_record
+                        .latent_transition_time_utc_nanos,
                 },
             );
         }

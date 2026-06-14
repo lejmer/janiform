@@ -23,6 +23,7 @@ use janiform_model_kernels::return_clock::{
     EffectiveReturnClocksBuildError, ReturnClockExposureParametersError,
 };
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModelError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
@@ -95,6 +96,9 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidObservedPriceTickSize {
         value: f64,
+    },
+    InvalidTimestampBatchingObservationModel {
+        source: Box<TimestampBatchingObservationModelError>,
     },
     TickGridProjectionFailed {
         interval_index: usize,
@@ -314,6 +318,10 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
             ),
+            Self::InvalidTimestampBatchingObservationModel { source } => write!(
+                formatter,
+                "timestamp_batching_observation_model is invalid: {source}"
+            ),
             Self::TickGridProjectionFailed {
                 interval_index,
                 previous_observed_log_price,
@@ -492,6 +500,7 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidMeanReversionBoundaryState { source } => Some(source.as_ref()),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source.as_ref()),
             Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
+            Self::InvalidTimestampBatchingObservationModel { source } => Some(source.as_ref()),
             Self::InvalidReturnClockExposureParameters { source } => Some(source.as_ref()),
             Self::InvalidLongVarianceParameters { source } => Some(source.as_ref()),
             Self::InvalidInitialLongVarianceState { source } => Some(source.as_ref()),

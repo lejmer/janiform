@@ -15,6 +15,8 @@ from .contracts import (
     SeededTickSimulationDiagnostics,
     SeededTickSimulationIntervalFactorGridSummary,
     SeededTickSimulationRequest,
+    TimestampBatchingObservationMode,
+    TimestampBatchingObservationModel,
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from .response import (
@@ -62,6 +64,8 @@ __all__ = [
     "SeededTickSimulationRequest",
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",
+    "TimestampBatchingObservationMode",
+    "TimestampBatchingObservationModel",
     "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "deserialize_seeded_tick_simulation_response",
     "run_seeded_tick_event_simulation",

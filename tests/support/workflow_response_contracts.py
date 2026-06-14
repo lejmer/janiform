@@ -42,6 +42,7 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
+    TimestampBatchingObservationModel,
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
 )
@@ -54,6 +55,7 @@ from janiform.simulation.shared import (
     HawkesKernelParameters,
 )
 from tests.support.calibration import (
+    build_disabled_timestamp_batching_observation_model_payload,
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
 )
@@ -65,6 +67,7 @@ from tests.support.fixture_validation import (
     sorted_manifest_entries,
 )
 from tests.support.pricing import build_anchored_runtime_execution_input_model
+from tests.support.simulation import build_seeded_timing_diagnostics_payload
 
 REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 WORKFLOW_RESPONSE_SCHEMA_SNAPSHOT_PATH: Final[Path] = (
@@ -99,6 +102,12 @@ SEMANTIC_STRING_FIELD_NAMES: Final[frozenset[str]] = frozenset(
         "timestamp_representation_policy",
     }
 )
+
+SEEDED_TIMESTAMP_REPRESENTATION_POLICY: Final[str] = (
+    "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+)
+
+
 LITERAL_STRING_ARRAY_FIELD_NAMES: Final[frozenset[str]] = frozenset(
     {
         "required_calibration_hooks_fields",
@@ -345,7 +354,10 @@ def _build_simulation_direct_response_payload(
                 "path_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "transition_ordering_policy": "deterministic_tie_break.v1",
-                "timestamp_representation_policy": "utc_nanos.v1",
+                "timestamp_representation_policy": SEEDED_TIMESTAMP_REPRESENTATION_POLICY,
+                "timestamp_batching_observation_model": (
+                    build_disabled_timestamp_batching_observation_model_payload()
+                ),
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
                 "state_snapshot_capture_point_policy": None,
@@ -355,7 +367,10 @@ def _build_simulation_direct_response_payload(
                 "event_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
                 "event_ordering_policy": "deterministic_tie_break.v1",
-                "timestamp_representation_policy": "utc_nanos.v1",
+                "timestamp_representation_policy": SEEDED_TIMESTAMP_REPRESENTATION_POLICY,
+                "timestamp_batching_observation_model": (
+                    build_disabled_timestamp_batching_observation_model_payload()
+                ),
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
                 "state_snapshot_capture_point_policy": None,
@@ -369,6 +384,7 @@ def _build_simulation_direct_response_payload(
                 "python_materialization_seconds": 0.0,
                 "boundary_transport_bytes": 0,
                 "native_estimated_retained_bytes": 0,
+                "timing_diagnostics": build_seeded_timing_diagnostics_payload(),
                 "materialized_transition_count": 1,
                 "materialized_event_count": 1,
                 "boundary_transport_policy": "materialized_payload_projection.v1",
@@ -377,7 +393,8 @@ def _build_simulation_direct_response_payload(
             "fine_path": [
                 {
                     "transition_index": 0,
-                    "timestamp_utc_nanos": 100,
+                    "latent_transition_time_utc_nanos": 100,
+                    "observed_timestamp_utc_nanos": 100,
                     "transition_kind": "buy_trade",
                     "side": SeededTickEventSide.BUY.value,
                     "news_arrival_component": None,
@@ -401,7 +418,8 @@ def _build_simulation_direct_response_payload(
             "event_tape": [
                 {
                     "event_index": 0,
-                    "timestamp_utc_nanos": 100,
+                    "latent_event_time_utc_nanos": 100,
+                    "observed_timestamp_utc_nanos": 100,
                     "side": SeededTickEventSide.BUY.value,
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
@@ -487,6 +505,7 @@ def _build_simulation_boundary_response_payload(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -648,7 +667,10 @@ def _run_simulation_invalid_response_side(_calendar_registry: CalendarRegistry) 
                 "path_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "transition_ordering_policy": "deterministic_tie_break.v1",
-                "timestamp_representation_policy": "utc_nanos.v1",
+                "timestamp_representation_policy": SEEDED_TIMESTAMP_REPRESENTATION_POLICY,
+                "timestamp_batching_observation_model": (
+                    build_disabled_timestamp_batching_observation_model_payload()
+                ),
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
                 "state_snapshot_capture_point_policy": None,
@@ -656,7 +678,8 @@ def _run_simulation_invalid_response_side(_calendar_registry: CalendarRegistry) 
             "fine_path": [
                 {
                     "transition_index": 0,
-                    "timestamp_utc_nanos": 100,
+                    "latent_transition_time_utc_nanos": 100,
+                    "observed_timestamp_utc_nanos": 100,
                     "transition_kind": "buy_trade",
                     "side": "hold",
                     "news_arrival_component": None,

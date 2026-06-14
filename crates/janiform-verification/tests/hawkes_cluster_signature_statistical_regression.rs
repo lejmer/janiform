@@ -1175,7 +1175,7 @@ fn collect_interval_event_counts(
 
     for event_record in event_path {
         let interval_position = event_interval_position(
-            event_record.timestamp_utc_nanos,
+            event_record.observed_timestamp_utc_nanos,
             start_time_utc_nanos,
             interval_duration_nanos,
             interval_count,
@@ -1200,7 +1200,7 @@ fn collect_interval_buy_event_counts(
 
     for event_record in event_path {
         let interval_position = event_interval_position(
-            event_record.timestamp_utc_nanos,
+            event_record.observed_timestamp_utc_nanos,
             start_time_utc_nanos,
             interval_duration_nanos,
             interval_count,
@@ -1245,7 +1245,7 @@ fn has_non_grid_event_time(
     interval_duration_nanos: i64,
 ) -> bool {
     event_path.iter().any(|event_record| {
-        let offset_nanos = event_record.timestamp_utc_nanos - start_time_utc_nanos;
+        let offset_nanos = event_record.observed_timestamp_utc_nanos - start_time_utc_nanos;
         offset_nanos >= 0 && offset_nanos % interval_duration_nanos != 0
     })
 }
@@ -1373,6 +1373,7 @@ fn build_run_config(
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),

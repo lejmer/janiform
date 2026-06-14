@@ -16,6 +16,10 @@ from ..shared import (
 )
 from ..shared.contracts import _parse_seeded_tick_state_snapshot_capture
 from ..shared.errors import SIMULATION_ERROR_FACTORY, _simulation_error
+from ..timestamp_observation import (
+    TimestampBatchingObservationMode,
+    TimestampBatchingObservationModel,
+)
 from ...long_variance import LongVarianceParameters, LongVarianceState
 from ...mean_reversion import (
     MeanReversionAnchorModel,
@@ -269,6 +273,7 @@ class SeededTickSimulationRequest(ContractModel):
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
+    timestamp_batching_observation_model: TimestampBatchingObservationModel
     observed_price_tick_size: Optional[float] = None
     debug_trace_enabled: bool = False
     sample_every_nth_transition: int = 1
@@ -332,6 +337,15 @@ class SeededTickSimulationRequest(ContractModel):
                 "must be finite and strictly positive when provided",
             )
 
+        if not isinstance(
+            self.timestamp_batching_observation_model,
+            TimestampBatchingObservationModel,
+        ):
+            raise _simulation_error(
+                "timestamp_batching_observation_model",
+                "must be a TimestampBatchingObservationModel",
+            )
+
         if (
             len(self.mean_reversion_runtime_interval_anchors.end_anchor_values)
             != self.horizon_interval_count
@@ -386,6 +400,7 @@ class SeededTickSimulationRequest(ContractModel):
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
         initial_long_variance_state: LongVarianceState,
+        timestamp_batching_observation_model: TimestampBatchingObservationModel,
         observed_price_tick_size: Optional[float] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
@@ -414,6 +429,7 @@ class SeededTickSimulationRequest(ContractModel):
             long_variance_parameters=long_variance_parameters,
             initial_long_variance_state=initial_long_variance_state,
             observed_price_tick_size=observed_price_tick_size,
+            timestamp_batching_observation_model=timestamp_batching_observation_model,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
@@ -596,6 +612,17 @@ class SeededTickSimulationRequest(ContractModel):
                 and raw_payload["observed_price_tick_size"] is not None
                 else None
             ),
+            timestamp_batching_observation_model=(
+                TimestampBatchingObservationModel.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "timestamp_batching_observation_model",
+                        "timestamp_batching_observation_model",
+                        SIMULATION_ERROR_FACTORY,
+                    ),
+                    field_path="timestamp_batching_observation_model",
+                )
+            ),
             debug_trace_enabled=raw_debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
@@ -668,7 +695,8 @@ class SeededTickEventRecord(ContractModel):
     """One ordered simulated event."""
 
     event_index: int
-    timestamp_utc_nanos: int
+    latent_event_time_utc_nanos: int
+    observed_timestamp_utc_nanos: int
     side: SeededTickEventSide
     core_total_return_increment: float
     observed_log_price: float
@@ -709,10 +737,16 @@ class SeededTickEventRecord(ContractModel):
                 f"{field_path}.event_index",
                 SIMULATION_ERROR_FACTORY,
             ),
-            timestamp_utc_nanos=require_non_negative_integer(
+            latent_event_time_utc_nanos=require_non_negative_integer(
                 raw_payload,
-                "timestamp_utc_nanos",
-                f"{field_path}.timestamp_utc_nanos",
+                "latent_event_time_utc_nanos",
+                f"{field_path}.latent_event_time_utc_nanos",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            observed_timestamp_utc_nanos=require_non_negative_integer(
+                raw_payload,
+                "observed_timestamp_utc_nanos",
+                f"{field_path}.observed_timestamp_utc_nanos",
                 SIMULATION_ERROR_FACTORY,
             ),
             side=side,
@@ -759,6 +793,7 @@ class SeededTickEventTapeMetadata(ContractModel):
     state_snapshot_schema_version: str
     event_ordering_policy: str
     timestamp_representation_policy: str
+    timestamp_batching_observation_model: TimestampBatchingObservationModel
     side_encoding_policy: str
     state_snapshot_capture: SeededTickEventStateSnapshotCapture
     state_snapshot_capture_point_policy: Optional[str] = None
@@ -816,6 +851,15 @@ class SeededTickEventTapeMetadata(ContractModel):
                 f"{field_path}.timestamp_representation_policy",
                 SIMULATION_ERROR_FACTORY,
             ),
+            timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "timestamp_batching_observation_model",
+                    f"{field_path}.timestamp_batching_observation_model",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.timestamp_batching_observation_model",
+            ),
             side_encoding_policy=require_string(
                 raw_payload,
                 "side_encoding_policy",
@@ -846,6 +890,7 @@ class SeededFinePathMetadata(ContractModel):
     event_projection_record_schema_version: str
     transition_ordering_policy: str
     timestamp_representation_policy: str
+    timestamp_batching_observation_model: TimestampBatchingObservationModel
     side_encoding_policy: str
     state_snapshot_capture: SeededTickEventStateSnapshotCapture
     state_snapshot_capture_point_policy: Optional[str] = None
@@ -903,6 +948,15 @@ class SeededFinePathMetadata(ContractModel):
                 f"{field_path}.timestamp_representation_policy",
                 SIMULATION_ERROR_FACTORY,
             ),
+            timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "timestamp_batching_observation_model",
+                    f"{field_path}.timestamp_batching_observation_model",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.timestamp_batching_observation_model",
+            ),
             side_encoding_policy=require_string(
                 raw_payload,
                 "side_encoding_policy",
@@ -917,7 +971,8 @@ class SeededFinePathMetadata(ContractModel):
 @dataclass(frozen=True, slots=True)
 class SeededFinePathRecord(ContractModel):
     transition_index: int
-    timestamp_utc_nanos: int
+    latent_transition_time_utc_nanos: int
+    observed_timestamp_utc_nanos: int
     transition_kind: SeededFinePathTransitionKind
     side: Optional[SeededTickEventSide]
     news_arrival_component: Optional[SeededFinePathNewsArrivalComponent]
@@ -1022,10 +1077,16 @@ class SeededFinePathRecord(ContractModel):
                 f"{field_path}.transition_index",
                 SIMULATION_ERROR_FACTORY,
             ),
-            timestamp_utc_nanos=require_non_negative_integer(
+            latent_transition_time_utc_nanos=require_non_negative_integer(
                 raw_payload,
-                "timestamp_utc_nanos",
-                f"{field_path}.timestamp_utc_nanos",
+                "latent_transition_time_utc_nanos",
+                f"{field_path}.latent_transition_time_utc_nanos",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            observed_timestamp_utc_nanos=require_non_negative_integer(
+                raw_payload,
+                "observed_timestamp_utc_nanos",
+                f"{field_path}.observed_timestamp_utc_nanos",
                 SIMULATION_ERROR_FACTORY,
             ),
             transition_kind=transition_kind,
@@ -1098,7 +1159,10 @@ def _project_event_tape_from_fine_path(
         event_records.append(
             SeededTickEventRecord(
                 event_index=len(event_records),
-                timestamp_utc_nanos=fine_path_record.timestamp_utc_nanos,
+                latent_event_time_utc_nanos=(
+                    fine_path_record.latent_transition_time_utc_nanos
+                ),
+                observed_timestamp_utc_nanos=fine_path_record.observed_timestamp_utc_nanos,
                 side=fine_path_record.side,
                 core_total_return_increment=fine_path_record.core_total_return_increment,
                 observed_log_price=fine_path_record.observed_log_price,
@@ -1122,6 +1186,7 @@ class SeededTickSimulationDiagnostics(ContractModel):
     python_materialization_seconds: float = field(compare=False)
     boundary_transport_bytes: int = field(compare=False)
     native_estimated_retained_bytes: int
+    timing_diagnostics: dict[str, Any]
     materialized_transition_count: int = field(compare=False)
     materialized_event_count: int = field(compare=False)
     boundary_transport_policy: str
@@ -1134,29 +1199,32 @@ class SeededTickSimulationDiagnostics(ContractModel):
                 f"must be `{SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION}`",
             )
 
-        for field_name in (
-            "transition_count",
-            "event_count",
-            "boundary_transport_bytes",
-            "native_estimated_retained_bytes",
-            "materialized_transition_count",
-            "materialized_event_count",
-            "boundary_chunk_record_count",
+        for field_name, field_value in (
+            ("transition_count", self.transition_count),
+            ("event_count", self.event_count),
+            ("boundary_transport_bytes", self.boundary_transport_bytes),
+            ("native_estimated_retained_bytes", self.native_estimated_retained_bytes),
+            ("materialized_transition_count", self.materialized_transition_count),
+            ("materialized_event_count", self.materialized_event_count),
+            ("boundary_chunk_record_count", self.boundary_chunk_record_count),
         ):
             require_non_negative_integer(
-                {field_name: getattr(self, field_name)},
+                {field_name: field_value},
                 field_name,
                 f"diagnostics.{field_name}",
                 SIMULATION_ERROR_FACTORY,
             )
 
-        for field_name in (
-            "native_runtime_seconds",
-            "python_response_construction_seconds",
-            "python_materialization_seconds",
+        for field_name, field_value in (
+            ("native_runtime_seconds", self.native_runtime_seconds),
+            (
+                "python_response_construction_seconds",
+                self.python_response_construction_seconds,
+            ),
+            ("python_materialization_seconds", self.python_materialization_seconds),
         ):
             require_non_negative_finite_scalar(
-                getattr(self, field_name),
+                field_value,
                 f"diagnostics.{field_name}",
                 SIMULATION_ERROR_FACTORY,
             )
@@ -1165,6 +1233,12 @@ class SeededTickSimulationDiagnostics(ContractModel):
             raise _simulation_error(
                 "diagnostics.boundary_transport_policy",
                 "must be a non-empty string",
+            )
+
+        if not isinstance(self.timing_diagnostics, dict):
+            raise _simulation_error(
+                "diagnostics.timing_diagnostics",
+                "must be an object",
             )
 
     @staticmethod
@@ -1224,6 +1298,14 @@ class SeededTickSimulationDiagnostics(ContractModel):
                 "native_estimated_retained_bytes",
                 f"{field_path}.native_estimated_retained_bytes",
                 SIMULATION_ERROR_FACTORY,
+            ),
+            timing_diagnostics=dict(
+                require_mapping(
+                    raw_payload,
+                    "timing_diagnostics",
+                    f"{field_path}.timing_diagnostics",
+                    SIMULATION_ERROR_FACTORY,
+                )
             ),
             materialized_transition_count=require_non_negative_integer(
                 raw_payload,
@@ -1303,4 +1385,6 @@ __all__ = [
     "SeededTickSimulationDiagnostics",
     "SeededTickSimulationIntervalFactorGridSummary",
     "SeededTickSimulationRequest",
+    "TimestampBatchingObservationMode",
+    "TimestampBatchingObservationModel",
 ]

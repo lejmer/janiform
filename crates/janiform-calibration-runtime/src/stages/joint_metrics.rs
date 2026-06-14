@@ -385,7 +385,7 @@ pub(crate) fn mean_absolute_trade_return_by_utc_hour(
             SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
         )
         .then_some((
-            record.timestamp_utc_nanos,
+            record.observed_timestamp_utc_nanos,
             record.return_components.total_return,
         ))
     }))
@@ -592,8 +592,8 @@ pub(crate) fn accumulate_fine_path_record_into_intervals(
         return;
     };
 
-    if record.timestamp_utc_nanos < first_interval_start_utc_nanos
-        || record.timestamp_utc_nanos >= last_interval_end_utc_nanos
+    if record.observed_timestamp_utc_nanos < first_interval_start_utc_nanos
+        || record.observed_timestamp_utc_nanos >= last_interval_end_utc_nanos
     {
         return;
     }
@@ -605,7 +605,7 @@ pub(crate) fn accumulate_fine_path_record_into_intervals(
     };
 
     accumulate_return_into_intervals_with_cursor(
-        record.timestamp_utc_nanos,
+        record.observed_timestamp_utc_nanos,
         record.return_components.total_return,
         tick_increment,
         sell_share_increment,
@@ -788,7 +788,8 @@ mod tests {
     ) -> SeededFinePathRecord {
         SeededFinePathRecord {
             transition_index,
-            timestamp_utc_nanos,
+            latent_transition_time_utc_nanos: timestamp_utc_nanos,
+            observed_timestamp_utc_nanos: timestamp_utc_nanos,
             transition_kind,
             side,
             news_arrival_component: None,

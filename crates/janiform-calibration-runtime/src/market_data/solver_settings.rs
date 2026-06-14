@@ -657,6 +657,9 @@ mod tests {
                                 inference_policy: "test".to_string(),
                                 observation_policy: "test".to_string(),
                             },
+                        timestamp_batching_observation_model:
+                            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                            ),
                         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                             continuous_distribution_fit_weight: 1.0,
                             surprise_arrival_fit_weight: 1.0,

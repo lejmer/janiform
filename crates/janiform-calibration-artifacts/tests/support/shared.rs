@@ -793,6 +793,9 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
             inference_policy: "test".to_string(),
             observation_policy: "test".to_string(),
         },
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         mean_reversion_fitted_parameters:
             build_endogenous_mean_reversion_parameters(),
     };

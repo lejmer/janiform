@@ -24,6 +24,7 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT,
@@ -642,6 +643,7 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
 }
 
@@ -698,6 +700,13 @@ impl ReturnComponentsStageCandidateGenerationInput {
                 }
             })?;
         validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
+        self.timestamp_batching_observation_model
+            .validate()
+            .map_err(|source| {
+                ReturnComponentsStageCandidateGenerationInputError::InvalidTimestampBatchingObservationModel {
+                    error_message: source.to_string(),
+                }
+            })?;
         self.objective_metric_weights.validate()?;
 
         Ok(())
@@ -876,6 +885,9 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     },
     InvalidTickSize {
         value: f64,
+    },
+    InvalidTimestampBatchingObservationModel {
+        error_message: String,
     },
     InvalidContinuousDistributionFitWeight {
         value: f64,
@@ -1151,6 +1163,10 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             Self::InvalidTickSize { value } => write!(
                 formatter,
                 "tick_grid_observation_model.tick_size must be finite and strictly positive when provided, found {value}"
+            ),
+            Self::InvalidTimestampBatchingObservationModel { error_message } => write!(
+                formatter,
+                "timestamp_batching_observation_model is invalid: {error_message}"
             ),
             Self::InvalidContinuousDistributionFitWeight { value } => write!(
                 formatter,
@@ -2040,6 +2056,7 @@ pub struct ReturnComponentsStageCandidateInput {
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]

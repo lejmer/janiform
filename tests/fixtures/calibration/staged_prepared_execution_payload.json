@@ -254,6 +254,15 @@
       "inference_policy": "unit_test_no_tick_grid_inference.v1",
       "observation_policy": "continuous_price_observation.v1"
     },
+    "timestamp_batching_observation_model": {
+      "schema_version": "model.timestamp_batching_observation.v1",
+      "mode": "disabled",
+      "bucket_width_nanos": null,
+      "bucket_width_source": "unavailable",
+      "inference_policy": "same_session_duplicate_timestamps_with_positive_timestamp_quantum_gcd.v1",
+      "observation_policy": "latent_event_time_equals_observed_timestamp.v1",
+      "coarse_interval_compatibility_policy": "observed_timestamp_ownership_constrained_to_latent_interval_for_direct_coarse_consistency.v1"
+    },
     "objective_metric_weights": {
       "continuous_distribution_fit_weight": 1.0,
       "surprise_arrival_fit_weight": 1.0,

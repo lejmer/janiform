@@ -160,7 +160,7 @@ def persist_seeded_tick_simulation(
         record_batch: list[dict[str, Any]] = []
         for record in simulation_result.fine_path:
             timestamp_value = _convert_timestamp_for_output(
-                record.timestamp_utc_nanos,
+                record.observed_timestamp_utc_nanos,
                 timezone_name=preferences.timestamp_timezone,
                 output_path=resolved_output_path,
             )
@@ -370,6 +370,7 @@ class _CsvSimulationSink:
     def __init__(self, *, output_path: Path, columns: tuple[str, ...]) -> None:
         self._output_file = output_path.open("w", encoding="utf-8", newline="")
         self._writer = csv.DictWriter(self._output_file, fieldnames=list(columns))
+
         self._writer.writeheader()
 
     def write_records(self, records: list[dict[str, Any]]) -> None:

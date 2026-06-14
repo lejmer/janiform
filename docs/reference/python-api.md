@@ -1775,7 +1775,7 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarsesimulationmodelinputs) | contract_model | 8 fields |
+| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarsesimulationmodelinputs) | contract_model | 9 fields |
 | [`CoarseSimulationPath`](#python-api-symbol-janiform-simulation-coarsesimulationpath) | contract_model | 13 fields |
 | [`CoarseSimulationRunRequest`](#python-api-symbol-janiform-simulation-coarsesimulationrunrequest) | contract_model | 7 fields |
 | [`HawkesExcitationState`](#python-api-symbol-janiform-simulation-hawkesexcitationstate) | contract_model | 4 fields |
@@ -1792,10 +1792,12 @@
 | [`SeededTickEventSide`](#python-api-symbol-janiform-simulation-seededtickeventside) | enum | 2 members |
 | [`SeededTickEventStateSnapshotCapture`](#python-api-symbol-janiform-simulation-seededtickeventstatesnapshotcapture) | enum | 2 members |
 | [`SeededTickSimulationIntervalFactorGridSummary`](#python-api-symbol-janiform-simulation-seededticksimulationintervalfactorgridsummary) | contract_model | 8 fields |
-| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 19 fields |
+| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seededticksimulationrequest) | contract_model | 20 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SimulationKind`](#python-api-symbol-janiform-simulation-simulationkind) | enum | 2 members |
+| [`TimestampBatchingObservationMode`](#python-api-symbol-janiform-simulation-timestampbatchingobservationmode) | enum | 2 members |
+| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-timestampbatchingobservationmodel) | contract_model | 7 fields |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
@@ -1804,8 +1806,8 @@
 ### `CoarseSimulationModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
-- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
+- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
+- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `timestamp_batching_observation_model`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
 | Method | Signature |
 |--------|-----------|
@@ -1832,7 +1834,7 @@
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationRunRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-hawkesexcitationstate"></a>
@@ -2004,13 +2006,13 @@
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `interval_factor_grid_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `interval_factor_grid_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `timestamp_batching_observation_model`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SeededTickSimulationRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-seededticksimulationresponse"></a>
@@ -2044,6 +2046,28 @@
 |--------|-------|
 | `SEEDED_TICK` | `seeded_tick` |
 | `COARSE_INTERVAL` | `coarse_interval` |
+
+<a id="python-api-symbol-janiform-simulation-timestampbatchingobservationmode"></a>
+### `TimestampBatchingObservationMode`
+
+- Kind: `enum`
+
+| Member | Value |
+|--------|-------|
+| `DISABLED` | `disabled` |
+| `FIXED_BUCKET_FLOOR` | `fixed_bucket_floor` |
+
+<a id="python-api-symbol-janiform-simulation-timestampbatchingobservationmodel"></a>
+### `TimestampBatchingObservationModel`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'`
+- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`
+
+| Method | Signature |
+|--------|-----------|
+| `disabled` | `() -> 'TimestampBatchingObservationModel'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'` |
 
 <a id="python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs"></a>
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`
@@ -2092,7 +2116,7 @@
 | [`COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-path-record-schema-version) | constant | constant value |
 | [`COARSE_SIMULATION_PATH_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-path-schema-version) | constant | constant value |
 | [`COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-coarse-simulation-run-request-schema-version) | constant | constant value |
-| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationmodelinputs) | contract_model | 8 fields |
+| [`CoarseSimulationModelInputs`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationmodelinputs) | contract_model | 9 fields |
 | [`CoarseSimulationPath`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpath) | contract_model | 13 fields |
 | [`CoarseSimulationPathDiagnostics`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathdiagnostics) | contract_model | 19 fields |
 | [`CoarseSimulationPathOutputSchemaMetadata`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathoutputschemametadata) | contract_model | 9 fields |
@@ -2106,6 +2130,8 @@
 | [`NewsProcessConfiguration`](#python-api-symbol-janiform-simulation-coarse-newsprocessconfiguration) | contract_model | 5 fields |
 | [`SharedNewsMarkLawConfiguration`](#python-api-symbol-janiform-simulation-coarse-sharednewsmarklawconfiguration) | contract_model | 1 fields |
 | [`SurpriseNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration) | contract_model | 2 fields |
+| [`TimestampBatchingObservationMode`](#python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmode) | enum | 2 members |
+| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmodel) | contract_model | 7 fields |
 | [`deserialize_coarse_simulation_path`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path) | function | (payload_json: 'str') -> 'CoarseSimulationPath' |
 | [`deserialize_coarse_simulation_run_request`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-run-request) | function | (payload_json: 'str') -> 'CoarseSimulationRunRequest' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-coarse-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
@@ -2190,8 +2216,8 @@
 ### `CoarseSimulationModelInputs`
 
 - Kind: `contract_model`
-- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
-- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
+- Signature: `(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'`
+- Fields: `sufficient_statistics_model_inputs`, `news_process_configuration`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `timestamp_batching_observation_model`, `observed_price_tick_size`, `calendar_registry_artifact`, `exchange_code`
 
 | Method | Signature |
 |--------|-----------|
@@ -2250,7 +2276,7 @@
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'CoarseSimulationRunRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-knownnewsarrivalconfiguration"></a>
@@ -2324,6 +2350,28 @@
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'SurpriseNewsArrivalConfiguration'` |
+
+<a id="python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmode"></a>
+### `TimestampBatchingObservationMode`
+
+- Kind: `enum`
+
+| Member | Value |
+|--------|-------|
+| `DISABLED` | `disabled` |
+| `FIXED_BUCKET_FLOOR` | `fixed_bucket_floor` |
+
+<a id="python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmodel"></a>
+### `TimestampBatchingObservationModel`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'`
+- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`
+
+| Method | Signature |
+|--------|-----------|
+| `disabled` | `() -> 'TimestampBatchingObservationModel'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'` |
 
 <a id="python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path"></a>
 ### `deserialize_coarse_simulation_path`
@@ -2407,22 +2455,24 @@
 | [`SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-diagnostics-schema-version) | constant | constant value |
 | [`SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-native-chunk-record-count) | constant | constant value |
 | [`SEEDED_TICK_SIMULATION_PAYLOAD_TRANSPORT_POLICY`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-payload-transport-policy) | constant | constant value |
-| [`SeededFinePathMetadata`](#python-api-symbol-janiform-simulation-seeded-seededfinepathmetadata) | contract_model | 8 fields |
+| [`SeededFinePathMetadata`](#python-api-symbol-janiform-simulation-seeded-seededfinepathmetadata) | contract_model | 9 fields |
 | [`SeededFinePathNewsArrivalComponent`](#python-api-symbol-janiform-simulation-seeded-seededfinepathnewsarrivalcomponent) | enum | 2 members |
-| [`SeededFinePathRecord`](#python-api-symbol-janiform-simulation-seeded-seededfinepathrecord) | contract_model | 14 fields |
+| [`SeededFinePathRecord`](#python-api-symbol-janiform-simulation-seeded-seededfinepathrecord) | contract_model | 15 fields |
 | [`SeededFinePathTransitionKind`](#python-api-symbol-janiform-simulation-seeded-seededfinepathtransitionkind) | enum | 4 members |
 | [`SeededFinePathView`](#python-api-symbol-janiform-simulation-seeded-seededfinepathview) | class | janiform.simulation.seeded.response |
-| [`SeededTickEventRecord`](#python-api-symbol-janiform-simulation-seeded-seededtickeventrecord) | contract_model | 9 fields |
+| [`SeededTickEventRecord`](#python-api-symbol-janiform-simulation-seeded-seededtickeventrecord) | contract_model | 10 fields |
 | [`SeededTickEventSide`](#python-api-symbol-janiform-simulation-seeded-seededtickeventside) | enum | 2 members |
 | [`SeededTickEventStateSnapshot`](#python-api-symbol-janiform-simulation-seeded-seededtickeventstatesnapshot) | contract_model | 6 fields |
 | [`SeededTickEventStateSnapshotCapture`](#python-api-symbol-janiform-simulation-seeded-seededtickeventstatesnapshotcapture) | enum | 2 members |
-| [`SeededTickEventTapeMetadata`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapemetadata) | contract_model | 8 fields |
+| [`SeededTickEventTapeMetadata`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapemetadata) | contract_model | 9 fields |
 | [`SeededTickEventTapeView`](#python-api-symbol-janiform-simulation-seeded-seededtickeventtapeview) | class | janiform.simulation.seeded.response |
-| [`SeededTickSimulationDiagnostics`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationdiagnostics) | contract_model | 12 fields |
+| [`SeededTickSimulationDiagnostics`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationdiagnostics) | contract_model | 13 fields |
 | [`SeededTickSimulationIntervalFactorGridSummary`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationintervalfactorgridsummary) | contract_model | 8 fields |
-| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 19 fields |
+| [`SeededTickSimulationRequest`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationrequest) | contract_model | 20 fields |
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
+| [`TimestampBatchingObservationMode`](#python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmode) | enum | 2 members |
+| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmodel) | contract_model | 7 fields |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`deserialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-deserialize-seeded-tick-simulation-response) | function | (payload_json: 'str') -> 'SeededTickSimulationResponse' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-seeded-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
@@ -2515,8 +2565,8 @@
 ### `SeededFinePathMetadata`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', path_record_schema_version: 'str', event_projection_record_schema_version: 'str', transition_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'`
-- Fields: `schema_version`, `path_record_schema_version`, `event_projection_record_schema_version`, `transition_ordering_policy`, `timestamp_representation_policy`, `side_encoding_policy`, `state_snapshot_capture`, `state_snapshot_capture_point_policy`
+- Signature: `(schema_version: 'str', path_record_schema_version: 'str', event_projection_record_schema_version: 'str', transition_ordering_policy: 'str', timestamp_representation_policy: 'str', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'`
+- Fields: `schema_version`, `path_record_schema_version`, `event_projection_record_schema_version`, `transition_ordering_policy`, `timestamp_representation_policy`, `timestamp_batching_observation_model`, `side_encoding_policy`, `state_snapshot_capture`, `state_snapshot_capture_point_policy`
 
 | Method | Signature |
 |--------|-----------|
@@ -2536,8 +2586,8 @@
 ### `SeededFinePathRecord`
 
 - Kind: `contract_model`
-- Signature: `(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'`
-- Fields: `transition_index`, `timestamp_utc_nanos`, `transition_kind`, `side`, `news_arrival_component`, `market_state`, `return_components`, `core_total_return_increment`, `observed_log_price`, `anchor_value`, `pressure_state`, `deviation_from_anchor`, `cumulative_core_log_return`, `state_snapshot`
+- Signature: `(transition_index: 'int', latent_transition_time_utc_nanos: 'int', observed_timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'`
+- Fields: `transition_index`, `latent_transition_time_utc_nanos`, `observed_timestamp_utc_nanos`, `transition_kind`, `side`, `news_arrival_component`, `market_state`, `return_components`, `core_total_return_increment`, `observed_log_price`, `anchor_value`, `pressure_state`, `deviation_from_anchor`, `cumulative_core_log_return`, `state_snapshot`
 
 | Method | Signature |
 |--------|-----------|
@@ -2568,8 +2618,8 @@
 ### `SeededTickEventRecord`
 
 - Kind: `contract_model`
-- Signature: `(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'`
-- Fields: `event_index`, `timestamp_utc_nanos`, `side`, `core_total_return_increment`, `observed_log_price`, `anchor_value`, `pressure_state`, `deviation_from_anchor`, `state_snapshot`
+- Signature: `(event_index: 'int', latent_event_time_utc_nanos: 'int', observed_timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'`
+- Fields: `event_index`, `latent_event_time_utc_nanos`, `observed_timestamp_utc_nanos`, `side`, `core_total_return_increment`, `observed_log_price`, `anchor_value`, `pressure_state`, `deviation_from_anchor`, `state_snapshot`
 
 | Method | Signature |
 |--------|-----------|
@@ -2610,8 +2660,8 @@
 ### `SeededTickEventTapeMetadata`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'`
-- Fields: `schema_version`, `event_record_schema_version`, `state_snapshot_schema_version`, `event_ordering_policy`, `timestamp_representation_policy`, `side_encoding_policy`, `state_snapshot_capture`, `state_snapshot_capture_point_policy`
+- Signature: `(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'`
+- Fields: `schema_version`, `event_record_schema_version`, `state_snapshot_schema_version`, `event_ordering_policy`, `timestamp_representation_policy`, `timestamp_batching_observation_model`, `side_encoding_policy`, `state_snapshot_capture`, `state_snapshot_capture_point_policy`
 
 | Method | Signature |
 |--------|-----------|
@@ -2630,8 +2680,8 @@
 ### `SeededTickSimulationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', transition_count: 'int', event_count: 'int', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', python_materialization_seconds: 'float', boundary_transport_bytes: 'int', native_estimated_retained_bytes: 'int', materialized_transition_count: 'int', materialized_event_count: 'int', boundary_transport_policy: 'str', boundary_chunk_record_count: 'int') -> 'None'`
-- Fields: `schema_version`, `transition_count`, `event_count`, `native_runtime_seconds`, `python_response_construction_seconds`, `python_materialization_seconds`, `boundary_transport_bytes`, `native_estimated_retained_bytes`, `materialized_transition_count`, `materialized_event_count`, `boundary_transport_policy`, `boundary_chunk_record_count`
+- Signature: `(schema_version: 'str', transition_count: 'int', event_count: 'int', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', python_materialization_seconds: 'float', boundary_transport_bytes: 'int', native_estimated_retained_bytes: 'int', timing_diagnostics: 'dict[str, Any]', materialized_transition_count: 'int', materialized_event_count: 'int', boundary_transport_policy: 'str', boundary_chunk_record_count: 'int') -> 'None'`
+- Fields: `schema_version`, `transition_count`, `event_count`, `native_runtime_seconds`, `python_response_construction_seconds`, `python_materialization_seconds`, `boundary_transport_bytes`, `native_estimated_retained_bytes`, `timing_diagnostics`, `materialized_transition_count`, `materialized_event_count`, `boundary_transport_policy`, `boundary_chunk_record_count`
 
 | Method | Signature |
 |--------|-----------|
@@ -2653,13 +2703,13 @@
 ### `SeededTickSimulationRequest`
 
 - Kind: `contract_model`
-- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
-- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `interval_factor_grid_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
+- Signature: `(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'`
+- Fields: `seed`, `start_time_utc`, `horizon_interval_count`, `kernel_parameters`, `nig_shared_plus_shift_configuration`, `news_process_configuration`, `initial_excitation_state`, `mean_reversion_fitted_parameters`, `mean_reversion_runtime_interval_anchors`, `initial_mean_reversion_boundary_state`, `interval_factor_grid_summary`, `return_clock_exposure_parameters`, `long_variance_parameters`, `initial_long_variance_state`, `timestamp_batching_observation_model`, `observed_price_tick_size`, `debug_trace_enabled`, `sample_every_nth_transition`, `max_records_per_chunk`, `state_snapshot_capture`
 
 | Method | Signature |
 |--------|-----------|
 | `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any') -> 'SeededTickSimulationRequest'` |
-| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
+| `from_runtime_inputs` | `(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'` |
 | `to_payload` | `(self) -> 'dict[str, Any]'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse"></a>
@@ -2683,6 +2733,28 @@
 - Qualified name: `SeededTickSimulationValidationError`
 - Base classes: `JaniformValidationError`, `JaniformError`, `Exception`, `BaseException`
 - Constructor: `(failure: 'ContractValidationFailure') -> 'None'`
+
+<a id="python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmode"></a>
+### `TimestampBatchingObservationMode`
+
+- Kind: `enum`
+
+| Member | Value |
+|--------|-------|
+| `DISABLED` | `disabled` |
+| `FIXED_BUCKET_FLOOR` | `fixed_bucket_floor` |
+
+<a id="python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmodel"></a>
+### `TimestampBatchingObservationModel`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'`
+- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`
+
+| Method | Signature |
+|--------|-----------|
+| `disabled` | `() -> 'TimestampBatchingObservationModel'` |
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'` |
 
 <a id="python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs"></a>
 ### `build_endogenous_seeded_mean_reversion_runtime_inputs`

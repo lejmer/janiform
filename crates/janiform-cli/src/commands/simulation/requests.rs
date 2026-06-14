@@ -15,6 +15,7 @@ use janiform::model::news::NewsProcessConfiguration;
 use janiform::model::nig::NigSharedPlusShiftConfiguration;
 use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
+use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
@@ -60,6 +61,7 @@ struct SeededTickSimulationRequestDocument {
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
+    timestamp_batching_observation_model: TimestampBatchingObservationModel,
     #[serde(default)]
     debug_trace_enabled: bool,
     #[serde(default = "default_sample_every_nth_transition")]
@@ -160,6 +162,7 @@ pub(crate) fn load_seeded_tick_simulation_request(
             long_variance_parameters: document.long_variance_parameters,
             initial_long_variance_state: document.initial_long_variance_state,
             observed_price_tick_size: document.observed_price_tick_size,
+            timestamp_batching_observation_model: document.timestamp_batching_observation_model,
             calendar_registry,
         },
         Some(run_options),

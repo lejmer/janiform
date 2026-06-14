@@ -39,6 +39,7 @@ impl SeededTickSimulationResultBuilder {
             public_transition_positions: self.public_transition_positions,
             event_tape_metadata: stream_completion.event_tape_metadata,
             event_transition_positions: self.event_transition_positions,
+            timing_diagnostics: stream_completion.timing_diagnostics,
             final_excitation_state: stream_completion.final_excitation_state,
             news_routing_totals: stream_completion.news_routing_totals,
             cumulative_core_log_return: stream_completion.cumulative_core_log_return,

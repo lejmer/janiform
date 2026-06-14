@@ -28,6 +28,7 @@ from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
     _simulation_error,
 )
+from ..timestamp_observation import TimestampBatchingObservationModel
 from ...mean_reversion import MeanReversionBoundaryState
 from ...long_variance import LongVarianceParameters, LongVarianceState
 from ...return_clock import ReturnClockExposureParameters
@@ -73,6 +74,7 @@ class CoarseSimulationModelInputs(ContractModel):
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
+    timestamp_batching_observation_model: TimestampBatchingObservationModel
     observed_price_tick_size: Optional[float]
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
@@ -97,6 +99,15 @@ class CoarseSimulationModelInputs(ContractModel):
             raise _simulation_error(
                 "initial_long_variance_state",
                 "must be a LongVarianceState",
+            )
+
+        if not isinstance(
+            self.timestamp_batching_observation_model,
+            TimestampBatchingObservationModel,
+        ):
+            raise _simulation_error(
+                "timestamp_batching_observation_model",
+                "must be a TimestampBatchingObservationModel",
             )
 
         if self.observed_price_tick_size is not None and (
@@ -185,6 +196,15 @@ class CoarseSimulationModelInputs(ContractModel):
                 ),
                 field_path=f"{field_path}.initial_long_variance_state",
                 error_factory=SIMULATION_ERROR_FACTORY,
+            ),
+            timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "timestamp_batching_observation_model",
+                    f"{field_path}.timestamp_batching_observation_model",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.timestamp_batching_observation_model",
             ),
             observed_price_tick_size=(
                 require_finite_number(
@@ -319,6 +339,7 @@ class CoarseSimulationRunRequest(ContractModel):
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
         initial_long_variance_state: LongVarianceState,
+        timestamp_batching_observation_model: TimestampBatchingObservationModel,
         observed_price_tick_size: Optional[float],
         calendar_registry: CalendarRegistry,
         exchange_code: str,
@@ -341,6 +362,7 @@ class CoarseSimulationRunRequest(ContractModel):
                 return_clock_exposure_parameters=return_clock_exposure_parameters,
                 long_variance_parameters=long_variance_parameters,
                 initial_long_variance_state=initial_long_variance_state,
+                timestamp_batching_observation_model=timestamp_batching_observation_model,
                 observed_price_tick_size=observed_price_tick_size,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,

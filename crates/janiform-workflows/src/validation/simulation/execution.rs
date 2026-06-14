@@ -377,7 +377,7 @@ fn simulate_validation_path(
         }
 
         let timestamp_utc_nanos = concatenated_path_timestamp(
-            record.timestamp_utc_nanos,
+            record.observed_timestamp_utc_nanos,
             path_position,
             simulated_interval_count,
             runtime_interval_duration_nanos,

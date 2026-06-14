@@ -22,6 +22,7 @@ from janiform.simulation.coarse import (
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
+    TimestampBatchingObservationModel,
     run_seeded_tick_event_simulation,
 )
 from janiform.simulation.seeded.contracts import (
@@ -373,6 +374,7 @@ def _run_seeded_case(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -391,7 +393,7 @@ def _collect_interval_event_counts(
     start_time_utc_nanos = start_time_utc_seconds * 1_000_000_000
 
     for event_record in event_tape:
-        timestamp_utc_nanos = event_record.timestamp_utc_nanos
+        timestamp_utc_nanos = event_record.observed_timestamp_utc_nanos
         interval_position = (timestamp_utc_nanos - start_time_utc_nanos) // NANOS_PER_HOUR
 
         if 0 <= interval_position < horizon_interval_count:
@@ -446,7 +448,7 @@ def _has_non_grid_arrival(event_tape: list[Any]) -> bool:
     start_time_utc_nanos = start_time_utc_seconds * 1_000_000_000
 
     for event_record in event_tape:
-        timestamp_utc_nanos = event_record.timestamp_utc_nanos
+        timestamp_utc_nanos = event_record.observed_timestamp_utc_nanos
         if (timestamp_utc_nanos - start_time_utc_nanos) % NANOS_PER_HOUR != 0:
             return True
 

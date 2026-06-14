@@ -13,6 +13,7 @@ use janiform_model_kernels::mean_reversion::{
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HawkesStageFittedParameters {
@@ -47,6 +48,7 @@ pub struct ReturnComponentsStageFittedParameters {
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub long_variance_parameters: LongVarianceParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
 }
 
