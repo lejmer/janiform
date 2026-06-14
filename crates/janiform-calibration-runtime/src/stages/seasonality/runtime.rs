@@ -2,7 +2,7 @@ use chrono::Timelike;
 use chrono_tz::Tz;
 use janiform_calibration_artifacts::CalibrationRunSpec;
 use janiform_foundations::time::{
-    MINUTES_PER_DAY, MINUTES_PER_HOUR, SECONDS_PER_HOUR, utc_datetime_from_nanos,
+    MINUTES_PER_DAY, MINUTES_PER_HOUR, SECONDS_PER_HOUR_F64, utc_datetime_from_nanos,
 };
 use janiform_market_time::business_time_clock::{
     FourierBusinessTimeClockMaterializationInput,
@@ -188,7 +188,7 @@ pub(super) fn materialize_open_event_gap_exposures(
     Ok(output
         .business_time_exposure_seconds
         .into_iter()
-        .map(|exposure_seconds| exposure_seconds / SECONDS_PER_HOUR)
+        .map(|exposure_seconds| exposure_seconds / SECONDS_PER_HOUR_F64)
         .collect())
 }
 

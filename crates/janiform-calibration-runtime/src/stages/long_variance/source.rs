@@ -1,9 +1,14 @@
+use janiform_foundations::time::NANOS_PER_HOUR;
+
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::stages::coarse_data::coarse_data_interval_observations;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
+use crate::stages::long_variance::metrics::aggregate_intervals_to_fixed_duration;
 
-pub(crate) const LONG_VARIANCE_SLOW_HORIZON_SOURCE_SELECTION_POLICY: &str =
-    "coarse_preferred_overlap_with_tick_gap_fill_slow_horizon_intervals.v1";
+pub(crate) const LONG_VARIANCE_SLOW_HORIZON_SOURCE_SELECTION_POLICY: &str = concat!(
+    "coarse_records_at_or_below_one_hour_aggregate_to_",
+    "one_hour_log_return_variance_units_with_tick_gap_fill.v1",
+);
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LongVarianceSlowHorizonIntervalSelection {
@@ -18,7 +23,7 @@ pub(crate) fn select_long_variance_slow_horizon_intervals(
     coarse_data_records: Option<&[MarketDataNormalizedCoarseDataRecord]>,
 ) -> LongVarianceSlowHorizonIntervalSelection {
     let mut coarse_intervals = coarse_data_records
-        .map(coarse_data_interval_observations)
+        .map(coarse_data_hourly_interval_observations)
         .unwrap_or_default();
 
     if coarse_intervals.is_empty() {
@@ -30,14 +35,7 @@ pub(crate) fn select_long_variance_slow_horizon_intervals(
         };
     }
 
-    coarse_intervals.sort_by(|left, right| {
-        left.interval_start_utc_nanos
-            .cmp(&right.interval_start_utc_nanos)
-            .then(
-                left.interval_end_utc_nanos
-                    .cmp(&right.interval_end_utc_nanos),
-            )
-    });
+    sort_intervals_by_time(coarse_intervals.as_mut_slice());
 
     let mut selected_intervals = Vec::with_capacity(
         coarse_intervals
@@ -74,14 +72,7 @@ pub(crate) fn select_long_variance_slow_horizon_intervals(
         }
     }
 
-    selected_intervals.sort_by(|left, right| {
-        left.interval_start_utc_nanos
-            .cmp(&right.interval_start_utc_nanos)
-            .then(
-                left.interval_end_utc_nanos
-                    .cmp(&right.interval_end_utc_nanos),
-            )
-    });
+    sort_intervals_by_time(selected_intervals.as_mut_slice());
 
     LongVarianceSlowHorizonIntervalSelection {
         intervals: selected_intervals,
@@ -99,9 +90,43 @@ fn intervals_overlap(
         && right.interval_start_utc_nanos < left.interval_end_utc_nanos
 }
 
+fn coarse_data_hourly_interval_observations(
+    records: &[MarketDataNormalizedCoarseDataRecord],
+) -> Vec<JointRefinementAggregatedIntervalObservation> {
+    let mut intervals = coarse_data_interval_observations(records)
+        .into_iter()
+        .filter(|interval| {
+            let Some(interval_duration_nanos) = interval
+                .interval_end_utc_nanos
+                .checked_sub(interval.interval_start_utc_nanos)
+            else {
+                return false;
+            };
+
+            interval_duration_nanos > 0 && interval_duration_nanos <= NANOS_PER_HOUR
+        })
+        .collect::<Vec<_>>();
+
+    sort_intervals_by_time(intervals.as_mut_slice());
+    aggregate_intervals_to_fixed_duration(intervals.as_slice(), NANOS_PER_HOUR)
+}
+
+fn sort_intervals_by_time(intervals: &mut [JointRefinementAggregatedIntervalObservation]) {
+    intervals.sort_by(|left, right| {
+        left.interval_start_utc_nanos
+            .cmp(&right.interval_start_utc_nanos)
+            .then(
+                left.interval_end_utc_nanos
+                    .cmp(&right.interval_end_utc_nanos),
+            )
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::select_long_variance_slow_horizon_intervals;
+    use janiform_foundations::time::NANOS_PER_HOUR;
+
     use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
     use crate::stages::joint_metrics::{
         JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY, JointRefinementAggregatedIntervalObservation,
@@ -133,7 +158,7 @@ mod tests {
             high_price: Some(101.0),
             low_price: Some(99.0),
             volume: Some(0.0),
-            close_to_close_log_return: Some(0.1),
+            close_to_close_log_return: Some(0.5),
             open_to_close_log_return: None,
             close_to_open_gap_log_return: None,
             high_low_log_range: None,
@@ -143,11 +168,15 @@ mod tests {
 
     #[test]
     fn slow_horizon_source_selection_uses_coarse_overlap_and_tick_gaps() {
-        let tick_intervals = vec![tick_interval(10, 20), tick_interval(20, 30)];
+        let tick_intervals = vec![
+            tick_interval(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR),
+            tick_interval(2 * NANOS_PER_HOUR, 3 * NANOS_PER_HOUR),
+        ];
+
         let coarse_records = vec![
-            coarse_record(0, 10),
-            coarse_record(10, 20),
-            coarse_record(30, 40),
+            coarse_record(0, NANOS_PER_HOUR),
+            coarse_record(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR),
+            coarse_record(3 * NANOS_PER_HOUR, 4 * NANOS_PER_HOUR),
         ];
 
         let selection = select_long_variance_slow_horizon_intervals(
@@ -169,8 +198,53 @@ mod tests {
 
         assert_eq!(
             intervals,
-            vec![(0, 10, 0), (10, 20, 0), (20, 30, 10), (30, 40, 0)]
+            vec![
+                (0, NANOS_PER_HOUR, 0),
+                (NANOS_PER_HOUR, 2 * NANOS_PER_HOUR, 0),
+                (2 * NANOS_PER_HOUR, 3 * NANOS_PER_HOUR, 10),
+                (3 * NANOS_PER_HOUR, 4 * NANOS_PER_HOUR, 0),
+            ]
         );
         assert_eq!(selection.omitted_overlapping_tick_interval_count, 1);
+    }
+
+    #[test]
+    fn slow_horizon_source_selection_aggregates_subhour_coarse_returns_to_hourly_units() {
+        let minute_nanos = NANOS_PER_HOUR / 60;
+
+        let coarse_records = (0_i64..60)
+            .map(|minute_position| {
+                coarse_record(
+                    minute_position * minute_nanos,
+                    (minute_position + 1) * minute_nanos,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let selection =
+            select_long_variance_slow_horizon_intervals(&[], Some(coarse_records.as_slice()));
+
+        assert_eq!(selection.coarse_interval_count, 1);
+        assert_eq!(
+            selection.intervals,
+            vec![JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: NANOS_PER_HOUR,
+                log_return: 30.0,
+                tick_count: 0,
+                sell_share_proxy: JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
+            }]
+        );
+    }
+
+    #[test]
+    fn slow_horizon_source_selection_excludes_coarse_records_above_hourly_units() {
+        let coarse_records = vec![coarse_record(0, 2 * NANOS_PER_HOUR)];
+
+        let selection =
+            select_long_variance_slow_horizon_intervals(&[], Some(coarse_records.as_slice()));
+
+        assert_eq!(selection.coarse_interval_count, 0);
+        assert!(selection.intervals.is_empty());
     }
 }

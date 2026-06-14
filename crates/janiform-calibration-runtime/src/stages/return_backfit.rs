@@ -11,7 +11,7 @@ use janiform_calibration_artifacts::{
     ReturnBackfitStageVarianceBudgetDiagnostic, SurpriseNewsDeterministicIntensityProfile,
     stage_solver_settings_for_stage,
 };
-use janiform_foundations::numeric::strictly_positive_machine_value;
+use janiform_foundations::numeric::{strictly_positive_machine_value, validate_positive_number};
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::target_source_rates_from_shared_activity_loading;
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
@@ -244,10 +244,13 @@ fn build_return_backfit_fitted_stage_payload(
         .fitted_parameters
         .nig_shared_plus_shift_configuration;
 
+    let nig_delta_scale =
+        backfit_budget.backfitted_nig_contribution / backfit_budget.initial_nig_contribution;
+
     let backfitted_nig_configuration = NigSharedPlusShiftConfiguration::try_new(
         original_nig_configuration.alpha,
         original_nig_configuration.beta_0,
-        original_nig_configuration.delta / backfit_budget.long_variance_clock_scale_multiplier,
+        original_nig_configuration.delta * nig_delta_scale,
         original_nig_configuration.mu,
         original_nig_configuration.delta_beta,
     )
@@ -367,8 +370,34 @@ fn return_backfit_variance_budget(
 
     validate_nig_configuration_for_backfit(nig_configuration)?;
 
-    let backfitted_nig_contribution =
-        initial_nig_contribution / long_variance_clock_scale_multiplier;
+    return_backfit_variance_budget_from_scale_inputs(
+        long_variance_clock_scale_multiplier,
+        initial_nig_contribution,
+        observed_target_scale,
+    )
+}
+
+fn return_backfit_variance_budget_from_scale_inputs(
+    long_variance_clock_scale_multiplier: f64,
+    initial_nig_contribution: f64,
+    observed_target_scale: f64,
+) -> Result<ReturnBackfitVarianceBudget, String> {
+    validate_positive_number(
+        long_variance_clock_scale_multiplier,
+        "long_variance_clock_scale_multiplier",
+    )
+    .map_err(|source| {
+        format!("return-backfit long-variance clock scale multiplier is invalid: {source}")
+    })?;
+
+    validate_positive_number(initial_nig_contribution, "initial_nig_contribution").map_err(
+        |source| format!("return-backfit initial NIG contribution is invalid: {source}"),
+    )?;
+
+    validate_positive_number(observed_target_scale, "observed_target_scale")
+        .map_err(|source| format!("return-backfit observed target scale is invalid: {source}"))?;
+
+    let backfitted_nig_contribution = observed_target_scale / long_variance_clock_scale_multiplier;
 
     let final_total_modeled_return_scale =
         backfitted_nig_contribution * long_variance_clock_scale_multiplier;
@@ -376,8 +405,7 @@ fn return_backfit_variance_budget(
     Ok(ReturnBackfitVarianceBudget {
         long_variance_clock_scale_multiplier,
         initial_nig_contribution,
-        fixed_long_variance_news_contribution: initial_nig_contribution
-            * (long_variance_clock_scale_multiplier - 1.0),
+        fixed_long_variance_news_contribution: observed_target_scale - backfitted_nig_contribution,
         backfitted_nig_contribution,
         final_total_modeled_return_scale,
         observed_target_scale,
@@ -556,5 +584,30 @@ fn failure_report(
         fitted_stage_payload: None,
         metadata: None,
         failure: Some(failure),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::return_backfit_variance_budget_from_scale_inputs;
+
+    #[test]
+    fn return_backfit_targets_observed_variance_after_long_variance_clock_scaling() {
+        let budget = return_backfit_variance_budget_from_scale_inputs(4.0, 0.09, 0.16)
+            .expect("positive scale inputs should produce a budget");
+
+        assert_eq!(budget.initial_nig_contribution, 0.09);
+        assert_eq!(budget.backfitted_nig_contribution, 0.04);
+        assert_eq!(budget.fixed_long_variance_news_contribution, 0.12);
+        assert_eq!(budget.final_total_modeled_return_scale, 0.16);
+        assert_eq!(budget.observed_target_scale, 0.16);
+    }
+
+    #[test]
+    fn return_backfit_rejects_non_positive_observed_variance_target() {
+        let error = return_backfit_variance_budget_from_scale_inputs(1.0, 0.09, 0.0)
+            .expect_err("zero observed variance cannot define a positive NIG scale");
+
+        assert!(error.contains("observed_target_scale"));
     }
 }
