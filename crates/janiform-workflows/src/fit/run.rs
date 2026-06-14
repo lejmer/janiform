@@ -14,7 +14,8 @@ use crate::market_data_progress::{
     MarketDataLoadingProgressGate, market_data_loading_progress_measure,
     market_data_loading_progress_signal, market_data_loading_run_event,
     market_data_preparation_progress_signal, market_data_preparation_run_event,
-    should_emit_market_data_loading_progress,
+    market_data_timestamp_batching_observation_progress_signal,
+    market_data_timestamp_batching_observation_run_event, should_emit_market_data_loading_progress,
 };
 
 use super::execution::{fit_workflow_paths, run_staged_fit_execution_workflow};
@@ -125,6 +126,24 @@ pub fn run_fit_workflow(
                     run_id,
                     WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
                     phase,
+                );
+
+                machine_event_sink(&run_event)
+            }
+            MarketDataPreparationProgressEvent::TimestampBatchingObservation(diagnostic) => {
+                render_market_data_timestamp_batching_observation_progress(
+                    &mut progress_adapter.borrow_mut(),
+                    &diagnostic,
+                )?;
+
+                let Some(machine_event_sink) = machine_event_sink.as_mut() else {
+                    return Ok(());
+                };
+
+                let run_event = market_data_timestamp_batching_observation_run_event(
+                    run_id,
+                    WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
+                    &diagnostic,
                 );
 
                 machine_event_sink(&run_event)
@@ -262,6 +281,27 @@ fn render_market_data_preparation_progress(
         phase: "Preparing market data".to_string(),
         measure: ProgressMeasure::Unbounded,
         latest_signal: Some(market_data_preparation_progress_signal(phase)),
+    });
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+fn render_market_data_timestamp_batching_observation_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    diagnostic: &janiform::calibration::market_data::CalibrationTimestampBatchingObservationDiagnostic,
+) -> Result<(), WorkflowError> {
+    let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunProgress {
+        phase: "Preparing market data".to_string(),
+        measure: ProgressMeasure::Unbounded,
+        latest_signal: Some(market_data_timestamp_batching_observation_progress_signal(
+            diagnostic,
+        )),
     });
 
     progress_adapter

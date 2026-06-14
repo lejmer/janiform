@@ -44,6 +44,16 @@ pub enum TimestampBatchingObservationMode {
     FixedBucketFloor,
 }
 
+impl TimestampBatchingObservationMode {
+    /// Stable mode identifier used by diagnostics and machine-readable progress.
+    pub const fn mode_id(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::FixedBucketFloor => "fixed_bucket_floor",
+        }
+    }
+}
+
 /// Fitted or requested timestamp batching observation model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimestampBatchingObservationModel {

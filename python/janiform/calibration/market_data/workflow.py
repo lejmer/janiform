@@ -11,6 +11,7 @@ from .contracts import (
 )
 from .ingestion import LoadedMarketDataSourceSummary
 from .request import MarketDataCalibrationRequest, validate_market_data_calibration_request
+from .timestamp_observation import MarketDataTimestampBatchingObservationDiagnostic
 from .translation import (
     MarketDataTranslationDiagnostics,
     MarketDataTranslationProvenance,
@@ -79,6 +80,7 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
     executed_preprocessing_steps: tuple[str, ...]
+    timestamp_batching_observation: MarketDataTimestampBatchingObservationDiagnostic
     tick_record_count: int
     coarse_data_record_count: int
     coarse_data_return_interval_count: int
@@ -111,6 +113,12 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
             executed_preprocessing_steps=tuple(
                 str(step)
                 for step in raw_payload["executed_preprocessing_steps"]
+            ),
+            timestamp_batching_observation=(
+                MarketDataTimestampBatchingObservationDiagnostic.from_mapping(
+                    raw_payload["timestamp_batching_observation"],
+                    field_path="preparation_diagnostics.timestamp_batching_observation",
+                )
             ),
             tick_record_count=int(raw_payload["tick_record_count"]),
             coarse_data_record_count=int(raw_payload["coarse_data_record_count"]),
@@ -301,6 +309,7 @@ def _build_market_data_preparation_diagnostics(
         workflow_scope=diagnostics.workflow_scope,
         selected_stages=diagnostics.selected_stages,
         executed_preprocessing_steps=diagnostics.executed_preprocessing_steps,
+        timestamp_batching_observation=diagnostics.timestamp_batching_observation,
         tick_record_count=diagnostics.tick_record_count,
         coarse_data_record_count=diagnostics.coarse_data_record_count,
         coarse_data_return_interval_count=(

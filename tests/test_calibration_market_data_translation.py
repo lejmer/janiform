@@ -32,6 +32,7 @@ from janiform.calibration.market_data import (
     CalibrationTickObjectiveDataUsagePolicy,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
+    MarketDataTimestampBatchingObservationDiagnosticState,
     prepare_market_data_calibration,
 )
 from janiform.calibration.market_data.translation import (
@@ -45,6 +46,7 @@ from janiform.calibration.staged import (
     CalibrationStage,
 )
 from janiform.seasonality import SessionFilter
+from janiform.simulation import TimestampBatchingObservationMode
 
 
 FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
@@ -1221,6 +1223,20 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     )
     assert prepared.diagnostics.known_news_event_count == 2
     assert prepared.diagnostics.known_news_events_outside_source_window_count == 1
+    assert prepared.diagnostics.timestamp_batching_observation.state == (
+        MarketDataTimestampBatchingObservationDiagnosticState.DISABLED_NO_DETECTABLE_BATCHING
+    )
+    assert (
+        prepared.diagnostics.timestamp_batching_observation.return_components_stage_selected
+        is True
+    )
+    assert (
+        prepared.diagnostics.timestamp_batching_observation.observation_model.mode
+        == TimestampBatchingObservationMode.DISABLED
+    )
+    assert "evaluated during market-data preprocessing" in (
+        prepared.diagnostics.timestamp_batching_observation.message
+    )
     assert prepared.provenance.tick_data_summary.file_format == CalibrationInputFileFormat.CSV
     assert prepared.provenance.known_news_summary is not None
     assert prepared.session_resolution.manual_override_applied is True

@@ -2,6 +2,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from janiform.calibration.market_data import (
+    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
+    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
+    MarketDataTimestampBatchingObservationDiagnosticState,
+)
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationExecutionMode,
@@ -84,6 +89,35 @@ def build_disabled_timestamp_batching_observation_model_payload() -> dict[str, A
         "coarse_interval_compatibility_policy": (
             "observed_timestamp_ownership_constrained_to_latent_interval_for_direct_coarse_consistency.v1"
         ),
+    }
+
+
+def build_disabled_timestamp_batching_observation_diagnostic_payload(
+    *,
+    return_components_stage_selected: bool,
+) -> dict[str, Any]:
+    diagnostic_state = MarketDataTimestampBatchingObservationDiagnosticState
+
+    if return_components_stage_selected:
+        state = diagnostic_state.DISABLED_NO_DETECTABLE_BATCHING
+        message = (
+            "timestamp batching observation evaluated during market-data preprocessing: "
+            "disabled because no same-session duplicate timestamp quantum was detected"
+        )
+    else:
+        state = diagnostic_state.NOT_EVALUATED_RETURN_COMPONENTS_NOT_SELECTED
+        message = (
+            "timestamp batching observation not evaluated because return components are not "
+            "selected"
+        )
+
+    return {
+        "schema_version": CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
+        "diagnostic_policy": CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
+        "state": state.value,
+        "return_components_stage_selected": return_components_stage_selected,
+        "observation_model": build_disabled_timestamp_batching_observation_model_payload(),
+        "message": message,
     }
 
 

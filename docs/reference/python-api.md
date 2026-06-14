@@ -4903,11 +4903,14 @@
 |------|-------|----------|
 | `CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION` | `calibration.market_data.preparation.v1` | true |
 | `CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION` | `calibration.market_data.request.v1` | true |
+| `CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION` | `calibration.market_data.timestamp_batching_observation_diagnostic.v1` | true |
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-calibration-market-data-preparation-schema-version) | constant | constant value |
 | [`CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-calibration-market-data-request-schema-version) | constant | constant value |
+| [`CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY`](#python-api-symbol-janiform-calibration-market-data-calibration-timestamp-batching-observation-diagnostic-policy) | constant | constant value |
+| [`CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION`](#python-api-symbol-janiform-calibration-market-data-calibration-timestamp-batching-observation-diagnostic-schema-version) | constant | constant value |
 | [`CalibrationCoarseDataColumnMapping`](#python-api-symbol-janiform-calibration-market-data-calibrationcoarsedatacolumnmapping) | contract_model | 9 fields |
 | [`CalibrationCoarseDataTimestampSemantics`](#python-api-symbol-janiform-calibration-market-data-calibrationcoarsedatatimestampsemantics) | enum | 2 members |
 | [`CalibrationDuplicateRecordPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationduplicaterecordpolicy) | enum | 2 members |
@@ -4931,11 +4934,13 @@
 | [`CalibrationTickObjectiveDataUsagePolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationtickobjectivedatausagepolicy) | enum | 2 members |
 | [`CalibrationTickPriceInputPolicy`](#python-api-symbol-janiform-calibration-market-data-calibrationtickpriceinputpolicy) | enum | 2 members |
 | [`DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD`](#python-api-symbol-janiform-calibration-market-data-default-option-forward-parity-warning-relative-threshold) | constant | constant value |
-| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationdiagnostics) | contract_model | 20 fields |
+| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationdiagnostics) | contract_model | 21 fields |
 | [`MarketDataCalibrationPreparationProvenance`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationpreparationprovenance) | contract_model | 14 fields |
 | [`MarketDataCalibrationRequest`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationrequest) | contract_model | 27 fields |
 | [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-marketdatacalibrationsourcesummary) | contract_model | 11 fields |
 | [`MarketDataSourceProbe`](#python-api-symbol-janiform-calibration-market-data-marketdatasourceprobe) | contract_model | 5 fields |
+| [`MarketDataTimestampBatchingObservationDiagnostic`](#python-api-symbol-janiform-calibration-market-data-marketdatatimestampbatchingobservationdiagnostic) | contract_model | 6 fields |
+| [`MarketDataTimestampBatchingObservationDiagnosticState`](#python-api-symbol-janiform-calibration-market-data-marketdatatimestampbatchingobservationdiagnosticstate) | enum | 4 members |
 | [`NormalizedMarketDataSource`](#python-api-symbol-janiform-calibration-market-data-normalizedmarketdatasource) | contract_model | 4 fields |
 | [`OptionForwardParityCheck`](#python-api-symbol-janiform-calibration-market-data-optionforwardparitycheck) | contract_model | 10 fields |
 | [`OptionForwardParityWarningPolicy`](#python-api-symbol-janiform-calibration-market-data-optionforwardparitywarningpolicy) | contract_model | 1 fields |
@@ -4967,6 +4972,18 @@
 
 - Kind: `constant`
 - Value: `calibration.market_data.request.v1`
+
+<a id="python-api-symbol-janiform-calibration-market-data-calibration-timestamp-batching-observation-diagnostic-policy"></a>
+### `CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY`
+
+- Kind: `constant`
+- Value: `return_components_timestamp_batching_observation_visibility.v1`
+
+<a id="python-api-symbol-janiform-calibration-market-data-calibration-timestamp-batching-observation-diagnostic-schema-version"></a>
+### `CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION`
+
+- Kind: `constant`
+- Value: `calibration.market_data.timestamp_batching_observation_diagnostic.v1`
 
 <a id="python-api-symbol-janiform-calibration-market-data-calibrationcoarsedatacolumnmapping"></a>
 ### `CalibrationCoarseDataColumnMapping`
@@ -5216,8 +5233,8 @@
 ### `MarketDataCalibrationPreparationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
-- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
+- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
+- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `timestamp_batching_observation`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
 | Method | Signature |
 |--------|-----------|
@@ -5262,6 +5279,29 @@
 - Kind: `contract_model`
 - Signature: `(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', available_columns: 'tuple[str, ...]', source_row_count_estimate: 'Optional[int]') -> 'None'`
 - Fields: `path`, `file_format`, `provenance_label`, `available_columns`, `source_row_count_estimate`
+
+<a id="python-api-symbol-janiform-calibration-market-data-marketdatatimestampbatchingobservationdiagnostic"></a>
+### `MarketDataTimestampBatchingObservationDiagnostic`
+
+- Kind: `contract_model`
+- Signature: `(schema_version: 'str', diagnostic_policy: 'str', state: 'MarketDataTimestampBatchingObservationDiagnosticState', return_components_stage_selected: 'bool', observation_model: 'TimestampBatchingObservationModel', message: 'str') -> 'None'`
+- Fields: `schema_version`, `diagnostic_policy`, `state`, `return_components_stage_selected`, `observation_model`, `message`
+
+| Method | Signature |
+|--------|-----------|
+| `from_mapping` | `(raw_payload: 'dict[str, Any] \| Any', *, field_path: 'str') -> 'MarketDataTimestampBatchingObservationDiagnostic'` |
+
+<a id="python-api-symbol-janiform-calibration-market-data-marketdatatimestampbatchingobservationdiagnosticstate"></a>
+### `MarketDataTimestampBatchingObservationDiagnosticState`
+
+- Kind: `enum`
+
+| Member | Value |
+|--------|-------|
+| `INFERRED_FIXED_BUCKET` | `inferred_fixed_bucket` |
+| `DISABLED_NO_DETECTABLE_BATCHING` | `disabled_no_detectable_batching` |
+| `NOT_EVALUATED_RETURN_COMPONENTS_NOT_SELECTED` | `not_evaluated_return_components_not_selected` |
+| `NOT_EVALUATED_RETURN_COMPONENTS_INPUT_UNAVAILABLE` | `not_evaluated_return_components_input_unavailable` |
 
 <a id="python-api-symbol-janiform-calibration-market-data-normalizedmarketdatasource"></a>
 ### `NormalizedMarketDataSource`
@@ -5808,7 +5848,7 @@
 | Symbol | Kind | Summary |
 |--------|------|---------|
 | [`MarketDataSourceProbe`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatasourceprobe) | contract_model | 5 fields |
-| [`MarketDataTranslationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationdiagnostics) | contract_model | 20 fields |
+| [`MarketDataTranslationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationdiagnostics) | contract_model | 21 fields |
 | [`MarketDataTranslationProvenance`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationprovenance) | contract_model | 14 fields |
 | [`MarketDataTranslationResult`](#python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationresult) | contract_model | 7 fields |
 | [`NormalizedMarketDataSource`](#python-api-symbol-janiform-calibration-market-data-translation-normalizedmarketdatasource) | contract_model | 4 fields |
@@ -5831,8 +5871,8 @@
 ### `MarketDataTranslationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
-- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
+- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
+- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `timestamp_batching_observation`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
 <a id="python-api-symbol-janiform-calibration-market-data-translation-marketdatatranslationprovenance"></a>
 ### `MarketDataTranslationProvenance`
@@ -5913,7 +5953,7 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationdiagnostics) | contract_model | 20 fields |
+| [`MarketDataCalibrationPreparationDiagnostics`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationdiagnostics) | contract_model | 21 fields |
 | [`MarketDataCalibrationPreparationProvenance`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationpreparationprovenance) | contract_model | 14 fields |
 | [`MarketDataCalibrationSourceSummary`](#python-api-symbol-janiform-calibration-market-data-workflow-marketdatacalibrationsourcesummary) | contract_model | 11 fields |
 | [`PreparedMarketDataCalibration`](#python-api-symbol-janiform-calibration-market-data-workflow-preparedmarketdatacalibration) | contract_model | 11 fields |
@@ -5924,8 +5964,8 @@
 ### `MarketDataCalibrationPreparationDiagnostics`
 
 - Kind: `contract_model`
-- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
-- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
+- Signature: `(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'`
+- Fields: `workflow_scope`, `selected_stages`, `executed_preprocessing_steps`, `timestamp_batching_observation`, `tick_record_count`, `coarse_data_record_count`, `coarse_data_return_interval_count`, `coarse_data_overlap_interval_count`, `coarse_data_independent_interval_count`, `option_surface_record_count`, `known_news_event_count`, `known_news_events_outside_source_window_count`, `session_open_tick_count`, `session_closed_tick_count`, `known_news_open_event_count`, `known_news_closed_event_count`, `hawkes_candidate_count`, `known_news_return_sample_count`, `intraday_jump_candidate_count`, `close_open_boundary_observation_count`, `material_close_open_gap_count`
 
 | Method | Signature |
 |--------|-----------|

@@ -346,6 +346,8 @@
       "exports": [
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY",
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
         "CalibrationCoarseDataColumnMapping",
         "CalibrationCoarseDataTimestampSemantics",
         "CalibrationDuplicateRecordPolicy",
@@ -374,6 +376,8 @@
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
         "MarketDataSourceProbe",
+        "MarketDataTimestampBatchingObservationDiagnostic",
+        "MarketDataTimestampBatchingObservationDiagnosticState",
         "NormalizedMarketDataSource",
         "OptionForwardParityCheck",
         "OptionForwardParityWarningPolicy",
@@ -405,6 +409,11 @@
           "name": "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
           "public_exported": true,
           "value": "calibration.market_data.request.v1"
+        },
+        {
+          "name": "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "calibration.market_data.timestamp_batching_observation_diagnostic.v1"
         }
       ],
       "symbols": {
@@ -415,6 +424,14 @@
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION": {
           "kind": "constant",
           "value": "calibration.market_data.request.v1"
+        },
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY": {
+          "kind": "constant",
+          "value": "return_components_timestamp_batching_observation_visibility.v1"
+        },
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "calibration.market_data.timestamp_batching_observation_diagnostic.v1"
         },
         "CalibrationCoarseDataColumnMapping": {
           "field_names": [
@@ -718,6 +735,7 @@
             "workflow_scope",
             "selected_stages",
             "executed_preprocessing_steps",
+            "timestamp_batching_observation",
             "tick_record_count",
             "coarse_data_record_count",
             "coarse_data_return_interval_count",
@@ -740,7 +758,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationPreparationDiagnostics'"
           },
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -831,6 +849,42 @@
           ],
           "kind": "contract_model",
           "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', available_columns: 'tuple[str, ...]', source_row_count_estimate: 'Optional[int]') -> 'None'"
+        },
+        "MarketDataTimestampBatchingObservationDiagnostic": {
+          "field_names": [
+            "schema_version",
+            "diagnostic_policy",
+            "state",
+            "return_components_stage_selected",
+            "observation_model",
+            "message"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketDataTimestampBatchingObservationDiagnostic'"
+          },
+          "signature": "(schema_version: 'str', diagnostic_policy: 'str', state: 'MarketDataTimestampBatchingObservationDiagnosticState', return_components_stage_selected: 'bool', observation_model: 'TimestampBatchingObservationModel', message: 'str') -> 'None'"
+        },
+        "MarketDataTimestampBatchingObservationDiagnosticState": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "INFERRED_FIXED_BUCKET",
+              "value": "inferred_fixed_bucket"
+            },
+            {
+              "name": "DISABLED_NO_DETECTABLE_BATCHING",
+              "value": "disabled_no_detectable_batching"
+            },
+            {
+              "name": "NOT_EVALUATED_RETURN_COMPONENTS_NOT_SELECTED",
+              "value": "not_evaluated_return_components_not_selected"
+            },
+            {
+              "name": "NOT_EVALUATED_RETURN_COMPONENTS_INPUT_UNAVAILABLE",
+              "value": "not_evaluated_return_components_input_unavailable"
+            }
+          ]
         },
         "NormalizedMarketDataSource": {
           "field_names": [
@@ -1510,6 +1564,7 @@
             "workflow_scope",
             "selected_stages",
             "executed_preprocessing_steps",
+            "timestamp_batching_observation",
             "tick_record_count",
             "coarse_data_record_count",
             "coarse_data_return_interval_count",
@@ -1529,7 +1584,7 @@
             "material_close_open_gap_count"
           ],
           "kind": "contract_model",
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataTranslationProvenance": {
           "field_names": [
@@ -1631,6 +1686,7 @@
             "workflow_scope",
             "selected_stages",
             "executed_preprocessing_steps",
+            "timestamp_batching_observation",
             "tick_record_count",
             "coarse_data_record_count",
             "coarse_data_return_interval_count",
@@ -1653,7 +1709,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationPreparationDiagnostics'"
           },
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [

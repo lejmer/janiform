@@ -27,6 +27,7 @@ use janiform_workflows::fit::{
 use janiform_workflows::market_data_progress::{
     MarketDataLoadingProgressGate, market_data_loading_progress_measure,
     market_data_loading_progress_signal, market_data_preparation_progress_signal,
+    market_data_timestamp_batching_observation_progress_signal,
 };
 
 use super::labels::workflow_scope_argument_label;
@@ -554,6 +555,11 @@ fn prepare_market_data_calibration_plan_with_terminal_progress(
                 "Preparing market data".to_string(),
                 ProgressMeasure::Unbounded,
                 market_data_preparation_progress_signal(preparation_phase),
+            ),
+            MarketDataPreparationProgressEvent::TimestampBatchingObservation(diagnostic) => (
+                "Preparing market data".to_string(),
+                ProgressMeasure::Unbounded,
+                market_data_timestamp_batching_observation_progress_signal(&diagnostic),
             ),
         };
 
