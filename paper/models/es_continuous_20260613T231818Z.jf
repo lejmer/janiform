@@ -17,7 +17,7 @@
     "execution_mode": "disk",
     "fit_report_summary": {
       "diagnostic_count": 7,
-      "run_id": "es_continuous_20260613T132629Z",
+      "run_id": "es_continuous_20260613T231818Z",
       "selected_stages": [
         "seasonality",
         "hawkes",
@@ -72,13 +72,13 @@
     },
     "fitted_parameter_summary": {
       "selected_candidate_ids": {
-        "finalization": "finalization_tick_moment_11",
-        "hawkes": "market_data_fit_270_refined_0_158",
-        "joint_refinement": "joint_refinement_tick_moment_11",
-        "long_variance": "generated_nig_008_known_001_surprise_001_mark_001_coupling_001",
-        "news_shocks": "generated_nig_008_known_001_surprise_001_mark_001_coupling_001",
+        "finalization": "finalization_return_clock_buy_excitation_down",
+        "hawkes": "market_data_fit_216_refined_0_089",
+        "joint_refinement": "joint_refinement_return_clock_buy_excitation_down",
+        "long_variance": "generated_nig_007_known_001_surprise_001_mark_001_coupling_001",
+        "news_shocks": "generated_nig_007_known_001_surprise_001_mark_001_coupling_001",
         "return_backfit": "long_variance_clock_residual_nig_scale",
-        "return_components": "generated_nig_008_known_001_surprise_001_mark_001_coupling_001"
+        "return_components": "generated_nig_007_known_001_surprise_001_mark_001_coupling_001"
       },
       "stage_keys": [
         "finalization",
@@ -100,7 +100,7 @@
       "session": null
     },
     "price_coordinate_resolution": null,
-    "run_id": "es_continuous_20260613T132629Z",
+    "run_id": "es_continuous_20260613T231818Z",
     "selected_stages": [
       "seasonality",
       "hawkes",
@@ -136,13 +136,13 @@
         "hawkes_fitted_parameters": {
           "kernel_parameters": {
             "alpha": {
-              "minus_minus": 807.385774522064,
-              "minus_plus": 89.70953050245201,
-              "plus_minus": 89.576077927818,
-              "plus_plus": 806.184701350361
+              "minus_minus": 137.737150929988,
+              "minus_plus": 15.30412788111,
+              "plus_minus": 15.28136134497,
+              "plus_plus": 137.532252104731
             },
-            "beta": 1063.8356911735477,
-            "lambda_bar": 2075.364273077434,
+            "beta": 210.0,
+            "lambda_bar": 3097.633021357082,
             "rho": {
               "minus_minus": 2.2250738585072014e-308,
               "minus_plus": 0.0,
@@ -155,10 +155,10 @@
           },
           "stability_numeric_tolerance": 0.0,
           "structured_alpha": {
-            "a_cross": 89.576077927818,
-            "a_self": 806.184701350361,
-            "delta_cross": 0.133452574634,
-            "delta_self": 1.201073171703
+            "a_cross": 15.28136134497,
+            "a_self": 137.532252104731,
+            "delta_cross": 0.02276653614,
+            "delta_self": 0.204898825257
           },
           "structured_rho": {
             "delta_cross_r": 0.0,
@@ -170,9 +170,9 @@
         "pricing_block_fitted_parameters": null,
         "return_components_fitted_parameters": {
           "long_variance_parameters": {
-            "buy_event_loading": 0.00041120561584007066,
+            "buy_event_loading": 0.0004112043579380006,
             "mean_reversion_rate": 8.317766166719345,
-            "sell_event_loading": 9.770364347352869e-6,
+            "sell_event_loading": 9.770334459235916e-6,
             "vol_of_vol": 4.0786679606752365
           },
           "mean_reversion_fitted_parameters": {
@@ -211,21 +211,21 @@
             }
           },
           "nig_shared_plus_shift_configuration": {
-            "alpha": 13905.817278084534,
-            "beta_0": 1773.993150702136,
-            "delta": 4.698442e-6,
-            "delta_beta": -1103.85865418658,
+            "alpha": 13906.209240614771,
+            "beta_0": 1685.337080806825,
+            "delta": 3.80231e-6,
+            "delta_beta": -64.824820345945,
             "mu": 0.0
           },
           "return_clock_exposure_parameters": {
-            "buy_excitation_return_clock_scale": 1.0,
+            "buy_excitation_return_clock_scale": 0.5,
             "sell_excitation_return_clock_scale": 1.0
           },
           "surprise_deterministic_intensity_profile": {
-            "fit_policy": "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_with_baseline_shrinkage.v1",
+            "fit_policy": "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_with_baseline_shrinkage.v1",
             "normalization_policy": "exposure_weighted_mean_one_over_source_window.v1",
             "profile_resolution_hours": 1,
-            "weekly_hour_utc_multipliers": [
+            "weekly_utc_profile_multipliers": [
               0.9926440418611834,
               0.9926440265452352,
               0.9926440265452352,
@@ -405,7 +405,7 @@
         }
       },
       "schema_version": "calibration.orchestration.stage_output.joint_refinement.v1",
-      "selected_candidate_id": "finalization_tick_moment_11"
+      "selected_candidate_id": "finalization_return_clock_buy_excitation_down"
     },
     "seasonality": {
       "clock_model": {
@@ -481,7 +481,7 @@
     }
   },
   "resolved_configuration": null,
-  "run_id": "es_continuous_20260613T132629Z",
+  "run_id": "es_continuous_20260613T231818Z",
   "schema_version": "calibration.high_level.model.v1",
   "session_resolution": {
     "ambiguity_warnings": [],
