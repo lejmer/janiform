@@ -49,7 +49,9 @@ pub const DAYS_PER_COMMON_YEAR: usize = 365;
 pub const DAYS_PER_LEAP_YEAR: usize = 366;
 
 /// Exact seconds per hour.
-pub const SECONDS_PER_HOUR: f64 = 3_600.0;
+pub const SECONDS_PER_HOUR: i64 = 3_600;
+/// Floating-point view of the exact seconds per hour.
+pub const SECONDS_PER_HOUR_F64: f64 = SECONDS_PER_HOUR as f64;
 
 /// Error returned when a duration spec cannot be represented as UTC nanoseconds.
 #[derive(Clone, Debug, Eq, PartialEq)]

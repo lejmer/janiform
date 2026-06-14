@@ -52,20 +52,35 @@ pub struct ReturnComponentsStageFittedParameters {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LongVarianceStageHorizonDiagnostic {
+    /// Stable horizon label used in reports.
     pub horizon_label: String,
+    /// Horizon duration in physical hours.
     pub horizon_hours: f64,
+    /// Number of finite log-return observations at this horizon.
     pub sample_count: usize,
+    /// Mean squared log-return at this horizon. This is a variance scale, not volatility.
     pub realized_variance: Option<f64>,
+    /// Sample variance of squared log-returns at this horizon.
     pub variance_of_variance: Option<f64>,
+    /// Adjusted skewness of log-returns at this horizon.
     pub return_skewness: Option<f64>,
+    /// Adjusted excess kurtosis of log-returns at this horizon.
     pub return_excess_kurtosis: Option<f64>,
+    /// Correlation between interval activity count and squared log-return.
     pub activity_variance_correlation: Option<f64>,
+    /// Correlation between signed activity and the next interval's squared log-return.
     pub signed_activity_future_variance_relation: Option<f64>,
+    /// Standard error for `realized_variance` in squared log-return units.
     pub realized_variance_standard_error: Option<f64>,
+    /// Standard error for `variance_of_variance` in squared log-return units squared.
     pub variance_of_variance_standard_error: Option<f64>,
+    /// Standard error for `return_skewness`.
     pub return_skewness_standard_error: Option<f64>,
+    /// Standard error for `return_excess_kurtosis`.
     pub return_excess_kurtosis_standard_error: Option<f64>,
+    /// Standard error for `activity_variance_correlation`.
     pub activity_variance_correlation_standard_error: Option<f64>,
+    /// Standard error for `signed_activity_future_variance_relation`.
     pub signed_activity_future_variance_relation_standard_error: Option<f64>,
 }
 
@@ -101,10 +116,15 @@ pub struct NewsShocksStageDiagnostics {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnBackfitStageVarianceBudgetDiagnostic {
+    /// Selected return-components NIG variance scale before backfit.
     pub initial_nig_contribution: Option<f64>,
+    /// Difference between target variance and backfitted NIG variance.
     pub fixed_long_variance_news_contribution: Option<f64>,
+    /// NIG variance scale after dividing the observed target by the long-variance clock multiplier.
     pub backfitted_nig_contribution: Option<f64>,
+    /// Backfitted NIG variance multiplied by the long-variance clock multiplier.
     pub final_total_modeled_return_scale: Option<f64>,
+    /// Observed return variance target. This is squared volatility, not volatility.
     pub observed_target_scale: Option<f64>,
 }
 

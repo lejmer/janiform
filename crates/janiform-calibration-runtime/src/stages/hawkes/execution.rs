@@ -43,7 +43,7 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::{
     arithmetic_mean, coefficient_of_variation, round_positive_to_domain, round_to,
 };
-use janiform_foundations::time::SECONDS_PER_HOUR;
+use janiform_foundations::time::SECONDS_PER_HOUR_F64;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, OPEN_MARKET_STATE_CODE};
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
@@ -1692,7 +1692,7 @@ fn derive_observed_activity_targets(
             continue;
         }
 
-        let transformed_gap_seconds = delta_exposure_hours * SECONDS_PER_HOUR;
+        let transformed_gap_seconds = delta_exposure_hours * SECONDS_PER_HOUR_F64;
 
         seasonality_weighted_gap_seconds_sum += transformed_gap_seconds;
 
@@ -1700,7 +1700,7 @@ fn derive_observed_activity_targets(
     }
 
     let integrated_open_gap_exposure_hours =
-        seasonality_weighted_gap_seconds_sum / SECONDS_PER_HOUR;
+        seasonality_weighted_gap_seconds_sum / SECONDS_PER_HOUR_F64;
 
     let open_factor_exposure_hours = if integrated_open_gap_exposure_hours.is_finite()
         && integrated_open_gap_exposure_hours > 0.0
@@ -2083,7 +2083,7 @@ mod tests {
         HawkesStageObservedSourceRegime,
     };
     use crate::stages::seasonality::SeasonalityStageNormalizedPayload;
-    use janiform_foundations::time::SECONDS_PER_HOUR;
+    use janiform_foundations::time::SECONDS_PER_HOUR_F64;
     use janiform_market_time::business_time_clock::{
         FOURIER_BUSINESS_TIME_CLOCK_BASIS, FOURIER_BUSINESS_TIME_CLOCK_COORDINATE_SYSTEM,
         FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION,
@@ -2461,8 +2461,8 @@ mod tests {
             business_time_rate_by_event: vec![1.0, 2.0, 1.0],
             open_event_business_time_delta_exposure_hours_by_event: vec![
                 0.0,
-                1.5 / SECONDS_PER_HOUR,
-                3.0 / SECONDS_PER_HOUR,
+                1.5 / SECONDS_PER_HOUR_F64,
+                3.0 / SECONDS_PER_HOUR_F64,
             ],
             clock_model: flat_business_time_clock_model(),
         }

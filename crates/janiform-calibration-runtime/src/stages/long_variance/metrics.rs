@@ -602,7 +602,9 @@ mod tests {
         long_variance_horizon_summaries, long_variance_interval_side_event_counts,
     };
     use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
-    use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, NANOS_PER_WEEK};
+    use janiform_foundations::time::{
+        NANOS_PER_DAY, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR, NANOS_PER_WEEK, SECONDS_PER_HOUR_F64,
+    };
 
     fn interval(
         interval_start_utc_nanos: i64,
@@ -636,6 +638,70 @@ mod tests {
                 interval(0, 10, 0.0625, 8, 0.625),
                 interval(10, 20, 0.04, 4, 0.50),
             ],
+        );
+    }
+
+    #[test]
+    fn aggregate_intervals_to_fixed_duration_preserves_scale_across_second_minute_and_hour_units() {
+        let second_nanos = NANOS_PER_HOUR / SECONDS_PER_HOUR_F64 as i64;
+        let minute_nanos = NANOS_PER_HOUR / 60;
+
+        let second_intervals = (0_i64..3_600)
+            .map(|second_position| {
+                interval(
+                    second_position * second_nanos,
+                    (second_position + 1) * second_nanos,
+                    1.0,
+                    1,
+                    0.50,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let minute_intervals = (0_i64..60)
+            .map(|minute_position| {
+                interval(
+                    minute_position * minute_nanos,
+                    (minute_position + 1) * minute_nanos,
+                    60.0,
+                    60,
+                    0.50,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let hourly_intervals = [interval(0, NANOS_PER_HOUR, 3_600.0, 3_600, 0.50)];
+
+        let aggregated_seconds =
+            aggregate_intervals_to_fixed_duration(second_intervals.as_slice(), NANOS_PER_HOUR);
+
+        let aggregated_minutes =
+            aggregate_intervals_to_fixed_duration(minute_intervals.as_slice(), NANOS_PER_HOUR);
+
+        assert_eq!(aggregated_seconds, hourly_intervals);
+        assert_eq!(aggregated_minutes, hourly_intervals);
+    }
+
+    #[test]
+    fn aggregate_intervals_to_fixed_duration_preserves_scale_across_hour_and_day_units() {
+        let hourly_intervals = (0_i64..24)
+            .map(|hour_position| {
+                interval(
+                    hour_position * NANOS_PER_HOUR,
+                    (hour_position + 1) * NANOS_PER_HOUR,
+                    1.0,
+                    10,
+                    0.50,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let daily_intervals =
+            aggregate_intervals_to_fixed_duration(hourly_intervals.as_slice(), NANOS_PER_DAY);
+
+        assert_eq!(
+            daily_intervals,
+            vec![interval(0, NANOS_PER_DAY, 24.0, 240, 0.50)]
         );
     }
 

@@ -12,7 +12,7 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource, HawkesStageFittedParameters,
 };
-use janiform_foundations::time::SECONDS_PER_HOUR;
+use janiform_foundations::time::SECONDS_PER_HOUR_F64;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameterValidationReport, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
@@ -25,7 +25,7 @@ pub const HAWKES_EVENT_SIDE_CODE_BUY: u8 = 1;
 pub const HAWKES_EVENT_SIDE_CODE_SELL: u8 = 2;
 
 // One hour is the existing continuity boundary for the open-event Hawkes state recursion.
-pub(super) const HAWKES_MAX_CONTINUOUS_OPEN_GAP_SECONDS: f64 = SECONDS_PER_HOUR;
+pub(super) const HAWKES_MAX_CONTINUOUS_OPEN_GAP_SECONDS: f64 = SECONDS_PER_HOUR_F64;
 
 // Seasonality factors are positive by construction, but persisted artifacts can
 // contain machine-scale edge values near sparse windows.
