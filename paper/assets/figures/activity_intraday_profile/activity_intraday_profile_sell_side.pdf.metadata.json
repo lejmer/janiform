@@ -48,12 +48,12 @@
     "id": "activity_intraday_profile_sell_side_empirical_market_data",
     "title": "Empirical ES continuous futures sell-side activity intraday profile"
   },
-  "generated_at_utc": "2026-06-11T21:42:17.860603+00:00",
+  "generated_at_utc": "2026-06-13T23:48:24.663209+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\activity_intraday_profile.py"
     ],
-    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/activity_intraday_profile.py"
@@ -119,7 +119,7 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/activity_intraday_profile/activity_intraday_profile_sell_side.pdf",
       "role": "figure",
-      "sha256": "a4c9910476dafcf5f16dedb0b5c70f935f1b76408fa01a40da1849feaf5cdc3a",
+      "sha256": "04a72b056038d89302bc13c3d9508d79fc84ec3774659c753fedb7a28cc95cb0",
       "size_bytes": 18325
     }
   ],

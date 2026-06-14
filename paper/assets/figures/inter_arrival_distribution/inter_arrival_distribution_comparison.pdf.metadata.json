@@ -23,24 +23,24 @@
       "zero_inter_arrival_count": 210383
     },
     "synthetic_model_output": {
-      "event_count": 13919886,
+      "event_count": 12066398,
       "label": "Janiform synthetic",
       "negative_inter_arrival_count_after_sorting": 0,
       "original_timestamp_order_is_monotonic": true,
-      "positive_inter_arrival_count": 13919885,
+      "positive_inter_arrival_count": 12066397,
       "positive_inter_arrival_seconds": {
-        "maximum": 176400.81730553,
-        "minimum": 1e-09,
+        "maximum": 176400.183887188,
+        "minimum": 2e-09,
         "quantiles": {
-          "p50": 0.051169163,
-          "p90": 0.29752663999999995,
-          "p95": 0.5372018817999998,
-          "p99": 1.3694851088800017
+          "p50": 0.063067882,
+          "p90": 0.35555318140000036,
+          "p95": 0.6326497139999999,
+          "p99": 1.5924659900799945
         }
       },
-      "raw_inter_arrival_count": 13919885,
+      "raw_inter_arrival_count": 12066397,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.228947429+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.269032407+00:00",
       "timestamp_null_count": 0,
       "zero_inter_arrival_count": 0
     }
@@ -49,12 +49,12 @@
     "id": "inter_arrival_distribution_comparison",
     "title": "Empirical vs Janiform synthetic inter-arrival distribution"
   },
-  "generated_at_utc": "2026-06-11T21:42:23.135419+00:00",
+  "generated_at_utc": "2026-06-13T23:48:30.059215+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\inter_arrival_distribution.py"
     ],
-    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
@@ -124,11 +124,11 @@
         "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 13919886,
-      "parquet_row_group_count": 14,
+      "parquet_row_count": 12066398,
+      "parquet_row_group_count": 12,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 140996455,
+      "size_bytes": 126990425,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -143,8 +143,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_distribution/inter_arrival_distribution_comparison.pdf",
       "role": "figure",
-      "sha256": "fad496aae356248b10a7a13aa0c7a963244351370a97ee3158554a7ad78c5b5e",
-      "size_bytes": 17662
+      "sha256": "c8407ad2231c0beb3aac954187a3c4c7f91cd22a5982cfd7f3225b3c09c65414",
+      "size_bytes": 17607
     }
   ],
   "parameters": {
@@ -163,11 +163,11 @@
     "curves": [
       {
         "label": "Empirical",
-        "nonzero_density_bin_count": 50
+        "nonzero_density_bin_count": 51
       },
       {
         "label": "Janiform synthetic",
-        "nonzero_density_bin_count": 62
+        "nonzero_density_bin_count": 56
       }
     ],
     "plot_type": "log_log_density_curve",

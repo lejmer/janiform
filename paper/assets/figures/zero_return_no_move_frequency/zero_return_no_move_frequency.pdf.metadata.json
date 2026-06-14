@@ -28,12 +28,12 @@
     "id": "zero_return_no_move_frequency_empirical_market_data",
     "title": "Empirical ES continuous futures no-move frequency"
   },
-  "generated_at_utc": "2026-06-11T21:43:21.979284+00:00",
+  "generated_at_utc": "2026-06-13T23:49:34.453688+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\zero_return_no_move_frequency.py"
     ],
-    "git_commit": "c59d3d2629a6bcb2a31af9327accdd686ee60670",
+    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/zero_return_no_move_frequency.py"
@@ -99,7 +99,7 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/zero_return_no_move_frequency/zero_return_no_move_frequency.pdf",
       "role": "figure",
-      "sha256": "bf57abe6e4923daf44ab8bd2d7978218b7c0026d3472344b95e1565e025187cd",
+      "sha256": "3960ade2e36d78f51eca73efcfa0609a4cd3c3b1a7cc98b80e789877ea923765",
       "size_bytes": 19026
     }
   ],
