@@ -1,0 +1,919 @@
+{
+  "metadata": {
+    "calibration_scope": "joint_option_calibrated",
+    "diagnostic_artifacts": {
+      "artifact_bundle_available": false,
+      "artifact_families": [
+        "observed_targets",
+        "candidate_frontier",
+        "coarse_tick_consistency",
+        "selection_rationale",
+        "simulation_summary",
+        "search_surface_manifest",
+        "runtime_profile"
+      ]
+    },
+    "diagnostics": [],
+    "execution_mode": "disk",
+    "fit_report_summary": {
+      "diagnostic_count": 7,
+      "run_id": "es_continuous_20260615T104352Z",
+      "selected_stages": [
+        "seasonality",
+        "hawkes",
+        "return_components",
+        "long_variance",
+        "news_shocks",
+        "return_backfit",
+        "mean_reversion",
+        "joint_refinement",
+        "option_refinement",
+        "finalization"
+      ],
+      "stage_statuses": [
+        {
+          "stage": "seasonality",
+          "status": "success"
+        },
+        {
+          "stage": "hawkes",
+          "status": "success"
+        },
+        {
+          "stage": "return_components",
+          "status": "success"
+        },
+        {
+          "stage": "long_variance",
+          "status": "success"
+        },
+        {
+          "stage": "news_shocks",
+          "status": "success"
+        },
+        {
+          "stage": "return_backfit",
+          "status": "success"
+        },
+        {
+          "stage": "mean_reversion",
+          "status": "success"
+        },
+        {
+          "stage": "joint_refinement",
+          "status": "success_with_warnings"
+        },
+        {
+          "stage": "option_refinement",
+          "status": "success_with_warnings"
+        },
+        {
+          "stage": "finalization",
+          "status": "success_with_warnings"
+        }
+      ],
+      "success": true,
+      "workflow_scope": "full_with_option_surface"
+    },
+    "fitted_parameter_summary": {
+      "selected_candidate_ids": {
+        "finalization": "finalization_tick_moment_13",
+        "hawkes": "market_data_fit_218_refined_2_445",
+        "joint_refinement": "joint_refinement_tick_moment_13",
+        "long_variance": "generated_nig_007_known_001_surprise_001_mark_001_coupling_001",
+        "news_shocks": "generated_nig_007_known_001_surprise_001_mark_001_coupling_001",
+        "option_refinement": "option_refinement_tick_moment_13",
+        "return_backfit": "long_variance_clock_residual_nig_scale",
+        "return_components": "generated_nig_007_known_001_surprise_001_mark_001_coupling_001"
+      },
+      "stage_keys": [
+        "finalization",
+        "seasonality"
+      ]
+    },
+    "input_inference": {
+      "candidate_columns": {
+        "ask": [
+          "ask_price"
+        ],
+        "bid": [
+          "bid_price"
+        ],
+        "price": [
+          "trade_price"
+        ],
+        "timestamp": [
+          "event_timestamp_utc"
+        ],
+        "trade_sign": [
+          "trade_sign"
+        ]
+      },
+      "normalization_policy": {
+        "option_quote_input_policy": "bid_ask_midpoint",
+        "sort_records_by_timestamp": true,
+        "tick_price_input_policy": "explicit_price_column",
+        "timestamp_timezone": "UTC"
+      },
+      "run_id": "es_continuous_20260615T104352Z",
+      "source_probe": {
+        "available_columns": [
+          "event_timestamp_utc",
+          "receive_timestamp_utc",
+          "trade_price",
+          "trade_size",
+          "trade_sign",
+          "bid_price",
+          "ask_price",
+          "bid_size",
+          "ask_size",
+          "bid_order_count",
+          "ask_order_count",
+          "instrument_id",
+          "publisher_id",
+          "sequence",
+          "flags",
+          "ts_in_delta",
+          "raw_symbol",
+          "source_file",
+          "source_date_utc",
+          "active_contract_symbol",
+          "is_roll_boundary_source_date",
+          "roll_adjustment_increment",
+          "cumulative_additive_back_adjustment",
+          "continuous_series_id",
+          "source_contract_symbol",
+          "raw_trade_price",
+          "raw_bid_price",
+          "raw_ask_price"
+        ],
+        "file_format": "parquet",
+        "path": "C:\\Users\\anton\\source\\repos\\janiform\\data\\databento-converted\\ES_FUT-TBBO\\continuous\\es_continuous.parquet",
+        "provenance_label": "tick_data",
+        "source_row_count_estimate": 13979843
+      },
+      "tick_data_column_mapping": {
+        "price_column": "trade_price",
+        "timestamp_column": "event_timestamp_utc",
+        "trade_sign_column": "trade_sign"
+      },
+      "tick_data_source": {
+        "file_format": "parquet",
+        "path": "C:\\Users\\anton\\source\\repos\\janiform\\data\\databento-converted\\ES_FUT-TBBO\\continuous\\es_continuous.parquet",
+        "provenance_label": "tick_data"
+      },
+      "timestamp_timezone_source": "explicit_override"
+    },
+    "known_news_activation": {
+      "active": false,
+      "event_count": 0,
+      "selected_preset": "none"
+    },
+    "known_news_preset": "none",
+    "known_news_source_kind": "built_in",
+    "market_profile": "es_futures_globex",
+    "preset_provenance": {
+      "known_news": {
+        "applied_override_fields": [],
+        "recommendation_applied": false,
+        "recommendation_policy": "suggest_only",
+        "recommended_preset": "none",
+        "selected_preset": {
+          "category": "known_news",
+          "preset_name": "none",
+          "registry_scope": "built_in"
+        },
+        "source_kind": "built_in"
+      },
+      "market_profile": {
+        "applied_override_fields": [],
+        "selected_preset": {
+          "category": "market_profile",
+          "preset_name": "es_futures_globex",
+          "registry_scope": "built_in"
+        },
+        "source_kind": "built_in"
+      },
+      "session": {
+        "applied_override_fields": [],
+        "inferred_from_data": false,
+        "selected_preset": {
+          "category": "session",
+          "preset_name": "XCME",
+          "registry_scope": "built_in"
+        },
+        "source_kind": "built_in"
+      }
+    },
+    "price_coordinate_resolution": {
+      "dynamics_fit": {
+        "coordinate_kind": "continuous",
+        "coordinate_role": "dynamics_fit",
+        "tick_data_column_mapping": {
+          "price_column": "trade_price",
+          "timestamp_column": "event_timestamp_utc",
+          "trade_sign_column": "trade_sign"
+        },
+        "tick_price_input_policy": "explicit_price_column"
+      },
+      "option_underlier_identity": "ESM6",
+      "option_valuation": {
+        "coordinate_kind": "raw_contract",
+        "coordinate_role": "option_valuation",
+        "tick_data_column_mapping": {
+          "ask_column": "raw_ask_price",
+          "bid_column": "raw_bid_price",
+          "price_column": "raw_trade_price",
+          "timestamp_column": "event_timestamp_utc",
+          "trade_sign_column": "trade_sign"
+        },
+        "tick_price_input_policy": "explicit_price_column"
+      },
+      "parity_forward_check": {
+        "absolute_delta": 2.375,
+        "model_forward_price": 6615.5,
+        "observed_bid_ask_forward_lower": 6604.25,
+        "observed_bid_ask_forward_upper": 6622.0,
+        "observed_forward_price": 6613.125,
+        "paired_strike_count": 99,
+        "relative_delta": 0.00035913429732539455,
+        "relative_warning_threshold": 0.0025,
+        "status": "ok"
+      },
+      "policy": "auto",
+      "roll_adjustment_evidence": {
+        "adjusted_price_column": "trade_price",
+        "adjustment_column": "cumulative_additive_back_adjustment",
+        "checked_row_count": 256,
+        "max_absolute_relation_error": 0.0,
+        "raw_price_column": "raw_trade_price"
+      },
+      "tick_underlier_identity": "ESM6"
+    },
+    "run_id": "es_continuous_20260615T104352Z",
+    "selected_stages": [
+      "seasonality",
+      "hawkes",
+      "return_components",
+      "long_variance",
+      "news_shocks",
+      "return_backfit",
+      "mean_reversion",
+      "joint_refinement",
+      "option_refinement",
+      "finalization"
+    ],
+    "session_preset": "XCME",
+    "session_resolution": {
+      "confidence_label": "low",
+      "confidence_score": 0.55,
+      "exchange_code": "XCME",
+      "exchange_name": "CME Globex Futures",
+      "manual_override_applied": false,
+      "provenance_kind": "bundled_preset",
+      "resolution_kind": "automatic_inference",
+      "resolved_timezone_name": "America/Chicago",
+      "selected_policy_id": "sources.sessions.XCME.v1"
+    },
+    "session_source_kind": "built_in",
+    "simulation_output_preferences": {
+      "reference_price": 6563.074718886245
+    },
+    "workflow_scope": "full_with_option_surface"
+  },
+  "parameters": {
+    "finalization": {
+      "fitted_parameters": {
+        "hawkes_fitted_parameters": {
+          "kernel_parameters": {
+            "alpha": {
+              "minus_minus": 137.737150929988,
+              "minus_plus": 15.30412788111,
+              "plus_minus": 15.28136134497,
+              "plus_plus": 137.532252104731
+            },
+            "beta": 210.0,
+            "lambda_bar": 2677.0422744088373,
+            "rho": {
+              "minus_minus": 2.2250738585072014e-308,
+              "minus_plus": 0.0,
+              "plus_minus": 0.0,
+              "plus_plus": 2.2250738585072014e-308
+            }
+          },
+          "self_dominance_policy": {
+            "minimum_self_to_cross_ratio": 1.0
+          },
+          "stability_numeric_tolerance": 0.0,
+          "structured_alpha": {
+            "a_cross": 15.28136134497,
+            "a_self": 137.532252104731,
+            "delta_cross": 0.02276653614,
+            "delta_self": 0.204898825257
+          },
+          "structured_rho": {
+            "delta_cross_r": 0.0,
+            "delta_self_r": 0.0,
+            "r_cross": 0.0,
+            "r_self": 2.2250738585072014e-308
+          }
+        },
+        "pricing_block_fitted_parameters": {
+          "pricing_kernel_parameters": {
+            "buy_activity_premium": 1.0,
+            "sell_activity_premium": 1.0
+          }
+        },
+        "return_components_fitted_parameters": {
+          "long_variance_parameters": {
+            "buy_event_loading": 0.00009398891465275449,
+            "mean_reversion_rate": 2.1252934535908503,
+            "sell_event_loading": 2.4964428488853713e-6,
+            "vol_of_vol": 2.061695153794979
+          },
+          "mean_reversion_fitted_parameters": {
+            "anchor_model": {
+              "pressure_level_gain": 0.0,
+              "pressure_persistence_per_reference_interval": 0.0,
+              "reference_interval_hours": 0.016666666666666666
+            },
+            "kappa": 0.0
+          },
+          "news_process_configuration": {
+            "arrivals": {
+              "known": {
+                "scheduled_event_timestamps_utc_nanos": []
+              },
+              "surprise": {
+                "closed_baseline_intensity": 0.107476635514,
+                "open_baseline_intensity": 0.001886800093
+              }
+            },
+            "known_component_mark_scales": {
+              "activity_coupling_scale": 0.0,
+              "return_jump_drift": 0.0,
+              "return_jump_volatility": 0.0
+            },
+            "schema_version": "news.process.configuration.v1",
+            "shared_mark_law": {
+              "gamma_severity_marks": {
+                "shape_k": 0.282872670968
+              }
+            },
+            "surprise_component_mark_scales": {
+              "activity_coupling_scale": 1002793.846154,
+              "return_jump_drift": 0.0,
+              "return_jump_volatility": 0.002748118419
+            }
+          },
+          "nig_shared_plus_shift_configuration": {
+            "alpha": 13905.466619800987,
+            "beta_0": -1163.55756352244,
+            "delta": 3.120434e-6,
+            "delta_beta": -468.902253271045,
+            "mu": 0.0
+          },
+          "return_clock_exposure_parameters": {
+            "buy_excitation_return_clock_scale": 1.0,
+            "sell_excitation_return_clock_scale": 1.0
+          },
+          "surprise_deterministic_intensity_profile": {
+            "fit_policy": "selected_exogenous_surprise_episode_rate_per_utc_week_profile_bucket_with_baseline_shrinkage.v1",
+            "normalization_policy": "exposure_weighted_mean_one_over_source_window.v1",
+            "profile_resolution_hours": 1,
+            "weekly_utc_profile_multipliers": [
+              0.9926440418611834,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              1.9852880530904704,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926440265452352,
+              0.9926468553149367,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725,
+              0.9939710945591725
+            ]
+          },
+          "tick_grid_observation_model": {
+            "inference_policy": "minimum_positive_same_session_adjacent_open_price_difference_reference_price_normalized.v1",
+            "observation_policy": "nearest_reference_price_normalized_cumulative_latent_price_rounding_preserves_sub_tick_residuals.v1",
+            "tick_size": 0.00003809190215076891,
+            "tick_size_source": "user_provided_reference_price_normalized"
+          },
+          "timestamp_batching_observation_model": {
+            "bucket_width_nanos": 256,
+            "bucket_width_source": "training_data_inferred_same_session_timestamp_quantum",
+            "coarse_interval_compatibility_policy": "observed_timestamp_ownership_constrained_to_latent_interval_for_direct_coarse_consistency.v1",
+            "inference_policy": "same_session_duplicate_timestamps_with_positive_timestamp_quantum_gcd.v1",
+            "mode": "fixed_bucket_floor",
+            "observation_policy": "floor_latent_event_time_to_fixed_width_bucket_with_same_timestamp_continuation_within_latent_interval.v1",
+            "same_session_observation_transition_count": 13979796,
+            "same_timestamp_continuation_count": 308624,
+            "schema_version": "model.timestamp_batching_observation.v1"
+          }
+        }
+      },
+      "schema_version": "calibration.orchestration.stage_output.joint_refinement.v1",
+      "selected_candidate_id": "finalization_tick_moment_13"
+    },
+    "seasonality": {
+      "clock_model": {
+        "coefficient_basis": "log_rate_intercept_then_axis_keyed_cos_sin_harmonic_series.v1",
+        "coordinate_system": "exchange_local_minute_of_day_weekday_plus_civil_year_phase.v1",
+        "evaluated_candidate_count": 288,
+        "fit_open_event_count": 13979843,
+        "fit_open_exposure_seconds": 1908000.0,
+        "fit_open_minute_count": 31800,
+        "harmonic_series": {
+          "annual": {
+            "cosine_coefficients": [
+              -1.0902659220614466
+            ],
+            "harmonic_order": 1,
+            "sine_coefficients": [
+              -4.3981537720365225
+            ]
+          },
+          "intraday": {
+            "cosine_coefficients": [
+              -1.2487120927398823,
+              0.26010176379637173,
+              -0.08850915440637044,
+              -0.37342467591879336,
+              0.2092680139773773,
+              -0.049206110268522736,
+              -0.052723237461150346,
+              0.19013931912087917,
+              -0.14147747702418828,
+              -0.01676166391945133,
+              0.2102596873753235
+            ],
+            "harmonic_order": 11,
+            "sine_coefficients": [
+              0.4588817977107632,
+              -0.030374424962533963,
+              0.009770958745177782,
+              0.1785161901128531,
+              0.010768536329007363,
+              -0.06985477573440209,
+              0.060932953454450677,
+              -0.02542382334328227,
+              0.05920729903990209,
+              0.10929741548092221,
+              -0.06290637992712057
+            ]
+          },
+          "weekly": {
+            "cosine_coefficients": [
+              0.45298964281671583,
+              1.2536657855574518,
+              -1.0462605600852233
+            ],
+            "harmonic_order": 3,
+            "sine_coefficients": [
+              1.2047212981944686,
+              -0.7178714845396835,
+              -1.111305348142124
+            ]
+          }
+        },
+        "intercept": 3.265727183147021,
+        "normalization_policy": "fit_open_exposure_weighted_mean_rate_equals_one.v1",
+        "schema_version": "business_time_clock.fourier_model.v1",
+        "selected_negative_log_likelihood": -77723686.34665716,
+        "selected_objective_value": -155447310.63086152,
+        "selection_policy": "representable_positive_rate_domain_then_aicc_over_open_minute_poisson_exposure_likelihood.v1"
+      },
+      "clock_model_schema_version": "business_time_clock.fourier_model.v1",
+      "exchange_code": "XCME",
+      "schema_version": "business_time_clock.fourier_model.v1"
+    }
+  },
+  "resolved_configuration": {
+    "diagnostics": [],
+    "known_news": {
+      "applied_override_fields": [],
+      "configuration": {
+        "calendar_timezone_name": "UTC",
+        "events": []
+      },
+      "recommendation_applied": false,
+      "recommendation_policy": "suggest_only",
+      "recommended_reference": {
+        "configuration": null,
+        "override_patch": null,
+        "preset_name": "none",
+        "registry_scope": "built_in",
+        "usage_mode": "named"
+      },
+      "selected_preset": {
+        "category": "known_news",
+        "preset_name": "none",
+        "registry_scope": "built_in"
+      },
+      "source_kind": "built_in"
+    },
+    "market_profile": {
+      "applied_override_fields": [],
+      "configuration": {
+        "column_alias_hints": [
+          {
+            "aliases": [
+              "event_timestamp_utc",
+              "timestamp_utc",
+              "ts_recv"
+            ],
+            "canonical_name": "timestamp"
+          }
+        ],
+        "known_news_policy": "suggest_only",
+        "known_news_reference": {
+          "configuration": null,
+          "override_patch": null,
+          "preset_name": "none",
+          "registry_scope": "built_in",
+          "usage_mode": "named"
+        },
+        "profile_name": "es_futures_globex",
+        "session_reference": {
+          "configuration": null,
+          "exchange_code_hint": null,
+          "override_patch": null,
+          "preset_name": "XCME",
+          "registry_scope": "built_in",
+          "timezone_name_hint": null,
+          "usage_mode": "named"
+        },
+        "tick_size": 0.25,
+        "timestamp_timezone_name": "UTC"
+      },
+      "selected_preset": {
+        "category": "market_profile",
+        "preset_name": "es_futures_globex",
+        "registry_scope": "built_in"
+      },
+      "source_kind": "built_in"
+    },
+    "schema_version": "calibration.preset_resolution.resolved_configuration.v1",
+    "session": {
+      "applied_override_fields": [],
+      "configuration": {
+        "exchange_code": "XCME",
+        "exchange_name": "CME Globex Futures",
+        "recurring_closed_windows": [],
+        "regular_session_windows": [
+          {
+            "close_time": "16:00",
+            "label": "globex",
+            "open_time": "00:00",
+            "weekday": "Monday"
+          },
+          {
+            "close_time": "24:00",
+            "label": "globex",
+            "open_time": "17:00",
+            "weekday": "Monday"
+          },
+          {
+            "close_time": "16:00",
+            "label": "globex",
+            "open_time": "00:00",
+            "weekday": "Tuesday"
+          },
+          {
+            "close_time": "24:00",
+            "label": "globex",
+            "open_time": "17:00",
+            "weekday": "Tuesday"
+          },
+          {
+            "close_time": "16:00",
+            "label": "globex",
+            "open_time": "00:00",
+            "weekday": "Wednesday"
+          },
+          {
+            "close_time": "24:00",
+            "label": "globex",
+            "open_time": "17:00",
+            "weekday": "Wednesday"
+          },
+          {
+            "close_time": "16:00",
+            "label": "globex",
+            "open_time": "00:00",
+            "weekday": "Thursday"
+          },
+          {
+            "close_time": "24:00",
+            "label": "globex",
+            "open_time": "17:00",
+            "weekday": "Thursday"
+          },
+          {
+            "close_time": "16:00",
+            "label": "globex",
+            "open_time": "00:00",
+            "weekday": "Friday"
+          },
+          {
+            "close_time": "24:00",
+            "label": "globex",
+            "open_time": "17:00",
+            "weekday": "Sunday"
+          }
+        ],
+        "timezone_name": "America/Chicago"
+      },
+      "inference_resolution": null,
+      "inferred_from_data": false,
+      "selected_preset": {
+        "category": "session",
+        "preset_name": "XCME",
+        "registry_scope": "built_in"
+      },
+      "source_kind": "built_in"
+    }
+  },
+  "run_id": "es_continuous_20260615T104352Z",
+  "schema_version": "calibration.high_level.model.v1",
+  "session_resolution": {
+    "ambiguity_warnings": [],
+    "confidence_label": "low",
+    "confidence_score": 0.55,
+    "exchange_code": "XCME",
+    "exchange_name": "CME Globex Futures",
+    "manual_override_applied": false,
+    "metadata_discrepancies": [],
+    "open_session_duration_hours_per_week": 115.0,
+    "provenance_kind": "bundled_preset",
+    "reasons": [
+      "selected the generic weekday-continuous 24/5 broker-market template based on exchange code or workflow defaults",
+      "the observed gap spectrum did not isolate recurring inactivity gaps, so exchange metadata carried the inference"
+    ],
+    "recurring_closed_windows": [
+      {
+        "end_time": "17:00",
+        "end_weekday": "Monday",
+        "reason": "recurring closure derived from the resolved weekly session pattern",
+        "start_time": "16:00",
+        "start_weekday": "Monday"
+      },
+      {
+        "end_time": "17:00",
+        "end_weekday": "Tuesday",
+        "reason": "recurring closure derived from the resolved weekly session pattern",
+        "start_time": "16:00",
+        "start_weekday": "Tuesday"
+      },
+      {
+        "end_time": "17:00",
+        "end_weekday": "Wednesday",
+        "reason": "recurring closure derived from the resolved weekly session pattern",
+        "start_time": "16:00",
+        "start_weekday": "Wednesday"
+      },
+      {
+        "end_time": "17:00",
+        "end_weekday": "Thursday",
+        "reason": "recurring closure derived from the resolved weekly session pattern",
+        "start_time": "16:00",
+        "start_weekday": "Thursday"
+      },
+      {
+        "end_time": "17:00",
+        "end_weekday": "Sunday",
+        "reason": "recurring closure derived from the resolved weekly session pattern",
+        "start_time": "16:00",
+        "start_weekday": "Friday"
+      }
+    ],
+    "regular_session_windows": [
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Sunday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Friday"
+      }
+    ],
+    "resolution_kind": "automatic_inference",
+    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-06-15\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"XCME\",\"exchange_name\":\"CME Globex Futures\",\"timezone_name\":\"America/Chicago\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
+    "resolved_timezone_name": "America/Chicago",
+    "schema_version": "calibration.market_data.session_resolution.v1",
+    "selected_policy_id": "sources.sessions.XCME.v1",
+    "timezone_source": "bundled_session_preset"
+  },
+  "workflow_scope": "full_with_option_surface"
+}
