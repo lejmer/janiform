@@ -1699,10 +1699,10 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
     .expect("regression-guard run config should initialize");
 
     let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
-        buy_count_draws: vec![0.25, 0.75],
+        buy_count_draws: vec![0.25, 0.25],
         sell_count_draws: vec![0.0],
-        buy_timestamp_draws: vec![0.25],
-        sell_timestamp_draws: vec![0.75, 0.0],
+        buy_timestamp_draws: vec![0.9, 0.9],
+        sell_timestamp_draws: vec![0.0, 0.0],
         news_count_draws: vec![1.0],
         news_timestamp_draws: vec![],
         news_severity_draws: vec![],
@@ -1726,6 +1726,7 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
         .map(|event_record| event_record.observed_timestamp_utc_nanos)
         .collect();
 
+    assert_eq!(observed_timestamps.len(), 2);
     assert_ne!(observed_timestamps, legacy_uniform_timestamps);
     assert_eq!(
         run_result.event_ordering_policy,
@@ -1756,10 +1757,10 @@ fn seeded_simulation_generates_fitted_same_timestamp_batch_continuations() {
     .expect("timestamp batching run config should initialize");
 
     let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
-        buy_count_draws: vec![0.25, 0.75],
+        buy_count_draws: vec![0.25, 0.25],
         sell_count_draws: vec![0.0],
-        buy_timestamp_draws: vec![0.25],
-        sell_timestamp_draws: vec![0.75, 0.0],
+        buy_timestamp_draws: vec![0.9, 0.9],
+        sell_timestamp_draws: vec![0.0, 0.0],
         news_count_draws: vec![1.0],
         news_timestamp_draws: vec![],
         news_severity_draws: vec![],
