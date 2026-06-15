@@ -16,9 +16,10 @@ use crate::stages::joint_metrics::{
     zeroed_interval_observation_template,
 };
 use crate::stages::long_variance::metrics::{
-    aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+    LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
+    long_variance_horizon_summaries,
 };
-use crate::stages::long_variance::source::select_long_variance_slow_horizon_intervals;
+use crate::stages::long_variance::source::select_long_variance_observed_intervals;
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -102,15 +103,20 @@ pub(crate) fn build_observed_data(
     let observed_1d_intervals =
         aggregate_intervals_to_fixed_duration(tick_hourly_intervals.as_slice(), NANOS_PER_DAY);
 
-    let observed_slow_horizon_selection = select_long_variance_slow_horizon_intervals(
+    let observed_long_variance_intervals = select_long_variance_observed_intervals(
         tick_hourly_intervals.as_slice(),
         coarse_data_records,
     );
 
-    let observed_long_variance_horizon_summaries = long_variance_horizon_summaries(
-        observed_5m_intervals.as_slice(),
-        observed_slow_horizon_selection.intervals.as_slice(),
-    );
+    let observed_long_variance_horizon_summaries =
+        long_variance_horizon_summaries(LongVarianceHorizonInputIntervals {
+            five_minute_return_intervals: observed_5m_intervals.as_slice(),
+            five_minute_activity_intervals: observed_5m_intervals.as_slice(),
+            hourly_return_intervals: observed_long_variance_intervals.return_intervals.as_slice(),
+            hourly_activity_intervals: observed_long_variance_intervals
+                .activity_intervals
+                .as_slice(),
+        });
 
     let hourly_simulation_start_utc_nanos =
         checked_floor_to_hour_utc_nanos(source_window.window_start_utc_nanos).ok_or_else(|| {

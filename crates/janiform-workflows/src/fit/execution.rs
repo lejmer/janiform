@@ -71,6 +71,11 @@ pub fn run_staged_fit_execution_workflow(
         &request.paths,
     )?;
 
+    observe_runtime_startup_progress(
+        &mut observer.progress_adapter,
+        "building staged execution plan",
+    )?;
+
     // Intentional clone because build_execution_plan consumes the execution input,
     // while orchestration still needs the validated input for execution and artifacts.
     let _execution_plan = request
@@ -78,6 +83,8 @@ pub fn run_staged_fit_execution_workflow(
         .clone()
         .build_execution_plan()
         .map_err(|source| WorkflowError::StagedExecutionPlanFailed { source })?;
+
+    observe_runtime_startup_progress(&mut observer.progress_adapter, "loading exchange calendar")?;
 
     let session_definition_json = resolve_session_definition_json(
         &request.execution_input,
@@ -90,6 +97,8 @@ pub fn run_staged_fit_execution_workflow(
     .map_err(|source| WorkflowError::CalendarRegistryLoadFailed {
         message: source.to_string(),
     })?;
+
+    observe_runtime_startup_progress(&mut observer.progress_adapter, "initializing run artifacts")?;
 
     fs::create_dir_all(request.paths.output_directory.as_path()).map_err(|source| {
         WorkflowError::FitArtifactWrite {
@@ -111,6 +120,11 @@ pub fn run_staged_fit_execution_workflow(
     .map_err(|source| WorkflowError::FitEventLog { source })?;
 
     let output_directory = format_path(request.paths.output_directory.as_path());
+
+    observe_runtime_startup_progress(
+        &mut observer.progress_adapter,
+        "starting calibration stages",
+    )?;
 
     let (report, execution_duration) = run_staged_with_observer(
         &request.execution_input,
@@ -379,6 +393,25 @@ fn observe_progress(
     };
 
     progress_adapter.observe(progress_event);
+
+    progress_adapter
+        .draw_latest()
+        .map_err(|source| WorkflowError::OutputProgress { source })
+}
+
+fn observe_runtime_startup_progress(
+    progress_adapter: &mut Option<&mut ProgressAdapter>,
+    latest_signal: &str,
+) -> Result<(), WorkflowError> {
+    let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
+        return Ok(());
+    };
+
+    progress_adapter.observe(ProgressEvent::RunProgress {
+        phase: "Starting calibration".to_string(),
+        measure: ProgressMeasure::Unbounded,
+        latest_signal: Some(latest_signal.to_string()),
+    });
 
     progress_adapter
         .draw_latest()

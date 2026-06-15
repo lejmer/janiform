@@ -1,15 +1,12 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
 use janiform_calibration_artifacts::JointRefinementStageOptionSearchSelectionAgreementDiagnostics;
 use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 use janiform_foundations::numeric::pearson_correlation;
-use janiform_work_scheduler::{StaticWorkPoolInput, run_static_work_pool};
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageProgressPhase,
@@ -25,10 +22,17 @@ use super::super::{
     JointRefinementRestartOutcome, JointRefinementResumeStore, OptionPricingProgressInput,
     OptionPricingProgressSnapshot, OptionPricingProgressSnapshotSource,
     OptionSurfaceTierPricingArtifactResolutionInput, elapsed_millis, ordered_parameter_bits,
-    planned_restart_work_item_labels, resolve_option_surface_tier_pricing_artifact,
+    resolve_option_surface_tier_pricing_artifact,
 };
 use super::candidate_parallelism::{
     option_refinement_candidate_parallelism, option_refinement_candidate_pricing_cpu_counts,
+};
+use super::candidate_tier_progress::{
+    OptionCandidateTierProgressInput, OptionRefinementSharedProgressSnapshot,
+    OptionRefinementSharedProgressState, ResumedOptionCandidateTierProgressInput,
+    emit_completed_option_candidate_tier_progress, emit_resumed_option_candidate_tier_progress,
+    emit_started_option_candidate_tier_progress, run_option_candidate_tier_work_pool,
+    start_option_candidate_tier_progress,
 };
 use super::pricing_block_optimizer::{
     OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard,
@@ -202,198 +206,6 @@ impl OptionPricingProgressSnapshotSource for SelectionTierPricingProgressSnapsho
             best_restart_id: shared_snapshot.best_restart_id,
             best_weighted_objective: shared_snapshot.best_weighted_objective,
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct OptionRefinementSharedProgressSnapshot {
-    completed_units: usize,
-    aggregate_progress_percent: usize,
-    best_restart_id: Option<String>,
-    best_weighted_objective: Option<f64>,
-}
-
-#[derive(Debug, Default)]
-struct OptionRefinementSharedProgressState {
-    completed_units: AtomicUsize,
-    candidate_progress_percent_by_restart_id: Mutex<BTreeMap<String, usize>>,
-    best_scored_candidate: Mutex<Option<(String, f64)>>,
-    best_completed_candidate: Mutex<Option<(String, f64)>>,
-}
-
-impl OptionRefinementSharedProgressState {
-    fn snapshot(&self, total_units: usize) -> OptionRefinementSharedProgressSnapshot {
-        let best_candidate = self
-            .candidate_score_snapshot(&self.best_completed_candidate)
-            .or_else(|| self.candidate_score_snapshot(&self.best_scored_candidate));
-
-        let (best_restart_id, best_weighted_objective) = best_candidate
-            .map(|(restart_id, weighted_objective)| (Some(restart_id), Some(weighted_objective)))
-            .unwrap_or((None, None));
-
-        let aggregate_progress_percent = self.aggregate_progress_percent(total_units);
-
-        OptionRefinementSharedProgressSnapshot {
-            completed_units: self.completed_units.load(Ordering::Relaxed),
-            aggregate_progress_percent,
-            best_restart_id,
-            best_weighted_objective,
-        }
-    }
-
-    fn record_candidate_started(
-        &self,
-        restart_id: &str,
-        total_units: usize,
-    ) -> OptionRefinementSharedProgressSnapshot {
-        let mut candidate_progress_guard = self
-            .candidate_progress_percent_by_restart_id
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        candidate_progress_guard.insert(restart_id.to_string(), 0);
-
-        drop(candidate_progress_guard);
-
-        self.snapshot(total_units)
-    }
-
-    fn record_candidate_completed(
-        &self,
-        restart_id: &str,
-        weighted_objective: Option<f64>,
-        total_units: usize,
-    ) -> OptionRefinementSharedProgressSnapshot {
-        if let Some(weighted_objective) = weighted_objective {
-            let mut best_candidate_guard = self
-                .best_completed_candidate
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-            let should_replace_best = best_candidate_guard
-                .as_ref()
-                .map(|(_, best_weighted_objective)| weighted_objective < *best_weighted_objective)
-                .unwrap_or(true);
-            if should_replace_best {
-                *best_candidate_guard = Some((restart_id.to_string(), weighted_objective));
-            }
-
-            drop(best_candidate_guard);
-        }
-
-        let mut candidate_progress_guard = self
-            .candidate_progress_percent_by_restart_id
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        candidate_progress_guard.remove(restart_id);
-
-        drop(candidate_progress_guard);
-
-        self.completed_units.fetch_add(1, Ordering::Relaxed);
-
-        self.snapshot(total_units)
-    }
-
-    fn record_resumed_candidate(
-        &self,
-        restart_id: &str,
-        weighted_objective: f64,
-        total_units: usize,
-    ) -> OptionRefinementSharedProgressSnapshot {
-        let mut best_candidate_guard = self
-            .best_completed_candidate
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        let should_replace_best = best_candidate_guard
-            .as_ref()
-            .map(|(_, best_weighted_objective)| weighted_objective < *best_weighted_objective)
-            .unwrap_or(true);
-        if should_replace_best {
-            *best_candidate_guard = Some((restart_id.to_string(), weighted_objective));
-        }
-
-        drop(best_candidate_guard);
-
-        self.completed_units.fetch_add(1, Ordering::Relaxed);
-        self.snapshot(total_units)
-    }
-
-    fn record_candidate_progress(&self, restart_id: &str, progress_percent: usize) {
-        self.update_candidate_progress(restart_id, |candidate_progress| {
-            *candidate_progress = (*candidate_progress).max(progress_percent.min(100));
-        });
-    }
-
-    fn record_candidate_current_progress(&self, restart_id: &str, progress_percent: usize) {
-        self.update_candidate_progress(restart_id, |candidate_progress| {
-            *candidate_progress = progress_percent.min(100);
-        });
-    }
-
-    fn update_candidate_progress(
-        &self,
-        restart_id: &str,
-        update_progress: impl FnOnce(&mut usize),
-    ) {
-        let mut candidate_progress_guard = self
-            .candidate_progress_percent_by_restart_id
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        let candidate_progress = candidate_progress_guard
-            .entry(restart_id.to_string())
-            .or_insert(0);
-        update_progress(candidate_progress);
-    }
-
-    fn candidate_score_snapshot(
-        &self,
-        candidate_score: &Mutex<Option<(String, f64)>>,
-    ) -> Option<(String, f64)> {
-        let best_candidate_guard = candidate_score
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        // Snapshot payloads own restart ids so progress emission never borrows through a lock.
-        best_candidate_guard
-            .as_ref()
-            .map(|(restart_id, weighted_objective)| (restart_id.clone(), *weighted_objective))
-    }
-
-    fn record_candidate_score(&self, restart_id: &str, weighted_objective: f64) {
-        let mut best_candidate_guard = self
-            .best_scored_candidate
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        let should_replace_best = best_candidate_guard
-            .as_ref()
-            .map(|(_, best_weighted_objective)| weighted_objective < *best_weighted_objective)
-            .unwrap_or(true);
-        if should_replace_best {
-            *best_candidate_guard = Some((restart_id.to_string(), weighted_objective));
-        }
-    }
-
-    fn aggregate_progress_percent(&self, total_units: usize) -> usize {
-        let candidate_progress_guard = self
-            .candidate_progress_percent_by_restart_id
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        let active_progress_percent_sum = candidate_progress_guard.values().sum::<usize>();
-        let completed_progress_percent_sum = self
-            .completed_units
-            .load(Ordering::Relaxed)
-            .saturating_mul(100);
-
-        completed_progress_percent_sum
-            .saturating_add(active_progress_percent_sum)
-            .checked_div(total_units.max(1))
-            .unwrap_or(0)
-            .min(100)
     }
 }
 
@@ -595,9 +407,10 @@ fn refine_search_tier_candidates(
 ) -> SearchTierRefinementOutput {
     let total_units = dynamics_candidates.len();
 
-    let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
-
-    let planned_work_item_labels = planned_restart_work_item_labels(
+    let shared_progress_state = start_option_candidate_tier_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+        total_units,
         dynamics_candidates
             .iter()
             .map(|candidate| candidate.restart_id.as_str()),
@@ -605,17 +418,6 @@ fn refine_search_tier_candidates(
 
     let mut candidate_slots = vec![None; total_units];
     let mut unresolved_candidates = Vec::new();
-
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-        aggregate_progress_percent: Some(0),
-        planned_work_item_labels: planned_work_item_labels.as_slice(),
-        ..OptionRefinementProgressEmissionInput::new(
-            progress_sender,
-            JointRefinementStageProgressPhase::OptionSearchTierRefinement,
-            0,
-            total_units,
-        )
-    });
 
     for (source_rank, dynamics_candidate) in dynamics_candidates.iter().enumerate() {
         if let Some(resume_store) = resume_store.as_deref_mut()
@@ -628,27 +430,15 @@ fn refine_search_tier_candidates(
 
             let resumed_search_tier_score = resumed_candidate.search_tier_score;
 
-            let progress_snapshot = shared_progress_state.record_resumed_candidate(
-                dynamics_candidate.restart_id.as_str(),
-                resumed_search_tier_score,
+            emit_resumed_option_candidate_tier_progress(ResumedOptionCandidateTierProgressInput {
+                progress_sender,
+                phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
                 total_units,
-            );
-
-            emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-                current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
-                current_item_label: Some(dynamics_candidate.restart_id.as_str()),
-                current_weighted_objective: Some(resumed_search_tier_score),
-                best_restart_id: progress_snapshot.best_restart_id.as_deref(),
-                best_weighted_objective: progress_snapshot.best_weighted_objective,
-                active_restart_count: None,
-                aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
-                evaluation_progress_percent: Some(100),
-                ..OptionRefinementProgressEmissionInput::new(
-                    progress_sender,
-                    JointRefinementStageProgressPhase::OptionSearchTierRefinement,
-                    progress_snapshot.completed_units,
-                    total_units,
-                )
+                shared_progress_state: shared_progress_state.as_ref(),
+                restart_id: dynamics_candidate.restart_id.as_str(),
+                weighted_objective: resumed_search_tier_score,
+                current_evaluation_count: None,
+                total_evaluation_budget: None,
             });
 
             candidate_slots[source_rank] = Some(resumed_candidate);
@@ -691,19 +481,11 @@ fn refine_search_tier_candidates(
         })
         .collect::<Vec<_>>();
 
-    let mut unresolved_results = Vec::with_capacity(pending_jobs.len());
-    run_static_work_pool(
-        context.stage_thread_pool.as_deref(),
-        StaticWorkPoolInput::new(
-            &mut unresolved_results,
-            context.cancellation_token.shared_handle(),
-            pending_jobs,
-            candidate_parallelism,
-            |input, _cancellation_token| refine_parallel_search_tier_candidate(input),
-            |results: &mut Vec<(usize, Result<SearchTierCandidate, String>)>, result, _status| {
-                results.push(result)
-            },
-        ),
+    let unresolved_results = run_option_candidate_tier_work_pool(
+        context,
+        pending_jobs,
+        candidate_parallelism,
+        |input, _cancellation_token| refine_parallel_search_tier_candidate(input),
     );
 
     let mut failure_messages = Vec::new();
@@ -891,24 +673,16 @@ fn refine_parallel_search_tier_candidate(
         candidate_budget_share_count,
     } = input;
 
-    let started_snapshot = shared_progress_state
-        .record_candidate_started(dynamics_candidate.restart_id.as_str(), total_units);
-
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-        current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
-        current_item_label: Some(dynamics_candidate.restart_id.as_str()),
-        best_restart_id: started_snapshot.best_restart_id.as_deref(),
-        best_weighted_objective: started_snapshot.best_weighted_objective,
-        active_restart_count: None,
+    emit_started_option_candidate_tier_progress(OptionCandidateTierProgressInput {
+        progress_sender,
+        phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+        total_units,
+        shared_progress_state: shared_progress_state.as_ref(),
+        restart_id: dynamics_candidate.restart_id.as_str(),
+        current_weighted_objective: None,
         current_evaluation_count: Some(0),
         total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
         evaluation_progress_percent: Some(0),
-        ..OptionRefinementProgressEmissionInput::new(
-            progress_sender,
-            JointRefinementStageProgressPhase::OptionSearchTierRefinement,
-            started_snapshot.completed_units,
-            total_units,
-        )
     });
 
     let progress_context = OptionRefinementProgressContext {
@@ -946,35 +720,19 @@ fn refine_parallel_search_tier_candidate(
         restart_outcome: candidate.restart_outcome,
     });
 
-    let finished_snapshot = shared_progress_state.record_candidate_completed(
-        dynamics_candidate.restart_id.as_str(),
-        refined_candidate
-            .as_ref()
-            .ok()
-            .map(|candidate| candidate.search_tier_score),
+    emit_completed_option_candidate_tier_progress(OptionCandidateTierProgressInput {
+        progress_sender,
+        phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
         total_units,
-    );
-
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-        current_restart_id: Some(dynamics_candidate.restart_id.as_str()),
-        current_item_label: Some(dynamics_candidate.restart_id.as_str()),
+        shared_progress_state: shared_progress_state.as_ref(),
+        restart_id: dynamics_candidate.restart_id.as_str(),
         current_weighted_objective: refined_candidate
             .as_ref()
             .ok()
             .map(|candidate| candidate.search_tier_score),
-        best_restart_id: finished_snapshot.best_restart_id.as_deref(),
-        best_weighted_objective: finished_snapshot.best_weighted_objective,
-        active_restart_count: None,
-        aggregate_progress_percent: Some(finished_snapshot.aggregate_progress_percent),
         current_evaluation_count: Some(progress_context.current_evaluation_count()),
         total_evaluation_budget: progress_context.total_evaluation_budget(),
         evaluation_progress_percent: Some(100),
-        ..OptionRefinementProgressEmissionInput::new(
-            progress_sender,
-            JointRefinementStageProgressPhase::OptionSearchTierRefinement,
-            finished_snapshot.completed_units,
-            total_units,
-        )
     });
 
     (source_rank, refined_candidate)
@@ -989,9 +747,10 @@ fn evaluate_selection_tier_candidates(
 ) -> Vec<OptionRefinedCandidate> {
     let total_units = search_candidates.len();
 
-    let shared_progress_state = Arc::new(OptionRefinementSharedProgressState::default());
-
-    let planned_work_item_labels = planned_restart_work_item_labels(
+    let shared_progress_state = start_option_candidate_tier_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+        total_units,
         search_candidates
             .iter()
             .map(|candidate| candidate.restart_outcome.restart_id.as_str()),
@@ -999,17 +758,6 @@ fn evaluate_selection_tier_candidates(
 
     let mut candidate_slots = vec![None; total_units];
     let mut unresolved_candidates = Vec::new();
-
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-        aggregate_progress_percent: Some(0),
-        planned_work_item_labels: planned_work_item_labels.as_slice(),
-        ..OptionRefinementProgressEmissionInput::new(
-            progress_sender,
-            JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
-            0,
-            total_units,
-        )
-    });
 
     for (candidate_position, search_candidate) in search_candidates.into_iter().enumerate() {
         let restart_id = search_candidate.restart_outcome.restart_id.as_str();
@@ -1021,29 +769,15 @@ fn evaluate_selection_tier_candidates(
 
             let resumed_selection_tier_score = resumed_candidate.selection_tier_score;
 
-            let progress_snapshot = shared_progress_state.record_resumed_candidate(
-                restart_id,
-                resumed_selection_tier_score,
+            emit_resumed_option_candidate_tier_progress(ResumedOptionCandidateTierProgressInput {
+                progress_sender,
+                phase: JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
                 total_units,
-            );
-
-            emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-                current_restart_id: Some(restart_id),
-                current_item_label: Some(restart_id),
-                current_weighted_objective: Some(resumed_selection_tier_score),
-                best_restart_id: progress_snapshot.best_restart_id.as_deref(),
-                best_weighted_objective: progress_snapshot.best_weighted_objective,
-                active_restart_count: None,
+                shared_progress_state: shared_progress_state.as_ref(),
+                restart_id,
+                weighted_objective: resumed_selection_tier_score,
                 current_evaluation_count: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
                 total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
-                aggregate_progress_percent: Some(progress_snapshot.aggregate_progress_percent),
-                evaluation_progress_percent: Some(100),
-                ..OptionRefinementProgressEmissionInput::new(
-                    progress_sender,
-                    JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
-                    progress_snapshot.completed_units,
-                    total_units,
-                )
             });
 
             candidate_slots[candidate_position] = Some(resumed_candidate);
@@ -1078,20 +812,11 @@ fn evaluate_selection_tier_candidates(
         )
         .collect::<Vec<_>>();
 
-    let mut unresolved_results = Vec::with_capacity(pending_jobs.len());
-
-    run_static_work_pool(
-        context.stage_thread_pool.as_deref(),
-        StaticWorkPoolInput::new(
-            &mut unresolved_results,
-            context.cancellation_token.shared_handle(),
-            pending_jobs,
-            candidate_parallelism,
-            |input, _cancellation_token| evaluate_parallel_selection_tier_candidate(input),
-            |results: &mut Vec<(usize, Option<OptionRefinedCandidate>)>, result, _status| {
-                results.push(result)
-            },
-        ),
+    let unresolved_results = run_option_candidate_tier_work_pool(
+        context,
+        pending_jobs,
+        candidate_parallelism,
+        |input, _cancellation_token| evaluate_parallel_selection_tier_candidate(input),
     );
 
     for (candidate_position, candidate) in unresolved_results {
@@ -1220,23 +945,16 @@ fn evaluate_parallel_selection_tier_candidate(
 
     let restart_id = restart_outcome.restart_id.as_str();
 
-    let started_snapshot = shared_progress_state.record_candidate_started(restart_id, total_units);
-
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-        current_restart_id: Some(restart_id),
-        current_item_label: Some(restart_id),
-        best_restart_id: started_snapshot.best_restart_id.as_deref(),
-        best_weighted_objective: started_snapshot.best_weighted_objective,
-        active_restart_count: None,
+    emit_started_option_candidate_tier_progress(OptionCandidateTierProgressInput {
+        progress_sender,
+        phase: JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+        total_units,
+        shared_progress_state: shared_progress_state.as_ref(),
+        restart_id,
+        current_weighted_objective: None,
         current_evaluation_count: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         evaluation_progress_percent: Some(0),
-        ..OptionRefinementProgressEmissionInput::new(
-            progress_sender,
-            JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
-            started_snapshot.completed_units,
-            total_units,
-        )
     });
 
     let selection_context = context_with_option_pricing_cpu_count(context, pricing_cpu_count);
@@ -1293,29 +1011,16 @@ fn evaluate_parallel_selection_tier_candidate(
                 .root_mean_square_spread_normalized_residual
         });
 
-    let finished_snapshot = shared_progress_state.record_candidate_completed(
-        restart_id,
-        selection_tier_score,
+    emit_completed_option_candidate_tier_progress(OptionCandidateTierProgressInput {
+        progress_sender,
+        phase: JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
         total_units,
-    );
-
-    emit_option_refinement_progress(OptionRefinementProgressEmissionInput {
-        current_restart_id: Some(restart_id),
-        current_item_label: Some(restart_id),
+        shared_progress_state: shared_progress_state.as_ref(),
+        restart_id,
         current_weighted_objective: selection_tier_score,
-        best_restart_id: finished_snapshot.best_restart_id.as_deref(),
-        best_weighted_objective: finished_snapshot.best_weighted_objective,
-        active_restart_count: None,
-        aggregate_progress_percent: Some(finished_snapshot.aggregate_progress_percent),
         current_evaluation_count: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         total_evaluation_budget: Some(OPTION_SELECTION_TIER_EVALUATION_BUDGET),
         evaluation_progress_percent: Some(100),
-        ..OptionRefinementProgressEmissionInput::new(
-            progress_sender,
-            JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
-            finished_snapshot.completed_units,
-            total_units,
-        )
     });
 
     let refined_candidate = selection_artifact.map(|selection_tier_pricing_artifact| {
@@ -1547,97 +1252,6 @@ fn pricing_block_parameter_bits(
         .iter()
         .map(|parameter_index| parameter_vector[*parameter_index].to_bits())
         .collect()
-}
-
-struct OptionRefinementProgressEmissionInput<'a> {
-    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
-    phase: JointRefinementStageProgressPhase,
-    completed_units: usize,
-    total_units: usize,
-    current_restart_id: Option<&'a str>,
-    current_item_label: Option<&'a str>,
-    current_weighted_objective: Option<f64>,
-    best_restart_id: Option<&'a str>,
-    best_weighted_objective: Option<f64>,
-    active_restart_count: Option<usize>,
-    current_evaluation_count: Option<usize>,
-    total_evaluation_budget: Option<usize>,
-    evaluation_progress_percent: Option<usize>,
-    current_pricing_interval_index: Option<usize>,
-    total_pricing_interval_count: Option<usize>,
-    aggregate_progress_percent: Option<usize>,
-    planned_work_item_labels: &'a [String],
-}
-
-impl<'a> OptionRefinementProgressEmissionInput<'a> {
-    fn new(
-        progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
-        phase: JointRefinementStageProgressPhase,
-        completed_units: usize,
-        total_units: usize,
-    ) -> Self {
-        Self {
-            progress_sender,
-            phase,
-            completed_units,
-            total_units,
-            current_restart_id: None,
-            current_item_label: None,
-            current_weighted_objective: None,
-            best_restart_id: None,
-            best_weighted_objective: None,
-            active_restart_count: None,
-            current_evaluation_count: None,
-            total_evaluation_budget: None,
-            evaluation_progress_percent: None,
-            current_pricing_interval_index: None,
-            total_pricing_interval_count: None,
-            aggregate_progress_percent: None,
-            planned_work_item_labels: &[],
-        }
-    }
-}
-
-fn emit_option_refinement_progress(input: OptionRefinementProgressEmissionInput<'_>) {
-    let OptionRefinementProgressEmissionInput {
-        progress_sender,
-        phase,
-        completed_units,
-        total_units,
-        current_restart_id,
-        current_item_label,
-        current_weighted_objective,
-        best_restart_id,
-        best_weighted_objective,
-        active_restart_count,
-        current_evaluation_count,
-        total_evaluation_budget,
-        evaluation_progress_percent,
-        current_pricing_interval_index,
-        total_pricing_interval_count,
-        aggregate_progress_percent,
-        planned_work_item_labels,
-    } = input;
-
-    if let Some(progress_sender) = progress_sender {
-        // Progress updates own labels because they cross the observer channel.
-        let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-            aggregate_progress_percent,
-            current_restart_id: current_restart_id.map(str::to_string),
-            current_item_label: current_item_label.map(str::to_string),
-            active_restart_count,
-            current_evaluation_count,
-            total_evaluation_budget,
-            evaluation_progress_percent,
-            current_pricing_interval_index,
-            total_pricing_interval_count,
-            current_global_loss: current_weighted_objective,
-            best_restart_id: best_restart_id.map(str::to_string),
-            best_global_loss: best_weighted_objective,
-            planned_work_item_labels: planned_work_item_labels.to_vec(),
-            ..JointRefinementStageProgressUpdate::new(phase, completed_units, total_units)
-        });
-    }
 }
 
 #[cfg(test)]

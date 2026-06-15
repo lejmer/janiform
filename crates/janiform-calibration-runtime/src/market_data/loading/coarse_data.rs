@@ -79,6 +79,13 @@ pub(super) fn load_coarse_data_records(
         progress,
     )?;
 
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::CoarseData,
+        MarketDataLoadingProgressPhase::FinalizingRecords,
+        0,
+        None,
+    ))?;
+
     loaded_rows.sort_by_key(|row| (row.timestamp_utc_nanos, row.source_row_number));
 
     let inferred_kind = resolved_coarse_data_kind(&resolved_column_mapping);
@@ -136,13 +143,6 @@ pub(super) fn load_coarse_data_records(
     };
 
     let output = CoarseDataLoadOutput { records, summary };
-
-    progress.emit(MarketDataLoadingProgressEvent::new(
-        MarketDataLoadingSource::CoarseData,
-        MarketDataLoadingProgressPhase::Completed,
-        source_row_count,
-        Some(source_row_count),
-    ))?;
 
     Ok(output)
 }

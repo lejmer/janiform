@@ -386,6 +386,13 @@ fn prepare_market_data_loading_from_phases_with_context(
             None => (Vec::new(), None, None),
         };
 
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::MarketData,
+        MarketDataLoadingProgressPhase::BuildingCalibrationInputs,
+        0,
+        None,
+    ))?;
+
     let preprocessing_request = MarketDataTranslationPreprocessingRequest {
         exchange_code: request.session_configuration.exchange_code,
         trade_events_data_reference: request.trade_events_data_reference,
@@ -653,6 +660,13 @@ fn finalize_tick_load_output(
     require_hawkes: bool,
     progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<TickLoadOutput, MarketDataLoadingError> {
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::TickData,
+        MarketDataLoadingProgressPhase::FinalizingRecords,
+        0,
+        None,
+    ))?;
+
     let (mut deduplicated_rows, dropped_duplicate_row_count) = deduplicate_tick_rows(
         normalized_rows,
         normalization_policy.duplicate_record_policy,
@@ -701,13 +715,6 @@ fn finalize_tick_load_output(
         reference_price,
         fit_warning,
     };
-
-    progress.emit(MarketDataLoadingProgressEvent::new(
-        MarketDataLoadingSource::TickData,
-        MarketDataLoadingProgressPhase::Completed,
-        source_row_count,
-        Some(source_row_count),
-    ))?;
 
     Ok(output)
 }
@@ -1303,13 +1310,21 @@ mod tests {
                 Some(2),
             ))
         );
+        assert!(
+            observed_events.contains(&MarketDataLoadingProgressEvent::new(
+                MarketDataLoadingSource::TickData,
+                MarketDataLoadingProgressPhase::FinalizingRecords,
+                0,
+                None,
+            ))
+        );
         assert_eq!(
             observed_events.last(),
             Some(&MarketDataLoadingProgressEvent::new(
                 MarketDataLoadingSource::TickData,
-                MarketDataLoadingProgressPhase::Completed,
-                2,
-                Some(2),
+                MarketDataLoadingProgressPhase::FinalizingRecords,
+                0,
+                None,
             ))
         );
     }

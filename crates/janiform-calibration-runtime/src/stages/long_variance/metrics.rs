@@ -56,8 +56,17 @@ pub(crate) struct LongVarianceHorizonMomentSummary {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LongVarianceHorizonSummaryComputation {
     pub(crate) horizon_position: usize,
-    pub(crate) intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) block_duration_nanos: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LongVarianceHorizonInputIntervals<'a> {
+    pub(crate) five_minute_return_intervals: &'a [JointRefinementAggregatedIntervalObservation],
+    pub(crate) five_minute_activity_intervals: &'a [JointRefinementAggregatedIntervalObservation],
+    pub(crate) hourly_return_intervals: &'a [JointRefinementAggregatedIntervalObservation],
+    pub(crate) hourly_activity_intervals: &'a [JointRefinementAggregatedIntervalObservation],
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -212,34 +221,38 @@ pub(crate) fn aggregate_intervals_to_fixed_duration(
     aggregated_intervals
 }
 
-pub(crate) fn long_variance_horizon_moment_summary(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> LongVarianceHorizonMomentSummary {
-    long_variance_horizon_moment_summary_without_standard_errors(intervals)
-}
-
 fn long_variance_horizon_moment_summary_without_standard_errors(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
+    return_intervals: &[JointRefinementAggregatedIntervalObservation],
+    activity_intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> LongVarianceHorizonMomentSummary {
-    let finite_intervals = intervals
+    let finite_return_intervals = return_intervals
         .iter()
         .copied()
         .filter(|interval| interval.log_return.is_finite())
         .collect::<Vec<_>>();
 
-    let returns = finite_intervals
+    let returns = finite_return_intervals
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
 
-    let squared_returns = finite_long_variance_squared_returns(finite_intervals.as_slice());
+    let squared_returns = finite_long_variance_squared_returns(finite_return_intervals.as_slice());
 
-    let activities = finite_intervals
+    let finite_activity_intervals = activity_intervals
+        .iter()
+        .copied()
+        .filter(|interval| interval.log_return.is_finite())
+        .collect::<Vec<_>>();
+
+    let activity_squared_returns =
+        finite_long_variance_squared_returns(finite_activity_intervals.as_slice());
+
+    let activities = finite_activity_intervals
         .iter()
         .map(|interval| interval.tick_count as f64)
         .collect::<Vec<_>>();
 
-    let signed_activities = finite_intervals
+    let signed_activities = finite_activity_intervals
         .iter()
         .map(|interval| {
             (interval.sell_share_proxy - JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY)
@@ -255,22 +268,20 @@ fn long_variance_horizon_moment_summary_without_standard_errors(
         return_excess_kurtosis: sample_adjusted_excess_kurtosis(returns.as_slice()),
         activity_variance_correlation: finite_correlation(
             activities.as_slice(),
-            squared_returns.as_slice(),
+            activity_squared_returns.as_slice(),
         ),
         signed_activity_future_variance_relation: signed_activity_future_variance_relation(
             signed_activities.as_slice(),
-            squared_returns.as_slice(),
+            activity_squared_returns.as_slice(),
         ),
         standard_errors: LongVarianceHorizonMomentStandardErrors::default(),
     }
 }
 
 pub(crate) fn long_variance_horizon_summaries(
-    five_minute_intervals: &[JointRefinementAggregatedIntervalObservation],
-    hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
+    input_intervals: LongVarianceHorizonInputIntervals<'_>,
 ) -> Vec<LongVarianceHorizonMomentSummary> {
-    let computations =
-        long_variance_horizon_summary_computations(five_minute_intervals, hourly_intervals);
+    let computations = long_variance_horizon_summary_computations(input_intervals);
 
     ordered_long_variance_horizon_summaries_from_outputs(
         computations
@@ -281,31 +292,51 @@ pub(crate) fn long_variance_horizon_summaries(
 }
 
 pub(crate) fn long_variance_horizon_summary_computations(
-    five_minute_intervals: &[JointRefinementAggregatedIntervalObservation],
-    hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
+    input_intervals: LongVarianceHorizonInputIntervals<'_>,
 ) -> Vec<LongVarianceHorizonSummaryComputation> {
-    let daily_intervals = aggregate_intervals_to_fixed_duration(hourly_intervals, NANOS_PER_DAY);
-    let weekly_intervals = aggregate_intervals_to_fixed_duration(hourly_intervals, NANOS_PER_WEEK);
+    let daily_return_intervals = aggregate_intervals_to_fixed_duration(
+        input_intervals.hourly_return_intervals,
+        NANOS_PER_DAY,
+    );
+
+    let weekly_return_intervals = aggregate_intervals_to_fixed_duration(
+        input_intervals.hourly_return_intervals,
+        NANOS_PER_WEEK,
+    );
+
+    let daily_activity_intervals = aggregate_intervals_to_fixed_duration(
+        input_intervals.hourly_activity_intervals,
+        NANOS_PER_DAY,
+    );
+
+    let weekly_activity_intervals = aggregate_intervals_to_fixed_duration(
+        input_intervals.hourly_activity_intervals,
+        NANOS_PER_WEEK,
+    );
 
     vec![
         LongVarianceHorizonSummaryComputation {
             horizon_position: 0,
-            intervals: five_minute_intervals.to_vec(),
+            return_intervals: input_intervals.five_minute_return_intervals.to_vec(),
+            activity_intervals: input_intervals.five_minute_activity_intervals.to_vec(),
             block_duration_nanos: Some(NANOS_PER_HOUR),
         },
         LongVarianceHorizonSummaryComputation {
             horizon_position: 1,
-            intervals: hourly_intervals.to_vec(),
+            return_intervals: input_intervals.hourly_return_intervals.to_vec(),
+            activity_intervals: input_intervals.hourly_activity_intervals.to_vec(),
             block_duration_nanos: Some(NANOS_PER_DAY),
         },
         LongVarianceHorizonSummaryComputation {
             horizon_position: 2,
-            intervals: daily_intervals,
+            return_intervals: daily_return_intervals,
+            activity_intervals: daily_activity_intervals,
             block_duration_nanos: Some(NANOS_PER_WEEK),
         },
         LongVarianceHorizonSummaryComputation {
             horizon_position: 3,
-            intervals: weekly_intervals,
+            return_intervals: weekly_return_intervals,
+            activity_intervals: weekly_activity_intervals,
             block_duration_nanos: None,
         },
     ]
@@ -317,12 +348,14 @@ pub(crate) fn compute_long_variance_horizon_summary(
     let summary = match computation.block_duration_nanos {
         Some(block_duration_nanos) => {
             long_variance_horizon_moment_summary_with_block_standard_errors(
-                computation.intervals.as_slice(),
+                computation.return_intervals.as_slice(),
+                computation.activity_intervals.as_slice(),
                 block_duration_nanos,
             )
         }
         None => long_variance_horizon_moment_summary_with_jackknife_standard_errors(
-            computation.intervals.as_slice(),
+            computation.return_intervals.as_slice(),
+            computation.activity_intervals.as_slice(),
         ),
     };
 
@@ -330,11 +363,16 @@ pub(crate) fn compute_long_variance_horizon_summary(
 }
 
 fn long_variance_horizon_moment_summary_with_jackknife_standard_errors(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
+    return_intervals: &[JointRefinementAggregatedIntervalObservation],
+    activity_intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> LongVarianceHorizonMomentSummary {
-    let mut summary = long_variance_horizon_moment_summary(intervals);
+    let mut summary = long_variance_horizon_moment_summary_without_standard_errors(
+        return_intervals,
+        activity_intervals,
+    );
 
-    summary.standard_errors = leave_one_out_horizon_standard_errors(intervals);
+    summary.standard_errors =
+        leave_one_out_horizon_standard_errors(return_intervals, activity_intervals);
 
     summary
 }
@@ -347,15 +385,23 @@ pub(crate) fn ordered_long_variance_horizon_summaries_from_outputs(
 }
 
 fn long_variance_horizon_moment_summary_with_block_standard_errors(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
+    return_intervals: &[JointRefinementAggregatedIntervalObservation],
+    activity_intervals: &[JointRefinementAggregatedIntervalObservation],
     block_duration_nanos: i64,
 ) -> LongVarianceHorizonMomentSummary {
-    let mut summary = long_variance_horizon_moment_summary(intervals);
+    let mut summary = long_variance_horizon_moment_summary_without_standard_errors(
+        return_intervals,
+        activity_intervals,
+    );
 
-    let block_standard_errors =
-        long_variance_horizon_block_standard_errors(intervals, block_duration_nanos);
+    let block_standard_errors = long_variance_horizon_block_standard_errors(
+        return_intervals,
+        activity_intervals,
+        block_duration_nanos,
+    );
 
-    let jackknife_standard_errors = long_variance_horizon_jackknife_standard_errors(intervals);
+    let jackknife_standard_errors =
+        long_variance_horizon_jackknife_standard_errors(return_intervals);
 
     summary.standard_errors =
         combine_horizon_standard_errors(block_standard_errors, jackknife_standard_errors);
@@ -393,43 +439,67 @@ fn maximum_standard_error(left: Option<f64>, right: Option<f64>) -> Option<f64> 
 }
 
 fn long_variance_horizon_block_standard_errors(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
+    return_intervals: &[JointRefinementAggregatedIntervalObservation],
+    activity_intervals: &[JointRefinementAggregatedIntervalObservation],
     block_duration_nanos: i64,
 ) -> LongVarianceHorizonMomentStandardErrors {
-    let block_summaries = horizon_block_summaries(intervals, block_duration_nanos);
+    let return_block_summaries =
+        horizon_return_block_summaries(return_intervals, block_duration_nanos);
+
+    let activity_block_summaries =
+        horizon_activity_block_summaries(activity_intervals, block_duration_nanos);
 
     LongVarianceHorizonMomentStandardErrors {
-        realized_variance: block_standard_error(block_summaries.as_slice(), |summary| {
+        realized_variance: block_standard_error(return_block_summaries.as_slice(), |summary| {
             summary.realized_variance
         }),
-        variance_of_variance: block_standard_error(block_summaries.as_slice(), |summary| {
+        variance_of_variance: block_standard_error(return_block_summaries.as_slice(), |summary| {
             summary.variance_of_variance
         }),
-        return_skewness: block_standard_error(block_summaries.as_slice(), |summary| {
+        return_skewness: block_standard_error(return_block_summaries.as_slice(), |summary| {
             summary.return_skewness
         }),
-        return_excess_kurtosis: block_standard_error(block_summaries.as_slice(), |summary| {
-            summary.return_excess_kurtosis
-        }),
+        return_excess_kurtosis: block_standard_error(
+            return_block_summaries.as_slice(),
+            |summary| summary.return_excess_kurtosis,
+        ),
         activity_variance_correlation: block_standard_error(
-            block_summaries.as_slice(),
+            activity_block_summaries.as_slice(),
             |summary| summary.activity_variance_correlation,
         ),
         signed_activity_future_variance_relation: block_standard_error(
-            block_summaries.as_slice(),
+            activity_block_summaries.as_slice(),
             |summary| summary.signed_activity_future_variance_relation,
         ),
     }
 }
 
-fn horizon_block_summaries(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
+fn horizon_return_block_summaries(
+    return_intervals: &[JointRefinementAggregatedIntervalObservation],
     block_duration_nanos: i64,
 ) -> Vec<LongVarianceHorizonMomentSummary> {
-    intervals_by_block_duration(intervals, block_duration_nanos)
+    intervals_by_block_duration(return_intervals, block_duration_nanos)
         .into_iter()
         .map(|block_intervals| {
-            long_variance_horizon_moment_summary_without_standard_errors(block_intervals.as_slice())
+            long_variance_horizon_moment_summary_without_standard_errors(
+                block_intervals.as_slice(),
+                &[],
+            )
+        })
+        .collect()
+}
+
+fn horizon_activity_block_summaries(
+    activity_intervals: &[JointRefinementAggregatedIntervalObservation],
+    block_duration_nanos: i64,
+) -> Vec<LongVarianceHorizonMomentSummary> {
+    intervals_by_block_duration(activity_intervals, block_duration_nanos)
+        .into_iter()
+        .map(|block_intervals| {
+            long_variance_horizon_moment_summary_without_standard_errors(
+                &[],
+                block_intervals.as_slice(),
+            )
         })
         .collect()
 }
@@ -489,34 +559,60 @@ fn long_variance_horizon_jackknife_standard_errors(
 }
 
 fn leave_one_out_horizon_standard_errors(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
+    return_intervals: &[JointRefinementAggregatedIntervalObservation],
+    activity_intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> LongVarianceHorizonMomentStandardErrors {
     LongVarianceHorizonMomentStandardErrors {
-        realized_variance: leave_one_out_horizon_standard_error(intervals, |summary| {
-            summary.realized_variance
-        }),
-        variance_of_variance: leave_one_out_horizon_standard_error(intervals, |summary| {
-            summary.variance_of_variance
-        }),
-        return_skewness: leave_one_out_horizon_standard_error(intervals, |summary| {
+        realized_variance: leave_one_out_return_horizon_standard_error(
+            return_intervals,
+            |summary| summary.realized_variance,
+        ),
+        variance_of_variance: leave_one_out_return_horizon_standard_error(
+            return_intervals,
+            |summary| summary.variance_of_variance,
+        ),
+        return_skewness: leave_one_out_return_horizon_standard_error(return_intervals, |summary| {
             summary.return_skewness
         }),
-        return_excess_kurtosis: leave_one_out_horizon_standard_error(intervals, |summary| {
-            summary.return_excess_kurtosis
-        }),
-        activity_variance_correlation: leave_one_out_horizon_standard_error(intervals, |summary| {
-            summary.activity_variance_correlation
-        }),
-        signed_activity_future_variance_relation: leave_one_out_horizon_standard_error(
-            intervals,
+        return_excess_kurtosis: leave_one_out_return_horizon_standard_error(
+            return_intervals,
+            |summary| summary.return_excess_kurtosis,
+        ),
+        activity_variance_correlation: leave_one_out_activity_horizon_standard_error(
+            activity_intervals,
+            |summary| summary.activity_variance_correlation,
+        ),
+        signed_activity_future_variance_relation: leave_one_out_activity_horizon_standard_error(
+            activity_intervals,
             |summary| summary.signed_activity_future_variance_relation,
         ),
     }
 }
 
+fn leave_one_out_return_horizon_standard_error(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
+) -> Option<f64> {
+    leave_one_out_horizon_standard_error(intervals, extract_metric, |leave_one_out_intervals| {
+        long_variance_horizon_moment_summary_without_standard_errors(leave_one_out_intervals, &[])
+    })
+}
+
+fn leave_one_out_activity_horizon_standard_error(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
+) -> Option<f64> {
+    leave_one_out_horizon_standard_error(intervals, extract_metric, |leave_one_out_intervals| {
+        long_variance_horizon_moment_summary_without_standard_errors(&[], leave_one_out_intervals)
+    })
+}
+
 fn leave_one_out_horizon_standard_error(
     intervals: &[JointRefinementAggregatedIntervalObservation],
     extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
+    summarize_intervals: fn(
+        &[JointRefinementAggregatedIntervalObservation],
+    ) -> LongVarianceHorizonMomentSummary,
 ) -> Option<f64> {
     if intervals.len() < 3 {
         return None;
@@ -533,9 +629,7 @@ fn leave_one_out_horizon_standard_error(
             })
             .collect::<Vec<_>>();
 
-        let summary = long_variance_horizon_moment_summary_without_standard_errors(
-            leave_one_out_intervals.as_slice(),
-        );
+        let summary = summarize_intervals(leave_one_out_intervals.as_slice());
         if let Some(value) = extract_metric(summary)
             && value.is_finite()
         {
@@ -598,7 +692,8 @@ fn signed_activity_future_variance_relation(
 #[cfg(test)]
 mod tests {
     use super::{
-        aggregate_intervals_to_fixed_duration, long_variance_horizon_moment_summary,
+        LongVarianceHorizonInputIntervals, LongVarianceHorizonSummaryComputation,
+        aggregate_intervals_to_fixed_duration, compute_long_variance_horizon_summary,
         long_variance_horizon_summaries, long_variance_interval_side_event_counts,
     };
     use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
@@ -619,6 +714,18 @@ mod tests {
             log_return,
             tick_count,
             sell_share_proxy,
+        }
+    }
+
+    fn horizon_input<'a>(
+        five_minute_intervals: &'a [JointRefinementAggregatedIntervalObservation],
+        hourly_intervals: &'a [JointRefinementAggregatedIntervalObservation],
+    ) -> LongVarianceHorizonInputIntervals<'a> {
+        LongVarianceHorizonInputIntervals {
+            five_minute_return_intervals: five_minute_intervals,
+            five_minute_activity_intervals: five_minute_intervals,
+            hourly_return_intervals: hourly_intervals,
+            hourly_activity_intervals: hourly_intervals,
         }
     }
 
@@ -714,7 +821,13 @@ mod tests {
             interval(15, 20, -0.08, 8, 0.75),
         ];
 
-        let summary = long_variance_horizon_moment_summary(intervals.as_slice());
+        let (_, summary) =
+            compute_long_variance_horizon_summary(LongVarianceHorizonSummaryComputation {
+                horizon_position: 0,
+                return_intervals: intervals.to_vec(),
+                activity_intervals: intervals.to_vec(),
+                block_duration_nanos: None,
+            });
 
         assert_eq!(summary.sample_count, 4);
         assert!(summary.realized_variance.is_some());
@@ -735,10 +848,10 @@ mod tests {
             interval(60, 120, -0.07, 10, 0.55),
         ];
 
-        let summaries = long_variance_horizon_summaries(
+        let summaries = long_variance_horizon_summaries(horizon_input(
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
-        );
+        ));
 
         assert_eq!(summaries.len(), 4);
         assert_eq!(summaries[0].sample_count, 2);
@@ -771,10 +884,10 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let summaries = long_variance_horizon_summaries(
+        let summaries = long_variance_horizon_summaries(horizon_input(
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
-        );
+        ));
 
         assert!(summaries[0].standard_errors.realized_variance.is_some());
         assert!(summaries[1].standard_errors.realized_variance.is_some());
@@ -806,10 +919,10 @@ mod tests {
             ),
         ];
 
-        let summaries = long_variance_horizon_summaries(
+        let summaries = long_variance_horizon_summaries(horizon_input(
             five_minute_intervals.as_slice(),
             hourly_intervals.as_slice(),
-        );
+        ));
 
         assert_eq!(summaries[3].sample_count, 3);
         assert!(summaries[3].standard_errors.realized_variance.is_some());
@@ -822,5 +935,67 @@ mod tests {
 
         assert_eq!(counts.buy_count, 0.0);
         assert_eq!(counts.sell_count, 10.0);
+    }
+
+    #[test]
+    fn horizon_summary_uses_return_intervals_for_return_only_metrics() {
+        let return_intervals = [
+            interval(0, NANOS_PER_HOUR, 0.10, 0, 0.50),
+            interval(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR, -0.20, 0, 0.50),
+            interval(2 * NANOS_PER_HOUR, 3 * NANOS_PER_HOUR, 0.30, 0, 0.50),
+        ];
+
+        let (_, summary) =
+            compute_long_variance_horizon_summary(LongVarianceHorizonSummaryComputation {
+                horizon_position: 0,
+                return_intervals: return_intervals.to_vec(),
+                activity_intervals: Vec::new(),
+                block_duration_nanos: None,
+            });
+
+        assert_eq!(summary.sample_count, 3);
+        assert!(summary.realized_variance.is_some());
+        assert!(summary.variance_of_variance.is_some());
+        assert_eq!(summary.activity_variance_correlation, None);
+        assert_eq!(summary.signed_activity_future_variance_relation, None);
+    }
+
+    #[test]
+    fn horizon_summaries_aggregate_return_and_activity_streams_separately() {
+        let hourly_return_intervals = (0_i64..24)
+            .map(|hour_position| {
+                interval(
+                    hour_position * NANOS_PER_HOUR,
+                    (hour_position + 1) * NANOS_PER_HOUR,
+                    0.01,
+                    0,
+                    0.50,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let hourly_activity_intervals = (0_i64..2)
+            .map(|hour_position| {
+                interval(
+                    hour_position * NANOS_PER_HOUR,
+                    (hour_position + 1) * NANOS_PER_HOUR,
+                    0.02 * (hour_position as f64 + 1.0),
+                    10 + hour_position as usize,
+                    0.50,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let summaries = long_variance_horizon_summaries(LongVarianceHorizonInputIntervals {
+            five_minute_return_intervals: &[],
+            five_minute_activity_intervals: &[],
+            hourly_return_intervals: hourly_return_intervals.as_slice(),
+            hourly_activity_intervals: hourly_activity_intervals.as_slice(),
+        });
+
+        assert_eq!(summaries[1].sample_count, 24);
+        assert_eq!(summaries[2].sample_count, 1);
+        assert_eq!(summaries[1].activity_variance_correlation, Some(1.0));
+        assert_eq!(summaries[2].activity_variance_correlation, None);
     }
 }

@@ -34,7 +34,9 @@ use crate::stages::joint_metrics::{
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageObjectiveTermDiagnostic,
 };
-use crate::stages::long_variance::metrics::long_variance_horizon_summaries;
+use crate::stages::long_variance::metrics::{
+    LongVarianceHorizonInputIntervals, long_variance_horizon_summaries,
+};
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, NigShapeSearchPoint,
     ReturnComponentsObservedOpenSessionReturn,
@@ -209,14 +211,24 @@ fn build_test_observed_data() -> JointRefinementObservedData {
             standardized_path_distance: 0.0,
         },
         observed_long_variance_horizon_summaries: long_variance_horizon_summaries(
-            &[
-                build_test_interval_observation(0, 300, 0.012, 2, 0.5),
-                build_test_interval_observation(300, 600, -0.009, 2, 0.5),
-            ],
-            &[
-                build_test_interval_observation(0, 900, 0.018, 6, 0.5),
-                build_test_interval_observation(900, 1800, -0.012, 5, 0.5),
-            ],
+            LongVarianceHorizonInputIntervals {
+                five_minute_return_intervals: &[
+                    build_test_interval_observation(0, 300, 0.012, 2, 0.5),
+                    build_test_interval_observation(300, 600, -0.009, 2, 0.5),
+                ],
+                five_minute_activity_intervals: &[
+                    build_test_interval_observation(0, 300, 0.012, 2, 0.5),
+                    build_test_interval_observation(300, 600, -0.009, 2, 0.5),
+                ],
+                hourly_return_intervals: &[
+                    build_test_interval_observation(0, 900, 0.018, 6, 0.5),
+                    build_test_interval_observation(900, 1800, -0.012, 5, 0.5),
+                ],
+                hourly_activity_intervals: &[
+                    build_test_interval_observation(0, 900, 0.018, 6, 0.5),
+                    build_test_interval_observation(900, 1800, -0.012, 5, 0.5),
+                ],
+            },
         ),
         hourly_simulation_start_utc: DateTime::<Utc>::from_timestamp_nanos(0),
         hourly_simulation_end_utc: DateTime::<Utc>::from_timestamp_nanos(24 * 3_600_000_000_000),
@@ -405,10 +417,13 @@ fn build_test_seed_summary(
     simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
     simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
 ) -> JointRefinementSeedSummary {
-    let simulated_long_variance_horizon_summaries = long_variance_horizon_summaries(
-        simulated_5m_intervals.as_slice(),
-        simulated_15m_intervals.as_slice(),
-    );
+    let simulated_long_variance_horizon_summaries =
+        long_variance_horizon_summaries(LongVarianceHorizonInputIntervals {
+            five_minute_return_intervals: simulated_5m_intervals.as_slice(),
+            five_minute_activity_intervals: simulated_5m_intervals.as_slice(),
+            hourly_return_intervals: simulated_15m_intervals.as_slice(),
+            hourly_activity_intervals: simulated_15m_intervals.as_slice(),
+        });
 
     JointRefinementSeedSummary {
         simulated_5m_intervals,

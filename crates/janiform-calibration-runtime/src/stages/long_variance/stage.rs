@@ -10,7 +10,8 @@ use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     CalibrationStageSelectedCandidateSource, LongVarianceStageDiagnostics,
-    LongVarianceStageHorizonDiagnostic, stage_solver_settings_for_stage,
+    LongVarianceStageHorizonDiagnostic, LongVarianceStagePersistenceLagDiagnostic,
+    stage_solver_settings_for_stage,
 };
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
@@ -23,11 +24,14 @@ use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
 use crate::stages::joint_metrics::build_observed_open_session_interval_observations;
-use crate::stages::long_variance::estimation::estimate_long_variance_parameters;
+use crate::stages::long_variance::estimation::{
+    LongVarianceParameterEstimationDiagnostics, estimate_long_variance_parameters,
+};
 use crate::stages::long_variance::metrics::{
     LONG_VARIANCE_HORIZON_DEFINITIONS, LONG_VARIANCE_HORIZON_MOMENT_METRIC_COUNT,
-    LongVarianceHorizonMomentSummary, LongVarianceHorizonSummaryComputation,
-    compute_long_variance_horizon_summary, long_variance_horizon_summary_computations,
+    LongVarianceHorizonInputIntervals, LongVarianceHorizonMomentSummary,
+    LongVarianceHorizonSummaryComputation, compute_long_variance_horizon_summary,
+    long_variance_horizon_summary_computations,
     ordered_long_variance_horizon_summaries_from_outputs,
 };
 use crate::stages::long_variance::policy::long_variance_stationary_event_rates_for_hawkes_kernel;
@@ -35,7 +39,7 @@ use crate::stages::long_variance::progress::{
     LongVarianceStageProgressPhase, LongVarianceStageProgressUpdate,
 };
 use crate::stages::long_variance::source::{
-    LONG_VARIANCE_SLOW_HORIZON_SOURCE_SELECTION_POLICY, select_long_variance_slow_horizon_intervals,
+    LONG_VARIANCE_INTERVAL_SOURCE_SELECTION_POLICY, select_long_variance_observed_intervals,
 };
 use crate::stages::parallelism::{bounded_stage_worker_count, build_stage_thread_pool};
 use crate::stages::progress::{StageProgressUpdate, emit_stage_progress};
@@ -46,8 +50,10 @@ use crate::stages::tick_objective_data::{
     retained_open_session_returns_for_tick_objectives, source_window_for_retained_tick_objectives,
 };
 
-const LONG_VARIANCE_ESTIMATION_POLICY: &str =
-    "observed_horizon_moment_initializer_with_standard_cir_dispersion_projection.v1";
+const LONG_VARIANCE_ESTIMATION_POLICY: &str = concat!(
+    "fixed_lag_median_return_persistence_with_future_activity_loading_",
+    "and_standard_cir_dispersion_projection.v1",
+);
 const LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY: &str = "unit_stationary_mean_with_mean_normalized_seasonal_baseline_and_uncompensated_event_feedback.v1";
 pub(crate) const LONG_VARIANCE_ACTIVE_PARAMETER_COUNT: usize = 4;
 pub(crate) const LONG_VARIANCE_OBJECTIVE_TERM_COUNT: usize =
@@ -392,11 +398,11 @@ fn build_long_variance_fitted_stage_payload(
         Some("estimate long variance parameters"),
     );
 
-    let fitted_parameters = estimate_long_variance_parameters(
+    let parameter_estimation = estimate_long_variance_parameters(
         baseline_parameters,
         stationary_event_rates,
-        observed_intervals.five_minute.as_slice(),
-        observed_intervals.hourly.as_slice(),
+        observed_intervals.hourly_return_intervals.as_slice(),
+        observed_intervals.hourly_activity_intervals.as_slice(),
     );
 
     emit_long_variance_progress(
@@ -408,8 +414,16 @@ fn build_long_variance_fitted_stage_payload(
     );
 
     let horizon_summaries = long_variance_horizon_summaries_with_progress(
-        observed_intervals.five_minute.as_slice(),
-        observed_intervals.hourly.as_slice(),
+        LongVarianceHorizonInputIntervals {
+            five_minute_return_intervals: observed_intervals
+                .five_minute_return_intervals
+                .as_slice(),
+            five_minute_activity_intervals: observed_intervals
+                .five_minute_activity_intervals
+                .as_slice(),
+            hourly_return_intervals: observed_intervals.hourly_return_intervals.as_slice(),
+            hourly_activity_intervals: observed_intervals.hourly_activity_intervals.as_slice(),
+        },
         solver_settings.cpu_count,
         progress_sender,
     );
@@ -426,6 +440,7 @@ fn build_long_variance_fitted_stage_payload(
         selected_candidate_id(&return_components_input, return_components_stage_payload),
         horizon_summaries.as_slice(),
         &observed_intervals,
+        &parameter_estimation.diagnostics,
     );
 
     emit_long_variance_progress(
@@ -458,7 +473,7 @@ fn build_long_variance_fitted_stage_payload(
 
     Ok(LongVarianceStageFittedPayload {
         schema_version: CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
-        fitted_parameters,
+        fitted_parameters: parameter_estimation.parameters,
         diagnostics,
         return_components_input_transport,
         return_components_selected_candidate_id,
@@ -478,14 +493,11 @@ fn selected_candidate_id<'a>(
 }
 
 fn long_variance_horizon_summaries_with_progress(
-    five_minute_intervals: &[JointRefinementAggregatedIntervalObservation],
-    hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
+    input_intervals: LongVarianceHorizonInputIntervals<'_>,
     cpu_count: usize,
     progress_sender: Option<&Sender<LongVarianceStageProgressUpdate>>,
 ) -> Vec<LongVarianceHorizonMomentSummary> {
-    let computations =
-        long_variance_horizon_summary_computations(five_minute_intervals, hourly_intervals);
-
+    let computations = long_variance_horizon_summary_computations(input_intervals);
     let total_units = computations.len();
 
     emit_long_variance_progress(
@@ -543,17 +555,38 @@ fn long_variance_stage_diagnostics(
     selected_candidate_id: &str,
     horizon_summaries: &[LongVarianceHorizonMomentSummary],
     observed_intervals: &ObservedLongVarianceIntervals,
+    parameter_estimation_diagnostics: &LongVarianceParameterEstimationDiagnostics,
 ) -> LongVarianceStageDiagnostics {
     LongVarianceStageDiagnostics {
         estimation_policy: LONG_VARIANCE_ESTIMATION_POLICY.to_string(),
         stationary_normalization_policy: LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY.to_string(),
-        slow_horizon_source_selection_policy: LONG_VARIANCE_SLOW_HORIZON_SOURCE_SELECTION_POLICY
+        interval_source_selection_policy: LONG_VARIANCE_INTERVAL_SOURCE_SELECTION_POLICY
             .to_string(),
-        slow_horizon_tick_interval_count: observed_intervals.tick_hourly_interval_count,
-        slow_horizon_coarse_interval_count: observed_intervals.coarse_hourly_interval_count,
-        slow_horizon_selected_interval_count: observed_intervals.hourly.len(),
-        slow_horizon_omitted_overlapping_tick_interval_count: observed_intervals
-            .omitted_overlapping_tick_hourly_interval_count,
+        return_interval_tick_count: observed_intervals.return_interval_tick_count,
+        return_interval_coarse_candidate_count: observed_intervals
+            .return_interval_coarse_candidate_count,
+        return_interval_coarse_gap_fill_count: observed_intervals
+            .return_interval_coarse_gap_fill_count,
+        return_interval_tick_coarse_overlap_count: observed_intervals
+            .return_interval_tick_coarse_overlap_count,
+        return_interval_count: observed_intervals.hourly_return_intervals.len(),
+        activity_interval_count: observed_intervals.hourly_activity_intervals.len(),
+        persistence_lag_diagnostics: parameter_estimation_diagnostics
+            .persistence_lag_diagnostics
+            .iter()
+            .map(|diagnostic| LongVarianceStagePersistenceLagDiagnostic {
+                lag_hours: diagnostic.lag_hours,
+                pair_count: diagnostic.pair_count,
+                correlation: diagnostic.correlation,
+                implied_mean_reversion_rate: diagnostic.implied_mean_reversion_rate,
+            })
+            .collect(),
+        selected_mean_reversion_rate: parameter_estimation_diagnostics.selected_mean_reversion_rate,
+        event_loading_fit_candidate_pair_count: parameter_estimation_diagnostics
+            .event_loading_fit_candidate_pair_count,
+        event_loading_fit_pair_count: parameter_estimation_diagnostics.event_loading_fit_pair_count,
+        event_loading_fit_coverage_ratio: parameter_estimation_diagnostics
+            .event_loading_fit_coverage_ratio,
         selected_candidate_id: selected_candidate_id.to_string(),
         horizon_diagnostics: LONG_VARIANCE_HORIZON_DEFINITIONS
             .iter()
@@ -592,11 +625,14 @@ fn long_variance_stage_diagnostics(
 
 #[derive(Debug, Clone, PartialEq)]
 struct ObservedLongVarianceIntervals {
-    five_minute: Vec<JointRefinementAggregatedIntervalObservation>,
-    hourly: Vec<JointRefinementAggregatedIntervalObservation>,
-    tick_hourly_interval_count: usize,
-    coarse_hourly_interval_count: usize,
-    omitted_overlapping_tick_hourly_interval_count: usize,
+    five_minute_return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    five_minute_activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    hourly_return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    hourly_activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    return_interval_tick_count: usize,
+    return_interval_coarse_candidate_count: usize,
+    return_interval_coarse_gap_fill_count: usize,
+    return_interval_tick_coarse_overlap_count: usize,
 }
 
 fn observed_long_variance_intervals(
@@ -625,7 +661,7 @@ fn observed_long_variance_intervals(
         Some("build five-minute intervals"),
     );
 
-    let five_minute = build_observed_open_session_interval_observations(
+    let five_minute_tick_intervals = build_observed_open_session_interval_observations(
         calendar_registry,
         exchange_code,
         source_window,
@@ -654,18 +690,18 @@ fn observed_long_variance_intervals(
         LongVarianceStageProgressPhase::IntervalSourcePreparation,
         3,
         5,
-        Some("select slow-horizon source intervals"),
+        Some("select return and activity intervals"),
     );
 
-    let slow_horizon_selection =
-        select_long_variance_slow_horizon_intervals(tick_hourly.as_slice(), coarse_data_records);
+    let observed_interval_selection =
+        select_long_variance_observed_intervals(tick_hourly.as_slice(), coarse_data_records);
 
     emit_long_variance_progress(
         progress_sender,
         LongVarianceStageProgressPhase::IntervalSourcePreparation,
         4,
         5,
-        Some("slow-horizon intervals selected"),
+        Some("return and activity intervals selected"),
     );
 
     emit_long_variance_progress(
@@ -676,13 +712,21 @@ fn observed_long_variance_intervals(
         Some("interval sources ready"),
     );
 
+    // Five-minute tick intervals back both streams, while hourly sources diverge by policy.
+    let five_minute_activity_intervals = five_minute_tick_intervals.clone();
+
     ObservedLongVarianceIntervals {
-        five_minute,
-        hourly: slow_horizon_selection.intervals,
-        tick_hourly_interval_count: slow_horizon_selection.tick_interval_count,
-        coarse_hourly_interval_count: slow_horizon_selection.coarse_interval_count,
-        omitted_overlapping_tick_hourly_interval_count: slow_horizon_selection
-            .omitted_overlapping_tick_interval_count,
+        five_minute_return_intervals: five_minute_tick_intervals,
+        five_minute_activity_intervals,
+        hourly_return_intervals: observed_interval_selection.return_intervals,
+        hourly_activity_intervals: observed_interval_selection.activity_intervals,
+        return_interval_tick_count: observed_interval_selection.return_interval_tick_count,
+        return_interval_coarse_candidate_count: observed_interval_selection
+            .return_interval_coarse_candidate_count,
+        return_interval_coarse_gap_fill_count: observed_interval_selection
+            .return_interval_coarse_gap_fill_count,
+        return_interval_tick_coarse_overlap_count: observed_interval_selection
+            .return_interval_tick_coarse_overlap_count,
     }
 }
 

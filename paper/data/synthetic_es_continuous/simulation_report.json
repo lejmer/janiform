@@ -1,18 +1,18 @@
 {
   "diagnostics": {
     "export": {
-      "chunk_count": 47135,
-      "record_count": 12066398
+      "chunk_count": 40728,
+      "record_count": 10426367
     },
     "native": {
       "estimated_debug_trace_bytes": 0,
-      "estimated_event_projection_index_bytes": 105080320,
-      "estimated_fine_path_bytes": 2312814592,
-      "estimated_public_projection_index_bytes": 105127936,
-      "estimated_total_retained_bytes": 2523022848,
-      "event_count": 12065867,
-      "public_transition_count": 12066398,
-      "transition_count": 12066631
+      "estimated_event_projection_index_bytes": 90813824,
+      "estimated_fine_path_bytes": 2089813120,
+      "estimated_public_projection_index_bytes": 90861440,
+      "estimated_total_retained_bytes": 2271488384,
+      "event_count": 10425836,
+      "public_transition_count": 10426367,
+      "transition_count": 10426600
     }
   },
   "primary_output_path": "C:\\Users\\anton\\source\\repos\\janiform\\paper/data/synthetic_es_continuous.parquet",

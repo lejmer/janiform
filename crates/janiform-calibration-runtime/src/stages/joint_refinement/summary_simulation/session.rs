@@ -16,7 +16,8 @@ use crate::stages::joint_metrics::{
     scale_normalized_returns, tick_count_series,
 };
 use crate::stages::long_variance::metrics::{
-    aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+    LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
+    long_variance_horizon_summaries,
 };
 use janiform_calibration_artifacts::{
     JointRefinementStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
@@ -381,10 +382,13 @@ impl JointRefinementSummaryCollector {
         let simulated_15m_rv_activity_metric =
             rolling_variance_activity_metric(self.simulated_15m_intervals.as_slice());
 
-        let simulated_long_variance_horizon_summaries = long_variance_horizon_summaries(
-            self.simulated_5m_intervals.as_slice(),
-            self.simulated_hourly_intervals.as_slice(),
-        );
+        let simulated_long_variance_horizon_summaries =
+            long_variance_horizon_summaries(LongVarianceHorizonInputIntervals {
+                five_minute_return_intervals: self.simulated_5m_intervals.as_slice(),
+                five_minute_activity_intervals: self.simulated_5m_intervals.as_slice(),
+                hourly_return_intervals: self.simulated_hourly_intervals.as_slice(),
+                hourly_activity_intervals: self.simulated_hourly_intervals.as_slice(),
+            });
 
         JointRefinementSeedSummary {
             simulated_5m_intervals: self.simulated_5m_intervals,
@@ -919,7 +923,8 @@ pub(crate) mod tests {
         JointRefinementSeedSummary, build_surprise_multipliers_for_interval_grid,
     };
     use crate::stages::long_variance::metrics::{
-        aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+        LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
+        long_variance_horizon_summaries,
     };
     use crate::stages::return_components::{
         ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -1509,8 +1514,12 @@ pub(crate) mod tests {
                     simulated_15m_intervals.as_slice(),
                 ),
                 simulated_long_variance_horizon_summaries: long_variance_horizon_summaries(
-                    simulated_5m_intervals.as_slice(),
-                    simulated_hourly_intervals.as_slice(),
+                    LongVarianceHorizonInputIntervals {
+                        five_minute_return_intervals: simulated_5m_intervals.as_slice(),
+                        five_minute_activity_intervals: simulated_5m_intervals.as_slice(),
+                        hourly_return_intervals: simulated_hourly_intervals.as_slice(),
+                        hourly_activity_intervals: simulated_hourly_intervals.as_slice(),
+                    },
                 ),
             },
             run_result.native_diagnostics(),

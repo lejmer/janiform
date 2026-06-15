@@ -79,6 +79,13 @@ pub(super) fn load_known_news_records(
         ))?;
     }
 
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::KnownNews,
+        MarketDataLoadingProgressPhase::FinalizingRecords,
+        0,
+        None,
+    ))?;
+
     normalized_rows.sort_by_key(|row| (row.event_timestamp_utc_nanos, row.source_row_number));
 
     let output = KnownNewsLoadOutput {
@@ -104,13 +111,6 @@ pub(super) fn load_known_news_records(
             value_mapping_policy: None,
         },
     };
-
-    progress.emit(MarketDataLoadingProgressEvent::new(
-        MarketDataLoadingSource::KnownNews,
-        MarketDataLoadingProgressPhase::Completed,
-        source_row_count,
-        Some(source_row_count),
-    ))?;
 
     Ok(output)
 }

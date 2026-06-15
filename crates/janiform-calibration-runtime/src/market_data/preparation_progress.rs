@@ -17,8 +17,6 @@ pub enum MarketDataPreparationProgressPhase {
     BuildingDiagnostics,
     /// Market-data provenance is being assembled.
     BuildingProvenance,
-    /// Market-data preparation finished.
-    Completed,
 }
 
 impl MarketDataPreparationProgressPhase {
@@ -30,7 +28,6 @@ impl MarketDataPreparationProgressPhase {
             Self::BuildingExecutionInput => "building_execution_input",
             Self::BuildingDiagnostics => "building_diagnostics",
             Self::BuildingProvenance => "building_provenance",
-            Self::Completed => "completed",
         }
     }
 
@@ -42,7 +39,6 @@ impl MarketDataPreparationProgressPhase {
             Self::BuildingExecutionInput => "Materializing staged execution input",
             Self::BuildingDiagnostics => "Summarizing market data diagnostics",
             Self::BuildingProvenance => "Building market data provenance",
-            Self::Completed => "Prepared market data plan",
         }
     }
 
@@ -54,7 +50,6 @@ impl MarketDataPreparationProgressPhase {
             Self::BuildingExecutionInput => "materializing staged execution input",
             Self::BuildingDiagnostics => "summarizing prepared market data",
             Self::BuildingProvenance => "building provenance payload",
-            Self::Completed => "market-data calibration plan prepared",
         }
     }
 }
@@ -76,7 +71,9 @@ impl MarketDataPreparationProgressEvent {
         match self {
             Self::Loading(event) => event.latest_signal(),
             Self::Preparing(phase) => phase.latest_signal().to_string(),
-            Self::TimestampBatchingObservation(diagnostic) => diagnostic.message.to_string(),
+            Self::TimestampBatchingObservation(_) => {
+                "recording timestamp batching observation diagnostics".to_string()
+            }
         }
     }
 }
@@ -194,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn preparation_progress_event_uses_timestamp_batching_diagnostic_signal() {
+    fn preparation_progress_event_uses_active_timestamp_batching_diagnostic_signal() {
         let event = MarketDataPreparationProgressEvent::TimestampBatchingObservation(
             CalibrationTimestampBatchingObservationDiagnostic {
                 schema_version: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION
@@ -210,7 +207,7 @@ mod tests {
 
         assert_eq!(
             event.latest_signal(),
-            "timestamp batching observation evaluated"
+            "recording timestamp batching observation diagnostics"
         );
     }
 }
