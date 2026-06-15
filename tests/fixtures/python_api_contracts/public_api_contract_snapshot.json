@@ -8042,14 +8042,16 @@
             "inference_policy",
             "observation_policy",
             "coarse_interval_compatibility_policy",
-            "bucket_width_nanos"
+            "bucket_width_nanos",
+            "same_timestamp_continuation_count",
+            "same_session_observation_transition_count"
           ],
           "kind": "contract_model",
           "public_methods": {
             "disabled": "() -> 'TimestampBatchingObservationModel'",
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'"
           },
-          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
         },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
@@ -8421,14 +8423,16 @@
             "inference_policy",
             "observation_policy",
             "coarse_interval_compatibility_policy",
-            "bucket_width_nanos"
+            "bucket_width_nanos",
+            "same_timestamp_continuation_count",
+            "same_session_observation_transition_count"
           ],
           "kind": "contract_model",
           "public_methods": {
             "disabled": "() -> 'TimestampBatchingObservationModel'",
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'"
           },
-          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
         },
         "deserialize_coarse_simulation_path": {
           "kind": "function",
@@ -8917,14 +8921,16 @@
             "inference_policy",
             "observation_policy",
             "coarse_interval_compatibility_policy",
-            "bucket_width_nanos"
+            "bucket_width_nanos",
+            "same_timestamp_continuation_count",
+            "same_session_observation_transition_count"
           ],
           "kind": "contract_model",
           "public_methods": {
             "disabled": "() -> 'TimestampBatchingObservationModel'",
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'"
           },
-          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
         },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",

@@ -9,7 +9,7 @@ use super::hawkes_inputs::{
 use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::activity_lift;
 use super::return_components_inputs::{
-    infer_tick_size_from_open_prices, infer_timestamp_batch_width_nanos_from_open_ticks,
+    infer_tick_size_from_open_prices, infer_timestamp_batch_observation_from_open_ticks,
 };
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::OpenTickRecord;
@@ -527,11 +527,16 @@ fn timestamp_batching_inference_uses_same_session_duplicates_and_timestamp_quant
         },
     ];
 
-    let inferred_batch_width =
-        infer_timestamp_batch_width_nanos_from_open_ticks(open_price_ticks.as_slice())
-            .expect("same-session duplicate timestamps should identify a timestamp batch width");
+    let inferred_batching =
+        infer_timestamp_batch_observation_from_open_ticks(open_price_ticks.as_slice())
+            .expect("same-session duplicate timestamps should identify timestamp batching");
 
-    assert_eq!(inferred_batch_width, batch_width_nanos);
+    assert_eq!(inferred_batching.bucket_width_nanos, batch_width_nanos);
+    assert_eq!(inferred_batching.same_timestamp_continuation_count, 1);
+    assert_eq!(
+        inferred_batching.same_session_observation_transition_count,
+        3
+    );
 }
 
 fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

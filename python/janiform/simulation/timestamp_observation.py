@@ -6,6 +6,7 @@ from typing import Any, Final, Optional
 
 from ..contracts import ContractModel
 from ..contracts.base import (
+    require_non_negative_integer,
     require_positive_integer,
     require_string,
 )
@@ -17,7 +18,9 @@ class TimestampBatchingObservationMode(StrEnum):
     FIXED_BUCKET_FLOOR = 'fixed_bucket_floor'
 
 
-TIMESTAMP_BATCHING_OBSERVATION_MODEL_SCHEMA_VERSION: Final[str] = "model.timestamp_batching_observation.v1"
+TIMESTAMP_BATCHING_OBSERVATION_MODEL_SCHEMA_VERSION: Final[str] = (
+    "model.timestamp_batching_observation.v1"
+)
 TIMESTAMP_BATCHING_FIXED_BUCKET_INFERENCE_POLICY: Final[str] = (
     "same_session_duplicate_timestamps_with_positive_timestamp_quantum_gcd.v1"
 )
@@ -26,7 +29,8 @@ TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY: Final[str] = (
     "latent_event_time_equals_observed_timestamp.v1"
 )
 TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY: Final[str] = (
-    "floor_latent_event_time_to_fixed_width_bucket_within_latent_interval.v1"
+    "floor_latent_event_time_to_fixed_width_bucket_with_"
+    "same_timestamp_continuation_within_latent_interval.v1"
 )
 TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY: Final[str] = (
     "observed_timestamp_ownership_constrained_to_latent_interval_for_direct_coarse_consistency.v1"
@@ -42,6 +46,8 @@ class TimestampBatchingObservationModel(ContractModel):
     observation_policy: str
     coarse_interval_compatibility_policy: str
     bucket_width_nanos: Optional[int] = None
+    same_timestamp_continuation_count: Optional[int] = None
+    same_session_observation_transition_count: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.schema_version != TIMESTAMP_BATCHING_OBSERVATION_MODEL_SCHEMA_VERSION:
@@ -65,7 +71,10 @@ class TimestampBatchingObservationModel(ContractModel):
                     "must be a non-empty string",
                 )
 
-        if self.coarse_interval_compatibility_policy != TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY:
+        if (
+            self.coarse_interval_compatibility_policy
+            != TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY
+        ):
             raise _simulation_error(
                 "timestamp_batching_observation_model.coarse_interval_compatibility_policy",
                 f"must be `{TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY}`",
@@ -79,10 +88,28 @@ class TimestampBatchingObservationModel(ContractModel):
                         "must be omitted when timestamp batching is disabled",
                     )
 
+                if self.same_timestamp_continuation_count is not None:
+                    raise _simulation_error(
+                        "timestamp_batching_observation_model.same_timestamp_continuation_count",
+                        "must be omitted when timestamp batching is disabled",
+                    )
+
+                if self.same_session_observation_transition_count is not None:
+                    raise _simulation_error(
+                        (
+                            "timestamp_batching_observation_model."
+                            "same_session_observation_transition_count"
+                        ),
+                        "must be omitted when timestamp batching is disabled",
+                    )
+
                 if self.observation_policy != TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY:
                     raise _simulation_error(
                         "timestamp_batching_observation_model.observation_policy",
-                        f"must be `{TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY}` when mode is disabled",
+                        (
+                            f"must be `{TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY}` "
+                            "when mode is disabled"
+                        ),
                     )
             case TimestampBatchingObservationMode.FIXED_BUCKET_FLOOR:
                 if self.bucket_width_nanos is None or self.bucket_width_nanos <= 0:
@@ -91,10 +118,40 @@ class TimestampBatchingObservationModel(ContractModel):
                         "must be strictly positive when mode is fixed_bucket_floor",
                     )
 
+                if self.same_timestamp_continuation_count is None:
+                    raise _simulation_error(
+                        "timestamp_batching_observation_model.same_timestamp_continuation_count",
+                        "must be provided when mode is fixed_bucket_floor",
+                    )
+
+                if (
+                    self.same_session_observation_transition_count is None
+                    or self.same_session_observation_transition_count <= 0
+                ):
+                    raise _simulation_error(
+                        (
+                            "timestamp_batching_observation_model."
+                            "same_session_observation_transition_count"
+                        ),
+                        "must be strictly positive when mode is fixed_bucket_floor",
+                    )
+
+                if (
+                    self.same_timestamp_continuation_count
+                    > self.same_session_observation_transition_count
+                ):
+                    raise _simulation_error(
+                        "timestamp_batching_observation_model.same_timestamp_continuation_count",
+                        "must be no greater than same_session_observation_transition_count",
+                    )
+
                 if self.observation_policy != TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY:
                     raise _simulation_error(
                         "timestamp_batching_observation_model.observation_policy",
-                        f"must be `{TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY}` when mode is fixed_bucket_floor",
+                        (
+                            f"must be `{TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY}` "
+                            "when mode is fixed_bucket_floor"
+                        ),
                     )
 
     @staticmethod
@@ -103,10 +160,14 @@ class TimestampBatchingObservationModel(ContractModel):
             schema_version=TIMESTAMP_BATCHING_OBSERVATION_MODEL_SCHEMA_VERSION,
             mode=TimestampBatchingObservationMode.DISABLED,
             bucket_width_nanos=None,
+            same_timestamp_continuation_count=None,
+            same_session_observation_transition_count=None,
             bucket_width_source=TIMESTAMP_BATCHING_DISABLED_SOURCE,
             inference_policy=TIMESTAMP_BATCHING_FIXED_BUCKET_INFERENCE_POLICY,
             observation_policy=TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY,
-            coarse_interval_compatibility_policy=TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY,
+            coarse_interval_compatibility_policy=(
+                TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY
+            ),
         )
 
     @staticmethod
@@ -146,6 +207,34 @@ class TimestampBatchingObservationModel(ContractModel):
             else None
         )
 
+        raw_same_timestamp_continuation_count = raw_payload.get(
+            "same_timestamp_continuation_count"
+        )
+        same_timestamp_continuation_count = (
+            require_non_negative_integer(
+                raw_payload,
+                "same_timestamp_continuation_count",
+                f"{field_path}.same_timestamp_continuation_count",
+                SIMULATION_ERROR_FACTORY,
+            )
+            if raw_same_timestamp_continuation_count is not None
+            else None
+        )
+
+        raw_same_session_observation_transition_count = raw_payload.get(
+            "same_session_observation_transition_count"
+        )
+        same_session_observation_transition_count = (
+            require_positive_integer(
+                raw_payload,
+                "same_session_observation_transition_count",
+                f"{field_path}.same_session_observation_transition_count",
+                SIMULATION_ERROR_FACTORY,
+            )
+            if raw_same_session_observation_transition_count is not None
+            else None
+        )
+
         return TimestampBatchingObservationModel(
             schema_version=require_string(
                 raw_payload,
@@ -155,6 +244,8 @@ class TimestampBatchingObservationModel(ContractModel):
             ),
             mode=mode,
             bucket_width_nanos=bucket_width_nanos,
+            same_timestamp_continuation_count=same_timestamp_continuation_count,
+            same_session_observation_transition_count=same_session_observation_transition_count,
             bucket_width_source=require_string(
                 raw_payload,
                 "bucket_width_source",

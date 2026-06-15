@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "646a578c70ec059ca5632d8a93ff90232834b7329f5029895a424676e0c304b0",
+  "approved_snapshot_sha256": "7d616dca8137a63580cd5ae06865336364c10f5d0300209f642cb053ba6a8ce1",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1721,6 +1721,20 @@
         "janiform.calibration.market_data.timestamp_observation",
         "janiform.calibration.market_data.translation",
         "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-06-15",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The timestamp batching observation contract now carries the fitted same-timestamp continuation count and same-session transition count so seeded simulation can generate the observed zero-interarrival rate instead of only reporting the timestamp quantum.",
+      "snapshot_sha256": "7d616dca8137a63580cd5ae06865336364c10f5d0300209f642cb053ba6a8ce1",
+      "summary": "Expose fitted timestamp batching continuation counts.",
+      "updated_surfaces": [
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
       ]
     }
   ],

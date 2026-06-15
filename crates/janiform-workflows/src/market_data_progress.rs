@@ -205,6 +205,43 @@ fn timestamp_batching_observation_measures(
             label: Some("timestamp batching bucket width nanos".to_string()),
             value: bucket_width_nanos.to_string(),
         });
+
+        if let Some(same_timestamp_continuation_count) = diagnostic
+            .observation_model
+            .same_timestamp_continuation_count
+        {
+            measures.push(EventProgressMeasure::Text {
+                metric_id:
+                    "market_data.timestamp_batching_observation.same_timestamp_continuation_count"
+                        .to_string(),
+                label: Some("timestamp batching same timestamp continuation count".to_string()),
+                value: same_timestamp_continuation_count.to_string(),
+            });
+        }
+
+        if let Some(same_session_observation_transition_count) = diagnostic
+            .observation_model
+            .same_session_observation_transition_count
+        {
+            measures.push(EventProgressMeasure::Text {
+                metric_id: "market_data.timestamp_batching_observation.same_session_observation_transition_count"
+                        .to_string(),
+                label: Some("timestamp batching same-session transition count".to_string()),
+                value: same_session_observation_transition_count.to_string(),
+            });
+        }
+
+        if let Some(continuation_probability) = diagnostic
+            .observation_model
+            .same_timestamp_continuation_probability()
+        {
+            measures.push(EventProgressMeasure::Scalar {
+                metric_id: "market_data.timestamp_batching_observation.continuation_probability"
+                    .to_string(),
+                label: Some("timestamp batching continuation probability".to_string()),
+                value: continuation_probability,
+            });
+        }
     }
 
     measures
@@ -300,6 +337,58 @@ mod tests {
             janiform_event_log::ProgressMeasure::Text { metric_id, value, .. }
                 if metric_id == "market_data.timestamp_batching_observation.state"
                     && value == "disabled_no_detectable_batching"
+        )));
+    }
+
+    #[test]
+    fn timestamp_batching_observation_progress_event_reports_fitted_continuation_metrics() {
+        let observation_model =
+            TimestampBatchingObservationModel::fixed_bucket_floor(1_000, "test_source", 2, 10)
+                .expect("timestamp batching fixture should validate");
+
+        let diagnostic = CalibrationTimestampBatchingObservationDiagnostic {
+            schema_version: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION
+                .to_string(),
+            diagnostic_policy: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY
+                .to_string(),
+            state: CalibrationTimestampBatchingObservationDiagnosticState::InferredFixedBucket,
+            return_components_stage_selected: true,
+            observation_model,
+            message: "timestamp batching observation inferred".to_string(),
+        };
+
+        let event = market_data_timestamp_batching_observation_run_event(
+            "run-1",
+            janiform_event_log::WorkflowRef::labeled("fit", "Fit"),
+            &diagnostic,
+        );
+
+        let RunEventPayload::MetricUpdate(metric_update) = event.payload else {
+            panic!("timestamp batching diagnostic should be emitted as metric update");
+        };
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Text { metric_id, value, .. }
+                if metric_id
+                    == "market_data.timestamp_batching_observation.same_timestamp_continuation_count"
+                    && value == "2"
+        )));
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Text { metric_id, value, .. }
+                if metric_id
+                    == "market_data.timestamp_batching_observation.same_session_observation_transition_count"
+                    && value == "10"
+        )));
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Scalar { metric_id, value, .. }
+                if metric_id
+                    == "market_data.timestamp_batching_observation.continuation_probability"
+                    && *value == 2.0 / 10.0
         )));
     }
 }

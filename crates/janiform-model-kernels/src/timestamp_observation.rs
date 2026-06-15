@@ -25,8 +25,7 @@ pub const TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY: &str =
     "latent_event_time_equals_observed_timestamp.v1";
 
 /// Observation policy for fixed-width batching that floors trade events inside their latent interval.
-pub const TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY: &str =
-    "floor_latent_event_time_to_fixed_width_bucket_within_latent_interval.v1";
+pub const TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY: &str = "floor_latent_event_time_to_fixed_width_bucket_with_same_timestamp_continuation_within_latent_interval.v1";
 
 /// Coarse-interval compatibility policy for observation mappings that preserve latent ownership.
 pub const TIMESTAMP_BATCHING_DIRECT_COARSE_COMPATIBILITY_POLICY: &str =
@@ -66,6 +65,12 @@ pub struct TimestampBatchingObservationModel {
     /// Bucket width in UTC nanoseconds when `mode` is `fixed_bucket_floor`.
     pub bucket_width_nanos: Option<i64>,
 
+    /// Same-timestamp adjacent event count used to fit observed batch continuation.
+    pub same_timestamp_continuation_count: Option<u64>,
+
+    /// Same-session adjacent event count used to normalize observed batch continuation.
+    pub same_session_observation_transition_count: Option<u64>,
+
     /// Data or request source that supplied the model.
     pub bucket_width_source: String,
 
@@ -86,6 +91,8 @@ impl TimestampBatchingObservationModel {
             schema_version: TIMESTAMP_BATCHING_OBSERVATION_MODEL_SCHEMA_VERSION.to_string(),
             mode: TimestampBatchingObservationMode::Disabled,
             bucket_width_nanos: None,
+            same_timestamp_continuation_count: None,
+            same_session_observation_transition_count: None,
             bucket_width_source: TIMESTAMP_BATCHING_DISABLED_SOURCE.to_string(),
             inference_policy: TIMESTAMP_BATCHING_FIXED_BUCKET_INFERENCE_POLICY.to_string(),
             observation_policy: TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY.to_string(),
@@ -98,11 +105,17 @@ impl TimestampBatchingObservationModel {
     pub fn fixed_bucket_floor(
         bucket_width_nanos: i64,
         bucket_width_source: impl Into<String>,
+        same_timestamp_continuation_count: u64,
+        same_session_observation_transition_count: u64,
     ) -> Result<Self, TimestampBatchingObservationModelError> {
         let model = Self {
             schema_version: TIMESTAMP_BATCHING_OBSERVATION_MODEL_SCHEMA_VERSION.to_string(),
             mode: TimestampBatchingObservationMode::FixedBucketFloor,
             bucket_width_nanos: Some(bucket_width_nanos),
+            same_timestamp_continuation_count: Some(same_timestamp_continuation_count),
+            same_session_observation_transition_count: Some(
+                same_session_observation_transition_count,
+            ),
             bucket_width_source: bucket_width_source.into(),
             inference_policy: TIMESTAMP_BATCHING_FIXED_BUCKET_INFERENCE_POLICY.to_string(),
             observation_policy: TIMESTAMP_BATCHING_FIXED_BUCKET_OBSERVATION_POLICY.to_string(),
@@ -152,6 +165,18 @@ impl TimestampBatchingObservationModel {
                     return Err(TimestampBatchingObservationModelError::DisabledModeHasBucketWidth);
                 }
 
+                if self.same_timestamp_continuation_count.is_some() {
+                    return Err(
+                        TimestampBatchingObservationModelError::DisabledModeHasContinuationCounts,
+                    );
+                }
+
+                if self.same_session_observation_transition_count.is_some() {
+                    return Err(
+                        TimestampBatchingObservationModelError::DisabledModeHasContinuationCounts,
+                    );
+                }
+
                 if self.observation_policy != TIMESTAMP_BATCHING_DISABLED_OBSERVATION_POLICY {
                     return Err(
                         TimestampBatchingObservationModelError::ModeObservationPolicyMismatch {
@@ -186,10 +211,56 @@ impl TimestampBatchingObservationModel {
                         },
                     );
                 }
+
+                let Some(same_timestamp_continuation_count) =
+                    self.same_timestamp_continuation_count
+                else {
+                    return Err(
+                        TimestampBatchingObservationModelError::FixedBucketModeMissingContinuationCounts,
+                    );
+                };
+
+                let Some(same_session_observation_transition_count) =
+                    self.same_session_observation_transition_count
+                else {
+                    return Err(
+                        TimestampBatchingObservationModelError::FixedBucketModeMissingContinuationCounts,
+                    );
+                };
+
+                if same_session_observation_transition_count == 0 {
+                    return Err(
+                        TimestampBatchingObservationModelError::InvalidContinuationCounts {
+                            same_timestamp_continuation_count,
+                            same_session_observation_transition_count,
+                        },
+                    );
+                }
+
+                if same_timestamp_continuation_count > same_session_observation_transition_count {
+                    return Err(
+                        TimestampBatchingObservationModelError::InvalidContinuationCounts {
+                            same_timestamp_continuation_count,
+                            same_session_observation_transition_count,
+                        },
+                    );
+                }
             }
         }
 
         Ok(())
+    }
+
+    /// Probability that an endogenous event continues the previous observed timestamp batch.
+    pub fn same_timestamp_continuation_probability(&self) -> Option<f64> {
+        let continuation_count = self.same_timestamp_continuation_count?;
+        let transition_count = self.same_session_observation_transition_count?;
+
+        if transition_count == 0 {
+            return None;
+        }
+
+        Some(continuation_count as f64 / transition_count as f64)
     }
 
     /// Map one transition time into its observed timestamp under this contract.
@@ -264,9 +335,15 @@ pub enum TimestampBatchingObservationModelError {
         value: String,
     },
     DisabledModeHasBucketWidth,
+    DisabledModeHasContinuationCounts,
     FixedBucketModeMissingBucketWidth,
+    FixedBucketModeMissingContinuationCounts,
     InvalidBucketWidthNanos {
         value: i64,
+    },
+    InvalidContinuationCounts {
+        same_timestamp_continuation_count: u64,
+        same_session_observation_transition_count: u64,
     },
     ModeObservationPolicyMismatch {
         mode: TimestampBatchingObservationMode,
@@ -305,13 +382,28 @@ impl Display for TimestampBatchingObservationModelError {
                 formatter,
                 "disabled timestamp batching observation mode must not carry bucket_width_nanos"
             ),
+            Self::DisabledModeHasContinuationCounts => write!(
+                formatter,
+                "disabled timestamp batching observation mode must not carry same-timestamp continuation counts"
+            ),
             Self::FixedBucketModeMissingBucketWidth => write!(
                 formatter,
                 "fixed_bucket_floor timestamp batching observation mode requires bucket_width_nanos"
             ),
+            Self::FixedBucketModeMissingContinuationCounts => write!(
+                formatter,
+                "fixed_bucket_floor timestamp batching observation mode requires same-timestamp continuation counts"
+            ),
             Self::InvalidBucketWidthNanos { value } => write!(
                 formatter,
                 "timestamp batching bucket_width_nanos must be strictly positive, found {value}"
+            ),
+            Self::InvalidContinuationCounts {
+                same_timestamp_continuation_count,
+                same_session_observation_transition_count,
+            } => write!(
+                formatter,
+                "same-timestamp continuation counts must satisfy 0 <= continuation_count <= transition_count and transition_count > 0, found continuation_count={same_timestamp_continuation_count} transition_count={same_session_observation_transition_count}"
             ),
             Self::ModeObservationPolicyMismatch {
                 mode,
@@ -365,7 +457,7 @@ mod tests {
 
     #[test]
     fn fixed_bucket_floor_maps_distinct_latent_times_to_same_observed_timestamp() {
-        let model = TimestampBatchingObservationModel::fixed_bucket_floor(100, "test")
+        let model = TimestampBatchingObservationModel::fixed_bucket_floor(100, "test", 2, 10)
             .expect("fixed bucket model should validate");
 
         let first_observed = model

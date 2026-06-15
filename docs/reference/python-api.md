@@ -1797,7 +1797,7 @@
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`SimulationKind`](#python-api-symbol-janiform-simulation-simulationkind) | enum | 2 members |
 | [`TimestampBatchingObservationMode`](#python-api-symbol-janiform-simulation-timestampbatchingobservationmode) | enum | 2 members |
-| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-timestampbatchingobservationmodel) | contract_model | 7 fields |
+| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-timestampbatchingobservationmodel) | contract_model | 9 fields |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
@@ -2061,8 +2061,8 @@
 ### `TimestampBatchingObservationModel`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'`
-- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`
+- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'`
+- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`, `same_timestamp_continuation_count`, `same_session_observation_transition_count`
 
 | Method | Signature |
 |--------|-----------|
@@ -2131,7 +2131,7 @@
 | [`SharedNewsMarkLawConfiguration`](#python-api-symbol-janiform-simulation-coarse-sharednewsmarklawconfiguration) | contract_model | 1 fields |
 | [`SurpriseNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-surprisenewsarrivalconfiguration) | contract_model | 2 fields |
 | [`TimestampBatchingObservationMode`](#python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmode) | enum | 2 members |
-| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmodel) | contract_model | 7 fields |
+| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-coarse-timestampbatchingobservationmodel) | contract_model | 9 fields |
 | [`deserialize_coarse_simulation_path`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-path) | function | (payload_json: 'str') -> 'CoarseSimulationPath' |
 | [`deserialize_coarse_simulation_run_request`](#python-api-symbol-janiform-simulation-coarse-deserialize-coarse-simulation-run-request) | function | (payload_json: 'str') -> 'CoarseSimulationRunRequest' |
 | [`run_coarse_simulation`](#python-api-symbol-janiform-simulation-coarse-run-coarse-simulation) | function | (request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'CoarseSimulationPath' |
@@ -2365,8 +2365,8 @@
 ### `TimestampBatchingObservationModel`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'`
-- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`
+- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'`
+- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`, `same_timestamp_continuation_count`, `same_session_observation_transition_count`
 
 | Method | Signature |
 |--------|-----------|
@@ -2472,7 +2472,7 @@
 | [`SeededTickSimulationResponse`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationresponse) | contract_model | 6 fields |
 | [`SeededTickSimulationValidationError`](#python-api-symbol-janiform-simulation-seeded-seededticksimulationvalidationerror) | exception_class | janiform.simulation.shared.errors |
 | [`TimestampBatchingObservationMode`](#python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmode) | enum | 2 members |
-| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmodel) | contract_model | 7 fields |
+| [`TimestampBatchingObservationModel`](#python-api-symbol-janiform-simulation-seeded-timestampbatchingobservationmodel) | contract_model | 9 fields |
 | [`build_endogenous_seeded_mean_reversion_runtime_inputs`](#python-api-symbol-janiform-simulation-seeded-build-endogenous-seeded-mean-reversion-runtime-inputs) | function | (*, interval_factor_grid: 'IntervalFactorGridContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]' |
 | [`deserialize_seeded_tick_simulation_response`](#python-api-symbol-janiform-simulation-seeded-deserialize-seeded-tick-simulation-response) | function | (payload_json: 'str') -> 'SeededTickSimulationResponse' |
 | [`run_seeded_tick_event_simulation`](#python-api-symbol-janiform-simulation-seeded-run-seeded-tick-event-simulation) | function | (request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[Mapping[str, Any]], None]]' = None, progress_mode: 'WorkflowProgressMode \| str' = <WorkflowProgressMode.AUTO: 'auto'>) -> 'SeededTickSimulationResponse' |
@@ -2748,8 +2748,8 @@
 ### `TimestampBatchingObservationModel`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None) -> 'None'`
-- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`
+- Signature: `(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'`
+- Fields: `schema_version`, `mode`, `bucket_width_source`, `inference_policy`, `observation_policy`, `coarse_interval_compatibility_policy`, `bucket_width_nanos`, `same_timestamp_continuation_count`, `same_session_observation_transition_count`
 
 | Method | Signature |
 |--------|-----------|

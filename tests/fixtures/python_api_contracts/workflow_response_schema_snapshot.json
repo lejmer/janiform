@@ -1865,6 +1865,12 @@
                 "observation_policy": {
                   "type": "string"
                 },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
                 "schema_version": {
                   "type": "string",
                   "value": "model.timestamp_batching_observation.v1"
@@ -2068,6 +2074,12 @@
                 "observation_policy": {
                   "type": "string"
                 },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
                 "schema_version": {
                   "type": "string",
                   "value": "model.timestamp_batching_observation.v1"
@@ -2187,6 +2199,12 @@
                     "observation_policy": {
                       "type": "string"
                     },
+                    "same_session_observation_transition_count": {
+                      "type": "null"
+                    },
+                    "same_timestamp_continuation_count": {
+                      "type": "null"
+                    },
                     "schema_version": {
                       "type": "string",
                       "value": "model.timestamp_batching_observation.v1"
@@ -2292,6 +2310,12 @@
                 },
                 "observation_policy": {
                   "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
                 },
                 "schema_version": {
                   "type": "string",
@@ -2425,6 +2449,12 @@
                 },
                 "observation_policy": {
                   "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
                 },
                 "schema_version": {
                   "type": "string",

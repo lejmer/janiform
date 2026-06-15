@@ -125,8 +125,23 @@ fn timestamp_batching_observation_message(
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "unavailable".to_string());
 
+            let same_timestamp_continuation_count = observation_model
+                .same_timestamp_continuation_count
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unavailable".to_string());
+
+            let same_session_observation_transition_count = observation_model
+                .same_session_observation_transition_count
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unavailable".to_string());
+
+            let continuation_probability = observation_model
+                .same_timestamp_continuation_probability()
+                .map(|value| format!("{value:.6}"))
+                .unwrap_or_else(|| "unavailable".to_string());
+
             format!(
-                "timestamp batching observation inferred: fixed_bucket_floor bucket_width_nanos={bucket_width_nanos}"
+                "timestamp batching observation inferred: fixed_bucket_floor bucket_width_nanos={bucket_width_nanos} same_timestamp_continuation_count={same_timestamp_continuation_count} same_session_observation_transition_count={same_session_observation_transition_count} continuation_probability={continuation_probability}"
             )
         }
         CalibrationTimestampBatchingObservationDiagnosticState::DisabledNoDetectableBatching => {
@@ -157,7 +172,8 @@ mod tests {
     #[test]
     fn timestamp_batching_diagnostic_reports_inferred_fixed_bucket() {
         let observation_model =
-            TimestampBatchingObservationModel::fixed_bucket_floor(1_000, "test_source").unwrap();
+            TimestampBatchingObservationModel::fixed_bucket_floor(1_000, "test_source", 2, 10)
+                .unwrap();
 
         let diagnostic = timestamp_batching_observation_diagnostic(
             &[CalibrationStage::ReturnComponents],
@@ -171,7 +187,7 @@ mod tests {
         assert_eq!(diagnostic.observation_model, observation_model);
         assert_eq!(
             diagnostic.message,
-            "timestamp batching observation inferred: fixed_bucket_floor bucket_width_nanos=1000"
+            "timestamp batching observation inferred: fixed_bucket_floor bucket_width_nanos=1000 same_timestamp_continuation_count=2 same_session_observation_transition_count=10 continuation_probability=0.200000"
         );
     }
 

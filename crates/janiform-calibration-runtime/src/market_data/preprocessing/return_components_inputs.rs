@@ -360,15 +360,16 @@ pub(super) fn infer_tick_size_from_open_prices(open_price_ticks: &[OpenTickRecor
 fn timestamp_batching_observation_model(
     open_price_ticks: &[OpenTickRecord],
 ) -> Result<TimestampBatchingObservationModel, MarketDataTranslationPreprocessingError> {
-    let Some(bucket_width_nanos) =
-        infer_timestamp_batch_width_nanos_from_open_ticks(open_price_ticks)
+    let Some(inference) = infer_timestamp_batch_observation_from_open_ticks(open_price_ticks)
     else {
         return Ok(TimestampBatchingObservationModel::disabled());
     };
 
     TimestampBatchingObservationModel::fixed_bucket_floor(
-        bucket_width_nanos,
+        inference.bucket_width_nanos,
         TIMESTAMP_BATCHING_INFERRED_BUCKET_SOURCE,
+        inference.same_timestamp_continuation_count,
+        inference.same_session_observation_transition_count,
     )
     .map_err(|source| {
         MarketDataTranslationPreprocessingError::InvalidTimestampBatchingObservationModel {
@@ -377,11 +378,19 @@ fn timestamp_batching_observation_model(
     })
 }
 
-pub(super) fn infer_timestamp_batch_width_nanos_from_open_ticks(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TimestampBatchingObservationInference {
+    pub(super) bucket_width_nanos: i64,
+    pub(super) same_timestamp_continuation_count: u64,
+    pub(super) same_session_observation_transition_count: u64,
+}
+
+pub(super) fn infer_timestamp_batch_observation_from_open_ticks(
     open_price_ticks: &[OpenTickRecord],
-) -> Option<i64> {
-    let mut has_same_session_duplicate_timestamp = false;
-    let mut positive_timestamp_quantum_nanos = None;
+) -> Option<TimestampBatchingObservationInference> {
+    let mut same_timestamp_continuation_count = 0_u64;
+    let mut same_session_observation_transition_count = 0_u64;
+    let mut positive_timestamp_quantum_nanos: Option<i64> = None;
 
     for (previous_tick, current_tick) in
         open_price_ticks.iter().zip(open_price_ticks.iter().skip(1))
@@ -395,12 +404,16 @@ pub(super) fn infer_timestamp_batch_width_nanos_from_open_ticks(
         let timestamp_delta_nanos =
             current_tick.timestamp_utc_nanos - previous_tick.timestamp_utc_nanos;
 
-        if timestamp_delta_nanos == 0 {
-            has_same_session_duplicate_timestamp = true;
+        if timestamp_delta_nanos < 0 {
             continue;
         }
 
-        if timestamp_delta_nanos < 0 {
+        same_session_observation_transition_count =
+            same_session_observation_transition_count.saturating_add(1);
+
+        if timestamp_delta_nanos == 0 {
+            same_timestamp_continuation_count = same_timestamp_continuation_count.saturating_add(1);
+
             continue;
         }
 
@@ -412,11 +425,17 @@ pub(super) fn infer_timestamp_batch_width_nanos_from_open_ticks(
         });
     }
 
-    if !has_same_session_duplicate_timestamp {
+    if same_timestamp_continuation_count == 0 {
         return None;
     }
 
-    positive_timestamp_quantum_nanos.filter(|bucket_width_nanos| *bucket_width_nanos > 1)
+    let bucket_width_nanos = positive_timestamp_quantum_nanos?;
+
+    Some(TimestampBatchingObservationInference {
+        bucket_width_nanos,
+        same_timestamp_continuation_count,
+        same_session_observation_transition_count,
+    })
 }
 
 fn gcd_positive_i64(mut left_value: i64, mut right_value: i64) -> i64 {
