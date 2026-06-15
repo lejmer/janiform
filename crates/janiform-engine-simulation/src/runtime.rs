@@ -22,6 +22,7 @@ pub use entrypoints::{
     stream_seeded_tick_event_simulation_with_randomness_factory,
     stream_seeded_tick_event_simulation_with_randomness_factory_and_observer,
 };
+pub use observed_state::project_core_increment_sequence_to_tick_grid;
 pub use results::estimate_seeded_result_capacities;
 
 pub(crate) use market_state::SeededSimulationMarketStateResolver;

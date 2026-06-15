@@ -84,8 +84,8 @@ pub use janiform_model_kernels::mean_reversion::{
 pub use long_variance::LongVarianceTransitionSamplingError;
 pub use progress::{SimulationProgressEvent, SimulationProgressPhase};
 pub use runtime::{
-    estimate_seeded_result_capacities, run_seeded_tick_event_simulation,
-    run_seeded_tick_event_simulation_with_observer,
+    estimate_seeded_result_capacities, project_core_increment_sequence_to_tick_grid,
+    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_observer,
     run_seeded_tick_event_simulation_with_randomness_factory,
     run_seeded_tick_event_simulation_with_randomness_factory_and_observer,
     stream_seeded_tick_event_simulation, stream_seeded_tick_event_simulation_with_observer,
