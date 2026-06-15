@@ -410,6 +410,15 @@ fn prepare_market_data_loading_from_phases_with_context(
         preprocessing_settings: request.preprocessing_settings,
     };
 
+    if preprocessing_request.require_return_components {
+        progress.emit(MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation,
+            0,
+            None,
+        ))?;
+    }
+
     let preprocessing_output =
         preprocess_market_data_translation_request(preprocessing_request, &calendar_registry)
             .map_err(MarketDataLoadingError::Preprocessing)?;

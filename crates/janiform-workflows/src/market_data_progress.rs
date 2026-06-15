@@ -57,13 +57,6 @@ pub fn market_data_preparation_progress_signal(
     phase.latest_signal().to_string()
 }
 
-/// Return the latest signal for a timestamp batching observation diagnostic.
-pub fn market_data_timestamp_batching_observation_progress_signal(
-    diagnostic: &CalibrationTimestampBatchingObservationDiagnostic,
-) -> String {
-    diagnostic.message.to_string()
-}
-
 pub(crate) fn should_emit_market_data_loading_progress(
     progress_gate: &mut MarketDataLoadingProgressGate,
     event: &MarketDataLoadingProgressEvent,
@@ -295,6 +288,22 @@ mod tests {
         assert_eq!(
             market_data_loading_progress_signal(&event),
             "tick data: reading records 4 records"
+        );
+    }
+
+    #[test]
+    fn market_data_loading_progress_reports_active_timestamp_batching_inference() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation,
+            0,
+            None,
+        );
+
+        assert!(market_data_loading_progress_measure(&event).is_ok());
+        assert_eq!(
+            market_data_loading_progress_signal(&event),
+            "tick data: inferring observed timestamp batching model"
         );
     }
 
