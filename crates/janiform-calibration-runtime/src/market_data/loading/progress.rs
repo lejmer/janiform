@@ -6,6 +6,8 @@ use super::contracts::{MarketDataLoadingError, MarketDataLoadingRequest};
 /// Market-data source currently being loaded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MarketDataLoadingSource {
+    /// Cross-source market-data preparation.
+    MarketData,
     /// Tick data source.
     TickData,
     /// Coarse data source.
@@ -20,6 +22,7 @@ impl MarketDataLoadingSource {
     /// Stable source identifier used by progress events.
     pub const fn source_id(self) -> &'static str {
         match self {
+            Self::MarketData => "market_data",
             Self::TickData => "tick_data",
             Self::CoarseData => "coarse_data",
             Self::OptionSurface => "option_surface",
@@ -30,6 +33,7 @@ impl MarketDataLoadingSource {
     /// Human-readable source label used by progress displays.
     pub const fn source_label(self) -> &'static str {
         match self {
+            Self::MarketData => "market data",
             Self::TickData => "tick data",
             Self::CoarseData => "coarse data",
             Self::OptionSurface => "option surface",
@@ -45,10 +49,12 @@ pub enum MarketDataLoadingProgressPhase {
     ReadingRecords,
     /// Source rows are being normalized into the typed runtime contract.
     NormalizingRecords,
+    /// Normalized source rows are being sorted, filtered, resolved, and summarized.
+    FinalizingRecords,
+    /// Cross-source calibration preprocessing inputs are being assembled.
+    BuildingCalibrationInputs,
     /// Observed timestamp batching behavior is being inferred from loaded tick records.
     InferringTimestampBatchingObservation,
-    /// Source loading finished.
-    Completed,
 }
 
 impl MarketDataLoadingProgressPhase {
@@ -57,10 +63,11 @@ impl MarketDataLoadingProgressPhase {
         match self {
             Self::ReadingRecords => "reading_records",
             Self::NormalizingRecords => "normalizing_records",
+            Self::FinalizingRecords => "finalizing_records",
+            Self::BuildingCalibrationInputs => "building_calibration_inputs",
             Self::InferringTimestampBatchingObservation => {
                 "inferring_timestamp_batching_observation"
             }
-            Self::Completed => "completed",
         }
     }
 
@@ -69,10 +76,11 @@ impl MarketDataLoadingProgressPhase {
         match self {
             Self::ReadingRecords => "reading records",
             Self::NormalizingRecords => "normalizing records",
+            Self::FinalizingRecords => "finalizing normalized records",
+            Self::BuildingCalibrationInputs => "building calibration input candidates",
             Self::InferringTimestampBatchingObservation => {
                 "inferring observed timestamp batching model"
             }
-            Self::Completed => "loaded",
         }
     }
 }
@@ -143,7 +151,7 @@ impl MarketDataLoadingProgressEvent {
     }
 
     fn source_record_signal(self) -> String {
-        if self.phase == MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation {
+        if !self.phase.uses_record_count() {
             return format!(
                 "{}: {}",
                 self.source.source_label(),
@@ -181,6 +189,13 @@ impl MarketDataLoadingProgressEvent {
             ),
             None => source_signal,
         }
+    }
+}
+
+impl MarketDataLoadingProgressPhase {
+    /// Whether terminal adapters should display source-record counts for this phase.
+    pub const fn uses_record_count(self) -> bool {
+        matches!(self, Self::ReadingRecords | Self::NormalizingRecords)
     }
 }
 
@@ -420,6 +435,25 @@ mod tests {
         assert_eq!(
             event.phase_signal(),
             "tick data: inferring observed timestamp batching model"
+        );
+    }
+
+    #[test]
+    fn non_record_loading_progress_uses_active_signal_without_record_count() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::MarketData,
+            MarketDataLoadingProgressPhase::BuildingCalibrationInputs,
+            0,
+            Some(12),
+        );
+
+        assert_eq!(
+            event.latest_signal(),
+            "market data: building calibration input candidates"
+        );
+        assert_eq!(
+            event.phase_signal(),
+            "market data: building calibration input candidates"
         );
     }
 }

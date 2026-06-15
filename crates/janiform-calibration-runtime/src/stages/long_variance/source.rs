@@ -1,37 +1,46 @@
-use janiform_foundations::time::NANOS_PER_HOUR;
-
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
-use crate::stages::coarse_data::coarse_data_interval_observations;
+use crate::stages::coarse_data::coarse_data_hourly_return_interval_observations;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
-use crate::stages::long_variance::metrics::aggregate_intervals_to_fixed_duration;
 
-pub(crate) const LONG_VARIANCE_SLOW_HORIZON_SOURCE_SELECTION_POLICY: &str = concat!(
-    "coarse_records_at_or_below_one_hour_aggregate_to_",
-    "one_hour_log_return_variance_units_with_tick_gap_fill.v1",
+pub(crate) const LONG_VARIANCE_INTERVAL_SOURCE_SELECTION_POLICY: &str = concat!(
+    "tick_hourly_return_and_activity_with_coarse_hourly_return_gap_fill_",
+    "from_records_at_or_below_one_hour.v1",
 );
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LongVarianceSlowHorizonIntervalSelection {
-    pub(crate) intervals: Vec<JointRefinementAggregatedIntervalObservation>,
-    pub(crate) tick_interval_count: usize,
-    pub(crate) coarse_interval_count: usize,
-    pub(crate) omitted_overlapping_tick_interval_count: usize,
+pub(crate) struct LongVarianceObservedIntervalSelection {
+    pub(crate) return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    pub(crate) return_interval_tick_count: usize,
+    pub(crate) return_interval_coarse_candidate_count: usize,
+    pub(crate) return_interval_coarse_gap_fill_count: usize,
+    pub(crate) return_interval_tick_coarse_overlap_count: usize,
 }
 
-pub(crate) fn select_long_variance_slow_horizon_intervals(
+pub(crate) fn select_long_variance_observed_intervals(
     tick_hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
     coarse_data_records: Option<&[MarketDataNormalizedCoarseDataRecord]>,
-) -> LongVarianceSlowHorizonIntervalSelection {
+) -> LongVarianceObservedIntervalSelection {
+    let mut tick_intervals = tick_hourly_intervals.to_vec();
+
+    sort_intervals_by_time(tick_intervals.as_mut_slice());
+
     let mut coarse_intervals = coarse_data_records
-        .map(coarse_data_hourly_interval_observations)
+        .map(coarse_data_hourly_return_interval_observations)
         .unwrap_or_default();
 
     if coarse_intervals.is_empty() {
-        return LongVarianceSlowHorizonIntervalSelection {
-            intervals: tick_hourly_intervals.to_vec(),
-            tick_interval_count: tick_hourly_intervals.len(),
-            coarse_interval_count: 0,
-            omitted_overlapping_tick_interval_count: 0,
+        // Return and activity consumers own separate streams because later aggregation uses
+        // different horizon policies for each stream.
+        let activity_intervals = tick_intervals.clone();
+
+        return LongVarianceObservedIntervalSelection {
+            return_intervals: tick_intervals,
+            activity_intervals,
+            return_interval_tick_count: tick_hourly_intervals.len(),
+            return_interval_coarse_candidate_count: 0,
+            return_interval_coarse_gap_fill_count: 0,
+            return_interval_tick_coarse_overlap_count: 0,
         };
     }
 
@@ -42,43 +51,51 @@ pub(crate) fn select_long_variance_slow_horizon_intervals(
             .len()
             .saturating_add(tick_hourly_intervals.len()),
     );
-    selected_intervals.extend(coarse_intervals.iter().copied());
-    let mut omitted_overlapping_tick_interval_count = 0usize;
-    let mut coarse_search_position = 0usize;
 
-    for tick_interval in tick_hourly_intervals {
-        while coarse_intervals
-            .get(coarse_search_position)
-            .is_some_and(|coarse_interval| {
-                coarse_interval.interval_end_utc_nanos <= tick_interval.interval_start_utc_nanos
+    selected_intervals.extend(tick_intervals.iter().copied());
+
+    let mut return_interval_tick_coarse_overlap_count = 0usize;
+    let mut tick_search_position = 0usize;
+
+    for coarse_interval in coarse_intervals.iter().copied() {
+        while tick_intervals
+            .get(tick_search_position)
+            .is_some_and(|tick_interval| {
+                tick_interval.interval_end_utc_nanos <= coarse_interval.interval_start_utc_nanos
             })
         {
-            coarse_search_position = coarse_search_position.saturating_add(1);
+            tick_search_position = tick_search_position.saturating_add(1);
         }
 
-        let tick_overlaps_coarse = coarse_intervals
+        let coarse_overlaps_tick = tick_intervals
             .iter()
-            .skip(coarse_search_position)
-            .take_while(|coarse_interval| {
-                coarse_interval.interval_start_utc_nanos < tick_interval.interval_end_utc_nanos
+            .skip(tick_search_position)
+            .take_while(|tick_interval| {
+                tick_interval.interval_start_utc_nanos < coarse_interval.interval_end_utc_nanos
             })
-            .any(|coarse_interval| intervals_overlap(*tick_interval, *coarse_interval));
+            .any(|tick_interval| intervals_overlap(coarse_interval, *tick_interval));
 
-        if tick_overlaps_coarse {
-            omitted_overlapping_tick_interval_count =
-                omitted_overlapping_tick_interval_count.saturating_add(1);
+        if coarse_overlaps_tick {
+            return_interval_tick_coarse_overlap_count =
+                return_interval_tick_coarse_overlap_count.saturating_add(1);
         } else {
-            selected_intervals.push(*tick_interval);
+            selected_intervals.push(coarse_interval);
         }
     }
 
     sort_intervals_by_time(selected_intervals.as_mut_slice());
 
-    LongVarianceSlowHorizonIntervalSelection {
-        intervals: selected_intervals,
-        tick_interval_count: tick_hourly_intervals.len(),
-        coarse_interval_count: coarse_intervals.len(),
-        omitted_overlapping_tick_interval_count,
+    let return_interval_coarse_gap_fill_count = selected_intervals
+        .len()
+        .saturating_sub(tick_hourly_intervals.len());
+
+    LongVarianceObservedIntervalSelection {
+        return_intervals: selected_intervals,
+        activity_intervals: tick_intervals,
+        return_interval_tick_count: tick_hourly_intervals.len(),
+        return_interval_coarse_candidate_count: coarse_intervals.len(),
+        return_interval_coarse_gap_fill_count,
+        return_interval_tick_coarse_overlap_count,
     }
 }
 
@@ -88,27 +105,6 @@ fn intervals_overlap(
 ) -> bool {
     left.interval_start_utc_nanos < right.interval_end_utc_nanos
         && right.interval_start_utc_nanos < left.interval_end_utc_nanos
-}
-
-fn coarse_data_hourly_interval_observations(
-    records: &[MarketDataNormalizedCoarseDataRecord],
-) -> Vec<JointRefinementAggregatedIntervalObservation> {
-    let mut intervals = coarse_data_interval_observations(records)
-        .into_iter()
-        .filter(|interval| {
-            let Some(interval_duration_nanos) = interval
-                .interval_end_utc_nanos
-                .checked_sub(interval.interval_start_utc_nanos)
-            else {
-                return false;
-            };
-
-            interval_duration_nanos > 0 && interval_duration_nanos <= NANOS_PER_HOUR
-        })
-        .collect::<Vec<_>>();
-
-    sort_intervals_by_time(intervals.as_mut_slice());
-    aggregate_intervals_to_fixed_duration(intervals.as_slice(), NANOS_PER_HOUR)
 }
 
 fn sort_intervals_by_time(intervals: &mut [JointRefinementAggregatedIntervalObservation]) {
@@ -124,7 +120,7 @@ fn sort_intervals_by_time(intervals: &mut [JointRefinementAggregatedIntervalObse
 
 #[cfg(test)]
 mod tests {
-    use super::select_long_variance_slow_horizon_intervals;
+    use super::select_long_variance_observed_intervals;
     use janiform_foundations::time::NANOS_PER_HOUR;
 
     use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
@@ -167,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn slow_horizon_source_selection_uses_coarse_overlap_and_tick_gaps() {
+    fn observed_interval_selection_uses_tick_returns_before_coarse_gap_fill() {
         let tick_intervals = vec![
             tick_interval(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR),
             tick_interval(2 * NANOS_PER_HOUR, 3 * NANOS_PER_HOUR),
@@ -179,13 +175,13 @@ mod tests {
             coarse_record(3 * NANOS_PER_HOUR, 4 * NANOS_PER_HOUR),
         ];
 
-        let selection = select_long_variance_slow_horizon_intervals(
+        let selection = select_long_variance_observed_intervals(
             tick_intervals.as_slice(),
             Some(coarse_records.as_slice()),
         );
 
         let intervals = selection
-            .intervals
+            .return_intervals
             .iter()
             .map(|interval| {
                 (
@@ -200,16 +196,46 @@ mod tests {
             intervals,
             vec![
                 (0, NANOS_PER_HOUR, 0),
-                (NANOS_PER_HOUR, 2 * NANOS_PER_HOUR, 0),
+                (NANOS_PER_HOUR, 2 * NANOS_PER_HOUR, 10),
                 (2 * NANOS_PER_HOUR, 3 * NANOS_PER_HOUR, 10),
                 (3 * NANOS_PER_HOUR, 4 * NANOS_PER_HOUR, 0),
             ]
         );
-        assert_eq!(selection.omitted_overlapping_tick_interval_count, 1);
+        assert_eq!(selection.activity_intervals, tick_intervals);
+        assert_eq!(selection.return_interval_tick_count, 2);
+        assert_eq!(selection.return_interval_coarse_candidate_count, 3);
+        assert_eq!(selection.return_interval_coarse_gap_fill_count, 2);
+        assert_eq!(selection.return_interval_tick_coarse_overlap_count, 1);
     }
 
     #[test]
-    fn slow_horizon_source_selection_aggregates_subhour_coarse_returns_to_hourly_units() {
+    fn observed_interval_selection_keeps_tick_return_intervals_when_tick_fully_covers_coarse_window()
+     {
+        let tick_intervals = vec![
+            tick_interval(0, NANOS_PER_HOUR),
+            tick_interval(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR),
+        ];
+
+        let coarse_records = vec![
+            coarse_record(0, NANOS_PER_HOUR),
+            coarse_record(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR),
+        ];
+
+        let selection = select_long_variance_observed_intervals(
+            tick_intervals.as_slice(),
+            Some(coarse_records.as_slice()),
+        );
+
+        assert_eq!(selection.return_intervals, tick_intervals);
+        assert_eq!(selection.activity_intervals, selection.return_intervals);
+        assert_eq!(selection.return_interval_tick_count, 2);
+        assert_eq!(selection.return_interval_coarse_candidate_count, 2);
+        assert_eq!(selection.return_interval_coarse_gap_fill_count, 0);
+        assert_eq!(selection.return_interval_tick_coarse_overlap_count, 2);
+    }
+
+    #[test]
+    fn observed_interval_selection_aggregates_subhour_coarse_returns_to_hourly_units() {
         let minute_nanos = NANOS_PER_HOUR / 60;
 
         let coarse_records = (0_i64..60)
@@ -222,11 +248,13 @@ mod tests {
             .collect::<Vec<_>>();
 
         let selection =
-            select_long_variance_slow_horizon_intervals(&[], Some(coarse_records.as_slice()));
+            select_long_variance_observed_intervals(&[], Some(coarse_records.as_slice()));
 
-        assert_eq!(selection.coarse_interval_count, 1);
+        assert_eq!(selection.return_interval_coarse_candidate_count, 1);
+        assert_eq!(selection.return_interval_coarse_gap_fill_count, 1);
+        assert!(selection.activity_intervals.is_empty());
         assert_eq!(
-            selection.intervals,
+            selection.return_intervals,
             vec![JointRefinementAggregatedIntervalObservation {
                 interval_start_utc_nanos: 0,
                 interval_end_utc_nanos: NANOS_PER_HOUR,
@@ -238,13 +266,31 @@ mod tests {
     }
 
     #[test]
-    fn slow_horizon_source_selection_excludes_coarse_records_above_hourly_units() {
+    fn observed_interval_selection_excludes_coarse_records_above_hourly_units() {
         let coarse_records = vec![coarse_record(0, 2 * NANOS_PER_HOUR)];
 
         let selection =
-            select_long_variance_slow_horizon_intervals(&[], Some(coarse_records.as_slice()));
+            select_long_variance_observed_intervals(&[], Some(coarse_records.as_slice()));
 
-        assert_eq!(selection.coarse_interval_count, 0);
-        assert!(selection.intervals.is_empty());
+        assert_eq!(selection.return_interval_coarse_candidate_count, 0);
+        assert!(selection.return_intervals.is_empty());
+        assert!(selection.activity_intervals.is_empty());
+    }
+
+    #[test]
+    fn observed_interval_selection_uses_tick_only_without_coarse_records() {
+        let tick_intervals = vec![
+            tick_interval(0, NANOS_PER_HOUR),
+            tick_interval(NANOS_PER_HOUR, 2 * NANOS_PER_HOUR),
+        ];
+
+        let selection = select_long_variance_observed_intervals(tick_intervals.as_slice(), None);
+
+        assert_eq!(selection.return_intervals, tick_intervals);
+        assert_eq!(selection.activity_intervals, selection.return_intervals);
+        assert_eq!(selection.return_interval_tick_count, 2);
+        assert_eq!(selection.return_interval_coarse_candidate_count, 0);
+        assert_eq!(selection.return_interval_coarse_gap_fill_count, 0);
+        assert_eq!(selection.return_interval_tick_coarse_overlap_count, 0);
     }
 }

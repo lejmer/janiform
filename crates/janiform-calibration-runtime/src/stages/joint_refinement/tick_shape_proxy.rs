@@ -54,10 +54,8 @@ fn observed_tick_shape_proxy_returns(
     latent_returns: &[f64],
     observed_price_tick_size: Option<f64>,
 ) -> Vec<f64> {
-    match project_core_increment_sequence_to_tick_grid(latent_returns, observed_price_tick_size) {
-        Ok(observed_returns) => observed_returns,
-        Err(_) => Vec::new(),
-    }
+    project_core_increment_sequence_to_tick_grid(latent_returns, observed_price_tick_size)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

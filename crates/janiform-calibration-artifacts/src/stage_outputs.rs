@@ -87,14 +87,33 @@ pub struct LongVarianceStageHorizonDiagnostic {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LongVarianceStagePersistenceLagDiagnostic {
+    /// Lag duration used for the persistence correlation.
+    pub lag_hours: f64,
+    /// Number of aligned deseasonalized squared-return pairs at this lag.
+    pub pair_count: usize,
+    /// Pearson correlation between lagged and current deseasonalized squared returns.
+    pub correlation: Option<f64>,
+    /// Mean-reversion rate implied by the correlation under exponential decay.
+    pub implied_mean_reversion_rate: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LongVarianceStageDiagnostics {
     pub estimation_policy: String,
     pub stationary_normalization_policy: String,
-    pub slow_horizon_source_selection_policy: String,
-    pub slow_horizon_tick_interval_count: usize,
-    pub slow_horizon_coarse_interval_count: usize,
-    pub slow_horizon_selected_interval_count: usize,
-    pub slow_horizon_omitted_overlapping_tick_interval_count: usize,
+    pub interval_source_selection_policy: String,
+    pub return_interval_tick_count: usize,
+    pub return_interval_coarse_candidate_count: usize,
+    pub return_interval_coarse_gap_fill_count: usize,
+    pub return_interval_tick_coarse_overlap_count: usize,
+    pub return_interval_count: usize,
+    pub activity_interval_count: usize,
+    pub persistence_lag_diagnostics: Vec<LongVarianceStagePersistenceLagDiagnostic>,
+    pub selected_mean_reversion_rate: f64,
+    pub event_loading_fit_candidate_pair_count: usize,
+    pub event_loading_fit_pair_count: usize,
+    pub event_loading_fit_coverage_ratio: f64,
     pub selected_candidate_id: String,
     pub horizon_diagnostics: Vec<LongVarianceStageHorizonDiagnostic>,
 }

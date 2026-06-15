@@ -1778,6 +1778,7 @@ fn prepared_market_data_plan_from_loading_output(
     // The same diagnostic is both emitted to observers and retained in the
     // preparation payload so progress and artifacts agree.
     progress.emit_timestamp_batching_observation(timestamp_batching_observation.clone())?;
+    progress.emit_phase(MarketDataPreparationProgressPhase::PreparingCalibrationInputs)?;
 
     let objective_policy = calibration_objective_policy_from_request(&request)?;
 
@@ -2033,8 +2034,6 @@ fn prepared_market_data_plan_from_loading_output(
         derivation_policies,
         deterministic_defaults_applied: deterministic_defaults_applied(&request),
     };
-
-    progress.emit_phase(MarketDataPreparationProgressPhase::Completed)?;
 
     Ok(PreparedMarketDataCalibrationPlan {
         execution_input,

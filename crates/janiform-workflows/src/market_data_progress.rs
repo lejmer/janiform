@@ -37,6 +37,10 @@ impl MarketDataLoadingProgressGate {
 pub fn market_data_loading_progress_measure(
     event: &MarketDataLoadingProgressEvent,
 ) -> Result<ProgressMeasure, ProgressContractError> {
+    if !event.phase.uses_record_count() {
+        return Ok(ProgressMeasure::Unbounded);
+    }
+
     match event.total_records {
         Some(total_records) if total_records > 0 => {
             ProgressMeasure::bounded(event.completed_records.min(total_records), total_records)
@@ -83,7 +87,7 @@ pub(crate) fn market_data_loading_run_event(
                 format!("{}.{}", event.source.source_id(), event.phase.phase_id()),
                 event.phase_signal(),
             )),
-            measures: vec![market_data_loading_event_measure(event)],
+            measures: market_data_loading_event_measures(event),
         }),
     )
 }
@@ -152,6 +156,16 @@ fn market_data_loading_event_measure(
             evaluation_budget: None,
         },
     }
+}
+
+fn market_data_loading_event_measures(
+    event: &MarketDataLoadingProgressEvent,
+) -> Vec<EventProgressMeasure> {
+    if !event.phase.uses_record_count() {
+        return Vec::new();
+    }
+
+    vec![market_data_loading_event_measure(event)]
 }
 
 fn timestamp_batching_observation_measures(
@@ -252,10 +266,11 @@ mod tests {
     };
     use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
     use janiform_event_log::RunEventPayload;
+    use janiform_terminal_ui::ProgressMeasure;
 
     use super::{
         market_data_loading_progress_measure, market_data_loading_progress_signal,
-        market_data_preparation_progress_signal,
+        market_data_loading_run_event, market_data_preparation_progress_signal,
         market_data_timestamp_batching_observation_run_event,
     };
 
@@ -305,6 +320,47 @@ mod tests {
             market_data_loading_progress_signal(&event),
             "tick data: inferring observed timestamp batching model"
         );
+    }
+
+    #[test]
+    fn market_data_loading_progress_uses_unbounded_measure_for_non_record_work() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::MarketData,
+            MarketDataLoadingProgressPhase::BuildingCalibrationInputs,
+            0,
+            Some(10),
+        );
+
+        assert_eq!(
+            market_data_loading_progress_measure(&event),
+            Ok(ProgressMeasure::Unbounded)
+        );
+        assert_eq!(
+            market_data_loading_progress_signal(&event),
+            "market data: building calibration input candidates"
+        );
+    }
+
+    #[test]
+    fn market_data_loading_run_event_omits_count_measure_for_non_record_work() {
+        let loading_event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::MarketData,
+            MarketDataLoadingProgressPhase::BuildingCalibrationInputs,
+            0,
+            Some(10),
+        );
+
+        let run_event = market_data_loading_run_event(
+            "run-1",
+            janiform_event_log::WorkflowRef::labeled("fit", "Fit"),
+            &loading_event,
+        );
+
+        let RunEventPayload::Progress(progress) = run_event.payload else {
+            panic!("market-data loading progress should be emitted as progress");
+        };
+
+        assert_eq!(progress.measures, Vec::new());
     }
 
     #[test]

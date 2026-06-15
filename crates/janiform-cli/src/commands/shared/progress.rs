@@ -164,15 +164,6 @@ impl TerminalCommandProgress {
             return Ok(());
         };
 
-        adapter.observe(ProgressEvent::RunProgress {
-            phase: "completed".to_string(),
-            measure: ProgressMeasure::bounded(self.completed_stage_count, self.total_units)
-                .map_err(|source| CliError::OutputProgress {
-                    source: Box::new(source),
-                })?,
-            latest_signal: Some("completed".to_string()),
-        });
-
         adapter.observe(ProgressEvent::RunCompleted {
             status: "completed".to_string(),
         });
@@ -289,6 +280,43 @@ mod tests {
         assert_eq!(
             stage_statuses(&progress),
             vec!["Completed".to_string(), "Completed".to_string()]
+        );
+    }
+
+    #[test]
+    fn complete_does_not_emit_completion_as_latest_signal() {
+        let mut progress = TerminalCommandProgress {
+            adapter: Some(ProgressAdapter::hidden()),
+            total_units: 1,
+            active_stage: None,
+            completed_stage_count: 0,
+        };
+
+        progress
+            .adapter
+            .as_mut()
+            .expect("test adapter should be available")
+            .observe(ProgressEvent::RunStarted {
+                run_id: "test_run".to_string(),
+                scope: "test".to_string(),
+                input_count: 1,
+                output_path: None,
+                stage_sequence: vec!["load".to_string()],
+                completed_stage_count: 0,
+            });
+
+        progress.observe("load", 1).expect("stage should render");
+        progress.complete().expect("run should complete");
+
+        assert_ne!(
+            progress
+                .adapter
+                .as_ref()
+                .expect("test adapter should be available")
+                .snapshot()
+                .latest_signal
+                .as_deref(),
+            Some("completed")
         );
     }
 

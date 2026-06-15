@@ -38,7 +38,8 @@ use crate::stages::joint_metrics::{
     tick_count_series,
 };
 use crate::stages::long_variance::metrics::{
-    aggregate_intervals_to_fixed_duration, long_variance_horizon_summaries,
+    LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
+    long_variance_horizon_summaries,
 };
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
@@ -657,8 +658,12 @@ fn build_coarse_search_seed_summary(
             simulated_15m_intervals.as_slice(),
         ),
         simulated_long_variance_horizon_summaries: long_variance_horizon_summaries(
-            simulated_5m_intervals.as_slice(),
-            simulated_hourly_intervals.as_slice(),
+            LongVarianceHorizonInputIntervals {
+                five_minute_return_intervals: simulated_5m_intervals.as_slice(),
+                five_minute_activity_intervals: simulated_5m_intervals.as_slice(),
+                hourly_return_intervals: simulated_hourly_intervals.as_slice(),
+                hourly_activity_intervals: simulated_hourly_intervals.as_slice(),
+            },
         ),
     })
 }

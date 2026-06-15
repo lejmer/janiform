@@ -95,6 +95,13 @@ pub(super) fn load_option_surface_records(
 
     let mut normalized_rows = loaded_rows.normalized_rows;
 
+    progress.emit(MarketDataLoadingProgressEvent::new(
+        MarketDataLoadingSource::OptionSurface,
+        MarketDataLoadingProgressPhase::FinalizingRecords,
+        0,
+        None,
+    ))?;
+
     let mut seen_keys = HashSet::new();
 
     for normalized in &normalized_rows {
@@ -149,13 +156,6 @@ pub(super) fn load_option_surface_records(
                 .map(option_quote_policy_string),
         },
     };
-
-    progress.emit(MarketDataLoadingProgressEvent::new(
-        MarketDataLoadingSource::OptionSurface,
-        MarketDataLoadingProgressPhase::Completed,
-        loaded_rows.source_row_count,
-        Some(loaded_rows.source_row_count),
-    ))?;
 
     Ok(output)
 }
