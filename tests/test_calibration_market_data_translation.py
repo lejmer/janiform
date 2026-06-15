@@ -1234,8 +1234,9 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         prepared.diagnostics.timestamp_batching_observation.observation_model.mode
         == TimestampBatchingObservationMode.DISABLED
     )
-    assert "evaluated during market-data preprocessing" in (
-        prepared.diagnostics.timestamp_batching_observation.message
+    assert prepared.diagnostics.timestamp_batching_observation.message == (
+        "timestamp batching observation evaluated: disabled because no same-session duplicate "
+        "timestamp quantum was detected"
     )
     assert prepared.provenance.tick_data_summary.file_format == CalibrationInputFileFormat.CSV
     assert prepared.provenance.known_news_summary is not None

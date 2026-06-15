@@ -104,7 +104,7 @@ def build_disabled_timestamp_batching_observation_diagnostic_payload(
     if return_components_stage_selected:
         state = diagnostic_state.DISABLED_NO_DETECTABLE_BATCHING
         message = (
-            "timestamp batching observation evaluated during market-data preprocessing: "
+            "timestamp batching observation evaluated: "
             "disabled because no same-session duplicate timestamp quantum was detected"
         )
     else:

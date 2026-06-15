@@ -205,4 +205,24 @@ mod tests {
             TimestampBatchingObservationModel::disabled()
         );
     }
+
+    #[test]
+    fn timestamp_batching_diagnostic_reports_disabled_no_detectable_batching() {
+        let observation_model = TimestampBatchingObservationModel::disabled();
+
+        let diagnostic = timestamp_batching_observation_diagnostic(
+            &[CalibrationStage::ReturnComponents],
+            Some(&observation_model),
+        );
+
+        assert_eq!(
+            diagnostic.state,
+            CalibrationTimestampBatchingObservationDiagnosticState::DisabledNoDetectableBatching
+        );
+        assert_eq!(diagnostic.observation_model, observation_model);
+        assert_eq!(
+            diagnostic.message,
+            "timestamp batching observation evaluated: disabled because no same-session duplicate timestamp quantum was detected"
+        );
+    }
 }
