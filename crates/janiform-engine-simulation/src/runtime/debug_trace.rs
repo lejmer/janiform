@@ -21,9 +21,10 @@ use super::updates::SeededTickSimulationTraceNewsTransitionPayload;
 pub(crate) struct SeededTickEventDebugTraceCaptureInput {
     pub(crate) transition_index: u64,
     pub(crate) interval_index: usize,
-    pub(crate) previous_timestamp_utc_nanos: i64,
-    pub(crate) timestamp_utc_nanos: i64,
-    pub(crate) elapsed_hours_since_previous_update: f64,
+    pub(crate) previous_latent_transition_time_utc_nanos: i64,
+    pub(crate) latent_transition_time_utc_nanos: i64,
+    pub(crate) observed_timestamp_utc_nanos: i64,
+    pub(crate) elapsed_hours_since_previous_latent_update: f64,
     pub(crate) transition_kind: SeededTickEventDebugTraceTransitionKind,
     pub(crate) generation_order: Option<u64>,
     pub(crate) event_index: Option<u64>,
@@ -68,9 +69,12 @@ impl SeededTickEventDebugTraceCollector {
             .push(SeededTickEventDebugTraceRecord {
                 transition_index: input.transition_index,
                 interval_index: input.interval_index,
-                previous_timestamp_utc_nanos: input.previous_timestamp_utc_nanos,
-                timestamp_utc_nanos: input.timestamp_utc_nanos,
-                elapsed_hours_since_previous_update: input.elapsed_hours_since_previous_update,
+                previous_latent_transition_time_utc_nanos: input
+                    .previous_latent_transition_time_utc_nanos,
+                latent_transition_time_utc_nanos: input.latent_transition_time_utc_nanos,
+                observed_timestamp_utc_nanos: input.observed_timestamp_utc_nanos,
+                elapsed_hours_since_previous_latent_update: input
+                    .elapsed_hours_since_previous_latent_update,
                 transition_kind: input.transition_kind,
                 generation_order: input.generation_order,
                 event_index: input.event_index,

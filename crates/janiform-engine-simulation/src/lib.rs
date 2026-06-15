@@ -21,10 +21,12 @@ pub use artifacts::{
     SeededTickEventDebugTraceMetadata, SeededTickEventDebugTraceOutput,
     SeededTickEventDebugTraceRecord, SeededTickEventDebugTraceTransitionKind,
     SeededTickEventRecord, SeededTickEventSide, SeededTickEventStateSnapshot,
-    SeededTickEventTapeMetadata, SeededTickEventTapeOutput, SeededTickSimulationNativeDiagnostics,
+    SeededTickEventTapeMetadata, SeededTickEventTapeOutput,
+    SeededTickSimulationInterarrivalDiagnostics, SeededTickSimulationNativeDiagnostics,
     SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsRoutingTotals,
     SeededTickSimulationRunResult, SeededTickSimulationStreamCompletion,
-    SeededTickSimulationTransitionConsumer, SeededTickSimulationTransitionEmission,
+    SeededTickSimulationTimingDiagnostics, SeededTickSimulationTransitionConsumer,
+    SeededTickSimulationTransitionEmission,
 };
 pub use coarse::{
     COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY, COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
@@ -58,8 +60,11 @@ pub use constants::{
     SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY, SEEDED_TICK_EVENT_DEBUG_TRACE_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY,
     SEEDED_TICK_EVENT_INTERVAL_BOUNDARY_POLICY, SEEDED_TICK_EVENT_INTRA_INTERVAL_SCHEDULING_POLICY,
-    SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
-    SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION, SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
+    SEEDED_TICK_EVENT_LATENT_INTERVAL_OWNERSHIP_POLICY,
+    SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY,
+    SEEDED_TICK_EVENT_OBSERVED_TIMESTAMP_INTERVAL_OWNERSHIP_POLICY,
+    SEEDED_TICK_EVENT_ORDERING_POLICY, SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION,
+    SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
     SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
     SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION, SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY, SEEDED_TICK_EVENT_STATE_CARRYOVER_POLICY,
@@ -67,6 +72,7 @@ pub use constants::{
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
+    SEEDED_TICK_EVENT_TIMING_DIAGNOSTICS_SCHEMA_VERSION,
 };
 pub use error::SeededTickSimulationRunError;
 pub use janiform_model_kernels::mean_reversion::{
@@ -78,8 +84,8 @@ pub use janiform_model_kernels::mean_reversion::{
 pub use long_variance::LongVarianceTransitionSamplingError;
 pub use progress::{SimulationProgressEvent, SimulationProgressPhase};
 pub use runtime::{
-    estimate_seeded_result_capacities, run_seeded_tick_event_simulation,
-    run_seeded_tick_event_simulation_with_observer,
+    estimate_seeded_result_capacities, project_core_increment_sequence_to_tick_grid,
+    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_observer,
     run_seeded_tick_event_simulation_with_randomness_factory,
     run_seeded_tick_event_simulation_with_randomness_factory_and_observer,
     stream_seeded_tick_event_simulation, stream_seeded_tick_event_simulation_with_observer,

@@ -1,5 +1,9 @@
 # AGENTS Instructions
 
+## Venv
+
+To properly call Python, you either need to activate the venv for each shell toolcall, or prepend `python` with the venv Python path that is appropriate for your OS. The global Python does not have the necessary packages installed to use that.
+
 ## High-level Goals
 
 - First and foremost: Do not introduce undocumented numerical heuristics, magic constants, or solver policies. Every numeric decision must be mathematically derived, data-derived, or explicitly specified and documented in a named contract or policy. This applies to epsilons (floating-point thresholds) as well. Sometimes, the data is itself very small, so usually there is no good "one size fits all"-epsilon value. Avoid them entirely when possible.

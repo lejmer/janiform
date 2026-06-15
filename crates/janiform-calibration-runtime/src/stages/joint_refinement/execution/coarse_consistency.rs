@@ -805,6 +805,10 @@ fn build_joint_coarse_model_inputs(
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,
+        timestamp_batching_observation_model: fitted_parameters
+            .return_components_fitted_parameters
+            .timestamp_batching_observation_model
+            .clone(),
         calendar_registry_artifact: build_exchange_calendar_registry_artifact(
             &context.calendar_registry,
             context.exchange_code.as_str(),

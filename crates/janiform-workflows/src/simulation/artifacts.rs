@@ -183,7 +183,7 @@ fn seeded_output_row(
     reference_price: f64,
 ) -> Result<SimulationOutputRow, WorkflowError> {
     Ok(SimulationOutputRow {
-        timestamp_utc_nanos: record.timestamp_utc_nanos,
+        timestamp_utc_nanos: record.observed_timestamp_utc_nanos,
         price: price_from_log_price(reference_price, record.observed_log_price)?,
         side: record.side.map(side_label).map(str::to_string),
         observed_log_price: record.observed_log_price,

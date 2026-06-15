@@ -15,6 +15,7 @@ from .contracts import (
     SeededFinePathNewsArrivalComponent,
     SeededFinePathRecord,
     SeededFinePathTransitionKind,
+    TimestampBatchingObservationModel,
     SeededTickEventRecord,
     SeededTickEventSide,
     SeededTickEventStateSnapshot,
@@ -294,13 +295,25 @@ def _parse_seeded_fine_path_chunk_columns(
     _start_index: int,
 ) -> tuple[SeededFinePathRecord, ...]:
     transition_index_column = cast(list[int], chunk_payload.transition_index)
-    timestamp_column = cast(list[int], chunk_payload.timestamp_utc_nanos)
+
+    latent_transition_time_column = cast(
+        list[int],
+        chunk_payload.latent_transition_time_utc_nanos,
+    )
+
+    observed_timestamp_column = cast(
+        list[int],
+        chunk_payload.observed_timestamp_utc_nanos,
+    )
+
     transition_kind_column = cast(list[str], chunk_payload.transition_kind)
     side_column = cast(list[Optional[str]], chunk_payload.side)
+
     news_arrival_component_column = cast(
         list[Optional[str]],
         chunk_payload.news_arrival_component,
     )
+
     market_state_column = cast(list[str], chunk_payload.market_state)
     buy_side_return_column = cast(list[float], chunk_payload.buy_side_return)
     sell_side_return_column = cast(list[float], chunk_payload.sell_side_return)
@@ -308,41 +321,51 @@ def _parse_seeded_fine_path_chunk_columns(
     open_jump_return_column = cast(list[float], chunk_payload.open_jump_return)
     closed_gap_return_column = cast(list[float], chunk_payload.closed_gap_return)
     total_return_column = cast(list[float], chunk_payload.total_return)
+
     core_total_return_increment_column = cast(
         list[float],
         chunk_payload.core_total_return_increment,
     )
+
     observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
     anchor_value_column = cast(list[float], chunk_payload.anchor_value)
     pressure_state_column = cast(list[float], chunk_payload.pressure_state)
+
     deviation_from_anchor_column = cast(
         list[float],
         chunk_payload.deviation_from_anchor,
     )
+
     cumulative_core_log_return_column = cast(
         list[float],
         chunk_payload.cumulative_core_log_return,
     )
+
     state_snapshot_y_plus_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_plus_plus,
     )
+
     state_snapshot_y_plus_minus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_plus_minus,
     )
+
     state_snapshot_y_minus_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_minus_plus,
     )
+
     state_snapshot_y_minus_minus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_minus_minus,
     )
+
     state_snapshot_deseasonalized_lambda_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_deseasonalized_lambda_plus,
     )
+
     state_snapshot_deseasonalized_lambda_minus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_deseasonalized_lambda_minus,
@@ -351,7 +374,8 @@ def _parse_seeded_fine_path_chunk_columns(
     return tuple(
         SeededFinePathRecord(
             transition_index=transition_index_column[chunk_offset],
-            timestamp_utc_nanos=timestamp_column[chunk_offset],
+            latent_transition_time_utc_nanos=latent_transition_time_column[chunk_offset],
+            observed_timestamp_utc_nanos=observed_timestamp_column[chunk_offset],
             transition_kind=SeededFinePathTransitionKind(
                 transition_kind_column[chunk_offset]
             ),
@@ -404,39 +428,54 @@ def _parse_seeded_event_tape_chunk_columns(
     _start_index: int,
 ) -> tuple[SeededTickEventRecord, ...]:
     event_index_column = cast(list[int], chunk_payload.event_index)
-    timestamp_column = cast(list[int], chunk_payload.timestamp_utc_nanos)
+    latent_event_time_column = cast(list[int], chunk_payload.latent_event_time_utc_nanos)
+
+    observed_timestamp_column = cast(
+        list[int],
+        chunk_payload.observed_timestamp_utc_nanos,
+    )
+
     side_column = cast(list[str], chunk_payload.side)
+
     core_total_return_increment_column = cast(
         list[float],
         chunk_payload.core_total_return_increment,
     )
+
     observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
     anchor_value_column = cast(list[float], chunk_payload.anchor_value)
     pressure_state_column = cast(list[float], chunk_payload.pressure_state)
+
     deviation_from_anchor_column = cast(
         list[float],
         chunk_payload.deviation_from_anchor,
     )
+
     state_snapshot_y_plus_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_plus_plus,
     )
+
     state_snapshot_y_plus_minus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_plus_minus,
     )
+
     state_snapshot_y_minus_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_minus_plus,
     )
+
     state_snapshot_y_minus_minus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_minus_minus,
     )
+
     state_snapshot_deseasonalized_lambda_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_deseasonalized_lambda_plus,
     )
+
     state_snapshot_deseasonalized_lambda_minus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_deseasonalized_lambda_minus,
@@ -445,7 +484,8 @@ def _parse_seeded_event_tape_chunk_columns(
     return tuple(
         SeededTickEventRecord(
             event_index=event_index_column[chunk_offset],
-            timestamp_utc_nanos=timestamp_column[chunk_offset],
+            latent_event_time_utc_nanos=latent_event_time_column[chunk_offset],
+            observed_timestamp_utc_nanos=observed_timestamp_column[chunk_offset],
             side=SeededTickEventSide(side_column[chunk_offset]),
             core_total_return_increment=core_total_return_increment_column[chunk_offset],
             observed_log_price=observed_log_price_column[chunk_offset],
@@ -538,14 +578,18 @@ def _hydrate_native_seeded_fine_path_metadata(
             str,
             raw_payload["timestamp_representation_policy"],
         ),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+            cast(
+                dict[str, Any],
+                raw_payload["timestamp_batching_observation_model"],
+            ),
+            field_path="fine_path_metadata.timestamp_batching_observation_model",
+        ),
         side_encoding_policy=cast(str, raw_payload["side_encoding_policy"]),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture(
             raw_payload["state_snapshot_capture"]
         ),
-        state_snapshot_capture_point_policy=cast(
-            Optional[str],
-            raw_payload.get("state_snapshot_capture_point_policy"),
-        ),
+        state_snapshot_capture_point_policy=raw_payload.get("state_snapshot_capture_point_policy"),
     )
 
 
@@ -564,14 +608,18 @@ def _hydrate_native_seeded_event_tape_metadata(
             str,
             raw_payload["timestamp_representation_policy"],
         ),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+            cast(
+                dict[str, Any],
+                raw_payload["timestamp_batching_observation_model"],
+            ),
+            field_path="event_tape_metadata.timestamp_batching_observation_model",
+        ),
         side_encoding_policy=cast(str, raw_payload["side_encoding_policy"]),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture(
             raw_payload["state_snapshot_capture"]
         ),
-        state_snapshot_capture_point_policy=cast(
-            Optional[str],
-            raw_payload.get("state_snapshot_capture_point_policy"),
-        ),
+        state_snapshot_capture_point_policy=raw_payload.get("state_snapshot_capture_point_policy"),
     )
 
 
@@ -697,6 +745,10 @@ class SeededTickSimulationResponse(ContractModel):
             native_estimated_retained_bytes=cast(
                 int,
                 native_result.estimated_native_retained_bytes,
+            ),
+            timing_diagnostics=cast(
+                dict[str, Any],
+                orjson.loads(native_result.timing_diagnostics_json()),
             ),
             materialized_transition_count=0,
             materialized_event_count=0,

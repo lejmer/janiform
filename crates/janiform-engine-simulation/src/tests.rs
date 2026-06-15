@@ -93,20 +93,22 @@ use janiform_model_kernels::return_decomposition::{
 };
 
 const SEEDED_TEST_START_UTC_NANOS: i64 = 1_705_932_000_000_000_000;
-const EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT: [&str; 8] = [
+const EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT: [&str; 9] = [
     "anchor_value",
     "core_total_return_increment",
     "deviation_from_anchor",
     "event_index",
+    "latent_event_time_utc_nanos",
     "observed_log_price",
+    "observed_timestamp_utc_nanos",
     "pressure_state",
     "side",
-    "timestamp_utc_nanos",
 ];
 
 #[test]
 fn trading_time_assembler_buy_only_edge_mode_keeps_sell_and_gap_components_zero() {
     let driver_parameters = valid_nig_driver_parameters();
+
     let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 0.9,
         a_minus: 0.7,
@@ -114,6 +116,7 @@ fn trading_time_assembler_buy_only_edge_mode_keeps_sell_and_gap_components_zero(
         closed_gap: -0.2,
     })
     .expect("buy-only decomposition should be valid");
+
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_101);
 
     let contributions = sample_nig_trading_time_increment_with_edge_mode(
@@ -138,6 +141,7 @@ fn trading_time_assembler_buy_only_edge_mode_keeps_sell_and_gap_components_zero(
 #[test]
 fn trading_time_assembler_sell_only_edge_mode_applies_minus_sign_to_combined_increment() {
     let driver_parameters = valid_nig_driver_parameters();
+
     let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 0.6,
         a_minus: 0.9,
@@ -145,6 +149,7 @@ fn trading_time_assembler_sell_only_edge_mode_applies_minus_sign_to_combined_inc
         closed_gap: -0.1,
     })
     .expect("sell-only decomposition should be valid");
+
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_102);
 
     let contributions = sample_nig_trading_time_increment_with_edge_mode(
@@ -169,6 +174,7 @@ fn trading_time_assembler_sell_only_edge_mode_applies_minus_sign_to_combined_inc
 #[test]
 fn trading_time_assembler_gap_only_edge_mode_zeroes_trading_components() {
     let driver_parameters = valid_nig_driver_parameters();
+
     let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 0.9,
         a_minus: 0.8,
@@ -176,6 +182,7 @@ fn trading_time_assembler_gap_only_edge_mode_zeroes_trading_components() {
         closed_gap: -0.3,
     })
     .expect("gap-only decomposition should be valid");
+
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_104);
 
     let contributions = sample_nig_trading_time_increment_with_edge_mode(
@@ -198,6 +205,7 @@ fn trading_time_assembler_gap_only_edge_mode_zeroes_trading_components() {
 #[test]
 fn trading_time_assembler_is_seed_deterministic() {
     let driver_parameters = valid_nig_driver_parameters();
+
     let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 0.8,
         a_minus: 0.5,
@@ -205,12 +213,14 @@ fn trading_time_assembler_is_seed_deterministic() {
         closed_gap: 0.0,
     })
     .expect("mixed decomposition should be valid");
+
     let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
     let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
 
     let first_contributions =
         sample_nig_trading_time_increment(driver_parameters, decomposition, &mut first_stream)
             .expect("first seeded assembly should sample successfully");
+
     let second_contributions =
         sample_nig_trading_time_increment(driver_parameters, decomposition, &mut second_stream)
             .expect("second seeded assembly should sample successfully");
@@ -313,6 +323,7 @@ fn seeded_simulation_run_executes_with_valid_config() {
 
     let first_result = run_seeded_tick_event_simulation(run_config.clone())
         .expect("valid run should produce deterministic output");
+
     let second_result = run_seeded_tick_event_simulation(run_config)
         .expect("same run config should produce deterministic output");
 
@@ -427,6 +438,7 @@ fn seeded_simulation_run_diverges_with_different_seeds() {
         None,
     )
     .expect("first run config should initialize");
+
     let second_run_config = SeededTickSimulationRunConfig::try_new(
         9_102,
         DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
@@ -438,6 +450,7 @@ fn seeded_simulation_run_diverges_with_different_seeds() {
 
     let first_result = run_seeded_tick_event_simulation(first_run_config)
         .expect("first deterministic run should complete");
+
     let second_result = run_seeded_tick_event_simulation(second_run_config)
         .expect("second deterministic run should complete");
 
@@ -461,6 +474,7 @@ fn seeded_simulation_run_is_independent_from_debug_trace_flag() {
         }),
     )
     .expect("run config without debug trace should initialize");
+
     let run_config_with_debug = SeededTickSimulationRunConfig::try_new(
         8_001,
         DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
@@ -476,6 +490,7 @@ fn seeded_simulation_run_is_independent_from_debug_trace_flag() {
 
     let result_without_debug = run_seeded_tick_event_simulation(run_config_without_debug)
         .expect("run without debug trace should complete");
+
     let result_with_debug = run_seeded_tick_event_simulation(run_config_with_debug)
         .expect("run with debug trace should complete");
 
@@ -652,9 +667,9 @@ fn seeded_simulation_debug_trace_schema_exposes_required_fields() {
     for required_record_field in [
         "transition_index",
         "interval_index",
-        "previous_timestamp_utc_nanos",
-        "timestamp_utc_nanos",
-        "elapsed_hours_since_previous_update",
+        "previous_latent_transition_time_utc_nanos",
+        "observed_timestamp_utc_nanos",
+        "elapsed_hours_since_previous_latent_update",
         "transition_kind",
         "cumulative_news_activity_coupling_j_t_increment",
         "cumulative_open_window_return_jump_m_t_increment",
@@ -726,12 +741,14 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
             .transition_kind,
         SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
     );
+
     let expected_interval_end_utc_nanos = start_utc_nanos + NANOS_PER_HOUR;
+
     assert_eq!(
         trace_records
             .last()
             .expect("trace record set should include interval-end drift")
-            .timestamp_utc_nanos,
+            .observed_timestamp_utc_nanos,
         expected_interval_end_utc_nanos
     );
 
@@ -751,9 +768,12 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
             trace_record.transition_kind == SeededTickEventDebugTraceTransitionKind::ExogenousNews
         })
         .expect("trace should include one exogenous news transition");
+
     let mut expected_severity_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5]);
+
     let (expected_shared_severity_mark, _) =
         sample_expected_shared_news_marks(&mut expected_severity_stream);
+
     let expected_activity_coupling_mark = default_news_component_mark_scales()
         .activity_coupling_scale
         * expected_shared_severity_mark;
@@ -790,6 +810,7 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
     }
 
     let projected_event_path = run_result.projected_event_path();
+
     assert_eq!(projected_event_path.len(), 1);
     assert_eq!(projected_event_path[0].event_index, 0);
     assert_eq!(projected_event_path[0].side, SeededTickEventSide::Buy);
@@ -827,6 +848,7 @@ fn seeded_simulation_suppresses_endogenous_events_while_market_is_closed() {
 #[test]
 fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     let start_utc_nanos = 1_705_924_800_000_000_000;
+
     let mut model_inputs = two_interval_zero_event_carryover_model_inputs();
 
     model_inputs.interval_factor_grid.request_start_utc_nanos = start_utc_nanos;
@@ -834,6 +856,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
 
     model_inputs.interval_factor_grid.interval_start_utc_nanos =
         vec![start_utc_nanos, start_utc_nanos + NANOS_PER_HOUR];
+
     model_inputs.interval_factor_grid.interval_end_utc_nanos = vec![
         start_utc_nanos + NANOS_PER_HOUR,
         start_utc_nanos + 2 * NANOS_PER_HOUR,
@@ -845,6 +868,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
         "2024-01-22T07:00:00-05:00".to_string(),
         "2024-01-22T08:00:00-05:00".to_string(),
     ];
+
     model_inputs
         .interval_factor_grid
         .interval_end_exchange_local = vec![
@@ -856,6 +880,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
         .interval_factor_grid
         .diagnostics
         .first_interval_start_utc_nanos = start_utc_nanos;
+
     model_inputs
         .interval_factor_grid
         .diagnostics
@@ -900,7 +925,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
         SeededTickSimulationNewsEventMarketState::Open
     );
     assert_eq!(
-        public_fine_path[0].timestamp_utc_nanos,
+        public_fine_path[0].observed_timestamp_utc_nanos,
         start_utc_nanos + 2 * NANOS_PER_HOUR
     );
 }
@@ -908,6 +933,7 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
 #[test]
 fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap_channel() {
     let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
+
     let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
 
     override_interval_factor_grid(
@@ -1102,6 +1128,7 @@ fn seeded_simulation_run_rejects_zero_horizon() {
 #[test]
 fn seeded_simulation_run_rejects_incomplete_interval_factor_grid_payload() {
     let mut model_inputs = valid_model_inputs();
+
     model_inputs.interval_factor_grid.seasonality_factor.pop();
 
     let error = SeededTickSimulationRunConfig::try_new(
@@ -1126,11 +1153,13 @@ fn seeded_simulation_run_rejects_incomplete_interval_factor_grid_payload() {
 #[test]
 fn seeded_simulation_run_rejects_non_consecutive_interval_factor_grid_coverage() {
     let mut model_inputs = valid_model_inputs();
+
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
 
     model_inputs.interval_factor_grid.interval_start_utc_nanos[1] += NANOS_PER_HOUR;
     model_inputs.interval_factor_grid.interval_end_utc_nanos[1] += NANOS_PER_HOUR;
     model_inputs.interval_factor_grid.request_end_utc_nanos += NANOS_PER_HOUR;
+
     model_inputs
         .interval_factor_grid
         .diagnostics
@@ -1160,6 +1189,7 @@ fn seeded_simulation_run_rejects_non_consecutive_interval_factor_grid_coverage()
 #[test]
 fn seeded_simulation_run_accepts_seasonality_scaled_subcritical_hawkes_inputs() {
     let mut model_inputs = valid_model_inputs();
+
     model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
         0.8,
         1.0,
@@ -1177,6 +1207,7 @@ fn seeded_simulation_run_accepts_seasonality_scaled_subcritical_hawkes_inputs() 
         },
     )
     .expect("supercritical guard fixture should be valid in kernel domain");
+
     model_inputs.interval_factor_grid.seasonality_factor = vec![1.2, 1.2];
 
     SeededTickSimulationRunConfig::try_new(
@@ -1192,19 +1223,24 @@ fn seeded_simulation_run_accepts_seasonality_scaled_subcritical_hawkes_inputs() 
 #[test]
 fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
+
     let mut one_hour_model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
+
     let two_hour_model_inputs = two_interval_zero_event_carryover_model_inputs();
     let kernel_parameters = two_hour_model_inputs.kernel_parameters;
 
     one_hour_model_inputs.kernel_parameters = kernel_parameters;
     one_hour_model_inputs.initial_excitation_state = two_hour_model_inputs.initial_excitation_state;
+
     one_hour_model_inputs
         .interval_factor_grid
         .seasonality_factor = vec![0.0];
     one_hour_model_inputs.interval_factor_grid.news_intensity = vec![0.0];
+
     one_hour_model_inputs
         .interval_factor_grid
         .known_news_intensity = vec![0.0];
+
     one_hour_model_inputs
         .interval_factor_grid
         .surprise_news_intensity = vec![0.0];
@@ -1229,6 +1265,7 @@ fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
 
     let one_hour_result = run_seeded_tick_event_simulation(one_hour_config)
         .expect("one-hour carryover run should complete");
+
     let two_hour_result = run_seeded_tick_event_simulation(two_hour_config)
         .expect("two-hour carryover run should complete");
 
@@ -1284,6 +1321,7 @@ fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
 
     let baseline_result = run_seeded_tick_event_simulation(baseline_run_config)
         .expect("baseline boundary-factor run should complete");
+
     let muted_second_hour_result = run_seeded_tick_event_simulation(muted_second_hour_run_config)
         .expect("muted boundary-factor run should complete");
 
@@ -1294,7 +1332,7 @@ fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
     assert!(
         muted_second_hour_event_path
             .iter()
-            .all(|event_record| event_record.timestamp_utc_nanos < boundary_utc_nanos)
+            .all(|event_record| event_record.observed_timestamp_utc_nanos < boundary_utc_nanos)
     );
     assert_eq!(
         &baseline_event_path[..muted_second_hour_event_path.len()],
@@ -1305,8 +1343,10 @@ fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
 #[test]
 fn seeded_simulation_mean_reversion_decay_matches_pure_exponential_reference() {
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
     model_inputs.interval_factor_grid.seasonality_factor = vec![0.0];
     model_inputs.interval_factor_grid.news_intensity = vec![0.0];
+
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 1.0, 0.0, &[0.0], 1.5);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1337,6 +1377,7 @@ fn seeded_simulation_mean_reversion_decay_matches_pure_exponential_reference() {
 
     let boundary_record = &run_result.fine_path[0];
     let expected_deviation = (-1.0_f64).exp() * 1.5;
+
     assert_float_close(boundary_record.core_total_return_increment, 0.0);
     assert_float_close(boundary_record.anchor_value, 0.0);
     assert_float_close(boundary_record.deviation_from_anchor, expected_deviation);
@@ -1346,13 +1387,17 @@ fn seeded_simulation_mean_reversion_decay_matches_pure_exponential_reference() {
 #[test]
 fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
     let mut zero_kappa_model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
     zero_kappa_model_inputs
         .interval_factor_grid
         .seasonality_factor = vec![0.0];
+
     zero_kappa_model_inputs.interval_factor_grid.news_intensity = vec![0.0];
+
     configure_mean_reversion_runtime_inputs(&mut zero_kappa_model_inputs, 0.0, 2.0, &[2.0], 3.0);
 
     let mut positive_kappa_model_inputs = zero_kappa_model_inputs.clone();
+
     configure_mean_reversion_runtime_inputs(
         &mut positive_kappa_model_inputs,
         1.0,
@@ -1369,6 +1414,7 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
         None,
     )
     .expect("zero-kappa constant-anchor run config should initialize");
+
     let positive_kappa_config = SeededTickSimulationRunConfig::try_new(
         10_054,
         DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
@@ -1394,6 +1440,7 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
         &scripted_factory,
     )
     .expect("zero-kappa constant-anchor run should complete");
+
     let positive_kappa_result = run_seeded_tick_event_simulation_with_randomness_factory(
         positive_kappa_config,
         &scripted_factory,
@@ -1411,8 +1458,10 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
 #[test]
 fn seeded_simulation_does_not_decay_mean_reversion_during_closed_interval() {
     let mut model_inputs = one_interval_closed_market_model_inputs();
+
     model_inputs.interval_factor_grid.seasonality_factor = vec![0.0];
     model_inputs.interval_factor_grid.news_intensity = vec![0.0];
+
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 1.0, 2.0, &[2.0], 3.0);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1441,6 +1490,7 @@ fn seeded_simulation_does_not_decay_mean_reversion_during_closed_interval() {
 
     let public_fine_path =
         run_result.public_fine_path_chunk(0, run_result.public_transition_count());
+
     assert_eq!(public_fine_path.len(), 1);
     assert_float_close(public_fine_path[0].observed_log_price, 3.0);
     assert_float_close(public_fine_path[0].deviation_from_anchor, 1.0);
@@ -1461,6 +1511,7 @@ fn seeded_simulation_kappa_zero_with_flat_anchor_matches_nested_core_path_semant
         .expect("nested-equivalence run should complete");
 
     let mut expected_cumulative_core_log_return = 0.0;
+
     for fine_path_record in &run_result.fine_path {
         expected_cumulative_core_log_return += fine_path_record.core_total_return_increment;
         assert_float_close(
@@ -1477,6 +1528,7 @@ fn seeded_simulation_kappa_zero_with_flat_anchor_matches_nested_core_path_semant
             fine_path_record.cumulative_core_log_return,
         );
     }
+
     assert_float_close(
         run_result.cumulative_core_log_return,
         expected_cumulative_core_log_return,
@@ -1486,16 +1538,19 @@ fn seeded_simulation_kappa_zero_with_flat_anchor_matches_nested_core_path_semant
 #[test]
 fn seeded_simulation_anchor_reset_applies_exactly_once_per_interval_boundary() {
     let mut model_inputs = valid_model_inputs();
+
     model_inputs.initial_excitation_state = HawkesExcitationState {
         y_plus_plus: 0.0,
         y_plus_minus: 0.0,
         y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
+
     model_inputs.interval_factor_grid.seasonality_factor = vec![0.0, 0.0];
     model_inputs.interval_factor_grid.news_intensity = vec![0.0, 0.0];
     model_inputs.interval_factor_grid.known_news_intensity = vec![0.0, 0.0];
     model_inputs.interval_factor_grid.surprise_news_intensity = vec![0.0, 0.0];
+
     configure_mean_reversion_runtime_inputs(&mut model_inputs, 0.0, 0.0, &[2.0, 2.0], 1.0);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1523,6 +1578,7 @@ fn seeded_simulation_anchor_reset_applies_exactly_once_per_interval_boundary() {
             .expect("anchor-reset run should complete");
 
     assert_eq!(run_result.fine_path.len(), 2);
+
     let first_boundary_record = &run_result.fine_path[0];
     let second_boundary_record = &run_result.fine_path[1];
 
@@ -1539,6 +1595,7 @@ fn seeded_simulation_anchor_reset_applies_exactly_once_per_interval_boundary() {
 fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_relative_to_no_feedback_baseline()
  {
     let mut no_feedback_model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
     no_feedback_model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
         0.5,
         1.0,
@@ -1558,6 +1615,7 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
     .expect("no-feedback kernel fixture should be valid");
 
     let mut feedback_model_inputs = no_feedback_model_inputs.clone();
+
     feedback_model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
         0.5,
         1.0,
@@ -1584,6 +1642,7 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
         None,
     )
     .expect("no-feedback run config should initialize");
+
     let feedback_run_config = SeededTickSimulationRunConfig::try_new(
         1_007,
         DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
@@ -1609,6 +1668,7 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
         &scripted_factory,
     )
     .expect("no-feedback run should complete");
+
     let feedback_result = run_seeded_tick_event_simulation_with_randomness_factory(
         feedback_run_config,
         &scripted_factory,
@@ -1621,7 +1681,8 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
     assert_eq!(no_feedback_event_path.len(), 1);
     assert!(feedback_event_path.len() >= 2);
     assert!(
-        feedback_event_path[1].timestamp_utc_nanos > feedback_event_path[0].timestamp_utc_nanos
+        feedback_event_path[1].observed_timestamp_utc_nanos
+            > feedback_event_path[0].observed_timestamp_utc_nanos
     );
 }
 
@@ -1638,30 +1699,34 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
     .expect("regression-guard run config should initialize");
 
     let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
-        buy_count_draws: vec![0.25, 0.75],
+        buy_count_draws: vec![0.25, 0.25],
         sell_count_draws: vec![0.0],
-        buy_timestamp_draws: vec![0.25],
-        sell_timestamp_draws: vec![0.75, 0.0],
+        buy_timestamp_draws: vec![0.9, 0.9],
+        sell_timestamp_draws: vec![0.0, 0.0],
         news_count_draws: vec![1.0],
         news_timestamp_draws: vec![],
         news_severity_draws: vec![],
         news_return_jump_draws: vec![],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("regression-guard run should complete");
 
     let interval_start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
+
     let legacy_uniform_timestamps = vec![
         interval_start_utc_nanos + NANOS_PER_HOUR / 4,
         interval_start_utc_nanos + 3 * NANOS_PER_HOUR / 4,
     ];
+
     let observed_timestamps: Vec<i64> = run_result
         .projected_event_path()
         .iter()
-        .map(|event_record| event_record.timestamp_utc_nanos)
+        .map(|event_record| event_record.observed_timestamp_utc_nanos)
         .collect();
 
+    assert_eq!(observed_timestamps.len(), 2);
     assert_ne!(observed_timestamps, legacy_uniform_timestamps);
     assert_eq!(
         run_result.event_ordering_policy,
@@ -1670,8 +1735,63 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
 }
 
 #[test]
+fn seeded_simulation_generates_fitted_same_timestamp_batch_continuations() {
+    let mut model_inputs = one_interval_model_inputs(2.0, 2.0, 0.0);
+
+    model_inputs.timestamp_batching_observation_model =
+        janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::fixed_bucket_floor(
+            1_000,
+            "unit_test_same_timestamp_continuation",
+            1,
+            1,
+        )
+        .expect("timestamp batching fixture should validate");
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        2_008,
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
+        1,
+        model_inputs,
+        None,
+    )
+    .expect("timestamp batching run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
+        buy_count_draws: vec![0.25, 0.25],
+        sell_count_draws: vec![0.0],
+        buy_timestamp_draws: vec![0.9, 0.9],
+        sell_timestamp_draws: vec![0.0, 0.0],
+        news_count_draws: vec![1.0],
+        news_timestamp_draws: vec![],
+        news_severity_draws: vec![],
+        news_return_jump_draws: vec![],
+    });
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("timestamp batching run should complete");
+
+    let event_path = run_result.projected_event_path();
+
+    assert_eq!(event_path.len(), 2);
+    assert!(event_path[1].latent_event_time_utc_nanos > event_path[0].latent_event_time_utc_nanos);
+    assert_eq!(
+        event_path[1].observed_timestamp_utc_nanos,
+        event_path[0].observed_timestamp_utc_nanos
+    );
+    assert_eq!(
+        run_result
+            .timing_diagnostics
+            .observed_timestamp_interarrivals
+            .zero_interarrival_count,
+        1
+    );
+}
+
+#[test]
 fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_trace_diagnostics() {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
+
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_009,
         DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
@@ -1698,15 +1818,18 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
         news_severity_draws: vec![],
         news_return_jump_draws: vec![],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("fine-aggregation integration run should complete");
 
     let mut aggregated_fine_buy_counts = [0_usize; 2];
     let mut aggregated_fine_sell_counts = [0_usize; 2];
+
     for event_record in run_result.projected_event_path() {
-        let interval_index = ((event_record.timestamp_utc_nanos - start_utc_nanos)
+        let interval_index = ((event_record.observed_timestamp_utc_nanos - start_utc_nanos)
             .div_euclid(NANOS_PER_HOUR)) as usize;
+
         match event_record.side {
             SeededTickEventSide::Buy => {
                 aggregated_fine_buy_counts[interval_index] =
@@ -1721,6 +1844,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
 
     let mut coarse_trace_buy_counts = [0_usize; 2];
     let mut coarse_trace_sell_counts = [0_usize; 2];
+
     let trace_records = run_result
         .debug_trace_output
         .as_ref()
@@ -1729,6 +1853,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
         .iter()
         .flat_map(|trace_chunk| trace_chunk.records.iter())
         .collect::<Vec<_>>();
+
     for trace_record in trace_records {
         match trace_record.transition_kind {
             SeededTickEventDebugTraceTransitionKind::EndogenousBuyEvent => {
@@ -1754,6 +1879,7 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
     let tied_timestamp_utc_nanos = start_utc_nanos + ((NANOS_PER_HOUR as f64 * 0.3).floor() as i64);
 
     let mut model_inputs = one_interval_model_inputs(1.0, 1.0, 2.0);
+
     set_known_news_timestamps(&mut model_inputs, vec![tied_timestamp_utc_nanos]);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1782,6 +1908,7 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
         news_severity_draws: vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
         news_return_jump_draws: vec![0.75, 0.2, 0.25, 0.3],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("known-surprise tie-ordering run should complete");
@@ -1794,6 +1921,7 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
         .iter()
         .flat_map(|trace_chunk| trace_chunk.records.iter())
         .collect::<Vec<_>>();
+
     let exogenous_records = trace_records
         .iter()
         .filter(|trace_record| {
@@ -1811,11 +1939,11 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
         Some(NewsArrivalComponent::Surprise)
     );
     assert_eq!(
-        exogenous_records[0].timestamp_utc_nanos,
-        exogenous_records[1].timestamp_utc_nanos
+        exogenous_records[0].observed_timestamp_utc_nanos,
+        exogenous_records[1].observed_timestamp_utc_nanos
     );
     assert_eq!(
-        exogenous_records[0].timestamp_utc_nanos,
+        exogenous_records[0].observed_timestamp_utc_nanos,
         tied_timestamp_utc_nanos
     );
 }
@@ -1854,6 +1982,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
 
         for known_timestamps in &known_timestamp_profiles {
             let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 1.75);
+
             override_interval_factor_grid(
                 &mut model_inputs,
                 &[start_utc_nanos],
@@ -1861,6 +1990,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
                 &[1.0],
                 &[1.75],
             );
+
             set_known_news_timestamps(&mut model_inputs, known_timestamps.clone());
 
             let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1881,6 +2011,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
 
             let run_result = run_seeded_tick_event_simulation(run_config)
                 .expect("profile-invariance run should complete");
+
             let trace_records = run_result
                 .debug_trace_output
                 .as_ref()
@@ -1898,8 +2029,9 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
                         && trace_record.exogenous_news_arrival_component
                             == Some(NewsArrivalComponent::Known)
                 })
-                .map(|trace_record| trace_record.timestamp_utc_nanos)
+                .map(|trace_record| trace_record.observed_timestamp_utc_nanos)
                 .collect();
+
             let observed_surprise_timestamps: Vec<i64> = trace_records
                 .iter()
                 .filter(|trace_record| {
@@ -1908,7 +2040,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
                         && trace_record.exogenous_news_arrival_component
                             == Some(NewsArrivalComponent::Surprise)
                 })
-                .map(|trace_record| trace_record.timestamp_utc_nanos)
+                .map(|trace_record| trace_record.observed_timestamp_utc_nanos)
                 .collect();
 
             assert_eq!(observed_known_timestamps, *known_timestamps);
@@ -1977,9 +2109,11 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
         news_severity_draws: vec![0.5; 64],
         news_return_jump_draws: vec![0.5; 64],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("decomposition-fixture run should complete");
+
     let trace_records = run_result
         .debug_trace_output
         .as_ref()
@@ -2000,6 +2134,7 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
             trace_record.exogenous_news_arrival_component == Some(NewsArrivalComponent::Known)
         })
         .count();
+
     let surprise_count = trace_records
         .iter()
         .filter(|trace_record| {
@@ -2018,6 +2153,7 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
                     == Some(NewsArrivalComponent::Surprise)
         })
         .count();
+
     let surprise_interval_one_count = trace_records
         .iter()
         .filter(|trace_record| {
@@ -2032,6 +2168,7 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
 
     for trace_record in trace_records {
         let expected_interval_news_intensity = [2.75, 1.4][trace_record.interval_index];
+
         assert_float_close(
             trace_record.interval_news_intensity,
             expected_interval_news_intensity,
@@ -2082,12 +2219,16 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
         news_severity_draws: vec![0.5, 0.25, 0.5],
         news_return_jump_draws: vec![0.25, 0.5],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("open-window news routing run should complete");
+
     let mut expected_mark_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5, 0.25, 0.5]);
+
     let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
         sample_expected_shared_news_marks(&mut expected_mark_stream);
+
     let expected_mark_scales = default_news_component_mark_scales();
 
     let trace_records = run_result
@@ -2178,12 +2319,16 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
         news_severity_draws: vec![0.5, 0.25, 0.5],
         news_return_jump_draws: vec![0.25, 0.5],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("closed-window news routing run should complete");
+
     let mut expected_mark_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5, 0.25, 0.5]);
+
     let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
         sample_expected_shared_news_marks(&mut expected_mark_stream);
+
     let expected_mark_scales = default_news_component_mark_scales();
 
     let trace_records = run_result
@@ -2287,6 +2432,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
         news_severity_draws: vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
         news_return_jump_draws: vec![0.75, 0.5, 0.75, 0.5],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("early-close boundary routing run should complete");
@@ -2305,7 +2451,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
 
     assert_eq!(trace_records.len(), 2);
     assert_eq!(
-        trace_records[0].timestamp_utc_nanos,
+        trace_records[0].observed_timestamp_utc_nanos,
         open_window_timestamp_utc_nanos
     );
     assert_eq!(
@@ -2317,7 +2463,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
         Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
     );
     assert_eq!(
-        trace_records[1].timestamp_utc_nanos,
+        trace_records[1].observed_timestamp_utc_nanos,
         early_close_boundary_timestamp_utc_nanos
     );
     assert_eq!(
@@ -2363,6 +2509,7 @@ fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
         news_severity_draws: vec![0.5, 0.25, 0.5],
         news_return_jump_draws: vec![0.75, f64::NAN],
     });
+
     let error =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect_err("invalid generated return-jump mark must fail");
@@ -2380,6 +2527,7 @@ fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
 fn seeded_exogenous_mark_sampling_matches_shared_gamma_normal_reference_contract_for_fixed_seed() {
     let root_seed = 98_771_u64;
     let interval_index = 3_u64;
+
     let mark_scales = NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 1.35,
         return_jump_drift: 0.0,
@@ -2391,8 +2539,10 @@ fn seeded_exogenous_mark_sampling_matches_shared_gamma_normal_reference_contract
         SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
         interval_index,
     );
+
     let mut observed_mark_stream =
         SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+
     let observed_event_input = super::runtime::build_timestamped_news_event_input(
         &build_news_process_configuration(Vec::new()).default_mark_pipeline(),
         NewsArrivalComponent::Surprise,
@@ -2406,6 +2556,7 @@ fn seeded_exogenous_mark_sampling_matches_shared_gamma_normal_reference_contract
 
     let mut expected_mark_stream =
         SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+
     let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
         sample_expected_shared_news_marks(&mut expected_mark_stream);
 
@@ -2428,6 +2579,7 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_normal_sign_and_scale_s
     let root_seed = 98_772_u64;
     let interval_index = 4_u64;
     let sample_count = 8_192_u64;
+
     let mark_scales = NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 1.1,
         return_jump_drift: 0.0,
@@ -2439,10 +2591,13 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_normal_sign_and_scale_s
         SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
         interval_index,
     );
+
     let mut observed_mark_stream =
         SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+
     let mut expected_mark_stream =
         SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+
     let mark_pipeline = build_news_process_configuration(Vec::new()).default_mark_pipeline();
 
     let mut observed_activity_sum = 0.0;
@@ -2464,6 +2619,7 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_normal_sign_and_scale_s
             interval_index as usize,
         )
         .expect("seeded exogenous mark sampling should succeed for valid setup");
+
         let observed_activity_coupling_mark = observed_event_input.shared_severity_mark;
         let observed_return_jump_mark = observed_event_input.coupled_return_jump_mark;
 
@@ -2472,6 +2628,7 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_normal_sign_and_scale_s
 
         let expected_activity_coupling_mark =
             mark_scales.activity_coupling_scale * expected_shared_severity_mark;
+
         let expected_return_jump_mark = expected_gamma_normal_return_jump(
             mark_scales,
             expected_shared_severity_mark,
@@ -2540,10 +2697,11 @@ fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges
     .expect("boundary-adjacent run should complete");
 
     let projected_event_path = run_result.projected_event_path();
+
     assert_eq!(projected_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = projected_event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = projected_event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = projected_event_path[0].observed_timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = projected_event_path[1].observed_timestamp_utc_nanos;
 
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
     assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
@@ -2554,6 +2712,7 @@ fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges
 #[test]
 fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
     let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
     model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
         0.5,
         1.5,
@@ -2571,6 +2730,7 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
         },
     )
     .expect("snapshot boundary kernel fixture should be valid");
+
     model_inputs.initial_excitation_state = HawkesExcitationState {
         y_plus_plus: 0.0,
         y_plus_minus: 0.0,
@@ -2590,6 +2750,7 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
         }),
     )
     .expect("snapshot boundary run config should initialize");
+
     let scripted_factory = ScriptedRandomnessFactory::new(ScriptedRandomnessFactoryDraws {
         buy_count_draws: vec![0.0],
         sell_count_draws: vec![1.0],
@@ -2600,11 +2761,13 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
         news_severity_draws: vec![],
         news_return_jump_draws: vec![],
     });
+
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("snapshot boundary run should complete");
 
     let projected_event_path = run_result.projected_event_path();
+
     assert_eq!(projected_event_path.len(), 1);
     assert_eq!(
         run_result.event_tape_metadata.state_snapshot_capture,
@@ -2658,20 +2821,23 @@ fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
     let serialized_fine_path = run_result
         .serialize_fine_path_json()
         .expect("fine path serialization should succeed");
+
     let fine_path_payload: Value =
         serde_json::from_str(&serialized_fine_path).expect("fine path JSON should parse");
 
     let fine_path_records = fine_path_payload["fine_path"]
         .as_array()
         .expect("fine_path must serialize as an array");
+
     assert_eq!(fine_path_records.len(), 2);
 
     let first_record = fine_path_records[0]
         .as_object()
         .expect("fine-path record must serialize as an object");
+
     for required_field in [
         "transition_index",
-        "timestamp_utc_nanos",
+        "observed_timestamp_utc_nanos",
         "transition_kind",
         "market_state",
         "return_components",
@@ -2688,6 +2854,7 @@ fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
     let return_components = first_record["return_components"]
         .as_object()
         .expect("return_components must serialize as an object");
+
     for required_component_field in [
         "buy_side_return",
         "sell_side_return",
@@ -2731,6 +2898,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
     let serialized_without_snapshot = run_result_without_snapshot
         .serialize_event_tape_json()
         .expect("event tape serialization without snapshot should succeed");
+
     let payload_without_snapshot: Value = serde_json::from_str(&serialized_without_snapshot)
         .expect("serialized event tape payload should parse");
 
@@ -2771,6 +2939,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
     let serialized_events_without_snapshot = payload_without_snapshot["event_tape"]
         .as_array()
         .expect("event_tape must serialize as an array");
+
     assert_eq!(serialized_events_without_snapshot.len(), 1);
 
     assert_eq!(
@@ -2800,6 +2969,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
     let serialized_with_snapshot = run_result_with_snapshot
         .serialize_event_tape_json()
         .expect("event tape serialization with snapshot should succeed");
+
     let payload_with_snapshot: Value = serde_json::from_str(&serialized_with_snapshot)
         .expect("serialized event tape payload should parse");
 
@@ -2815,6 +2985,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
     let first_event_with_snapshot = payload_with_snapshot["event_tape"][0]
         .as_object()
         .expect("event record with snapshot must serialize as an object");
+
     let state_snapshot = first_event_with_snapshot
         .get("state_snapshot")
         .expect("event record must include state_snapshot when capture is enabled")
@@ -2850,12 +3021,14 @@ fn seeded_simulation_event_tape_serialization_is_deterministic() {
 
     let first_result = run_seeded_tick_event_simulation(run_config.clone())
         .expect("first serialization determinism run should complete");
+
     let second_result = run_seeded_tick_event_simulation(run_config)
         .expect("second serialization determinism run should complete");
 
     let first_json = first_result
         .serialize_event_tape_json()
         .expect("first event tape serialization should succeed");
+
     let second_json = second_result
         .serialize_event_tape_json()
         .expect("second event tape serialization should succeed");
@@ -2952,10 +3125,11 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
 
     assert_eq!(second_events.len(), 1);
 
-    let first_timestamp = first_events[0]["timestamp_utc_nanos"]
+    let first_timestamp = first_events[0]["observed_timestamp_utc_nanos"]
         .as_i64()
         .expect("first timestamp should parse");
-    let second_timestamp = second_events[0]["timestamp_utc_nanos"]
+
+    let second_timestamp = second_events[0]["observed_timestamp_utc_nanos"]
         .as_i64()
         .expect("second timestamp should parse");
 
@@ -2971,8 +3145,11 @@ fn sorted_json_object_field_names(value: &Value) -> Vec<&str> {
     let object = value
         .as_object()
         .expect("JSON value must serialize as an object");
+
     let mut field_names: Vec<&str> = object.keys().map(String::as_str).collect();
+
     field_names.sort_unstable();
+
     field_names
 }
 
@@ -2981,7 +3158,8 @@ fn is_non_decreasing_timestamp_path(run_result: &super::SeededTickSimulationRunR
         .projected_event_path()
         .windows(2)
         .all(|event_window| {
-            event_window[0].timestamp_utc_nanos <= event_window[1].timestamp_utc_nanos
+            event_window[0].observed_timestamp_utc_nanos
+                <= event_window[1].observed_timestamp_utc_nanos
         })
 }
 
@@ -3070,7 +3248,8 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
             SimulationRandomnessSubstreamDomain::LongVarianceDiffusion => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
-            SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
+            SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
+            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
                 self.substream_index.wrapping_add(self.draw_count)
@@ -3133,13 +3312,16 @@ impl ScriptedRandomnessFactory {
         const RETURN_SHOCK_DRAWS_PER_EVENT: usize = 2;
 
         let severity_chunks = self.news_severity_draws.chunks(SEVERITY_DRAWS_PER_EVENT);
+
         let return_shock_chunks = self
             .news_return_jump_draws
             .chunks(RETURN_SHOCK_DRAWS_PER_EVENT);
+
         let combined_capacity = self
             .news_severity_draws
             .len()
             .saturating_add(self.news_return_jump_draws.len());
+
         let mut combined_draws = Vec::with_capacity(combined_capacity);
 
         for (severity_chunk, return_shock_chunk) in severity_chunks.zip(return_shock_chunks) {
@@ -3156,6 +3338,7 @@ impl ScriptedRandomnessFactory {
                     .len()
                     .div_ceil(RETURN_SHOCK_DRAWS_PER_EVENT),
             );
+
         let paired_severity_draw_count = paired_event_count * SEVERITY_DRAWS_PER_EVENT;
         let paired_return_shock_draw_count = paired_event_count * RETURN_SHOCK_DRAWS_PER_EVENT;
 
@@ -3163,6 +3346,7 @@ impl ScriptedRandomnessFactory {
             combined_draws
                 .extend_from_slice(&self.news_severity_draws[paired_severity_draw_count..]);
         }
+
         if paired_return_shock_draw_count < self.news_return_jump_draws.len() {
             combined_draws
                 .extend_from_slice(&self.news_return_jump_draws[paired_return_shock_draw_count..]);
@@ -3212,6 +3396,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
+            | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
@@ -3238,12 +3423,15 @@ impl ScriptedRandomnessStream {
 impl SimulationRandomnessStream for ScriptedRandomnessStream {
     fn next_u64(&mut self) -> u64 {
         let unit_draw = self.next_unit_interval_f64();
+
         (unit_draw.clamp(0.0, 1.0) * u64::MAX as f64).floor() as u64
     }
 
     fn next_unit_interval_f64(&mut self) -> f64 {
         let next_draw = self.draws.get(self.position).copied().unwrap_or(0.0);
+
         self.position = self.position.saturating_add(1);
+
         next_draw.clamp(0.0, 1.0)
     }
 }
@@ -3279,6 +3467,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
+            | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
@@ -3298,6 +3487,7 @@ fn one_interval_model_inputs(
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_start_utc_nanos = vec![start_utc_nanos];
     let interval_end_utc_nanos = vec![start_utc_nanos + NANOS_PER_HOUR];
+
     let interval_factor_grid = IntervalFactorGrid {
         schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
         exchange_code: "XNYS".to_string(),
@@ -3334,6 +3524,7 @@ fn one_interval_model_inputs(
             repeated_exchange_local_interval_count: 0,
         },
     };
+
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
@@ -3373,6 +3564,9 @@ fn one_interval_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -3381,24 +3575,31 @@ fn one_interval_model_inputs(
 
 fn one_interval_closed_market_model_inputs() -> SeededTickSimulationModelInputs {
     let mut model_inputs = one_interval_model_inputs(20.0, 20.0, 0.0);
+
     let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
     let closed_interval_end_utc_nanos = closed_interval_start_utc_nanos + NANOS_PER_HOUR;
 
     model_inputs.interval_factor_grid.request_start_utc_nanos = closed_interval_start_utc_nanos;
     model_inputs.interval_factor_grid.request_end_utc_nanos = closed_interval_end_utc_nanos;
+
     model_inputs.interval_factor_grid.interval_start_utc_nanos =
         vec![closed_interval_start_utc_nanos];
+
     model_inputs.interval_factor_grid.interval_end_utc_nanos = vec![closed_interval_end_utc_nanos];
+
     model_inputs
         .interval_factor_grid
         .interval_start_exchange_local = vec!["2024-01-22T08:00:00-05:00".to_string()];
+
     model_inputs
         .interval_factor_grid
         .interval_end_exchange_local = vec!["2024-01-22T09:00:00-05:00".to_string()];
+
     model_inputs
         .interval_factor_grid
         .diagnostics
         .first_interval_start_utc_nanos = closed_interval_start_utc_nanos;
+
     model_inputs
         .interval_factor_grid
         .diagnostics
@@ -3475,6 +3676,7 @@ fn two_interval_constant_intensity_model_inputs(
 
     model_inputs.interval_factor_grid.seasonality_factor =
         vec![1.0, second_interval_seasonality_factor];
+
     model_inputs.interval_factor_grid.news_intensity = vec![0.0, 0.0];
 
     model_inputs
@@ -3524,35 +3726,45 @@ fn override_interval_factor_grid(
     let interval_factor_grid = &mut model_inputs.interval_factor_grid;
 
     interval_factor_grid.request_start_utc_nanos = interval_start_utc_nanos[0];
+
     interval_factor_grid.request_end_utc_nanos =
         interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
+
     interval_factor_grid.interval_indices = (0..interval_start_utc_nanos.len())
         .map(|interval_position| interval_position as u64)
         .collect();
+
     interval_factor_grid.interval_start_utc_nanos = interval_start_utc_nanos.to_vec();
     interval_factor_grid.interval_end_utc_nanos = interval_end_utc_nanos.to_vec();
+
     interval_factor_grid.interval_start_exchange_local = interval_start_utc_nanos
         .iter()
         .map(|timestamp_utc_nanos| {
             DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
         })
         .collect();
+
     interval_factor_grid.interval_end_exchange_local = interval_end_utc_nanos
         .iter()
         .map(|timestamp_utc_nanos| {
             DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
         })
         .collect();
+
     interval_factor_grid.interval_duration_nanos =
         interval_end_utc_nanos[0] - interval_start_utc_nanos[0];
+
     interval_factor_grid.seasonality_factor = seasonality_factors.to_vec();
     interval_factor_grid.news_intensity = news_intensity_factors.to_vec();
     interval_factor_grid.diagnostics.interval_count = interval_start_utc_nanos.len();
+
     interval_factor_grid.diagnostics.interval_duration_nanos =
         interval_factor_grid.interval_duration_nanos;
+
     interval_factor_grid
         .diagnostics
         .first_interval_start_utc_nanos = interval_start_utc_nanos[0];
+
     interval_factor_grid.diagnostics.last_interval_end_utc_nanos =
         interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
 
@@ -3578,10 +3790,12 @@ fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
 fn valid_model_inputs() -> SeededTickSimulationModelInputs {
     let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_start_utc_nanos = vec![start_utc_nanos, start_utc_nanos + NANOS_PER_HOUR];
+
     let interval_end_utc_nanos = vec![
         start_utc_nanos + NANOS_PER_HOUR,
         start_utc_nanos + 2 * NANOS_PER_HOUR,
     ];
+
     let interval_factor_grid = IntervalFactorGrid {
         schema_version: INTERVAL_FACTOR_GRID_SCHEMA_VERSION,
         exchange_code: "XNYS".to_string(),
@@ -3624,6 +3838,7 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
             repeated_exchange_local_interval_count: 0,
         },
     };
+
     let (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
@@ -3663,6 +3878,9 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),

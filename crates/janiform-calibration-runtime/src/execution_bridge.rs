@@ -26,6 +26,7 @@ use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
@@ -288,6 +289,7 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
 }
 
@@ -919,6 +921,7 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
             return_clock_exposure_parameters: self.return_clock_exposure_parameters,
             tick_grid_observation_model: self.tick_grid_observation_model,
+            timestamp_batching_observation_model: self.timestamp_batching_observation_model,
             objective_metric_weights: self.objective_metric_weights.into_core(),
         }
     }
@@ -1389,6 +1392,9 @@ mod tests {
                         inference_policy: "test".to_string(),
                         observation_policy: "test".to_string(),
                     },
+                    timestamp_batching_observation_model:
+                        janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                        ),
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                         continuous_distribution_fit_weight: 1.0,
                         surprise_arrival_fit_weight: 1.0,

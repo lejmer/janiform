@@ -33,6 +33,9 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigur
 use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, ReturnClockExposureParametersError,
 };
+use janiform_model_kernels::timestamp_observation::{
+    TimestampBatchingObservationModel, TimestampBatchingObservationModelError,
+};
 
 use super::runtime::{
     compute_max_effective_endogenous_branching_ratio, is_valid_observed_price_tick_size,
@@ -137,6 +140,7 @@ pub struct CoarseSimulationModelInputs {
     pub long_variance_parameters: LongVarianceParameters,
     pub initial_long_variance_state: LongVarianceState,
     pub observed_price_tick_size: Option<f64>,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
 }
@@ -184,6 +188,14 @@ impl CoarseSimulationModelInputs {
                 CoarseSimulationModelInputsError::InvalidObservedPriceTickSize { value: tick_size },
             );
         }
+
+        self.timestamp_batching_observation_model
+            .validate()
+            .map_err(|source| {
+                CoarseSimulationModelInputsError::InvalidTimestampBatchingObservationModel {
+                    source,
+                }
+            })?;
 
         if self.exchange_code.trim().is_empty() {
             return Err(CoarseSimulationModelInputsError::InvalidExchangeCode {
@@ -234,6 +246,9 @@ pub enum CoarseSimulationModelInputsError {
     InvalidObservedPriceTickSize {
         value: f64,
     },
+    InvalidTimestampBatchingObservationModel {
+        source: TimestampBatchingObservationModelError,
+    },
     InvalidCalendarRegistry {
         source: ExchangeCalendarRegistryLoadError,
     },
@@ -277,6 +292,10 @@ impl Display for CoarseSimulationModelInputsError {
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
             ),
+            Self::InvalidTimestampBatchingObservationModel { source } => write!(
+                formatter,
+                "timestamp_batching_observation_model is invalid: {source}"
+            ),
             Self::InvalidCalendarRegistry { source } => {
                 write!(formatter, "calendar_registry_artifact is invalid: {source}")
             }
@@ -305,6 +324,7 @@ impl Error for CoarseSimulationModelInputsError {
             Self::InvalidReturnClockExposureParameters { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidInitialLongVarianceState { source } => Some(source),
+            Self::InvalidTimestampBatchingObservationModel { source } => Some(source),
             Self::InvalidCalendarRegistry { source } => Some(source),
             Self::ExchangeCodeMissingFromCalendarRegistry { source, .. } => Some(source),
             Self::InvalidObservedPriceTickSize { .. } | Self::InvalidExchangeCode { .. } => None,
@@ -321,6 +341,7 @@ struct CoarseSimulationModelInputsPayload {
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
+    timestamp_batching_observation_model: TimestampBatchingObservationModel,
     calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     exchange_code: String,
 }
@@ -339,6 +360,7 @@ impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
             long_variance_parameters: payload.long_variance_parameters,
             initial_long_variance_state: payload.initial_long_variance_state,
             observed_price_tick_size: payload.observed_price_tick_size,
+            timestamp_batching_observation_model: payload.timestamp_batching_observation_model,
             calendar_registry_artifact: payload.calendar_registry_artifact,
             exchange_code: payload.exchange_code,
         })
@@ -2470,6 +2492,9 @@ mod tests {
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
+            timestamp_batching_observation_model:
+                janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                ),
             calendar_registry_artifact: build_calendar_registry_artifact(),
             exchange_code: "XNYS".to_string(),
         })

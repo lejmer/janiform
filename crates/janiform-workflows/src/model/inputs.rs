@@ -61,6 +61,11 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,
+        timestamp_batching_observation_model: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .timestamp_batching_observation_model
+            .clone(),
         // Intentional copy because seeded simulation owns runtime inputs
         // independent of the shared workflow context.
         calendar_registry: context.calendar_registry.clone(),
@@ -143,6 +148,11 @@ pub(crate) fn build_coarse_simulation_model_inputs(
             .return_components_fitted_parameters
             .tick_grid_observation_model
             .tick_size,
+        timestamp_batching_observation_model: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .timestamp_batching_observation_model
+            .clone(),
         // Intentional copies because coarse simulation owns serialized calendar
         // and exchange identity independent of the shared workflow context.
         calendar_registry_artifact: context.calendar_registry_artifact.clone(),

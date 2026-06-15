@@ -10,6 +10,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::super::contracts::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
@@ -481,6 +482,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
+        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -595,6 +597,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
+        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -679,6 +682,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
+        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -804,6 +808,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
+        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -843,6 +848,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
+        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-gain mean reversion should validate"),

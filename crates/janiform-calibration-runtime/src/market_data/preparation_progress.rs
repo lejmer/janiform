@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use super::loading::MarketDataLoadingProgressEvent;
+use super::timestamp_observation_diagnostics::CalibrationTimestampBatchingObservationDiagnostic;
 
 /// Market-data preparation phase reported after source loading.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,20 +60,23 @@ impl MarketDataPreparationProgressPhase {
 }
 
 /// Progress emitted while market-data preparation runs.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MarketDataPreparationProgressEvent {
     /// Source loading progress.
     Loading(MarketDataLoadingProgressEvent),
     /// Post-loading preparation phase progress.
     Preparing(MarketDataPreparationProgressPhase),
+    /// Timestamp batching observation diagnostic surfaced during preparation.
+    TimestampBatchingObservation(CalibrationTimestampBatchingObservationDiagnostic),
 }
 
 impl MarketDataPreparationProgressEvent {
     /// Human-readable latest signal for terminal progress displays.
-    pub fn latest_signal(self) -> String {
+    pub fn latest_signal(&self) -> String {
         match self {
             Self::Loading(event) => event.latest_signal(),
             Self::Preparing(phase) => phase.latest_signal().to_string(),
+            Self::TimestampBatchingObservation(diagnostic) => diagnostic.message.to_string(),
         }
     }
 }
@@ -135,6 +139,13 @@ impl<'a> MarketDataPreparationProgressContext<'a> {
         self.emit(MarketDataPreparationProgressEvent::Preparing(phase))
     }
 
+    pub(crate) fn emit_timestamp_batching_observation(
+        &mut self,
+        diagnostic: CalibrationTimestampBatchingObservationDiagnostic,
+    ) -> Result<(), MarketDataPreparationProgressError> {
+        self.emit(MarketDataPreparationProgressEvent::TimestampBatchingObservation(diagnostic))
+    }
+
     fn emit(
         &mut self,
         event: MarketDataPreparationProgressEvent,
@@ -149,6 +160,14 @@ impl<'a> MarketDataPreparationProgressContext<'a> {
 
 #[cfg(test)]
 mod tests {
+    use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+
+    use super::super::timestamp_observation_diagnostics::{
+        CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
+        CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
+        CalibrationTimestampBatchingObservationDiagnostic,
+        CalibrationTimestampBatchingObservationDiagnosticState,
+    };
     use super::{MarketDataPreparationProgressEvent, MarketDataPreparationProgressPhase};
 
     #[test]
@@ -171,6 +190,27 @@ mod tests {
             )
             .latest_signal(),
             "summarizing prepared market data"
+        );
+    }
+
+    #[test]
+    fn preparation_progress_event_uses_timestamp_batching_diagnostic_signal() {
+        let event = MarketDataPreparationProgressEvent::TimestampBatchingObservation(
+            CalibrationTimestampBatchingObservationDiagnostic {
+                schema_version: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION
+                    .to_string(),
+                diagnostic_policy: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY
+                    .to_string(),
+                state: CalibrationTimestampBatchingObservationDiagnosticState::DisabledNoDetectableBatching,
+                return_components_stage_selected: true,
+                observation_model: TimestampBatchingObservationModel::disabled(),
+                message: "timestamp batching observation evaluated".to_string(),
+            },
+        );
+
+        assert_eq!(
+            event.latest_signal(),
+            "timestamp batching observation evaluated"
         );
     }
 }

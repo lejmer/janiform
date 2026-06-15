@@ -99,13 +99,6 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
 ) -> JointRefinementLazyCoarseConsistencySelection<'a> {
     let selected_restart_count = selected_restart_count.max(1);
 
-    let Some(baseline_artifacts) = baseline_artifacts else {
-        return JointRefinementLazyCoarseConsistencySelection {
-            selected_restart_outcomes: Vec::new(),
-            coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
-        };
-    };
-
     let restart_groups = build_joint_restart_outcome_groups(restart_outcomes);
 
     let representative_restart_outcomes =
@@ -127,6 +120,18 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             has_optimistically_admissible_candidate,
         )
     });
+
+    let Some(baseline_artifacts) = baseline_artifacts else {
+        return JointRefinementLazyCoarseConsistencySelection {
+            selected_restart_outcomes: select_ranked_restart_outcomes_without_coarse_consistency(
+                restart_outcomes,
+                restart_groups.as_slice(),
+                ranked_restart_candidates.as_slice(),
+                selected_restart_count,
+            ),
+            coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
+        };
+    };
 
     let total_ranked_restart_groups = ranked_restart_candidates.len();
 
@@ -232,8 +237,63 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         }
     }
 
-    let mut selected_restart_outcomes = admissible_restart_outcomes;
+    let selected_restart_outcomes = selected_restart_outcomes_from_ranked_buckets(
+        admissible_restart_outcomes,
+        fallback_restart_outcomes,
+        selected_restart_count,
+    );
 
+    JointRefinementLazyCoarseConsistencySelection {
+        selected_restart_outcomes,
+        coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
+            .artifacts_by_restart_id,
+    }
+}
+
+fn select_ranked_restart_outcomes_without_coarse_consistency<'a>(
+    restart_outcomes: &[&'a JointRefinementRestartOutcome],
+    restart_groups: &[JointRefinementRestartOutcomeGroup<'a>],
+    ranked_restart_candidates: &[JointRefinementCandidateOrderingState<'a>],
+    selected_restart_count: usize,
+) -> Vec<&'a JointRefinementRestartOutcome> {
+    let mut admissible_restart_outcomes = Vec::new();
+    let mut fallback_restart_outcomes = Vec::new();
+
+    for candidate_state in ranked_restart_candidates {
+        let Some(restart_group) = find_restart_group(
+            restart_groups,
+            candidate_state.restart_outcome.restart_id.as_str(),
+        ) else {
+            continue;
+        };
+
+        if candidate_state.admissible
+            && let Some(selected_restart_outcome) = find_restart_outcome(
+                restart_outcomes,
+                restart_group.representative.restart_id.as_str(),
+            )
+        {
+            admissible_restart_outcomes.push(selected_restart_outcome);
+        } else if let Some(fallback_restart_outcome) = find_restart_outcome(
+            restart_outcomes,
+            restart_group.representative.restart_id.as_str(),
+        ) {
+            fallback_restart_outcomes.push(fallback_restart_outcome);
+        }
+    }
+
+    selected_restart_outcomes_from_ranked_buckets(
+        admissible_restart_outcomes,
+        fallback_restart_outcomes,
+        selected_restart_count,
+    )
+}
+
+fn selected_restart_outcomes_from_ranked_buckets<'a>(
+    mut selected_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
+    fallback_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
+    selected_restart_count: usize,
+) -> Vec<&'a JointRefinementRestartOutcome> {
     for fallback_restart_outcome in fallback_restart_outcomes {
         if selected_restart_outcomes.len() >= selected_restart_count {
             break;
@@ -251,11 +311,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         selected_restart_outcomes.push(fallback_restart_outcome);
     }
 
-    JointRefinementLazyCoarseConsistencySelection {
-        selected_restart_outcomes,
-        coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
-            .artifacts_by_restart_id,
-    }
+    selected_restart_outcomes
 }
 
 fn representative_restart_outcomes<'a>(
@@ -514,7 +570,7 @@ fn assign_coarse_consistency_artifacts_to_restart_group(
 }
 
 fn build_joint_candidate_ordering_states<'a>(
-    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
+    restart_outcomes: &[&'a JointRefinementRestartOutcome],
 ) -> Vec<JointRefinementCandidateOrderingState<'a>> {
     let pareto_ranks = pareto_ranks(restart_outcomes);
 
@@ -691,5 +747,128 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
                 total_units,
             )
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform_calibration_artifacts::{
+        CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationObjectivePolicy,
+        JointRefinementStageObjectiveBreakdown,
+    };
+
+    use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
+
+    use super::super::test_support::test_joint_fitted_parameters;
+    use super::super::{
+        JointRefinementCandidateEvaluation, JointRefinementRawAdmissibilityMetrics,
+        JointRefinementRestartOutcome,
+    };
+    use super::{
+        build_joint_candidate_ordering_states, build_joint_restart_outcome_groups,
+        compare_joint_candidate_ordering_states, representative_restart_outcomes,
+        select_ranked_restart_outcomes_without_coarse_consistency,
+    };
+
+    #[test]
+    fn missing_baseline_coarse_consistency_selects_valid_ranked_fallback_restart() {
+        let weaker_restart = build_test_restart_outcome("weaker_restart", 3.0);
+        let stronger_restart = build_test_restart_outcome("stronger_restart", 1.0);
+        let restart_outcomes = vec![&weaker_restart, &stronger_restart];
+        let restart_groups = build_joint_restart_outcome_groups(restart_outcomes.as_slice());
+
+        let representative_restart_outcomes =
+            representative_restart_outcomes(restart_groups.as_slice());
+
+        let mut ranked_restart_candidates =
+            build_joint_candidate_ordering_states(representative_restart_outcomes.as_slice());
+
+        let has_admissible_candidate = ranked_restart_candidates
+            .iter()
+            .any(|candidate_state| candidate_state.admissible);
+
+        ranked_restart_candidates.sort_by(|left, right| {
+            compare_joint_candidate_ordering_states(*left, *right, has_admissible_candidate)
+        });
+
+        let selected_restart_outcomes = select_ranked_restart_outcomes_without_coarse_consistency(
+            restart_outcomes.as_slice(),
+            restart_groups.as_slice(),
+            ranked_restart_candidates.as_slice(),
+            1,
+        );
+
+        let selected_restart_ids = selected_restart_outcomes
+            .iter()
+            .map(|restart_outcome| restart_outcome.restart_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected_restart_ids, vec!["stronger_restart"]);
+    }
+
+    fn build_test_restart_outcome(
+        restart_id: &str,
+        global_loss: f64,
+    ) -> JointRefinementRestartOutcome {
+        let breakdown = build_test_inadmissible_breakdown(global_loss);
+
+        let evaluation = JointRefinementCandidateEvaluation {
+            fitted_parameters: test_joint_fitted_parameters(),
+            raw_admissibility_metrics: build_test_raw_admissibility_metrics(global_loss),
+            breakdown,
+            exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
+            objective_terms: Vec::new(),
+            invalid_reason: None,
+        };
+
+        JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: vec![global_loss],
+            local_evaluation: evaluation.clone(),
+            final_evaluation: evaluation,
+            local_evaluation_count: 1,
+            stop_reason: "test".to_string(),
+        }
+    }
+
+    fn build_test_inadmissible_breakdown(
+        global_loss: f64,
+    ) -> JointRefinementStageObjectiveBreakdown {
+        JointRefinementStageObjectiveBreakdown {
+            policy: CalibrationObjectivePolicy::default(),
+            family_losses: vec![CalibrationLossFamilyDiagnostic {
+                family_id: "test_fit".to_string(),
+                term_count: 1,
+                loss: global_loss,
+                max_standardized_residual: global_loss,
+                worst_term_id: Some("test_fit".to_string()),
+            }],
+            term_diagnostics: Vec::new(),
+            hard_constraint_diagnostics: Vec::new(),
+            global_loss,
+            admissibility: CalibrationLossAdmissibility {
+                admissible: false,
+                max_standardized_residual: global_loss,
+                excess_loss: global_loss,
+                blockers: vec!["test_fit".to_string()],
+            },
+        }
+    }
+
+    fn build_test_raw_admissibility_metrics(value: f64) -> JointRefinementRawAdmissibilityMetrics {
+        JointRefinementRawAdmissibilityMetrics {
+            aggregated_likelihood_fit: value,
+            aggregated_return_shape_fit: value,
+            return_asymmetry_fit: value,
+            tick_return_asymmetry_fit: value,
+            aggregated_return_scale_fit: value,
+            tick_return_scale_fit: value,
+            business_time_return_scale_fit: value,
+            intraday_return_level_fit: value,
+            activity_shape_fit: value,
+            activity_level_fit: value,
+            rv_activity_coupling_fit: value,
+            long_variance_horizon_fit: value,
+        }
     }
 }

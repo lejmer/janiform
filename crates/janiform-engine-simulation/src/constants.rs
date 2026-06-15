@@ -21,6 +21,8 @@ pub const SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.debug_trace_record.v1";
 pub const SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.debug_trace_chunk.v1";
+pub const SEEDED_TICK_EVENT_TIMING_DIAGNOSTICS_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.timing_diagnostics.v1";
 pub const SEEDED_TICK_EVENT_DETERMINISM_POLICY: &str =
     "stable_seed_and_run_config_with_ordered_event_path.v1";
 
@@ -34,7 +36,11 @@ pub const SEEDED_TICK_EVENT_DETERMINISM_POLICY: &str =
 /// 5. generation order fallback for exact key collisions
 pub const SEEDED_TICK_EVENT_ORDERING_POLICY: &str = "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1";
 pub const SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY: &str =
-    "event_time_timestamp_utc_nanos_without_bucket_identifier.v1";
+    "latent_event_time_and_observed_timestamp_utc_nanos.v1";
+pub const SEEDED_TICK_EVENT_LATENT_INTERVAL_OWNERSHIP_POLICY: &str =
+    "latent_event_time_uses_interval_factor_grid_start_inclusive_end_exclusive_ownership.v1";
+pub const SEEDED_TICK_EVENT_OBSERVED_TIMESTAMP_INTERVAL_OWNERSHIP_POLICY: &str =
+    "observed_timestamp_ownership_follows_timestamp_batching_policy_within_latent_interval.v1";
 pub const SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY: &str = "lowercase_buy_or_sell.v1";
 pub const SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY: &str =
     "post_event_transition_pre_following_same_timestamp_updates.v1";

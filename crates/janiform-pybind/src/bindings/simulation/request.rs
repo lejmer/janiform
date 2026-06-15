@@ -2,6 +2,7 @@ use janiform::model::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform::model::news::NewsProcessConfiguration;
 use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
+use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
@@ -231,6 +232,9 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
                 long_variance_parameters: self.model_inputs.long_variance_parameters,
                 initial_long_variance_state: self.model_inputs.initial_long_variance_state,
                 observed_price_tick_size: self.model_inputs.observed_price_tick_size,
+                timestamp_batching_observation_model: self
+                    .model_inputs
+                    .timestamp_batching_observation_model,
                 calendar_registry,
             },
             Some(self.run_options),
@@ -252,6 +256,7 @@ struct SeededTickSimulationModelInputsPayload {
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
+    timestamp_batching_observation_model: TimestampBatchingObservationModel,
 }
 
 impl SeededTickSimulationModelInputsPayload {
@@ -319,6 +324,11 @@ impl SeededTickSimulationModelInputsPayload {
                 request,
                 "seeded_tick_simulation_request",
                 "observed_price_tick_size",
+            )?,
+            timestamp_batching_observation_model: parse_required_json_field(
+                request,
+                "seeded_tick_simulation_request",
+                "timestamp_batching_observation_model",
             )?,
         })
     }

@@ -22,6 +22,7 @@ from janiform.calibration.staged import CalibrationStage, StagedCalibrationRespo
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.model import JaniformModel
 from tests.support.calibration import (
+    build_disabled_timestamp_batching_observation_diagnostic_payload,
     build_structural_seasonality_parameters_payload,
     stage_report_by_stage,
 )
@@ -516,10 +517,17 @@ def _preparation_diagnostics_payload(
     selected_stages: tuple[str, ...],
     configuration: FitExecutionConfiguration,
 ) -> dict[str, Any]:
+    return_components_stage_selected = "return_components" in selected_stages
+
     return {
         "workflow_scope": _workflow_scope_value(configuration),
         "selected_stages": list(selected_stages),
         "executed_preprocessing_steps": [],
+        "timestamp_batching_observation": (
+            build_disabled_timestamp_batching_observation_diagnostic_payload(
+                return_components_stage_selected=return_components_stage_selected,
+            )
+        ),
         "tick_record_count": 3,
         "coarse_data_record_count": 0,
         "coarse_data_return_interval_count": 0,

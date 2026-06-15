@@ -736,6 +736,9 @@ fn enumerate_candidate_inputs(
                     tick_grid_observation_model: candidate_generation_input
                         .tick_grid_observation_model
                         .clone(),
+                    timestamp_batching_observation_model: candidate_generation_input
+                        .timestamp_batching_observation_model
+                        .clone(),
                 };
 
                 emit_return_components_progress(

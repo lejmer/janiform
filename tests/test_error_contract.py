@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, NoReturn
 
@@ -58,7 +59,10 @@ from janiform.simulation.coarse import (
     SurpriseNewsArrivalConfiguration,
     run_coarse_simulation,
 )
-from janiform.simulation.seeded import SeededTickSimulationRequest
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
+    TimestampBatchingObservationModel,
+)
 from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
@@ -67,15 +71,65 @@ from janiform.simulation.shared import (
     HawkesKernelLoadings,
     HawkesKernelParameters,
 )
-from tests.support.calibration import build_valid_execution_input_model
+from tests.support.calibration import (
+    build_disabled_timestamp_batching_observation_model_payload,
+    build_valid_execution_input_model,
+)
 from tests.support.pricing import (
     build_anchored_runtime_execution_input_model,
     build_anchored_surface_execution_input_model,
 )
-from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
+from tests.support.simulation import (
+    build_endogenous_mean_reversion_runtime_contracts,
+    build_seeded_timing_diagnostics_payload,
+)
 
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
+
+
+def _seeded_fine_path_metadata_json() -> str:
+    return json.dumps(
+        {
+            "schema_version": "simulation.seeded_tick_event.fine_path_metadata.v1",
+            "path_record_schema_version": "simulation.seeded_tick_event.path_record.v1",
+            "event_projection_record_schema_version": "simulation.seeded_tick_event.event_record.v1",
+            "transition_ordering_policy": "canonical",
+            "timestamp_representation_policy": (
+                "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            ),
+            "timestamp_batching_observation_model": (
+                build_disabled_timestamp_batching_observation_model_payload()
+            ),
+            "side_encoding_policy": "snake_case",
+            "state_snapshot_capture": "disabled",
+            "state_snapshot_capture_point_policy": None,
+        }
+    )
+
+
+def _seeded_event_tape_metadata_json() -> str:
+    return json.dumps(
+        {
+            "schema_version": "simulation.seeded_tick_event.event_tape_metadata.v1",
+            "event_record_schema_version": "simulation.seeded_tick_event.event_record.v1",
+            "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
+            "event_ordering_policy": "canonical",
+            "timestamp_representation_policy": (
+                "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            ),
+            "timestamp_batching_observation_model": (
+                build_disabled_timestamp_batching_observation_model_payload()
+            ),
+            "side_encoding_policy": "snake_case",
+            "state_snapshot_capture": "disabled",
+            "state_snapshot_capture_point_policy": None,
+        }
+    )
+
+
+def _seeded_timing_diagnostics_json() -> str:
+    return json.dumps(build_seeded_timing_diagnostics_payload())
 
 
 def test_validation_error_string_format_is_stable() -> None:
@@ -142,6 +196,7 @@ def test_validation_error_string_format_is_stable() -> None:
                 news_intensity=(0.2, 0.1),
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
+            timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
             sample_every_nth_transition=0,
         )
 
@@ -240,27 +295,15 @@ def test_simulation_run_maps_native_chunk_projection_failure_to_integration_erro
 
         @staticmethod
         def fine_path_metadata_json() -> str:
-            return (
-                '{"schema_version":"simulation.seeded_tick_event.fine_path_metadata.v1",'
-                '"path_record_schema_version":"simulation.seeded_tick_event.path_record.v1",'
-                '"event_projection_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
-                '"transition_ordering_policy":"canonical",'
-                '"timestamp_representation_policy":"utc_nanos",'
-                '"side_encoding_policy":"snake_case",'
-                '"state_snapshot_capture":"disabled"}'
-            )
+            return _seeded_fine_path_metadata_json()
 
         @staticmethod
         def event_tape_metadata_json() -> str:
-            return (
-                '{"schema_version":"simulation.seeded_tick_event.event_tape_metadata.v1",'
-                '"event_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
-                '"state_snapshot_schema_version":"simulation.seeded_tick_event.state_snapshot.v1",'
-                '"event_ordering_policy":"canonical",'
-                '"timestamp_representation_policy":"utc_nanos",'
-                '"side_encoding_policy":"snake_case",'
-                '"state_snapshot_capture":"disabled"}'
-            )
+            return _seeded_event_tape_metadata_json()
+
+        @staticmethod
+        def timing_diagnostics_json() -> str:
+            return _seeded_timing_diagnostics_json()
 
         @staticmethod
         def get_fine_path_chunk_columns(start_index: int, max_records: int) -> NoReturn:
@@ -312,27 +355,15 @@ def test_simulation_run_maps_native_chunk_field_failure_to_integration_error(
 
         @staticmethod
         def fine_path_metadata_json() -> str:
-            return (
-                '{"schema_version":"simulation.seeded_tick_event.fine_path_metadata.v1",'
-                '"path_record_schema_version":"simulation.seeded_tick_event.path_record.v1",'
-                '"event_projection_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
-                '"transition_ordering_policy":"canonical",'
-                '"timestamp_representation_policy":"utc_nanos",'
-                '"side_encoding_policy":"snake_case",'
-                '"state_snapshot_capture":"disabled"}'
-            )
+            return _seeded_fine_path_metadata_json()
 
         @staticmethod
         def event_tape_metadata_json() -> str:
-            return (
-                '{"schema_version":"simulation.seeded_tick_event.event_tape_metadata.v1",'
-                '"event_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
-                '"state_snapshot_schema_version":"simulation.seeded_tick_event.state_snapshot.v1",'
-                '"event_ordering_policy":"canonical",'
-                '"timestamp_representation_policy":"utc_nanos",'
-                '"side_encoding_policy":"snake_case",'
-                '"state_snapshot_capture":"disabled"}'
-            )
+            return _seeded_event_tape_metadata_json()
+
+        @staticmethod
+        def timing_diagnostics_json() -> str:
+            return _seeded_timing_diagnostics_json()
 
         @staticmethod
         def get_fine_path_chunk_columns(start_index: int, max_records: int) -> FakeBrokenChunkColumns:
@@ -680,6 +711,7 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -728,6 +760,7 @@ def _valid_coarse_simulation_request(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

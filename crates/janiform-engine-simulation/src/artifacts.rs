@@ -8,6 +8,7 @@ use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnCom
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::config::SeededTickEventStateSnapshotCapture;
 
@@ -49,7 +50,8 @@ impl SeededTickEventStateSnapshot {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeededTickEventRecord {
     pub event_index: u64,
-    pub timestamp_utc_nanos: i64,
+    pub latent_event_time_utc_nanos: i64,
+    pub observed_timestamp_utc_nanos: i64,
     pub side: SeededTickEventSide,
     pub core_total_return_increment: f64,
     pub observed_log_price: f64,
@@ -71,13 +73,14 @@ pub enum SeededFinePathTransitionKind {
 }
 
 /// Machine-readable metadata for one serialized fine path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SeededFinePathMetadata {
     pub schema_version: &'static str,
     pub path_record_schema_version: &'static str,
     pub event_projection_record_schema_version: &'static str,
     pub transition_ordering_policy: &'static str,
     pub timestamp_representation_policy: &'static str,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub side_encoding_policy: &'static str,
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,7 +91,8 @@ pub struct SeededFinePathMetadata {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeededFinePathRecord {
     pub transition_index: u64,
-    pub timestamp_utc_nanos: i64,
+    pub latent_transition_time_utc_nanos: i64,
+    pub observed_timestamp_utc_nanos: i64,
     pub transition_kind: SeededFinePathTransitionKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub side: Option<SeededTickEventSide>,
@@ -115,13 +119,14 @@ pub struct SeededFinePathOutput<'a> {
 }
 
 /// Machine-readable event tape metadata for deterministic serialization and diagnostics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SeededTickEventTapeMetadata {
     pub schema_version: &'static str,
     pub event_record_schema_version: &'static str,
     pub state_snapshot_schema_version: &'static str,
     pub event_ordering_policy: &'static str,
     pub timestamp_representation_policy: &'static str,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub side_encoding_policy: &'static str,
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -168,9 +173,10 @@ impl SeededTickSimulationNewsEventMarketState {
 pub struct SeededTickEventDebugTraceRecord {
     pub transition_index: u64,
     pub interval_index: usize,
-    pub previous_timestamp_utc_nanos: i64,
-    pub timestamp_utc_nanos: i64,
-    pub elapsed_hours_since_previous_update: f64,
+    pub previous_latent_transition_time_utc_nanos: i64,
+    pub latent_transition_time_utc_nanos: i64,
+    pub observed_timestamp_utc_nanos: i64,
+    pub elapsed_hours_since_previous_latent_update: f64,
     pub transition_kind: SeededTickEventDebugTraceTransitionKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation_order: Option<u64>,
@@ -242,6 +248,27 @@ pub struct SeededTickSimulationNewsRoutingTotals {
     pub cumulative_closed_window_gap_g_t_increment: f64,
 }
 
+/// Interarrival summary for one timestamp axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SeededTickSimulationInterarrivalDiagnostics {
+    pub interarrival_count: usize,
+    pub zero_interarrival_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_positive_interarrival_nanos: Option<i64>,
+}
+
+/// Timing diagnostics separating latent event arrivals from observed timestamps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SeededTickSimulationTimingDiagnostics {
+    pub schema_version: &'static str,
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub latent_event_interarrivals: SeededTickSimulationInterarrivalDiagnostics,
+    pub observed_timestamp_interarrivals: SeededTickSimulationInterarrivalDiagnostics,
+    pub latent_interval_ownership_policy: &'static str,
+    pub observed_timestamp_interval_ownership_policy: &'static str,
+    pub coarse_interval_compatibility_policy: String,
+}
+
 impl Default for SeededTickSimulationNewsRoutingTotals {
     fn default() -> Self {
         Self {
@@ -286,6 +313,7 @@ pub struct SeededTickSimulationStreamCompletion {
     pub simulated_interval_count: usize,
     pub fine_path_metadata: SeededFinePathMetadata,
     pub event_tape_metadata: SeededTickEventTapeMetadata,
+    pub timing_diagnostics: SeededTickSimulationTimingDiagnostics,
     pub final_excitation_state: HawkesExcitationState,
     pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
     pub cumulative_core_log_return: f64,
@@ -329,6 +357,7 @@ pub struct SeededTickSimulationRunResult {
     pub public_transition_positions: Vec<usize>,
     pub event_tape_metadata: SeededTickEventTapeMetadata,
     pub event_transition_positions: Vec<usize>,
+    pub timing_diagnostics: SeededTickSimulationTimingDiagnostics,
     pub final_excitation_state: HawkesExcitationState,
     pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
     pub cumulative_core_log_return: f64,
@@ -400,7 +429,8 @@ impl SeededTickSimulationRunResult {
 
         Some(SeededTickEventRecord {
             event_index: event_index as u64,
-            timestamp_utc_nanos: fine_path_record.timestamp_utc_nanos,
+            latent_event_time_utc_nanos: fine_path_record.latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos: fine_path_record.observed_timestamp_utc_nanos,
             side,
             core_total_return_increment: fine_path_record.core_total_return_increment,
             observed_log_price: fine_path_record.observed_log_price,
@@ -490,7 +520,7 @@ impl SeededTickSimulationRunResult {
     pub fn fine_path_output(&self) -> SeededFinePathOutput<'_> {
         SeededFinePathOutput {
             schema_version: self.schema_version,
-            metadata: self.fine_path_metadata,
+            metadata: self.fine_path_metadata.clone(),
             fine_path: &self.fine_path,
         }
     }
@@ -504,7 +534,7 @@ impl SeededTickSimulationRunResult {
     pub fn event_tape_output(&self) -> SeededTickEventTapeOutput {
         SeededTickEventTapeOutput {
             schema_version: self.schema_version,
-            metadata: self.event_tape_metadata,
+            metadata: self.event_tape_metadata.clone(),
             event_tape: self.projected_event_path(),
         }
     }
@@ -512,6 +542,11 @@ impl SeededTickSimulationRunResult {
     /// Serialize the canonical event tape payload to deterministic JSON.
     pub fn serialize_event_tape_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(&self.event_tape_output())
+    }
+
+    /// Serialize the timing diagnostics artifact to deterministic JSON.
+    pub fn serialize_timing_diagnostics_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&self.timing_diagnostics)
     }
 
     /// Serialize the optional debug trace artifact to deterministic JSON.

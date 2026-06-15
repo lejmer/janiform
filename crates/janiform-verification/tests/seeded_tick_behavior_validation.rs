@@ -301,8 +301,8 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
 
     assert_eq!(first_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = first_event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = first_event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = first_event_path[0].observed_timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = first_event_path[1].observed_timestamp_utc_nanos;
 
     let boundary_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + NANOS_PER_HOUR;
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
@@ -386,7 +386,7 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
 
     let tied_timestamp_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + tied_offset_nanos;
     assert_eq!(
-        trace_records[0].timestamp_utc_nanos,
+        trace_records[0].observed_timestamp_utc_nanos,
         tied_timestamp_utc_nanos
     );
 }
@@ -424,8 +424,8 @@ fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ord
     let projected_event_path = run_result.projected_event_path();
     assert_eq!(projected_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = projected_event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = projected_event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = projected_event_path[0].observed_timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = projected_event_path[1].observed_timestamp_utc_nanos;
 
     assert!(first_timestamp_utc_nanos < second_timestamp_utc_nanos);
     assert_eq!(projected_event_path[0].side, SeededTickEventSide::Sell);
@@ -1098,7 +1098,7 @@ fn collect_interval_event_counts(
 
     for event_record in event_path {
         let interval_position = event_interval_position(
-            event_record.timestamp_utc_nanos,
+            event_record.observed_timestamp_utc_nanos,
             start_time_utc_nanos,
             interval_duration_nanos,
             interval_count,
@@ -1123,7 +1123,7 @@ fn collect_interval_buy_event_counts(
 
     for event_record in event_path {
         let interval_position = event_interval_position(
-            event_record.timestamp_utc_nanos,
+            event_record.observed_timestamp_utc_nanos,
             start_time_utc_nanos,
             interval_duration_nanos,
             interval_count,
@@ -1168,7 +1168,7 @@ fn has_non_grid_event_time(
     interval_duration_nanos: i64,
 ) -> bool {
     event_path.iter().any(|event_record| {
-        let offset_nanos = event_record.timestamp_utc_nanos - start_time_utc_nanos;
+        let offset_nanos = event_record.observed_timestamp_utc_nanos - start_time_utc_nanos;
         offset_nanos >= 0 && offset_nanos % interval_duration_nanos != 0
     })
 }
@@ -1327,6 +1327,7 @@ fn build_run_config_with_options(
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1559,6 +1560,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1611,6 +1613,7 @@ fn build_one_interval_ordering_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1662,6 +1665,7 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1936,6 +1940,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
@@ -2003,6 +2008,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => vec![],

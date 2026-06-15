@@ -16,6 +16,7 @@ from janiform.simulation import (
     HawkesKernelLoadings,
     HawkesKernelParameters,
     SeededTickSimulationValidationError,
+    TimestampBatchingObservationModel,
 )
 from janiform.simulation.coarse import (
     COARSE_SIMULATION_PATH_SCHEMA_VERSION,
@@ -218,6 +219,7 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

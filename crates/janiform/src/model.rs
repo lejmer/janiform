@@ -10,3 +10,4 @@ pub mod return_clock;
 pub mod returns;
 pub mod risk_neutral;
 pub mod sufficient_statistics;
+pub mod timestamp_observation;

@@ -45,6 +45,8 @@ pub enum MarketDataLoadingProgressPhase {
     ReadingRecords,
     /// Source rows are being normalized into the typed runtime contract.
     NormalizingRecords,
+    /// Observed timestamp batching behavior is being inferred from loaded tick records.
+    InferringTimestampBatchingObservation,
     /// Source loading finished.
     Completed,
 }
@@ -55,6 +57,9 @@ impl MarketDataLoadingProgressPhase {
         match self {
             Self::ReadingRecords => "reading_records",
             Self::NormalizingRecords => "normalizing_records",
+            Self::InferringTimestampBatchingObservation => {
+                "inferring_timestamp_batching_observation"
+            }
             Self::Completed => "completed",
         }
     }
@@ -64,6 +69,9 @@ impl MarketDataLoadingProgressPhase {
         match self {
             Self::ReadingRecords => "reading records",
             Self::NormalizingRecords => "normalizing records",
+            Self::InferringTimestampBatchingObservation => {
+                "inferring observed timestamp batching model"
+            }
             Self::Completed => "loaded",
         }
     }
@@ -135,6 +143,14 @@ impl MarketDataLoadingProgressEvent {
     }
 
     fn source_record_signal(self) -> String {
+        if self.phase == MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation {
+            return format!(
+                "{}: {}",
+                self.source.source_label(),
+                self.phase.phase_label()
+            );
+        }
+
         match self.total_records {
             Some(total_records) if total_records > 0 => format!(
                 "{}: {} {}/{} records",
@@ -381,6 +397,29 @@ mod tests {
         assert_eq!(
             observed_events[0].phase_signal(),
             "tick data: reading records"
+        );
+    }
+
+    #[test]
+    fn timestamp_batching_inference_progress_uses_active_signal_without_record_count() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation,
+            0,
+            None,
+        );
+
+        assert_eq!(
+            event.phase.phase_id(),
+            "inferring_timestamp_batching_observation"
+        );
+        assert_eq!(
+            event.latest_signal(),
+            "tick data: inferring observed timestamp batching model"
+        );
+        assert_eq!(
+            event.phase_signal(),
+            "tick data: inferring observed timestamp batching model"
         );
     }
 }

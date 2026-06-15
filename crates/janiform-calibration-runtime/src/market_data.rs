@@ -6,6 +6,7 @@ pub(crate) mod preprocessing;
 pub(crate) mod preset_resolution;
 pub(crate) mod presets;
 pub(crate) mod solver_settings;
+pub(crate) mod timestamp_observation_diagnostics;
 
 pub use fit_inference::{
     DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataFitInputInferenceError,
@@ -78,4 +79,10 @@ pub use preset_resolution::{
 pub use presets::{
     MarketDataColumnAliasHint, MarketDataPresetInferenceError, ResolvedMarketProfile,
     infer_bundled_market_profile_from_tick_data_path,
+};
+pub use timestamp_observation_diagnostics::{
+    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
+    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
+    CalibrationTimestampBatchingObservationDiagnostic,
+    CalibrationTimestampBatchingObservationDiagnosticState,
 };

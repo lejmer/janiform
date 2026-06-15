@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "dae97dce311e3629a68bd4f4917b8c5f6b56535972a8d3974583577f7a42403a",
+  "approved_snapshot_sha256": "7d616dca8137a63580cd5ae06865336364c10f5d0300209f642cb053ba6a8ce1",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1692,6 +1692,49 @@
       "summary": "Simplify runtime interval seasonality source construction to the structural clock contract.",
       "updated_surfaces": [
         "janiform.interval_factor_grids"
+      ]
+    },
+    {
+      "approved_on": "2026-06-14",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seeded tick and direct coarse simulation now model timestamp batching as an explicit observation-layer contract, so the public simulation API must expose the shared request policy, seeded metadata contract, timing diagnostics, distinct latent versus observed timestamp fields, and the coarse request policy needed to keep direct interval semantics explicit.",
+      "snapshot_sha256": "54f62914c337911c3170736a07979ce7d7179d358d366d7de2f3e4fd602c2087",
+      "summary": "Expose timestamp batching observation contracts across seeded and coarse simulation.",
+      "updated_surfaces": [
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-06-14",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-data calibration now infers timestamp batching during preparation when return components are selected, and the public API must surface that automatic observation-layer decision as a typed diagnostic instead of leaving it implicit in downstream simulation inputs.",
+      "snapshot_sha256": "646a578c70ec059ca5632d8a93ff90232834b7329f5029895a424676e0c304b0",
+      "summary": "Expose market-data timestamp batching inference diagnostics.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.timestamp_observation",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-06-15",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The timestamp batching observation contract now carries the fitted same-timestamp continuation count and same-session transition count so seeded simulation can generate the observed zero-interarrival rate instead of only reporting the timestamp quantum.",
+      "snapshot_sha256": "7d616dca8137a63580cd5ae06865336364c10f5d0300209f642cb053ba6a8ce1",
+      "summary": "Expose fitted timestamp batching continuation counts.",
+      "updated_surfaces": [
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
       ]
     }
   ],

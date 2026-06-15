@@ -52,6 +52,11 @@ use super::news::{
 };
 use super::observed_state::{SeededObservedState, SeededProjectedCoreIncrement};
 use super::results::estimate_seeded_result_capacities;
+use super::timestamp_observation::{
+    TimestampBatchingIntervalObservationState, TimestampBatchingUpdateObservationInput,
+    observed_timestamp_for_update,
+};
+use super::timing_diagnostics::SeededTickSimulationTimingDiagnosticsAccumulator;
 use super::trading_time::{
     TransitionTradingTimeReturnInput, build_interval_open_market_segments,
     integrate_open_market_elapsed_hours, sample_transition_trading_time_return,
@@ -91,8 +96,16 @@ where
             },
         )?;
 
-    let fine_path_metadata = build_seeded_fine_path_metadata(state_snapshot_capture);
-    let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
+    let timestamp_batching_observation_model =
+        &run_config.model_inputs.timestamp_batching_observation_model;
+    let fine_path_metadata = build_seeded_fine_path_metadata(
+        state_snapshot_capture,
+        timestamp_batching_observation_model,
+    );
+    let event_tape_metadata = build_seeded_tick_event_tape_metadata(
+        state_snapshot_capture,
+        timestamp_batching_observation_model,
+    );
 
     let market_state_resolver = SeededSimulationMarketStateResolver::new(
         &run_config.model_inputs.calendar_registry,
@@ -165,7 +178,7 @@ where
         .known
         .scheduled_event_timestamps_utc_nanos;
 
-    let mut runtime_state = initialize_runtime_state(&run_config, lambda_bar)?;
+    let mut runtime_state = initialize_runtime_state(&run_config, lambda_bar, randomness_factory)?;
 
     for (interval_index, interval_open_market_segment) in interval_open_market_segments
         .iter()
@@ -213,7 +226,7 @@ where
     ))
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct SeededTickSimulationStaticState {
     lambda_bar: f64,
     mean_reversion_kappa: f64,
@@ -224,7 +237,10 @@ struct SeededTickSimulationStaticState {
     event_tape_metadata: SeededTickEventTapeMetadata,
 }
 
-struct SeededTickSimulationRuntimeState {
+struct SeededTickSimulationRuntimeState<R>
+where
+    R: SimulationRandomnessStream,
+{
     next_event_index: u64,
     next_transition_index: u64,
     next_state: HawkesExcitationState,
@@ -234,6 +250,8 @@ struct SeededTickSimulationRuntimeState {
     pending_open_jump_return: f64,
     pending_closed_gap_return: f64,
     observed_state: SeededObservedState,
+    timestamp_batching_observation_stream: R,
+    timing_diagnostics_accumulator: SeededTickSimulationTimingDiagnosticsAccumulator,
     debug_trace_collector: Option<SeededTickEventDebugTraceCollector>,
 }
 
@@ -253,10 +271,14 @@ struct IntervalSimulationInputs<'a> {
     interval_open_market_segments: &'a [(i64, i64)],
 }
 
-fn initialize_runtime_state(
+fn initialize_runtime_state<F>(
     run_config: &SeededTickSimulationRunConfig,
     lambda_bar: f64,
-) -> Result<SeededTickSimulationRuntimeState, SeededTickSimulationRunError> {
+    randomness_factory: &F,
+) -> Result<SeededTickSimulationRuntimeState<F::Stream>, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
     Ok(SeededTickSimulationRuntimeState {
         next_event_index: 0,
         next_transition_index: 0,
@@ -271,6 +293,12 @@ fn initialize_runtime_state(
                 .model_inputs
                 .initial_mean_reversion_boundary_state,
         ),
+        timestamp_batching_observation_stream: randomness_factory.create_substream(
+            run_config.seed,
+            SimulationRandomnessSubstreamDomain::TimestampBatchingObservation,
+            0,
+        ),
+        timing_diagnostics_accumulator: SeededTickSimulationTimingDiagnosticsAccumulator::default(),
         debug_trace_collector: if run_config.options.debug_trace_enabled {
             Some(SeededTickEventDebugTraceCollector::new(
                 run_config.options.debug_trace_options,
@@ -376,7 +404,7 @@ fn process_interval<F, C>(
     consumer: &mut C,
     market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     fine_path_state: &SeededTickSimulationStaticState,
-    runtime_state: &mut SeededTickSimulationRuntimeState,
+    runtime_state: &mut SeededTickSimulationRuntimeState<F::Stream>,
     interval_inputs: IntervalSimulationInputs<'_>,
 ) -> Result<(), SeededTickSimulationRunError>
 where
@@ -394,6 +422,7 @@ where
     )?;
 
     let mut previous_timestamp_utc_nanos = interval_inputs.interval_start_utc_nanos;
+    let mut timestamp_observation_state = TimestampBatchingIntervalObservationState::default();
 
     for interval_update in interval_updates {
         previous_timestamp_utc_nanos = process_interval_update(IntervalUpdateProcessingInput {
@@ -404,6 +433,7 @@ where
             fine_path_state,
             runtime_state,
             interval_inputs: &interval_inputs,
+            timestamp_observation_state: &mut timestamp_observation_state,
             previous_timestamp_utc_nanos,
             interval_update,
         })?;
@@ -496,7 +526,7 @@ fn sample_seeded_transition_long_variance<F>(
     run_config: &SeededTickSimulationRunConfig,
     randomness_factory: &F,
     fine_path_state: &SeededTickSimulationStaticState,
-    runtime_state: &SeededTickSimulationRuntimeState,
+    runtime_state: &SeededTickSimulationRuntimeState<F::Stream>,
     interval_inputs: &IntervalSimulationInputs<'_>,
     elapsed_open_hours: f64,
 ) -> Result<LongVarianceTransitionSample, SeededTickSimulationRunError>
@@ -575,12 +605,15 @@ fn interval_long_variance_stationary_mean_reversion_level(
         )
 }
 
-struct SeededTransitionReturnPreparationInput<'a, 'registry, 'interval, F> {
+struct SeededTransitionReturnPreparationInput<'a, 'registry, 'interval, F>
+where
+    F: SimulationRandomnessFactory,
+{
     run_config: &'a SeededTickSimulationRunConfig,
     randomness_factory: &'a F,
     market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
     fine_path_state: &'a SeededTickSimulationStaticState,
-    runtime_state: &'a mut SeededTickSimulationRuntimeState,
+    runtime_state: &'a mut SeededTickSimulationRuntimeState<F::Stream>,
     interval_inputs: &'a IntervalSimulationInputs<'interval>,
     previous_timestamp_utc_nanos: i64,
     timestamp_utc_nanos: i64,
@@ -699,14 +732,18 @@ where
     })
 }
 
-struct IntervalUpdateProcessingInput<'a, 'registry, 'interval, F, C> {
+struct IntervalUpdateProcessingInput<'a, 'registry, 'interval, F, C>
+where
+    F: SimulationRandomnessFactory,
+{
     run_config: &'a SeededTickSimulationRunConfig,
     randomness_factory: &'a F,
     consumer: &'a mut C,
     market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
     fine_path_state: &'a SeededTickSimulationStaticState,
-    runtime_state: &'a mut SeededTickSimulationRuntimeState,
+    runtime_state: &'a mut SeededTickSimulationRuntimeState<F::Stream>,
     interval_inputs: &'a IntervalSimulationInputs<'interval>,
+    timestamp_observation_state: &'a mut TimestampBatchingIntervalObservationState,
     previous_timestamp_utc_nanos: i64,
     interval_update: IntervalStochasticUpdate,
 }
@@ -726,11 +763,44 @@ where
         fine_path_state,
         runtime_state,
         interval_inputs,
+        timestamp_observation_state,
         previous_timestamp_utc_nanos,
         interval_update,
     } = input;
 
     let previous_state = runtime_state.next_state;
+    let latent_transition_time_utc_nanos = interval_update.timestamp_utc_nanos();
+
+    let apply_timestamp_batching = matches!(
+        interval_update,
+        IntervalStochasticUpdate::EndogenousEvent { .. }
+    );
+
+    let bucketed_observed_timestamp_utc_nanos = run_config
+        .model_inputs
+        .timestamp_batching_observation_model
+        .observed_timestamp_for_transition(
+            latent_transition_time_utc_nanos,
+            interval_inputs.interval_start_utc_nanos,
+            interval_inputs.interval_end_utc_nanos,
+            apply_timestamp_batching,
+        )
+        .map_err(|source| {
+            SeededTickSimulationRunError::InvalidTimestampBatchingObservationModel {
+                source: Box::new(source),
+            }
+        })?;
+
+    let observed_timestamp_utc_nanos =
+        observed_timestamp_for_update(TimestampBatchingUpdateObservationInput {
+            observation_model: &run_config.model_inputs.timestamp_batching_observation_model,
+            randomness_stream: &mut runtime_state.timestamp_batching_observation_stream,
+            interval_start_utc_nanos: interval_inputs.interval_start_utc_nanos,
+            interval_end_utc_nanos: interval_inputs.interval_end_utc_nanos,
+            state: timestamp_observation_state,
+            bucketed_observed_timestamp_utc_nanos,
+            apply_timestamp_batching,
+        });
 
     let transition_return =
         prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
@@ -741,7 +811,7 @@ where
             runtime_state,
             interval_inputs,
             previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+            timestamp_utc_nanos: latent_transition_time_utc_nanos,
             transition_state: previous_state,
         })?;
 
@@ -758,6 +828,13 @@ where
         IntervalStochasticUpdate::EndogenousEvent { .. } => Some(runtime_state.next_event_index),
         IntervalStochasticUpdate::ExogenousNews { .. } => None,
     };
+
+    if event_index_for_update.is_some() {
+        runtime_state.timing_diagnostics_accumulator.record_event(
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
+        );
+    }
 
     runtime_state.next_state = evolve_hawkes_state(
         runtime_state.next_state,
@@ -792,9 +869,10 @@ where
         SeededTickEventDebugTraceCaptureInput {
             transition_index: runtime_state.next_transition_index,
             interval_index: interval_inputs.interval_index,
-            previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
-            elapsed_hours_since_previous_update: transition_return
+            previous_latent_transition_time_utc_nanos: previous_timestamp_utc_nanos,
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
+            elapsed_hours_since_previous_latent_update: transition_return
                 .elapsed_hours_since_previous_update,
             transition_kind: interval_update.transition_kind(),
             generation_order: Some(interval_update.generation_order()),
@@ -823,7 +901,8 @@ where
 
     let fine_path_record = SeededFinePathRecord {
         transition_index,
-        timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+        latent_transition_time_utc_nanos,
+        observed_timestamp_utc_nanos,
         transition_kind,
         side,
         news_arrival_component,
@@ -850,16 +929,19 @@ where
 
     consumer.consume_transition(fine_path_record, emission)?;
 
-    Ok(interval_update.timestamp_utc_nanos())
+    Ok(latent_transition_time_utc_nanos)
 }
 
-struct IntervalBoundaryTransitionInput<'a, 'registry, 'interval, F, C> {
+struct IntervalBoundaryTransitionInput<'a, 'registry, 'interval, F, C>
+where
+    F: SimulationRandomnessFactory,
+{
     run_config: &'a SeededTickSimulationRunConfig,
     randomness_factory: &'a F,
     consumer: &'a mut C,
     market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
     fine_path_state: &'a SeededTickSimulationStaticState,
-    runtime_state: &'a mut SeededTickSimulationRuntimeState,
+    runtime_state: &'a mut SeededTickSimulationRuntimeState<F::Stream>,
     interval_inputs: &'a IntervalSimulationInputs<'interval>,
     previous_timestamp_utc_nanos: i64,
 }
@@ -883,6 +965,8 @@ where
     } = input;
 
     let previous_state = runtime_state.next_state;
+    let latent_transition_time_utc_nanos = interval_inputs.interval_end_utc_nanos;
+    let observed_timestamp_utc_nanos = latent_transition_time_utc_nanos;
 
     let transition_return =
         prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
@@ -893,7 +977,7 @@ where
             runtime_state,
             interval_inputs,
             previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
+            timestamp_utc_nanos: latent_transition_time_utc_nanos,
             transition_state: previous_state,
         })?;
 
@@ -927,9 +1011,10 @@ where
         SeededTickEventDebugTraceCaptureInput {
             transition_index: runtime_state.next_transition_index,
             interval_index: interval_inputs.interval_index,
-            previous_timestamp_utc_nanos,
-            timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
-            elapsed_hours_since_previous_update: transition_return
+            previous_latent_transition_time_utc_nanos: previous_timestamp_utc_nanos,
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
+            elapsed_hours_since_previous_latent_update: transition_return
                 .elapsed_hours_since_previous_update,
             transition_kind: SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift,
             generation_order: None,
@@ -945,7 +1030,8 @@ where
 
     let boundary_record = SeededFinePathRecord {
         transition_index: runtime_state.next_transition_index,
-        timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
+        latent_transition_time_utc_nanos,
+        observed_timestamp_utc_nanos,
         transition_kind: SeededFinePathTransitionKind::IntervalBoundaryDrift,
         side: None,
         news_arrival_component: None,
@@ -987,14 +1073,17 @@ fn capture_debug_transition(
     }
 }
 
-fn apply_interval_update_side_effects(
-    runtime_state: &mut SeededTickSimulationRuntimeState,
+fn apply_interval_update_side_effects<R>(
+    runtime_state: &mut SeededTickSimulationRuntimeState<R>,
     interval_update: IntervalStochasticUpdate,
 ) -> (
     SeededFinePathTransitionKind,
     Option<SeededTickEventSide>,
     Option<janiform_model_kernels::news::NewsArrivalComponent>,
-) {
+)
+where
+    R: SimulationRandomnessStream,
+{
     match interval_update {
         IntervalStochasticUpdate::EndogenousEvent {
             timestamp_utc_nanos: _,
@@ -1022,10 +1111,13 @@ fn apply_interval_update_side_effects(
     }
 }
 
-fn realize_pending_jump_returns(
-    runtime_state: &mut SeededTickSimulationRuntimeState,
+fn realize_pending_jump_returns<R>(
+    runtime_state: &mut SeededTickSimulationRuntimeState<R>,
     market_state: janiform_market_time::calendar::MarketState,
-) -> (f64, f64) {
+) -> (f64, f64)
+where
+    R: SimulationRandomnessStream,
+{
     if market_state != janiform_market_time::calendar::MarketState::Open {
         return (0.0, 0.0);
     }
@@ -1039,15 +1131,22 @@ fn realize_pending_jump_returns(
     (open_jump_return, closed_gap_return)
 }
 
-fn build_stream_completion(
+fn build_stream_completion<R>(
     run_config: SeededTickSimulationRunConfig,
     fine_path_state: SeededTickSimulationStaticState,
-    runtime_state: SeededTickSimulationRuntimeState,
-) -> SeededTickSimulationStreamCompletion {
+    runtime_state: SeededTickSimulationRuntimeState<R>,
+) -> SeededTickSimulationStreamCompletion
+where
+    R: SimulationRandomnessStream,
+{
     let horizon_end_utc_nanos = run_config
         .model_inputs
         .interval_factor_grid
         .interval_end_utc_nanos[run_config.horizon_interval_count - 1];
+
+    let timing_diagnostics = runtime_state
+        .timing_diagnostics_accumulator
+        .finish(&run_config);
 
     SeededTickSimulationStreamCompletion {
         schema_version: SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION,
@@ -1062,6 +1161,7 @@ fn build_stream_completion(
         simulated_interval_count: run_config.horizon_interval_count,
         fine_path_metadata: fine_path_state.fine_path_metadata,
         event_tape_metadata: fine_path_state.event_tape_metadata,
+        timing_diagnostics,
         final_excitation_state: runtime_state.next_state,
         news_routing_totals: runtime_state.news_routing_totals,
         cumulative_core_log_return: runtime_state.observed_state.cumulative_core_log_return,

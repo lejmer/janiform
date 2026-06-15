@@ -14,6 +14,7 @@ use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVariance
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
@@ -148,6 +149,9 @@ pub struct SeededTickSimulationModelInputs {
     /// Optional reference-price-normalized observed-price tick size for tick-grid rounding.
     pub observed_price_tick_size: Option<f64>,
 
+    /// Observation-layer contract mapping latent event times to observed tick timestamps.
+    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+
     /// Calendar registry used to resolve open and closed market states.
     pub calendar_registry: ExchangeCalendarRegistry,
 }
@@ -280,6 +284,15 @@ impl SeededTickSimulationRunConfig {
                 value: tick_size,
             });
         }
+
+        self.model_inputs
+            .timestamp_batching_observation_model
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidTimestampBatchingObservationModel {
+                    source: Box::new(source),
+                }
+            })?;
 
         if self.horizon_interval_count > expected_interval_count {
             return Err(

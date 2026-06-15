@@ -494,6 +494,9 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
             inference_policy: "artifact_regression_fixture.v1".to_string(),
             observation_policy: "artifact_regression_fixture.v1".to_string(),
         },
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         mean_reversion_fitted_parameters:
             MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
     }

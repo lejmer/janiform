@@ -459,6 +459,9 @@ fn build_model_inputs_with_components(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
         calendar_registry_artifact: build_calendar_registry_artifact(),
         exchange_code: "XNYS".to_string(),
     })

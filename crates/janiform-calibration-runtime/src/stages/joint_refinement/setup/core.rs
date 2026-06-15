@@ -390,6 +390,10 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
                     .baseline_return_components_fitted_parameters
                     .tick_grid_observation_model
                     .clone(),
+                timestamp_batching_observation_model: context
+                    .baseline_return_components_fitted_parameters
+                    .timestamp_batching_observation_model
+                    .clone(),
                 mean_reversion_fitted_parameters: context
                     .baseline_mean_reversion_fitted_parameters
                     .clone(),

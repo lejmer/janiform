@@ -219,7 +219,7 @@ fn print_seeded_tick_simulation_parity_outputs_for_fixture_update() {
         let projected_event_path = run_result.projected_event_path();
         let observed_timestamps: Vec<i64> = projected_event_path
             .iter()
-            .map(|event_record| event_record.timestamp_utc_nanos)
+            .map(|event_record| event_record.observed_timestamp_utc_nanos)
             .collect();
         let observed_sides: Vec<String> = projected_event_path
             .iter()
@@ -548,6 +548,7 @@ fn run_fixture_case(
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
+        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
             calendar_registry: calendar_registry.clone(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),
@@ -568,7 +569,7 @@ fn first_mismatch_diagnostic(
 
     let observed_timestamps: Vec<i64> = projected_event_path
         .iter()
-        .map(|event_record| event_record.timestamp_utc_nanos)
+        .map(|event_record| event_record.observed_timestamp_utc_nanos)
         .collect();
     let observed_sides: Vec<String> = projected_event_path
         .iter()

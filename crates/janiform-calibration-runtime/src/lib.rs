@@ -63,13 +63,16 @@ pub use execution_bridge::{
     run_staged_calibration_from_execution_input_with_observer,
 };
 pub use market_data::{
+    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
+    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
     CalibrationDirectionalLabelDiagnosticsPayload, CalibrationMarketDataCarryInput,
     CalibrationMarketDataColumnMapping, CalibrationMarketDataKnownNewsInput,
     CalibrationMarketDataMeanReversionConfiguration, CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreparationDiagnostics, CalibrationMarketDataPreparationError,
     CalibrationMarketDataPreparationProvenance, CalibrationMarketDataPreparationRequest,
     CalibrationMarketDataWorkflowScope, CalibrationTickObjectiveDataUsagePolicy,
-    DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
+    CalibrationTimestampBatchingObservationDiagnostic,
+    CalibrationTimestampBatchingObservationDiagnosticState, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
     DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD, MarketDataCoarseDataColumnMapping,
     MarketDataCoarseDataKind, MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
     MarketDataCoarseDataTimestampSemantics, MarketDataColumnAliasHint,

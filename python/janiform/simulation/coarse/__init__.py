@@ -37,6 +37,10 @@ from .path import (
     validate_coarse_simulation_run_request,
 )
 from .runtime import run_coarse_simulation
+from ..timestamp_observation import (
+    TimestampBatchingObservationMode,
+    TimestampBatchingObservationModel,
+)
 
 
 __all__ = [
@@ -66,6 +70,8 @@ __all__ = [
     "NewsProcessConfiguration",
     "SharedNewsMarkLawConfiguration",
     "SurpriseNewsArrivalConfiguration",
+    "TimestampBatchingObservationMode",
+    "TimestampBatchingObservationModel",
     "deserialize_coarse_simulation_path",
     "deserialize_coarse_simulation_run_request",
     "run_coarse_simulation",

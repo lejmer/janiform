@@ -20,6 +20,7 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
+    TimestampBatchingObservationModel,
     run_seeded_tick_event_simulation,
 )
 from janiform.simulation.seeded.contracts import (
@@ -155,6 +156,7 @@ def _run_seeded_case(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -170,7 +172,9 @@ def _first_mismatch_diagnostic(
     fixture_id = fixture_case["fixture_id"]
     event_tape = list(payload.event_tape)
 
-    observed_timestamps = [event_record.timestamp_utc_nanos for event_record in event_tape]
+    observed_timestamps = [
+        event_record.observed_timestamp_utc_nanos for event_record in event_tape
+    ]
     observed_side_sequence = [event_record.side.value for event_record in event_tape]
 
     if len(observed_timestamps) != fixture_case["expected_total_event_count"]:

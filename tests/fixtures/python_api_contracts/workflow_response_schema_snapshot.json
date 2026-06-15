@@ -1696,6 +1696,85 @@
               "type": "string",
               "value": "simulation.seeded_tick.path_diagnostics.v1"
             },
+            "timing_diagnostics": {
+              "fields": {
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "latent_event_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "min_positive_interarrival_nanos": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "latent_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "observed_timestamp_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "min_positive_interarrival_nanos": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "observed_timestamp_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "simulation.seeded_tick_event.timing_diagnostics.v1"
+                },
+                "timestamp_batching_observation_model": {
+                  "fields": {
+                    "bucket_width_nanos": {
+                      "type": "null"
+                    },
+                    "bucket_width_source": {
+                      "type": "string"
+                    },
+                    "coarse_interval_compatibility_policy": {
+                      "type": "string"
+                    },
+                    "inference_policy": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "observation_policy": {
+                      "type": "string"
+                    },
+                    "same_session_observation_transition_count": {
+                      "type": "null"
+                    },
+                    "same_timestamp_continuation_count": {
+                      "type": "null"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "model.timestamp_batching_observation.v1"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "transition_count": {
               "type": "int"
             }
@@ -1718,8 +1797,14 @@
                 "event_index": {
                   "type": "int"
                 },
+                "latent_event_time_utc_nanos": {
+                  "type": "int"
+                },
                 "observed_log_price": {
                   "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
                 },
                 "pressure_state": {
                   "type": "float"
@@ -1729,9 +1814,6 @@
                 },
                 "state_snapshot": {
                   "type": "null"
-                },
-                "timestamp_utc_nanos": {
-                  "type": "int"
                 }
               },
               "type": "object"
@@ -1769,9 +1851,42 @@
               "type": "string",
               "value": "simulation.seeded_tick_event.state_snapshot.v1"
             },
+            "timestamp_batching_observation_model": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
             "timestamp_representation_policy": {
               "type": "string",
-              "value": "event_time_timestamp_utc_nanos_without_bucket_identifier.v1"
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             }
           },
           "type": "object"
@@ -1792,6 +1907,9 @@
                 "deviation_from_anchor": {
                   "type": "float"
                 },
+                "latent_transition_time_utc_nanos": {
+                  "type": "int"
+                },
                 "market_state": {
                   "type": "string"
                 },
@@ -1800,6 +1918,9 @@
                 },
                 "observed_log_price": {
                   "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
                 },
                 "pressure_state": {
                   "type": "float"
@@ -1832,9 +1953,6 @@
                 },
                 "state_snapshot": {
                   "type": "null"
-                },
-                "timestamp_utc_nanos": {
-                  "type": "int"
                 },
                 "transition_index": {
                   "type": "int"
@@ -1859,6 +1977,9 @@
                 "deviation_from_anchor": {
                   "type": "float"
                 },
+                "latent_transition_time_utc_nanos": {
+                  "type": "int"
+                },
                 "market_state": {
                   "type": "string"
                 },
@@ -1867,6 +1988,9 @@
                 },
                 "observed_log_price": {
                   "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
                 },
                 "pressure_state": {
                   "type": "float"
@@ -1899,9 +2023,6 @@
                 },
                 "state_snapshot": {
                   "type": "null"
-                },
-                "timestamp_utc_nanos": {
-                  "type": "int"
                 },
                 "transition_index": {
                   "type": "int"
@@ -1939,9 +2060,42 @@
             "state_snapshot_capture_point_policy": {
               "type": "null"
             },
+            "timestamp_batching_observation_model": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
             "timestamp_representation_policy": {
               "type": "string",
-              "value": "event_time_timestamp_utc_nanos_without_bucket_identifier.v1"
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             },
             "transition_ordering_policy": {
               "type": "string"
@@ -1994,6 +2148,79 @@
               "type": "string",
               "value": "simulation.seeded_tick.path_diagnostics.v1"
             },
+            "timing_diagnostics": {
+              "fields": {
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "latent_event_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "latent_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "observed_timestamp_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "observed_timestamp_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "simulation.seeded_tick_event.timing_diagnostics.v1"
+                },
+                "timestamp_batching_observation_model": {
+                  "fields": {
+                    "bucket_width_nanos": {
+                      "type": "null"
+                    },
+                    "bucket_width_source": {
+                      "type": "string"
+                    },
+                    "coarse_interval_compatibility_policy": {
+                      "type": "string"
+                    },
+                    "inference_policy": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "observation_policy": {
+                      "type": "string"
+                    },
+                    "same_session_observation_transition_count": {
+                      "type": "null"
+                    },
+                    "same_timestamp_continuation_count": {
+                      "type": "null"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "model.timestamp_batching_observation.v1"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "transition_count": {
               "type": "int"
             }
@@ -2016,8 +2243,14 @@
                 "event_index": {
                   "type": "int"
                 },
+                "latent_event_time_utc_nanos": {
+                  "type": "int"
+                },
                 "observed_log_price": {
                   "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
                 },
                 "pressure_state": {
                   "type": "float"
@@ -2027,9 +2260,6 @@
                 },
                 "state_snapshot": {
                   "type": "null"
-                },
-                "timestamp_utc_nanos": {
-                  "type": "int"
                 }
               },
               "type": "object"
@@ -2067,9 +2297,42 @@
               "type": "string",
               "value": "simulation.seeded_tick_event.state_snapshot.v1"
             },
+            "timestamp_batching_observation_model": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
             "timestamp_representation_policy": {
               "type": "string",
-              "value": "utc_nanos.v1"
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             }
           },
           "type": "object"
@@ -2090,6 +2353,9 @@
                 "deviation_from_anchor": {
                   "type": "float"
                 },
+                "latent_transition_time_utc_nanos": {
+                  "type": "int"
+                },
                 "market_state": {
                   "type": "string"
                 },
@@ -2098,6 +2364,9 @@
                 },
                 "observed_log_price": {
                   "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
                 },
                 "pressure_state": {
                   "type": "float"
@@ -2130,9 +2399,6 @@
                 },
                 "state_snapshot": {
                   "type": "null"
-                },
-                "timestamp_utc_nanos": {
-                  "type": "int"
                 },
                 "transition_index": {
                   "type": "int"
@@ -2170,9 +2436,42 @@
             "state_snapshot_capture_point_policy": {
               "type": "null"
             },
+            "timestamp_batching_observation_model": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
             "timestamp_representation_policy": {
               "type": "string",
-              "value": "utc_nanos.v1"
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             },
             "transition_ordering_policy": {
               "type": "string"

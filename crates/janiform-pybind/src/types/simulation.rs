@@ -13,7 +13,8 @@ use crate::panic_boundary::panic_to_pyresult;
 #[pyclass(module = "janiform._native", name = "SeededFinePathChunkColumns")]
 pub(crate) struct PySeededFinePathChunkColumns {
     transition_index: Vec<u64>,
-    timestamp_utc_nanos: Vec<i64>,
+    latent_transition_time_utc_nanos: Vec<i64>,
+    observed_timestamp_utc_nanos: Vec<i64>,
     transition_kind: Vec<String>,
     side: Vec<Option<String>>,
     news_arrival_component: Vec<Option<String>>,
@@ -41,7 +42,8 @@ pub(crate) struct PySeededFinePathChunkColumns {
 impl PySeededFinePathChunkColumns {
     fn from_records(records: &[SeededFinePathRecord]) -> Self {
         let mut transition_index = Vec::with_capacity(records.len());
-        let mut timestamp_utc_nanos = Vec::with_capacity(records.len());
+        let mut latent_transition_time_utc_nanos = Vec::with_capacity(records.len());
+        let mut observed_timestamp_utc_nanos = Vec::with_capacity(records.len());
         let mut transition_kind = Vec::with_capacity(records.len());
         let mut side = Vec::with_capacity(records.len());
         let mut news_arrival_component = Vec::with_capacity(records.len());
@@ -67,10 +69,13 @@ impl PySeededFinePathChunkColumns {
 
         for record in records {
             transition_index.push(record.transition_index);
-            timestamp_utc_nanos.push(record.timestamp_utc_nanos);
+            latent_transition_time_utc_nanos.push(record.latent_transition_time_utc_nanos);
+            observed_timestamp_utc_nanos.push(record.observed_timestamp_utc_nanos);
+
             transition_kind.push(seeded_fine_path_transition_kind_label(
                 record.transition_kind,
             ));
+
             side.push(record.side.map(seeded_tick_event_side_label));
 
             news_arrival_component.push(
@@ -106,7 +111,8 @@ impl PySeededFinePathChunkColumns {
 
         Self {
             transition_index,
-            timestamp_utc_nanos,
+            latent_transition_time_utc_nanos,
+            observed_timestamp_utc_nanos,
             transition_kind,
             side,
             news_arrival_component,
@@ -144,10 +150,18 @@ impl PySeededFinePathChunkColumns {
     }
 
     #[getter]
-    fn timestamp_utc_nanos(&self) -> PyResult<Vec<i64>> {
+    fn latent_transition_time_utc_nanos(&self) -> PyResult<Vec<i64>> {
         simulation_chunk_getter(
-            "reading seeded fine-path timestamps",
-            &self.timestamp_utc_nanos,
+            "reading seeded fine-path latent transition times",
+            &self.latent_transition_time_utc_nanos,
+        )
+    }
+
+    #[getter]
+    fn observed_timestamp_utc_nanos(&self) -> PyResult<Vec<i64>> {
+        simulation_chunk_getter(
+            "reading seeded fine-path observed timestamps",
+            &self.observed_timestamp_utc_nanos,
         )
     }
 
@@ -326,7 +340,12 @@ impl PySeededFinePathChunkColumns {
                     .len()
                     .saturating_mul(size_of::<u64>())
                     .saturating_add(
-                        self.timestamp_utc_nanos
+                        self.latent_transition_time_utc_nanos
+                            .len()
+                            .saturating_mul(size_of::<i64>()),
+                    )
+                    .saturating_add(
+                        self.observed_timestamp_utc_nanos
                             .len()
                             .saturating_mul(size_of::<i64>()),
                     )
@@ -400,7 +419,8 @@ impl PySeededFinePathChunkColumns {
 #[pyclass(module = "janiform._native", name = "SeededTickEventTapeChunkColumns")]
 pub(crate) struct PySeededTickEventTapeChunkColumns {
     event_index: Vec<u64>,
-    timestamp_utc_nanos: Vec<i64>,
+    latent_event_time_utc_nanos: Vec<i64>,
+    observed_timestamp_utc_nanos: Vec<i64>,
     side: Vec<String>,
     core_total_return_increment: Vec<f64>,
     observed_log_price: Vec<f64>,
@@ -418,7 +438,8 @@ pub(crate) struct PySeededTickEventTapeChunkColumns {
 impl PySeededTickEventTapeChunkColumns {
     fn from_records(records: &[SeededTickEventRecord]) -> Self {
         let mut event_index = Vec::with_capacity(records.len());
-        let mut timestamp_utc_nanos = Vec::with_capacity(records.len());
+        let mut latent_event_time_utc_nanos = Vec::with_capacity(records.len());
+        let mut observed_timestamp_utc_nanos = Vec::with_capacity(records.len());
         let mut side = Vec::with_capacity(records.len());
         let mut core_total_return_increment = Vec::with_capacity(records.len());
         let mut observed_log_price = Vec::with_capacity(records.len());
@@ -434,7 +455,8 @@ impl PySeededTickEventTapeChunkColumns {
 
         for record in records {
             event_index.push(record.event_index);
-            timestamp_utc_nanos.push(record.timestamp_utc_nanos);
+            latent_event_time_utc_nanos.push(record.latent_event_time_utc_nanos);
+            observed_timestamp_utc_nanos.push(record.observed_timestamp_utc_nanos);
             side.push(seeded_tick_event_side_label(record.side));
             core_total_return_increment.push(record.core_total_return_increment);
             observed_log_price.push(record.observed_log_price);
@@ -455,7 +477,8 @@ impl PySeededTickEventTapeChunkColumns {
 
         Self {
             event_index,
-            timestamp_utc_nanos,
+            latent_event_time_utc_nanos,
+            observed_timestamp_utc_nanos,
             side,
             core_total_return_increment,
             observed_log_price,
@@ -480,10 +503,18 @@ impl PySeededTickEventTapeChunkColumns {
     }
 
     #[getter]
-    fn timestamp_utc_nanos(&self) -> PyResult<Vec<i64>> {
+    fn latent_event_time_utc_nanos(&self) -> PyResult<Vec<i64>> {
         simulation_chunk_getter(
-            "reading seeded event-tape timestamps",
-            &self.timestamp_utc_nanos,
+            "reading seeded event-tape latent event times",
+            &self.latent_event_time_utc_nanos,
+        )
+    }
+
+    #[getter]
+    fn observed_timestamp_utc_nanos(&self) -> PyResult<Vec<i64>> {
+        simulation_chunk_getter(
+            "reading seeded event-tape observed timestamps",
+            &self.observed_timestamp_utc_nanos,
         )
     }
 
@@ -591,7 +622,12 @@ impl PySeededTickEventTapeChunkColumns {
                     .len()
                     .saturating_mul(size_of::<u64>())
                     .saturating_add(
-                        self.timestamp_utc_nanos
+                        self.latent_event_time_utc_nanos
+                            .len()
+                            .saturating_mul(size_of::<i64>()),
+                    )
+                    .saturating_add(
+                        self.observed_timestamp_utc_nanos
                             .len()
                             .saturating_mul(size_of::<i64>()),
                     )
@@ -708,6 +744,22 @@ impl PySeededTickSimulationNativeResult {
                         "failed to serialize seeded event-tape metadata payload: {source}"
                     ))
                 })
+            },
+        )
+    }
+
+    fn timing_diagnostics_json(&self) -> PyResult<String> {
+        panic_to_pyresult(
+            "serializing seeded timing diagnostics",
+            SimulationExecutionError::new_err,
+            || {
+                self.output
+                    .serialize_timing_diagnostics_json()
+                    .map_err(|source| {
+                        PyRuntimeError::new_err(format!(
+                            "failed to serialize seeded timing diagnostics payload: {source}"
+                        ))
+                    })
             },
         )
     }

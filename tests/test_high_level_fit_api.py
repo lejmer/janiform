@@ -106,6 +106,7 @@ from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
+    build_disabled_timestamp_batching_observation_model_payload,
     build_empty_mean_reversion_series_summaries_payload,
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_nominal_tick_grid_observation_model_payload,
@@ -2675,7 +2676,7 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
     simulation_result = SimpleNamespace(
         fine_path=(
             SimpleNamespace(
-                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                 observed_log_price=0.10,
                 anchor_value=0.04,
                 pressure_state=0.01,
@@ -2683,7 +2684,7 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
                 side=SeededTickEventSide.BUY,
             ),
             SimpleNamespace(
-                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
+                observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
                 observed_log_price=0.12,
                 anchor_value=0.05,
                 pressure_state=0.02,
@@ -2747,7 +2748,7 @@ def test_persist_seeded_tick_simulation_defaults_side_column_without_trade_sign(
     simulation_result = SimpleNamespace(
         fine_path=(
             SimpleNamespace(
-                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                 observed_log_price=0.10,
                 anchor_value=0.04,
                 pressure_state=0.01,
@@ -2895,7 +2896,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
         raw_result=SimpleNamespace(
             fine_path=(
                 SimpleNamespace(
-                    timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                    observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                     observed_log_price=0.10,
                     anchor_value=0.04,
                     pressure_state=0.01,
@@ -2903,7 +2904,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
                     side=SeededTickEventSide.BUY,
                 ),
                 SimpleNamespace(
-                    timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
+                    observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
                     observed_log_price=0.12,
                     anchor_value=0.05,
                     pressure_state=0.02,
@@ -5273,6 +5274,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
                         ),
+                        "timestamp_batching_observation_model": (
+                            build_disabled_timestamp_batching_observation_model_payload()
+                        ),
                         "mean_reversion_fitted_parameters": (
                             build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
                         ),
@@ -5483,6 +5487,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "tick_grid_observation_model": (
                                 build_nominal_tick_grid_observation_model_payload()
                             ),
+                            "timestamp_batching_observation_model": (
+                                build_disabled_timestamp_batching_observation_model_payload()
+                            ),
                             "mean_reversion_fitted_parameters": (
                                 build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
                             ),
@@ -5578,6 +5585,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         ),
                         "tick_grid_observation_model": (
                             build_nominal_tick_grid_observation_model_payload()
+                        ),
+                        "timestamp_batching_observation_model": (
+                            build_disabled_timestamp_batching_observation_model_payload()
                         ),
                         "mean_reversion_fitted_parameters": (
                             build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()

@@ -658,6 +658,8 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
     expected_exports = {
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY",
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
         "DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD",
         "CalibrationCoarseDataColumnMapping",
         "CalibrationCoarseDataTimestampSemantics",
@@ -686,6 +688,8 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
         "MarketDataSourceProbe",
+        "MarketDataTimestampBatchingObservationDiagnostic",
+        "MarketDataTimestampBatchingObservationDiagnosticState",
         "NormalizedMarketDataSource",
         "OptionForwardParityCheck",
         "OptionForwardParityWarningPolicy",
@@ -715,6 +719,9 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     calibration_market_data_contracts_module = import_module("janiform.calibration.market_data.contracts")
     calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
     calibration_market_data_ingestion_module = import_module("janiform.calibration.market_data.ingestion")
+    calibration_market_data_timestamp_observation_module = import_module(
+        "janiform.calibration.market_data.timestamp_observation"
+    )
     calibration_market_data_translation_module = import_module("janiform.calibration.market_data.translation")
     calibration_market_data_workflow_module = import_module("janiform.calibration.market_data.workflow")
 
@@ -737,6 +744,12 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     }
     assert set(calibration_market_data_ingestion_module.__all__) == {
         "LoadedMarketDataSourceSummary",
+    }
+    assert set(calibration_market_data_timestamp_observation_module.__all__) == {
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY",
+        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
+        "MarketDataTimestampBatchingObservationDiagnostic",
+        "MarketDataTimestampBatchingObservationDiagnosticState",
     }
     assert set(calibration_market_data_translation_module.__all__) == {
         "MarketDataSourceProbe",

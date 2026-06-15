@@ -555,6 +555,7 @@ fn prepare_market_data_calibration_plan_with_terminal_progress(
                 ProgressMeasure::Unbounded,
                 market_data_preparation_progress_signal(preparation_phase),
             ),
+            MarketDataPreparationProgressEvent::TimestampBatchingObservation(_) => return Ok(()),
         };
 
         progress_adapter.observe(ProgressEvent::StageProgress {

@@ -30,6 +30,9 @@ use super::solver_settings::{
     DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
     resolve_solver_settings_by_stage,
 };
+use super::timestamp_observation_diagnostics::{
+    CalibrationTimestampBatchingObservationDiagnostic, timestamp_batching_observation_diagnostic,
+};
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::stages::mean_reversion::{
     default_mean_reversion_predictive_evidence_alpha,
@@ -230,6 +233,7 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
     pub workflow_scope: CalibrationMarketDataWorkflowScope,
     pub selected_stages: Vec<CalibrationStage>,
     pub executed_preprocessing_steps: Vec<String>,
+    pub timestamp_batching_observation: CalibrationTimestampBatchingObservationDiagnostic,
     pub tick_record_count: usize,
     pub coarse_data_record_count: usize,
     pub coarse_data_return_interval_count: usize,
@@ -1761,6 +1765,20 @@ fn prepared_market_data_plan_from_loading_output(
 
     progress.emit_phase(MarketDataPreparationProgressPhase::PreparingCalibrationInputs)?;
 
+    let return_components_input = loading_output
+        .preprocessing_output
+        .return_components_candidate_generation_input
+        .as_ref();
+
+    let timestamp_batching_observation = timestamp_batching_observation_diagnostic(
+        selected_stages.as_slice(),
+        return_components_input.map(|input| &input.timestamp_batching_observation_model),
+    );
+
+    // The same diagnostic is both emitted to observers and retained in the
+    // preparation payload so progress and artifacts agree.
+    progress.emit_timestamp_batching_observation(timestamp_batching_observation.clone())?;
+
     let objective_policy = calibration_objective_policy_from_request(&request)?;
 
     let prepared_option_pricing_input = joint_refinement_option_pricing_input_from_request(
@@ -1849,11 +1867,6 @@ fn prepared_market_data_plan_from_loading_output(
 
     progress.emit_phase(MarketDataPreparationProgressPhase::BuildingDiagnostics)?;
 
-    let return_components_input = loading_output
-        .preprocessing_output
-        .return_components_candidate_generation_input
-        .as_ref();
-
     let diagnostics = CalibrationMarketDataPreparationDiagnostics {
         workflow_scope: request.workflow_scope,
         selected_stages: selected_stages.clone(),
@@ -1863,6 +1876,7 @@ fn prepared_market_data_plan_from_loading_output(
             loading_output.option_surface_summary.is_some(),
             loading_output.known_news_summary.is_some(),
         ),
+        timestamp_batching_observation,
         tick_record_count: loading_output.tick_data_summary.retained_row_count,
         coarse_data_record_count: loading_output
             .coarse_data_summary

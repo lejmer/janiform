@@ -2,6 +2,8 @@ use janiform_model_kernels::mean_reversion::MeanReversionBoundaryState;
 
 use crate::error::SeededTickSimulationRunError;
 
+use super::validation::is_valid_observed_price_tick_size;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SeededObservedState {
     pub(crate) cumulative_core_log_return: f64,
@@ -111,6 +113,53 @@ impl SeededObservedState {
     }
 }
 
+/// Project a sequence of latent core increments to observed core increments using the same
+/// residual-preserving tick-grid projection as seeded and coarse simulation.
+///
+/// The sequence starts from the normalized reference log price `0.0`, matching normalized tick
+/// sizes whose reference price is one.
+pub fn project_core_increment_sequence_to_tick_grid(
+    raw_core_increments: &[f64],
+    observed_price_tick_size: Option<f64>,
+) -> Result<Vec<f64>, SeededTickSimulationRunError> {
+    if let Some(tick_size) = observed_price_tick_size
+        && !is_valid_observed_price_tick_size(tick_size)
+    {
+        return Err(SeededTickSimulationRunError::InvalidObservedPriceTickSize {
+            value: tick_size,
+        });
+    }
+
+    let mut observed_state = SeededObservedState {
+        cumulative_core_log_return: 0.0,
+        observed_log_price: 0.0,
+        anchor_value: 0.0,
+        pressure_state: 0.0,
+        deviation_from_anchor: 0.0,
+        tick_grid_origin_log_price: 0.0,
+        tick_grid_residual_log_return: 0.0,
+    };
+
+    let mut projected_increments = Vec::with_capacity(raw_core_increments.len());
+
+    for (increment_index, raw_core_increment) in raw_core_increments.iter().enumerate() {
+        let projected_increment = observed_state.project_core_increment(
+            0.0,
+            0.0,
+            *raw_core_increment,
+            observed_price_tick_size,
+            increment_index,
+        )?;
+
+        observed_state =
+            observed_state.apply_projected_core_increment(0.0, 0.0, projected_increment);
+
+        projected_increments.push(projected_increment.observed_core_increment);
+    }
+
+    Ok(projected_increments)
+}
+
 fn project_log_price_to_tick_grid(
     latent_target_log_price: f64,
     tick_grid_origin_log_price: f64,
@@ -119,6 +168,7 @@ fn project_log_price_to_tick_grid(
 ) -> Result<f64, SeededTickSimulationRunError> {
     let tick_grid_origin_price = tick_grid_origin_log_price.exp();
     let latent_target_price = latent_target_log_price.exp();
+
     if !tick_grid_origin_price.is_finite()
         || tick_grid_origin_price <= 0.0
         || !latent_target_price.is_finite()
@@ -133,6 +183,7 @@ fn project_log_price_to_tick_grid(
 
     let tick_units = ((latent_target_price - tick_grid_origin_price) / tick_size).round();
     let observed_price = tick_grid_origin_price + tick_units * tick_size;
+
     if !observed_price.is_finite() || observed_price <= 0.0 {
         return Err(SeededTickSimulationRunError::TickGridProjectionFailed {
             interval_index,
@@ -146,7 +197,7 @@ fn project_log_price_to_tick_grid(
 
 #[cfg(test)]
 mod tests {
-    use super::SeededObservedState;
+    use super::{SeededObservedState, project_core_increment_sequence_to_tick_grid};
     use janiform_model_kernels::mean_reversion::MeanReversionBoundaryState;
 
     #[test]
@@ -175,5 +226,36 @@ mod tests {
             state_after_second_projection.observed_log_price,
             1.01_f64.ln()
         );
+    }
+
+    #[test]
+    fn tick_grid_sequence_projection_carries_sub_tick_residual_between_increments() {
+        let projected_increments =
+            project_core_increment_sequence_to_tick_grid(&[0.004, 0.004], Some(0.01))
+                .expect("projection should succeed");
+
+        assert_eq!(projected_increments, vec![0.0, 1.01_f64.ln()]);
+    }
+
+    #[test]
+    fn tick_grid_sequence_projection_preserves_increments_without_tick_size() {
+        let raw_increments = vec![0.004, -0.002];
+
+        let projected_increments =
+            project_core_increment_sequence_to_tick_grid(raw_increments.as_slice(), None)
+                .expect("projection should succeed");
+
+        assert_eq!(projected_increments, raw_increments);
+    }
+
+    #[test]
+    fn tick_grid_sequence_projection_rejects_invalid_tick_size() {
+        let error = project_core_increment_sequence_to_tick_grid(&[0.004], Some(-0.01))
+            .expect_err("negative tick size should be rejected");
+
+        assert!(matches!(
+            error,
+            crate::error::SeededTickSimulationRunError::InvalidObservedPriceTickSize { .. }
+        ));
     }
 }
