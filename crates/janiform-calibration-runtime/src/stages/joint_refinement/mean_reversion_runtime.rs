@@ -73,6 +73,9 @@ pub(super) fn materialize_joint_refinement_mean_reversion_runtime_inputs(
             fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
+            fitted_parameters
+                .return_components_fitted_parameters
+                .no_move_event_model,
         )
         .map_err(|source| source.to_string())?,
         fitted_parameters

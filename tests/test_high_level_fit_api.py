@@ -40,11 +40,11 @@ from janiform.calibration.fit.state import (
 )
 from janiform.calibration.market_data import (
     CalibrationInputFileFormat,
+    CalibrationMarketDataCalibrationSettings,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreprocessingSettings,
-    CalibrationMarketDataReturnComponentsPreprocessingSettings,
-    CalibrationMarketDataSeasonalityPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsCalibrationSettings,
+    CalibrationMarketDataSeasonalityCalibrationSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionQuoteInputPolicy,
@@ -443,7 +443,7 @@ def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_preparation(
     assert request.optimizer_settings_by_stage == optimizer_settings_by_stage
 
 
-def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
+def test_prepare_fit_workflow_passes_calibration_settings_to_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -461,8 +461,8 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
         encoding="utf-8",
     )
 
-    preprocessing_settings = CalibrationMarketDataPreprocessingSettings(
-        seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+    calibration_settings = CalibrationMarketDataCalibrationSettings(
+        seasonality=CalibrationMarketDataSeasonalityCalibrationSettings(
             session_filter=SessionFilter.ALL,
             sparse_hour_event_threshold=2,
             maximum_harmonic_orders={
@@ -471,17 +471,17 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
                 "weekly": 3,
             },
         ),
-        return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+        return_components=CalibrationMarketDataReturnComponentsCalibrationSettings(
             intraday_jump_threshold_multiplier=6.0,
             close_open_gap_tolerance_multiplier=2.0,
         ),
     )
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
-        preprocessing_settings=preprocessing_settings,
+        calibration_settings=calibration_settings,
     )
     prepared_workflow = estimator._prepare_fit_workflow(
-        run_id="high-level-preprocessing-settings-request",
+        run_id="high-level-calibration-settings-request",
         tick_data_path=tick_data_path,
         tick_data_format=CalibrationInputFileFormat.CSV,
         tick_data_provenance_label="tick_data",
@@ -494,7 +494,7 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
     if prepared_workflow.temporary_directory is not None:
         prepared_workflow.temporary_directory.cleanup()
 
-    assert request.preprocessing_settings == preprocessing_settings
+    assert request.calibration_settings == calibration_settings
 
 
 def test_prepare_fit_workflow_passeseasonality_factorigh_level_tick_size_to_native_payload() -> None:
@@ -510,8 +510,8 @@ def test_prepare_fit_workflow_passeseasonality_factorigh_level_tick_size_to_nati
         configuration
     )
 
-    assert configuration.preparation.preprocessing_settings is None
-    assert payload["preprocessing_settings"] == {
+    assert configuration.preparation.calibration_settings is None
+    assert payload["calibration_settings"] == {
         "return_components": {
             "close_open_gap_tolerance_multiplier": 3.0,
             "intraday_jump_threshold_multiplier": 4.0,
@@ -4562,6 +4562,7 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
         selected_stage_kinds=(
             CalibrationStage.SEASONALITY,
             CalibrationStage.HAWKES,
+            CalibrationStage.OBSERVATION_MODELS,
             CalibrationStage.RETURN_COMPONENTS,
             CalibrationStage.LONG_VARIANCE,
             CalibrationStage.NEWS_SHOCKS,

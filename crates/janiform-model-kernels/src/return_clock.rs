@@ -75,6 +75,14 @@ pub struct IntegratedSideActivityDecomposition {
 }
 
 impl IntegratedSideActivityDecomposition {
+    /// Return zero baseline and endogenous activity.
+    pub const fn zero() -> Self {
+        Self {
+            baseline_activity: 0.0,
+            endogenous_activity: 0.0,
+        }
+    }
+
     /// Construct decomposed integrated activity without validation.
     pub const fn new(baseline_activity: f64, endogenous_activity: f64) -> Self {
         Self {
@@ -115,6 +123,14 @@ impl IntegratedSideActivityDecomposition {
         Ok(())
     }
 
+    /// Return the componentwise sum of two integrated activity decompositions.
+    pub fn component_sum(self, other: Self) -> Self {
+        Self {
+            baseline_activity: self.baseline_activity + other.baseline_activity,
+            endogenous_activity: self.endogenous_activity + other.endogenous_activity,
+        }
+    }
+
     /// Return total integrated activity for callers that still need the Hawkes activity measure.
     pub fn total_activity(self) -> f64 {
         self.baseline_activity + self.endogenous_activity
@@ -141,6 +157,73 @@ impl IntegratedSideActivityDecomposition {
         })?;
 
         Ok(return_clock)
+    }
+}
+
+/// Buy/sell source-activity decomposition for one observed event or integrated return block.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SideSourceActivityDecomposition {
+    pub buy_activity: IntegratedSideActivityDecomposition,
+    pub sell_activity: IntegratedSideActivityDecomposition,
+}
+
+impl SideSourceActivityDecomposition {
+    /// Return zero buy and sell source activity.
+    pub const fn zero() -> Self {
+        Self {
+            buy_activity: IntegratedSideActivityDecomposition::zero(),
+            sell_activity: IntegratedSideActivityDecomposition::zero(),
+        }
+    }
+
+    /// Construct a side source decomposition without validation.
+    pub const fn new(
+        buy_activity: IntegratedSideActivityDecomposition,
+        sell_activity: IntegratedSideActivityDecomposition,
+    ) -> Self {
+        Self {
+            buy_activity,
+            sell_activity,
+        }
+    }
+
+    /// Construct baseline-only side activity from an observed sell-share proxy.
+    pub fn from_sell_share_proxy(sell_share_proxy: f64) -> Self {
+        let bounded_sell_share_proxy = if sell_share_proxy.is_finite() {
+            sell_share_proxy.clamp(0.0, 1.0)
+        } else {
+            sell_share_proxy
+        };
+
+        Self {
+            buy_activity: IntegratedSideActivityDecomposition::new(
+                1.0 - bounded_sell_share_proxy,
+                0.0,
+            ),
+            sell_activity: IntegratedSideActivityDecomposition::new(bounded_sell_share_proxy, 0.0),
+        }
+    }
+
+    /// Return the componentwise sum of two side source decompositions.
+    pub fn component_sum(self, other: Self) -> Self {
+        Self {
+            buy_activity: self.buy_activity.component_sum(other.buy_activity),
+            sell_activity: self.sell_activity.component_sum(other.sell_activity),
+        }
+    }
+
+    /// Validate both side activity decompositions.
+    pub fn validate(self) -> Result<(), SideSourceActivityDecompositionError> {
+        self.buy_activity.validate().map_err(|source| {
+            SideSourceActivityDecompositionError::InvalidBuyActivity { source }
+        })?;
+
+        self.sell_activity.validate().map_err(|source| {
+            SideSourceActivityDecompositionError::InvalidSellActivity { source }
+        })?;
+
+        Ok(())
     }
 }
 
@@ -293,6 +376,41 @@ impl Error for IntegratedSideActivityDecompositionError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SideSourceActivityDecompositionError {
+    InvalidBuyActivity {
+        source: IntegratedSideActivityDecompositionError,
+    },
+    InvalidSellActivity {
+        source: IntegratedSideActivityDecompositionError,
+    },
+}
+
+impl Display for SideSourceActivityDecompositionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidBuyActivity { source } => {
+                write!(formatter, "buy activity decomposition is invalid: {source}")
+            }
+            Self::InvalidSellActivity { source } => {
+                write!(
+                    formatter,
+                    "sell activity decomposition is invalid: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for SideSourceActivityDecompositionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidBuyActivity { source } => Some(source),
+            Self::InvalidSellActivity { source } => Some(source),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum EffectiveReturnClocksError {
     InvalidNonNegativeClock {
         source: janiform_foundations::numeric::NonNegativeNumberValidationError,
@@ -371,7 +489,8 @@ impl Error for EffectiveReturnClocksBuildError {
 mod tests {
     use super::{
         IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
-        compute_effective_return_clocks, stationary_total_return_clock,
+        SideSourceActivityDecomposition, compute_effective_return_clocks,
+        stationary_total_return_clock,
     };
 
     #[test]
@@ -416,5 +535,21 @@ mod tests {
         .expect("stationary total return clock should construct");
 
         assert_eq!(total_return_clock, 8.0);
+    }
+
+    #[test]
+    fn side_source_activity_from_sell_share_proxy_is_additive() {
+        let buy_heavy = SideSourceActivityDecomposition::from_sell_share_proxy(0.25);
+        let sell_heavy = SideSourceActivityDecomposition::from_sell_share_proxy(0.75);
+
+        let combined = buy_heavy.component_sum(sell_heavy);
+
+        assert_eq!(
+            combined,
+            SideSourceActivityDecomposition::new(
+                IntegratedSideActivityDecomposition::new(1.0, 0.0),
+                IntegratedSideActivityDecomposition::new(1.0, 0.0),
+            )
+        );
     }
 }

@@ -638,6 +638,7 @@ fn build_seeded_model_inputs(
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
@@ -693,6 +694,7 @@ fn build_sufficient_statistics_model_inputs(
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("sufficient-statistics gamma severity configuration should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("equation specification should construct"),
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(

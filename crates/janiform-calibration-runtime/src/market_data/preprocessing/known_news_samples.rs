@@ -1,5 +1,5 @@
 use super::contracts::{
-    MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
+    MarketDataTranslationCalibrationError, MarketDataTranslationKnownNewsRecord,
 };
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::{
@@ -15,7 +15,7 @@ pub(super) fn resolve_known_news_records(
     definition: &ExchangeCalendarDefinition,
     timezone: Tz,
     source_window: CalibrationReturnComponentsSignalSourceWindow,
-) -> Result<KnownNewsResolutionSummary, MarketDataTranslationPreprocessingError> {
+) -> Result<KnownNewsResolutionSummary, MarketDataTranslationCalibrationError> {
     let mut retained_records: Vec<ResolvedKnownNewsRecord> = Vec::new();
     let mut outside_source_window_count: usize = 0;
     let mut open_event_count: usize = 0;
@@ -31,7 +31,7 @@ pub(super) fn resolve_known_news_records(
 
         let timestamp_utc = datetime_from_nanos(
             known_news_record.event_timestamp_utc_nanos,
-            MarketDataTranslationPreprocessingError::KnownNewsTimestampOutOfRange { event_index },
+            MarketDataTranslationCalibrationError::KnownNewsTimestampOutOfRange { event_index },
         )?;
 
         let (market_state, _) =

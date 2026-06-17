@@ -785,13 +785,13 @@ def materialize_surprise_news_weekly_profile_multipliers_for_interval_range(
 ) -> object: ...
 
 
-def preprocess_market_data_translation_request(
-    preprocessing_request: object,
+def calibrate_market_data_translation_request(
+    calibration_request: object,
     calendar_registry: CalendarRegistry,
 ) -> object: ...
 
 
-def load_and_preprocess_market_data_translation_request(
+def load_and_calibrate_market_data_translation_request(
     loading_request: object,
 ) -> object: ...
 

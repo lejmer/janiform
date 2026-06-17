@@ -21,6 +21,7 @@ CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY = (
 class MarketDataTimestampBatchingObservationDiagnosticState(StrEnum):
     INFERRED_FIXED_BUCKET = "inferred_fixed_bucket"
     DISABLED_NO_DETECTABLE_BATCHING = "disabled_no_detectable_batching"
+    DEFERRED_TO_OBSERVATION_MODELS_STAGE = "deferred_to_observation_models_stage"
     NOT_EVALUATED_RETURN_COMPONENTS_NOT_SELECTED = (
         "not_evaluated_return_components_not_selected"
     )

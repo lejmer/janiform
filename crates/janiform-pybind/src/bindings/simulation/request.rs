@@ -1,5 +1,6 @@
 use janiform::model::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform::model::news::NewsProcessConfiguration;
+use janiform::model::no_move_event::NoMoveEventModel;
 use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
@@ -229,6 +230,7 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
                 return_clock_exposure_parameters: self
                     .model_inputs
                     .return_clock_exposure_parameters,
+                no_move_event_model: self.model_inputs.no_move_event_model,
                 long_variance_parameters: self.model_inputs.long_variance_parameters,
                 initial_long_variance_state: self.model_inputs.initial_long_variance_state,
                 observed_price_tick_size: self.model_inputs.observed_price_tick_size,
@@ -253,6 +255,7 @@ struct SeededTickSimulationModelInputsPayload {
         janiform::simulation::MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: janiform::simulation::MeanReversionBoundaryState,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
+    no_move_event_model: NoMoveEventModel,
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
@@ -309,6 +312,11 @@ impl SeededTickSimulationModelInputsPayload {
                 request,
                 "seeded_tick_simulation_request",
                 "return_clock_exposure_parameters",
+            )?,
+            no_move_event_model: parse_required_json_field(
+                request,
+                "seeded_tick_simulation_request",
+                "no_move_event_model",
             )?,
             long_variance_parameters: parse_required_json_field(
                 request,

@@ -14,7 +14,7 @@ from .contracts import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataCalibrationSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationSessionConfigurationInput,
@@ -64,7 +64,7 @@ class MarketDataCalibrationRequest(ContractModel):
     )
     coarse_data_source: Optional[CalibrationInputFileReference] = None
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = ()
-    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None
+    calibration_settings: Optional[CalibrationMarketDataCalibrationSettings] = None
     option_surface_source: Optional[CalibrationInputFileReference] = None
     option_surface_valuation_time_utc: Optional[datetime] = None
     carry: Optional[CalibrationFlatCarryInput] = None
@@ -257,6 +257,7 @@ class MarketDataCalibrationRequest(ContractModel):
                 selected_stages = (
                     CalibrationStage.SEASONALITY,
                     CalibrationStage.HAWKES,
+                    CalibrationStage.OBSERVATION_MODELS,
                     CalibrationStage.RETURN_COMPONENTS,
                     CalibrationStage.LONG_VARIANCE,
                     CalibrationStage.NEWS_SHOCKS,
@@ -270,6 +271,7 @@ class MarketDataCalibrationRequest(ContractModel):
                 selected_stages = (
                     CalibrationStage.SEASONALITY,
                     CalibrationStage.HAWKES,
+                    CalibrationStage.OBSERVATION_MODELS,
                     CalibrationStage.RETURN_COMPONENTS,
                     CalibrationStage.LONG_VARIANCE,
                     CalibrationStage.NEWS_SHOCKS,
@@ -375,18 +377,18 @@ class MarketDataCalibrationRequest(ContractModel):
                     else ()
                 )
             ),
-            preprocessing_settings=(
-                CalibrationMarketDataPreprocessingSettings.from_mapping(
+            calibration_settings=(
+                CalibrationMarketDataCalibrationSettings.from_mapping(
                     require_mapping(
                         raw_payload,
-                        "preprocessing_settings",
-                        "preprocessing_settings",
+                        "calibration_settings",
+                        "calibration_settings",
                         calibration_error,
                     ),
-                    field_path="preprocessing_settings",
+                    field_path="calibration_settings",
                 )
-                if "preprocessing_settings" in raw_payload
-                and raw_payload["preprocessing_settings"] is not None
+                if "calibration_settings" in raw_payload
+                and raw_payload["calibration_settings"] is not None
                 else None
             ),
             option_surface_source=(

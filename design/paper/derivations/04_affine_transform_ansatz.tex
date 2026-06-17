@@ -47,13 +47,18 @@ The transform is
         \mid \mathbf y_0,Z_0)\\
     &=
     \mathbb E\!\left[
-        e^{-u_+^B B_Z^+-u_+^E E^+-u_-^B B_Z^--u_-^E E^-+\xi Z_\Delta}
+        e^{-u_+^B\widehat B_Z^+-u_+^E\widehat E^+
+        -u_-^B\widehat B_Z^--u_-^E\widehat E^-+\xi Z_\Delta}
         z_+^{N^+}z_-^{N^-}
         e^{q(M_\Delta+G_\Delta)}
         \mid \mathbf Y_0=\mathbf y_0,Z_0
     \right].
     \end{aligned}
 \]
+The hatted activity variables are moving exposures,
+\(\widehat B_Z^\pm=p_B^\pm B_Z^\pm\) and
+\(\widehat E^\pm=p_E^\pm E^\pm\), where
+\(p_B^\pm=1-q_B^\pm\) and \(p_E^\pm=1-q_E^\pm\).
 
 For a standalone terminal interval, the terminal Hawkes and long-variance
 loadings are zero.
@@ -75,6 +80,7 @@ Symbol & Meaning & Units or domain\\
 \(\mathbf k_-\) & Hawkes jump loading for a sell event & Non-negative vector\\
 \(\mathbf r\) & News activity-shock loading vector & Non-negative vector\\
 \(u_\pm^B,u_\pm^E\) & Baseline and endogenous activity clock loadings & Complex finite\\
+\(p_B^\pm,p_E^\pm\) & Baseline-source and endogenous-source move probabilities & Unit interval\\
 \(z_\pm\) & Event-count transform multipliers & Complex finite\\
 \(q\) & News return transform argument & Complex transform domain\\
 \bottomrule
@@ -165,14 +171,15 @@ Both multipliers are independent of the current state, so multiplying them by
 the affine buy and sell intensities yields only constant and \(\mathbf y\)-linear
 terms.
 
-The baseline return-clock loadings contribute
+The baseline moving return-clock loadings contribute
 \[
-    -s_k\bar\lambda\left(u_+^B+u_-^B\right)z,
+    -s_k\bar\lambda\left(p_B^+u_+^B+p_B^-u_-^B\right)z,
 \]
 because \(B_Z^+\) and \(B_Z^-\) both accrue against the same
-long-variance-scaled interval-grid baseline opportunity.
-The endogenous activity loadings contribute \(-u_+^E(Y^{++}+Y^{+-})\) and
-\(-u_-^E(Y^{-+}+Y^{--})\).
+long-variance-scaled interval-grid baseline opportunity after no-move thinning.
+The endogenous moving activity loadings contribute
+\(-p_E^+u_+^E(Y^{++}+Y^{+-})\) and
+\(-p_E^-u_-^E(Y^{-+}+Y^{--})\).
 These terms are again affine in \((\mathbf y,z)\).
 
 The continuous long-variance generator gives

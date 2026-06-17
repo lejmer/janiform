@@ -432,10 +432,10 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
 
     assert!(report.status.is_successful(), "{report:#?}");
     assert!(report.failure.is_none());
-    assert_eq!(report.emitted_checkpoints.len(), 9);
+    assert_eq!(report.emitted_checkpoints.len(), 10);
     assert_eq!(
         checkpoint_store.checkpoint_count_for_run(run_contract.run_spec.run_id.as_str()),
-        9
+        10
     );
 
     let first_checkpoint = report
@@ -525,7 +525,7 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
     );
 
     assert!(report.status.is_successful(), "{report:#?}");
-    assert_eq!(report.stage_reports.len(), 9);
+    assert_eq!(report.stage_reports.len(), 10);
 
     for stage_report in &report.stage_reports {
         match stage_report {
@@ -555,6 +555,28 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                 assert_eq!(
                     metadata.stage_seed_source,
                     CalibrationStageSeedSource::StageOverride
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
+            CalibrationStagedRunStageReport::ObservationModels(observation_models_report) => {
+                let metadata = observation_models_report
+                    .metadata
+                    .as_ref()
+                    .expect("observation-models stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::ObservationModels
+                    )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
                 );
                 assert_eq!(
                     metadata.stage_seed_derivation_policy,
@@ -933,6 +955,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
     for stage in [
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
+        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
     ] {
         let artifact_path = calibration_stage_parameter_artifact_path(
@@ -959,6 +982,31 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         );
     }
 
+    let calibration_artifact_directory = disk_checkpoint_directory
+        .join("artifacts")
+        .join("calibration");
+    let hawkes_stage_report_json =
+        fs::read_to_string(calibration_artifact_directory.join("hawkes.stage_report.json"))
+            .expect("hawkes stage report should be readable");
+    let hawkes_stage_report: Value = serde_json::from_str(hawkes_stage_report_json.as_str())
+        .expect("hawkes stage report should parse");
+    assert_eq!(
+        hawkes_stage_report["report"]["fitted_stage_payload"]["candidate_diagnostics"],
+        json!([])
+    );
+
+    let observation_models_stage_report_json = fs::read_to_string(
+        calibration_artifact_directory.join("observation_models.stage_report.json"),
+    )
+    .expect("observation-models stage report should be readable");
+    let observation_models_stage_report: Value =
+        serde_json::from_str(observation_models_stage_report_json.as_str())
+            .expect("observation-models stage report should parse");
+    assert_eq!(
+        observation_models_stage_report["report"]["fitted_stage_payload"]["open_session_return_source_activities"],
+        json!([])
+    );
+
     let manifest_path = calibration_artifact_manifest_path(
         disk_checkpoint_directory.as_path(),
         disk_contract.run_spec.run_id.as_str(),
@@ -975,7 +1023,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageOutput)
             .count(),
-        3
+        4
     );
     assert_eq!(
         manifest
@@ -984,7 +1032,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageCheckpoint)
             .count(),
-        3
+        4
     );
 
     let memory_checkpoint_directory =
@@ -1014,6 +1062,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
     for stage in [
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
+        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
@@ -1130,7 +1179,7 @@ fn staged_runner_disk_resume_replaces_committed_artifacts_after_success() {
     let resume_report = run_staged_calibration_with_checkpointing(
         &resume_run_contract,
         &calendar_registry,
-        staged_run_inputs(false, false, true),
+        staged_run_inputs(true, false, true),
         None,
         Some(checkpoint_directory.as_path()),
     );
@@ -1293,7 +1342,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         cli_default_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(cli_default_report.stage_reports.len(), 9);
+    assert_eq!(cli_default_report.stage_reports.len(), 10);
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");
@@ -1317,7 +1366,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         python_override_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(python_override_report.stage_reports.len(), 9);
+    assert_eq!(python_override_report.stage_reports.len(), 10);
 
     let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
     let _ = fs::remove_dir_all(python_override_checkpoint_directory);
@@ -1400,12 +1449,7 @@ fn staged_runner_stage_abort_failure_report_exposes_schema_and_triage_metadata()
         } => candidate_diagnostics,
         _ => panic!("expected constraint violation diagnostics"),
     };
-    assert_eq!(candidate_diagnostics.len(), 1);
-    assert_eq!(
-        candidate_diagnostics[0].candidate_id,
-        "candidate_invalid_constraints"
-    );
-    assert!(candidate_diagnostics[0].constraint_violation_count > 0);
+    assert!(candidate_diagnostics.is_empty());
 
     let serialized_report =
         serde_json::to_value(&report).expect("staged run report should serialize");
@@ -1560,7 +1604,7 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
     assert_eq!(
         initial_report.failure,
         Some(CalibrationStagedRunFailure::MissingStageInput {
-            stage: CalibrationStage::ReturnComponents
+            stage: CalibrationStage::ObservationModels
         })
     );
 
@@ -1584,10 +1628,10 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
     );
     assert_eq!(
         resume_report.started_from_stage,
-        Some(CalibrationStage::ReturnComponents)
+        Some(CalibrationStage::ObservationModels)
     );
-    assert_eq!(resume_report.stage_reports.len(), 7);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 7);
+    assert_eq!(resume_report.stage_reports.len(), 8);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 8);
 }
 
 #[test]
@@ -1701,7 +1745,7 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     let resume_from_last_report = run_staged_calibration_with_checkpointing(
         &resume_from_last_contract,
         &calendar_registry,
-        staged_run_inputs(false, false, true),
+        staged_run_inputs(true, false, true),
         None,
         Some(checkpoint_directory.as_path()),
     );
@@ -1713,16 +1757,23 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     );
     assert_eq!(
         resume_from_last_report.started_from_stage,
-        Some(CalibrationStage::ReturnComponents)
+        Some(CalibrationStage::ObservationModels)
     );
-    assert_eq!(resume_from_last_report.stage_reports.len(), 1);
-    assert_eq!(resume_from_last_report.emitted_checkpoints.len(), 1);
+    assert_eq!(resume_from_last_report.stage_reports.len(), 2);
+    assert_eq!(resume_from_last_report.emitted_checkpoints.len(), 2);
     assert!(calibration_artifact_manifest_path(checkpoint_directory.as_path(), run_id).exists());
     assert!(
         !checkpoint_directory
             .join("artifacts")
             .join("pending")
             .join("calibration")
+            .exists()
+    );
+    assert!(
+        checkpoint_directory
+            .join("artifacts")
+            .join("calibration")
+            .join("observation_models.stage_report.json")
             .exists()
     );
     assert!(
@@ -1762,27 +1813,21 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     let resume_from_stage_report = run_staged_calibration_with_checkpointing(
         &resume_from_stage_contract,
         &calendar_registry,
-        staged_run_inputs(false, true, true),
+        staged_run_inputs(true, true, true),
         None,
         Some(second_checkpoint_directory.as_path()),
     );
     assert_eq!(
         resume_from_stage_report.status,
-        CalibrationStageExecutionStatus::Failure
+        CalibrationStageExecutionStatus::Success
     );
     assert_eq!(
         resume_from_stage_report.started_from_stage,
         Some(CalibrationStage::Hawkes)
     );
-    assert!(matches!(
-        resume_from_stage_report.failure,
-        Some(
-            CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
-                required_stage: CalibrationStage::Seasonality,
-                consuming_stage: CalibrationStage::Hawkes,
-            }
-        )
-    ));
+    assert_eq!(resume_from_stage_report.failure, None);
+    assert_eq!(resume_from_stage_report.stage_reports.len(), 3);
+    assert_eq!(resume_from_stage_report.emitted_checkpoints.len(), 3);
 
     let _ = fs::remove_dir_all(checkpoint_directory);
     let _ = fs::remove_dir_all(second_checkpoint_directory);
@@ -1893,6 +1938,7 @@ fn normalized_report_for_reproducibility(
             }
             CalibrationStagedRunStageReport::Seasonality(_)
             | CalibrationStagedRunStageReport::Hawkes(_)
+            | CalibrationStagedRunStageReport::ObservationModels(_)
             | CalibrationStagedRunStageReport::ReturnComponents(_)
             | CalibrationStagedRunStageReport::LongVariance(_)
             | CalibrationStagedRunStageReport::NewsShocks(_)

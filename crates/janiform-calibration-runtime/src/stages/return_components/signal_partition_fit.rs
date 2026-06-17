@@ -146,6 +146,7 @@ mod tests {
         ReturnComponentsRealizedKnownNewsReturnSample,
     };
     use janiform_calibration_artifacts::TickGridObservationModel;
+    use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
     fn disabled_tick_grid_observation_model() -> TickGridObservationModel {
         TickGridObservationModel {
@@ -166,6 +167,7 @@ mod tests {
                     log_return: 1.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -173,6 +175,7 @@ mod tests {
                     log_return: -2.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
@@ -180,6 +183,7 @@ mod tests {
                     log_return: 3.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
@@ -187,6 +191,7 @@ mod tests {
                     log_return: 5.0e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 5,
@@ -194,6 +199,7 @@ mod tests {
                     log_return: 8.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 6,
@@ -201,6 +207,7 @@ mod tests {
                     log_return: 6.0e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
             ],
             &[ReturnComponentsRealizedKnownNewsReturnSample {
@@ -231,6 +238,7 @@ mod tests {
                     log_return: 1.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -238,6 +246,7 @@ mod tests {
                     log_return: -2.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
@@ -245,6 +254,7 @@ mod tests {
                     log_return: 3.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
@@ -252,6 +262,7 @@ mod tests {
                     log_return: 5.0e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
             ],
             &[],
@@ -279,6 +290,7 @@ mod tests {
                     log_return: 4.0e-4,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -286,6 +298,7 @@ mod tests {
                     log_return: 4.9e-3,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
             ],
             &[],

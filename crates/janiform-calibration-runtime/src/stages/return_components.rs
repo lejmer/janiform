@@ -1,4 +1,5 @@
 mod activity_coupling_fit;
+mod activity_excess;
 mod constants;
 mod continuous_fit;
 mod continuous_layer_fit;
@@ -12,7 +13,9 @@ mod objective_scoring_policy_fit;
 mod price_range_policy_fit;
 mod progress;
 mod quantile_binning_fit;
+mod return_clock_exposure_fit;
 mod signal_partition_fit;
+mod source_activity;
 mod surprise_episode_selection_fit;
 mod surprise_intensity_fit;
 #[cfg(test)]
@@ -85,3 +88,5 @@ pub(crate) use execution::{
 pub use execution::{
     evaluate_return_components_exact_candidate, run_return_components_calibration_stage,
 };
+pub(crate) use return_clock_exposure_fit::moving_return_clock_proxy;
+pub(crate) use source_activity::open_session_returns_with_source_activities;

@@ -238,24 +238,32 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
     let baseline_expected_business_time =
         expected_baseline_business_time_for_context(equation_specification, context);
 
+    let no_move_event_model = equation_specification.no_move_event_model;
+
+    let expected_baseline_a_plus =
+        baseline_expected_business_time * no_move_event_model.buy_baseline_move_probability();
+
+    let expected_baseline_a_minus =
+        baseline_expected_business_time * no_move_event_model.sell_baseline_move_probability();
+
     let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
         context,
         "endogenous_a_plus",
         expected_a_plus,
-        baseline_expected_business_time,
+        expected_baseline_a_plus,
     )?;
 
     let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
         context,
         "endogenous_a_minus",
         expected_a_minus,
-        baseline_expected_business_time,
+        expected_baseline_a_minus,
     )?;
 
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        baseline_expected_business_time,
+        expected_baseline_a_plus,
         expected_endogenous_a_plus,
-        baseline_expected_business_time,
+        expected_baseline_a_minus,
         expected_endogenous_a_minus,
         expected_n_plus,
         expected_n_minus,
@@ -843,23 +851,32 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
 
     let baseline_expected_business_time =
         expected_baseline_business_time_for_context(slices.equation_specification, context);
+
+    let no_move_event_model = slices.equation_specification.no_move_event_model;
+
+    let expected_baseline_a_plus =
+        baseline_expected_business_time * no_move_event_model.buy_baseline_move_probability();
+
+    let expected_baseline_a_minus =
+        baseline_expected_business_time * no_move_event_model.sell_baseline_move_probability();
+
     let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
         context,
         "endogenous_a_plus",
         expected_a_plus,
-        baseline_expected_business_time,
+        expected_baseline_a_plus,
     )?;
     let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
         context,
         "endogenous_a_minus",
         expected_a_minus,
-        baseline_expected_business_time,
+        expected_baseline_a_minus,
     )?;
 
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        baseline_expected_business_time,
+        expected_baseline_a_plus,
         expected_endogenous_a_plus,
-        baseline_expected_business_time,
+        expected_baseline_a_minus,
         expected_endogenous_a_minus,
         expected_n_plus,
         expected_n_minus,
@@ -1332,6 +1349,7 @@ mod tests {
                 GammaSeverityMarkConfiguration::try_new(1.0)
                     .expect("gamma severity marks should construct"),
                 LongVarianceParameters::neutral(),
+                janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
             )
             .expect("equation specification should construct"),
             context,

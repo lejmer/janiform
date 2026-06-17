@@ -3,8 +3,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::market_data::preprocessing::{
-    MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
-    MarketDataTranslationPreprocessingSettings,
+    MarketDataTranslationCalibrationError, MarketDataTranslationCalibrationOutput,
+    MarketDataTranslationCalibrationSettings,
 };
 
 use super::progress::MarketDataLoadingProgressError;
@@ -20,7 +20,7 @@ pub struct MarketDataLoadingRequest {
     pub coarse_data_input: Option<MarketDataCoarseDataLoadingInput>,
     pub normalization_policy: MarketDataNormalizationPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
+    pub calibration_settings: Option<MarketDataTranslationCalibrationSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub option_surface_input: Option<MarketDataOptionSurfaceLoadingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -302,7 +302,7 @@ pub struct ResolvedPriceCoordinateSet {
 #[serde(deny_unknown_fields)]
 pub struct MarketDataLoadingOutput {
     pub session_resolution: MarketDataSessionResolutionPayload,
-    pub preprocessing_output: MarketDataTranslationPreprocessingOutput,
+    pub calibration_output: MarketDataTranslationCalibrationOutput,
     pub tick_data_summary: MarketDataSourceSummary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coarse_data_summary: Option<MarketDataCoarseDataSummary>,
@@ -488,7 +488,7 @@ pub enum MarketDataLoadingError {
     Parquet { field_path: String, message: String },
     MissingColumn { field_path: String, message: String },
     InvalidValue { field_path: String, message: String },
-    Preprocessing(MarketDataTranslationPreprocessingError),
+    Calibration(MarketDataTranslationCalibrationError),
     Progress(MarketDataLoadingProgressError),
 }
 
@@ -515,7 +515,7 @@ impl Display for MarketDataLoadingError {
                 field_path,
                 message,
             } => write!(formatter, "{field_path}: {message}"),
-            Self::Preprocessing(error) => Display::fmt(error, formatter),
+            Self::Calibration(error) => Display::fmt(error, formatter),
             Self::Progress(error) => Display::fmt(error, formatter),
         }
     }
@@ -524,7 +524,7 @@ impl Display for MarketDataLoadingError {
 impl Error for MarketDataLoadingError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Preprocessing(error) => Some(error),
+            Self::Calibration(error) => Some(error),
             Self::Progress(error) => Some(error),
             Self::Io { .. }
             | Self::Csv { .. }

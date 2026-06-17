@@ -838,6 +838,9 @@ fn run_option_grid_batch_pricing(
                 .return_clock_exposure_parameters,
             fitted_parameters
                 .return_components_fitted_parameters
+                .no_move_event_model,
+            fitted_parameters
+                .return_components_fitted_parameters
                 .long_variance_parameters,
             fitted_parameters.pricing_kernel_parameters(),
         ),
@@ -3060,6 +3063,7 @@ mod tests {
                     .clone(),
                 return_components_fitted_parameters.nig_shared_plus_shift_configuration,
                 return_components_fitted_parameters.return_clock_exposure_parameters,
+                return_components_fitted_parameters.no_move_event_model,
                 return_components_fitted_parameters.long_variance_parameters,
                 janiform_engine_pricing::VanillaOptionPricingKernelParameters::identity(),
             ),

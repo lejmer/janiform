@@ -156,27 +156,32 @@ Write
 \]
 The effective return clocks are
 \[
-    A_h^+=B_{Z,h}^++\eta_+E_h^+,
+    A_h^+=p_B^+B_{Z,h}^++\eta_+p_E^+E_h^+,
     \qquad
-    A_h^-=B_{Z,h}^-+\eta_-E_h^-.
+    A_h^-=p_B^-B_{Z,h}^-+\eta_-p_E^-E_h^-.
 \]
+Here \(p_B^\pm\) and \(p_E^\pm\) are the baseline-source and endogenous-source
+move probabilities from the economic no-move model.
 Thus, the trading contribution to the interval transform is
 \[
     \exp\!\left(
-a_+(\tilde v_h)B_{Z,h}^+
-+\eta_+a_+(\tilde v_h)E_h^+
-+a_-(\tilde v_h)B_{Z,h}^-
-+\eta_-a_-(\tilde v_h)E_h^-
+a_+(\tilde v_h)p_B^+B_{Z,h}^+
++\eta_+a_+(\tilde v_h)p_E^+E_h^+
++a_-(\tilde v_h)p_B^-B_{Z,h}^-
++\eta_-a_-(\tilde v_h)p_E^-E_h^-
 \right).
 \]
 
 The affine schedule transform uses the convention
 \[
     \exp\!\left(
--u_+^BB_Z^+-u_+^EE^+
--u_-^BB_Z^--u_-^EE^-
+-u_+^B\widehat B_Z^+-u_+^E\widehat E^+
+-u_-^B\widehat B_Z^--u_-^E\widehat E^-
 \right).
 \]
+The hatted activity variables are the moving-event exposures obtained by
+applying the no-move model to the total baseline and endogenous source
+activity.
 Matching exponents gives
 \[
     u_{+,h}^B=-a_+(\tilde v_h),
@@ -208,10 +213,10 @@ weighted terminal argument applies to their return transform:
     q_h=\tilde v_h.
 \]
 
-The affine oracle composes intervals backward. Since each interval receives
-the loadings above and the terminal interval composition passes inherited
-\(\mathbf D\) and \(V\) loadings to earlier intervals, the resulting schedule
-exponent is the stochastic terminal cumulant
+The affine oracle composes intervals backward.
+Since each interval receives the loadings above and the terminal interval
+composition passes inherited \(\mathbf D\) and \(V\) loadings to earlier
+intervals, the resulting schedule exponent is the stochastic terminal cumulant
 \[
     K_{t,T}(v,\log\pi_+,\log\pi_-).
 \]
@@ -222,8 +227,8 @@ The adapter is valid when each weighted argument \(\tilde v_h=w_hv\) lies in
 the side NIG moment domains needed for \(a_+\) and \(a_-\), the induced affine
 schedule query satisfies the domain constraints in
 \texttt{06\_affine\_domain\_constraints.tex}, and the activity premia satisfy
-\(\pi_+>0\) and \(\pi_->0\). The weights \(w_h\) must be finite and
-non-negative.
+\(\pi_+>0\) and \(\pi_->0\).
+The weights \(w_h\) must be finite and non-negative.
 
 \section{Consequences}
 

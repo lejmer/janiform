@@ -263,6 +263,7 @@ def build_valid_execution_input_model(
             selected_stages=(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
+                CalibrationStage.OBSERVATION_MODELS,
                 CalibrationStage.RETURN_COMPONENTS,
                 CalibrationStage.LONG_VARIANCE,
                 CalibrationStage.NEWS_SHOCKS,
@@ -281,6 +282,7 @@ def build_valid_execution_input_model(
             optimizer_settings_by_stage=(
                 _solver_settings(CalibrationStage.SEASONALITY),
                 _solver_settings(CalibrationStage.HAWKES),
+                _solver_settings(CalibrationStage.OBSERVATION_MODELS),
                 _solver_settings(CalibrationStage.RETURN_COMPONENTS),
                 _solver_settings(CalibrationStage.LONG_VARIANCE),
                 _solver_settings(CalibrationStage.NEWS_SHOCKS),

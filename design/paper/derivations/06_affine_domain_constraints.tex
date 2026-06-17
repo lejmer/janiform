@@ -46,6 +46,7 @@ Symbol & Meaning & Units or domain\\
 \(k_U\) & Gamma severity shape & Strictly positive\\
 \(\rho(\mathbf A_\alpha/\beta)\) & Hawkes branching spectral radius & Strictly less than one\\
 \(\bar z\) & Derived long-variance mean-reversion level & Strictly positive\\
+\(p_B^\pm,p_E^\pm\) & Baseline-source and endogenous-source move probabilities & Unit interval\\
 \(C,\mathbf D,V\) & Affine ODE solution & Finite on \([0,\Delta]\)\\
 \bottomrule
 \end{tabularx}
@@ -219,7 +220,7 @@ The \(V\) equation is a Riccati equation:
     =
     -\kappa_zV
     +\frac{1}{2}\sigma_z^2 V^2
-    -s_k\bar\lambda(u_+^B+u_-^B).
+    -s_k\bar\lambda(p_B^+u_+^B+p_B^-u_-^B).
 \]
 If this equation develops a finite-time pole before \(\Delta\), then the
 exponent is not finite.

@@ -1123,6 +1123,7 @@ mod tests {
             .expect("kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8).expect("gamma marks should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("equation specification should construct");
 

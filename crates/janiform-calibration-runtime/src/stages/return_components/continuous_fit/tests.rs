@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
 use super::bounds::{
     build_moment_seed_candidates, coordinate_to_ratio, coordinate_to_share,
@@ -532,6 +533,7 @@ fn equal_business_time_blocks_preserve_order_and_total_mass() {
             log_return: 0.01,
             post_shock_activity_lift: 1.0,
             sell_share_proxy: 0.0,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.0),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 2,
@@ -539,6 +541,7 @@ fn equal_business_time_blocks_preserve_order_and_total_mass() {
             log_return: -0.02,
             post_shock_activity_lift: 2.0,
             sell_share_proxy: 1.0,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(1.0),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 3,
@@ -546,6 +549,7 @@ fn equal_business_time_blocks_preserve_order_and_total_mass() {
             log_return: 0.03,
             post_shock_activity_lift: 3.0,
             sell_share_proxy: 0.0,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.0),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 4,
@@ -553,6 +557,7 @@ fn equal_business_time_blocks_preserve_order_and_total_mass() {
             log_return: 0.04,
             post_shock_activity_lift: 4.0,
             sell_share_proxy: 1.0,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(1.0),
         },
     ];
     let business_time_scales = [1.0, 1.0, 1.0, 1.0];

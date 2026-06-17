@@ -4,14 +4,15 @@ pub(super) use std::str::FromStr;
 pub(super) use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
 pub(super) use chrono_tz::Tz;
 
-use super::contracts::{MarketDataTranslationPreprocessingError, MarketDataTranslationTickRecord};
+use super::contracts::{MarketDataTranslationCalibrationError, MarketDataTranslationTickRecord};
 pub(super) use super::contracts::{
-    MarketDataTranslationReturnComponentsPreprocessingSettings,
-    MarketDataTranslationSeasonalityPreprocessingSettings,
+    MarketDataTranslationReturnComponentsCalibrationSettings,
+    MarketDataTranslationSeasonalityCalibrationSettings,
 };
 pub(super) use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
     CalibrationMeanReversionStageObservation,
+    CalibrationObservationModelsOpenSessionTimestampTransition,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -99,11 +100,11 @@ pub(super) struct KnownNewsResolutionSummary {
 
 pub(super) fn parse_trade_sign(
     raw_trade_sign: Option<&str>,
-) -> Result<Option<TradeSign>, MarketDataTranslationPreprocessingError> {
+) -> Result<Option<TradeSign>, MarketDataTranslationCalibrationError> {
     match raw_trade_sign {
         Some("buy") => Ok(Some(TradeSign::Buy)),
         Some("sell") => Ok(Some(TradeSign::Sell)),
-        Some(raw_trade_sign) => Err(MarketDataTranslationPreprocessingError::InvalidTradeSign {
+        Some(raw_trade_sign) => Err(MarketDataTranslationCalibrationError::InvalidTradeSign {
             raw_value: raw_trade_sign.to_string(),
         }),
         None => Ok(None),

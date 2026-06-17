@@ -6,6 +6,7 @@ use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
 };
+use janiform_model_kernels::no_move_event::NoMoveEventModel;
 
 use super::{
     ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformDVector,
@@ -19,6 +20,7 @@ struct ExponentialAffineTransformEquationSpecificationPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
     long_variance_parameters: LongVarianceParameters,
+    no_move_event_model: NoMoveEventModel,
 }
 
 impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
@@ -28,10 +30,12 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
     {
         let payload =
             ExponentialAffineTransformEquationSpecificationPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.hawkes_kernel_parameters,
             payload.gamma_severity_mark_configuration,
             payload.long_variance_parameters,
+            payload.no_move_event_model,
         )
         .map_err(serde::de::Error::custom)
     }

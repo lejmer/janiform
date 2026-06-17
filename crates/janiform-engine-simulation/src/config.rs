@@ -13,6 +13,7 @@ use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParamete
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
@@ -140,6 +141,9 @@ pub struct SeededTickSimulationModelInputs {
     /// Exposure parameters mapping endogenous activity into return-clock time.
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
 
+    /// Economic no-move probabilities used to thin return clocks and gate event emission.
+    pub no_move_event_model: NoMoveEventModel,
+
     /// Physical long-variance dynamics used by the return-clock baseline.
     pub long_variance_parameters: LongVarianceParameters,
 
@@ -258,6 +262,15 @@ impl SeededTickSimulationRunConfig {
                     source: Box::new(source),
                 }
             })?;
+
+        self.model_inputs
+            .no_move_event_model
+            .validate()
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidNoMoveEventModel {
+                    source: Box::new(source),
+                },
+            )?;
 
         self.model_inputs
             .long_variance_parameters

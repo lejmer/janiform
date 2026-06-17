@@ -91,21 +91,28 @@ Known news is deterministic-arrival random-mark and surprise news is compound Po
 
 \section{Result}
 
-\noindent\textbf{Identity.} Define
+\noindent\textbf{Identity.} Let \(q_B^\pm,q_E^\pm\in[0,1]\) denote the
+baseline-source and endogenous-source economic no-move probabilities, and set
+\[
+    p_B^\pm=1-q_B^\pm,
+    \qquad
+    p_E^\pm=1-q_E^\pm.
+\]
+Define
 \[
     \begin{aligned}
     H_+^B(\mathbf D,V)
     &=
-    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^B,\\
+    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - p_B^+u_+^B,\\
     H_-^B(\mathbf D,V)
     &=
-    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^B,\\
+    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - p_B^-u_-^B,\\
     H_+^E(\mathbf D,V)
     &=
-    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - u_+^E,\\
+    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+) - 1 - p_E^+u_+^E,\\
     H_-^E(\mathbf D,V)
     &=
-    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - u_-^E.
+    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) - 1 - p_E^-u_-^E.
     \end{aligned}
 \]
 For \(c\in\{\mathrm{known},\mathrm{surprise}\}\), define
@@ -131,15 +138,15 @@ Then the affine schedule loadings solve
             +H_-^E(\mathbf D(\tau),V(\tau)),\\
         V'(\tau)
         &=
-        -\kappa_zV(\tau)
-        +\frac{1}{2}\sigma_z^2V(\tau)^2
-        -s_k\bar\lambda\big(u_+^B+u_-^B\big),\\
+        -\kappa_z V(\tau)
+        +\frac{1}{2}\sigma_z^2 V(\tau)^2
+        -s_k\bar\lambda\big(p_B^+u_+^B+p_B^-u_-^B\big),\\
         C'(\tau)
         &=
         \kappa_z\bar zV(\tau)
         +s_k\bar\lambda\Big(
-        H_+^B(\mathbf D(\tau),V(\tau))+u_+^B
-        +H_-^B(\mathbf D(\tau),V(\tau))+u_-^B
+        H_+^B(\mathbf D(\tau),V(\tau))+p_B^+u_+^B
+        +H_-^B(\mathbf D(\tau),V(\tau))+p_B^-u_-^B
         \Big)\\
         &\quad
         +\nu_k^{\mathrm{known}}\ell_{\mathrm{known}}
@@ -180,8 +187,8 @@ and a sell event has multiplier
     z_-\exp(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-).
 \]
 Subtracting one gives the usual jump-generator increment.
-Subtracting the activity clock loading gives the Hamiltonian associated with
-the clock type.
+Subtracting the moving activity-clock loading gives the Hamiltonian associated
+with the clock type.
 For endogenous activity, this yields \(H_+^E\) multiplying
 \(Y^{++}+Y^{+-}\) and \(H_-^E\) multiplying \(Y^{-+}+Y^{--}\).
 Combining with Hawkes decay gives the four \(\mathbf D\) equations.
@@ -195,16 +202,21 @@ Their pure event contribution is
         +z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) -1
     \right].
 \]
-Because \(H_\pm^B+u_\pm^B=z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1\),
+Because
+\[
+    H_\pm^B+p_B^\pm u_\pm^B
+    =
+    z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1,
+\]
 this is the baseline term in \(C'\):
 \[
-    s_k\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
+    s_k\bar\lambda\left(H_+^B+p_B^+u_+^B+H_-^B+p_B^-u_-^B\right).
 \]
 
 The baseline return clocks are long-variance scaled, so their transform
 loadings contribute
 \[
-    -s_k\bar\lambda(u_+^B+u_-^B)z.
+    -s_k\bar\lambda(p_B^+u_+^B+p_B^-u_-^B)z.
 \]
 This term is \(z\)-linear and therefore enters \(V'\), not \(C'\).
 
@@ -212,7 +224,7 @@ The continuous long-variance generator contributes
 \[
     \kappa_z\bar zV(\tau)
     +\left(
-        -\kappa_zV(\tau)+\frac{1}{2}\sigma_z^2V(\tau)^2
+        -\kappa_z V(\tau)+\frac{1}{2}\sigma_z^2 V(\tau)^2
     \right)z.
 \]
 The constant part enters \(C'\), and the \(z\)-linear part enters \(V'\).

@@ -3230,6 +3230,9 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
             SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
+            SimulationRandomnessSubstreamDomain::EndogenousNoMoveEventMark => {
+                self.substream_index.wrapping_add(self.draw_count)
+            }
             SimulationRandomnessSubstreamDomain::ExogenousNewsCount => 0,
             SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => 0,
             SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity
@@ -3394,6 +3397,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
                 self.combined_news_mark_draws()
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::EndogenousNoMoveEventMark
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
@@ -3464,6 +3468,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
+            | SimulationRandomnessSubstreamDomain::EndogenousNoMoveEventMark
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
@@ -3561,6 +3566,7 @@ fn one_interval_model_inputs(
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
@@ -3875,6 +3881,7 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,

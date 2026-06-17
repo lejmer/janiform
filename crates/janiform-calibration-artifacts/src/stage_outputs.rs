@@ -12,6 +12,7 @@ use janiform_model_kernels::mean_reversion::{
 };
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
@@ -41,11 +42,20 @@ pub struct TickGridObservationModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObservationModelsStageDiagnostics {
+    pub estimation_policy: String,
+    pub observed_open_session_return_count: usize,
+    pub same_session_timestamp_transition_count: u64,
+    pub same_timestamp_continuation_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub no_move_event_model: NoMoveEventModel,
     pub long_variance_parameters: LongVarianceParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,

@@ -1369,6 +1369,7 @@ fn build_equation_specification() -> ExponentialAffineTransformEquationSpecifica
         kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(1.8).expect("gamma marks should be valid"),
         LongVarianceParameters::neutral(),
+        janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
     )
     .expect("equation specification should be valid")
 }

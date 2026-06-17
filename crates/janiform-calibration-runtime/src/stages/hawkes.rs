@@ -10,6 +10,7 @@ mod seasonality_input;
 mod selection;
 
 pub(crate) use activity::short_gap_ratio_from_threshold;
+pub(crate) use clock::hawkes_open_events_are_adjacent;
 pub use contracts::{
     HAWKES_EVENT_SIDE_CODE_BUY, HAWKES_EVENT_SIDE_CODE_SELL, HawkesStageCandidateDiagnostic,
     HawkesStageCandidateInput, HawkesStageCandidateInputError,

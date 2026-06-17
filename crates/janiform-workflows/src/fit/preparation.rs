@@ -15,13 +15,14 @@ use janiform_calibration_runtime::{
     MarketDataOptionSurfaceColumnMapping, MarketDataPreparationProgressError,
     MarketDataPreparationProgressEvent, MarketDataSessionConfiguration,
     MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
-    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingSettings,
+    MarketDataTickDataColumnMapping, MarketDataTranslationCalibrationSettings,
     OptionForwardParityWarningPolicy, PriceCoordinatePolicy,
-    build_market_data_session_definition_json, infer_bundled_market_profile_from_tick_data_path,
-    infer_market_data_fit_inputs, normalize_market_data_source,
-    prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_with_observer,
-    preprocessing_settings_with_return_components_tick_size,
-    resolve_market_data_session_configuration, resolve_preset_workflow_configuration,
+    build_market_data_session_definition_json,
+    calibration_settings_with_return_components_tick_size,
+    infer_bundled_market_profile_from_tick_data_path, infer_market_data_fit_inputs,
+    normalize_market_data_source, prepare_market_data_calibration_plan,
+    prepare_market_data_calibration_plan_with_observer, resolve_market_data_session_configuration,
+    resolve_preset_workflow_configuration,
 };
 use janiform_engine_pricing::PricingIntervalSchedulePolicy;
 use serde::Deserialize;
@@ -107,9 +108,9 @@ pub struct FitPreparationConfiguration {
     /// Optimizer settings by stage.
     #[serde(default)]
     pub optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
-    /// Optional preprocessing settings.
+    /// Optional calibration settings.
     #[serde(default)]
-    pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
+    pub calibration_settings: Option<MarketDataTranslationCalibrationSettings>,
     /// Optional mean-reversion settings.
     #[serde(default)]
     pub mean_reversion: Option<CalibrationMarketDataMeanReversionConfiguration>,
@@ -707,8 +708,8 @@ fn build_preparation_request(
             .configuration
             .optimizer_settings_by_stage
             .clone(),
-        preprocessing_settings: preprocessing_settings_with_return_components_tick_size(
-            input.request.configuration.preprocessing_settings.as_ref(),
+        calibration_settings: calibration_settings_with_return_components_tick_size(
+            input.request.configuration.calibration_settings.as_ref(),
             input.market_profile_tick_size,
         ),
         option_surface_source: input.option_surface_source,

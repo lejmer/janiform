@@ -117,13 +117,14 @@ pub(crate) use janiform_calibration_artifacts::{
     MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
     MeanReversionStageParameterPayload, MeanReversionStageSeriesSummary,
-    NewsShocksStageParameterArtifactInput, ReturnBackfitStageParameterArtifactInput,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
-    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
-    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
+    NewsShocksStageParameterArtifactInput, ObservationModelsStageParameterArtifactInput,
+    ReturnBackfitStageParameterArtifactInput, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
+    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
+    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
+    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
+    calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -194,7 +195,8 @@ pub(crate) use janiform_calibration_runtime::{
     CalibrationTickObjectiveDataUsagePolicy, CalibrationTimestampEventRecord,
     CalibrationTimestampEventSessionFilter, CloseSessionRequest, CloseSessionResponse,
     CurrentStateEstimationError, CurrentStateEstimationInput, CurrentStateEstimationOutput,
-    HawkesStageCandidateDiagnostic, HawkesStageCandidateInput, HawkesStageCandidateInputError,
+    HAWKES_EVENT_SIDE_CODE_BUY, HAWKES_EVENT_SIDE_CODE_SELL, HawkesStageCandidateDiagnostic,
+    HawkesStageCandidateInput, HawkesStageCandidateInputError,
     HawkesStageDirectionalLabelDiagnostics, HawkesStageDirectionalLabelDiagnosticsError,
     HawkesStageExecutionFailure, HawkesStageExecutionInput, HawkesStageExecutionMetadata,
     HawkesStageExecutionReport, HawkesStageFittedPayload, HawkesStageHandoffOutput,
@@ -223,15 +225,15 @@ pub(crate) use janiform_calibration_runtime::{
     MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
     MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
     MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
-    MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
-    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    MarketDataTranslationPreprocessingSettings,
-    MarketDataTranslationReturnComponentsPreprocessingSettings,
-    MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
+    MarketDataTranslationCalibrationError, MarketDataTranslationCalibrationOutput,
+    MarketDataTranslationCalibrationRequest, MarketDataTranslationCalibrationSettings,
+    MarketDataTranslationKnownNewsRecord, MarketDataTranslationReturnComponentsCalibrationSettings,
+    MarketDataTranslationSeasonalityCalibrationSettings, MarketDataTranslationTickRecord,
     MeanReversionStageExecutionFailure, MeanReversionStageExecutionInput,
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
     MeanReversionStageFittedPayload, MeanReversionStageGridCandidate,
     MeanReversionStageObservation, MeanReversionStageSeasonalityInput,
+    ObservationModelsOpenSessionTimestampTransition, ObservationModelsStageExecutionInput,
     OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -269,23 +271,23 @@ pub(crate) use janiform_calibration_runtime::{
     SeasonalityStageExecutionSettings, SeasonalityStageHandoffOutput,
     SeasonalityStageNormalizedPayload,
     build_option_surface_calibration_observation_from_pricing_hooks,
-    compose_calibration_weighted_objective, current_process_resident_bytes,
-    estimate_current_state_from_observed_data,
+    calibrate_market_data_translation_request, compose_calibration_weighted_objective,
+    current_process_resident_bytes, estimate_current_state_from_observed_data,
     evaluate_calibration_martingale_condition_under_esscher_tilt,
     evaluate_return_components_exact_candidate,
     evaluate_return_components_exact_candidate_from_bridge,
     evolve_hawkes_state_for_calibration_step,
     initialize_joint_refinement_summary_simulation_session,
-    load_and_preprocess_market_data_translation_request, load_interval_factor_grid_for_calibration,
+    load_and_calibrate_market_data_translation_request, load_interval_factor_grid_for_calibration,
     materialize_runtime_structural_seasonality, normalize_market_data_source,
     precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
-    prepare_market_data_loading_from_phases, preprocess_market_data_translation_request,
-    probe_market_data_source, project_hawkes_intensities_for_calibration_interval,
-    read_joint_refinement_worker_frame, resolve_market_data_session_configuration,
-    run_constrained_optimizer_adapter, run_hawkes_calibration_stage,
-    run_joint_refinement_calibration_stage, run_joint_refinement_candidate_in_session,
-    run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
-    run_seasonality_calibration_stage, run_staged_calibration_from_execution_input,
+    prepare_market_data_loading_from_phases, probe_market_data_source,
+    project_hawkes_intensities_for_calibration_interval, read_joint_refinement_worker_frame,
+    resolve_market_data_session_configuration, run_constrained_optimizer_adapter,
+    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage,
+    run_joint_refinement_candidate_in_session, run_mean_reversion_calibration_stage,
+    run_return_components_calibration_stage, run_seasonality_calibration_stage,
+    run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
@@ -314,6 +316,7 @@ pub(crate) use janiform_model_kernels::news::{
     NewsProcessConfiguration, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
 pub(crate) use janiform_model_kernels::nig::{NigParameters, NigSharedPlusShiftConfiguration};
+pub(crate) use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 pub(crate) use janiform_model_kernels::risk_neutral::{
     EsscherMartingaleConditionInput, NigEsscherTransformationInput,
 };
@@ -1193,6 +1196,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::ObservationModels,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::ReturnComponents,
             optimizer_settings: build_solver_settings(),
         },
@@ -1235,6 +1242,10 @@ pub(crate) fn build_solver_settings_for_pre_joint_pipeline() -> Vec<CalibrationS
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::ObservationModels,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::ReturnComponents,
             optimizer_settings: build_solver_settings(),
         },
@@ -1255,6 +1266,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
@@ -1550,7 +1562,10 @@ pub(crate) fn build_calibration_stage_parameter_artifact(
 
 fn stage_parameter_artifact_input(
     stage_report: &CalibrationStagedRunStageReport,
-) -> Result<CalibrationStageParameterArtifactInput, CalibrationStageParameterArtifactBuildError> {
+) -> Result<
+    Box<dyn CalibrationStageParameterArtifactInput>,
+    CalibrationStageParameterArtifactBuildError,
+> {
     match stage_report {
         CalibrationStagedRunStageReport::Seasonality(report) => {
             let payload = report.normalized_stage_payload.as_ref().ok_or(
@@ -1568,34 +1583,28 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::Seasonality(
-                Box::new(SeasonalityStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    dataset_id: payload.dataset_id.clone(),
-                    exchange_code: payload.exchange_code.clone(),
-                    trade_events_data_reference: payload.trade_events_data_reference.clone(),
-                    estimator_version: metadata.estimator_version.clone(),
-                    timestamp_event_input_schema_version: payload
-                        .timestamp_event_input_schema_version
-                        .clone(),
-                    timestamp_event_preprocessed_schema_version: payload
-                        .timestamp_event_preprocessed_schema_version
-                        .clone(),
-                    clock_model_schema_version: payload.clock_model_schema_version.clone(),
-                    clock_model: payload.clock_model.clone(),
-                }),
-            ))
+            Ok(Box::new(SeasonalityStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                dataset_id: payload.dataset_id.clone(),
+                exchange_code: payload.exchange_code.clone(),
+                trade_events_data_reference: payload.trade_events_data_reference.clone(),
+                estimator_version: metadata.estimator_version.clone(),
+                timestamp_event_input_schema_version: payload
+                    .timestamp_event_input_schema_version
+                    .clone(),
+                timestamp_event_preprocessed_schema_version: payload
+                    .timestamp_event_preprocessed_schema_version
+                    .clone(),
+                clock_model_schema_version: payload.clock_model_schema_version.clone(),
+                clock_model: payload.clock_model.clone(),
+            }))
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
@@ -1612,52 +1621,76 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::Hawkes(Box::new(
-                HawkesStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    optimizer_state: CalibrationStageParameterOptimizerStateInput {
-                        backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
-                        random_seed: metadata.optimizer_adapter_metadata.random_seed,
-                        selection_policy: metadata
-                            .optimizer_adapter_metadata
-                            .selection_policy
-                            .to_string(),
-                        penalty_policy: metadata
-                            .optimizer_adapter_metadata
-                            .penalty_policy
-                            .to_string(),
-                        bounds_policy: metadata
-                            .optimizer_adapter_metadata
-                            .bounds_policy
-                            .to_string(),
-                        solver_settings: metadata
-                            .optimizer_adapter_metadata
-                            .solver_settings
-                            .clone(),
-                        input_candidate_count: metadata.input_candidate_count,
-                        valid_candidate_count: metadata.valid_candidate_count,
-                        selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
-                        selected_candidate_penalized_objective: metadata
-                            .selected_candidate_penalized_objective,
-                    },
-                    selected_candidate_id: payload.selected_candidate_id.clone(),
-                    fitted_parameters: payload.fitted_parameters.clone(),
-                    seasonality_input_transport: payload.seasonality_input_transport,
-                    seasonality_dataset_id: payload.seasonality_dataset_id.clone(),
-                    seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
+            Ok(Box::new(HawkesStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
                 },
-            )))
+                optimizer_state: CalibrationStageParameterOptimizerStateInput {
+                    backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
+                    random_seed: metadata.optimizer_adapter_metadata.random_seed,
+                    selection_policy: metadata
+                        .optimizer_adapter_metadata
+                        .selection_policy
+                        .to_string(),
+                    penalty_policy: metadata
+                        .optimizer_adapter_metadata
+                        .penalty_policy
+                        .to_string(),
+                    bounds_policy: metadata
+                        .optimizer_adapter_metadata
+                        .bounds_policy
+                        .to_string(),
+                    solver_settings: metadata.optimizer_adapter_metadata.solver_settings.clone(),
+                    input_candidate_count: metadata.input_candidate_count,
+                    valid_candidate_count: metadata.valid_candidate_count,
+                    selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
+                    selected_candidate_penalized_objective: metadata
+                        .selected_candidate_penalized_objective,
+                },
+                selected_candidate_id: payload.selected_candidate_id.clone(),
+                fitted_parameters: payload.fitted_parameters.clone(),
+                seasonality_input_transport: payload.seasonality_input_transport,
+                seasonality_dataset_id: payload.seasonality_dataset_id.clone(),
+                seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
+            }))
+        }
+        CalibrationStagedRunStageReport::ObservationModels(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::ObservationModels,
+                    error_message: "successful observation-models stage is missing its payload"
+                        .to_string(),
+                },
+            )?;
+
+            let metadata = report.metadata.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::ObservationModels,
+                    error_message: "successful observation-models stage is missing metadata"
+                        .to_string(),
+                },
+            )?;
+
+            Ok(Box::new(ObservationModelsStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                no_move_event_model: payload.no_move_event_model,
+                timestamp_batching_observation_model: payload
+                    .timestamp_batching_observation_model
+                    .clone(),
+                diagnostics: payload.diagnostics.clone(),
+            }))
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
@@ -1676,59 +1709,48 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::ReturnComponents(
-                Box::new(ReturnComponentsStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    optimizer_state: CalibrationStageParameterOptimizerStateInput {
-                        backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
-                        random_seed: metadata.optimizer_adapter_metadata.random_seed,
-                        selection_policy: metadata
-                            .optimizer_adapter_metadata
-                            .selection_policy
-                            .to_string(),
-                        penalty_policy: metadata
-                            .optimizer_adapter_metadata
-                            .penalty_policy
-                            .to_string(),
-                        bounds_policy: metadata
-                            .optimizer_adapter_metadata
-                            .bounds_policy
-                            .to_string(),
-                        solver_settings: metadata
-                            .optimizer_adapter_metadata
-                            .solver_settings
-                            .clone(),
-                        input_candidate_count: metadata.input_candidate_count,
-                        valid_candidate_count: metadata.valid_candidate_count,
-                        selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
-                        selected_candidate_penalized_objective: metadata
-                            .selected_candidate_penalized_objective,
-                    },
-                    selected_candidate_id: payload.selected_candidate_id.clone(),
-                    fitted_parameters: payload.fitted_parameters.clone(),
-                    candidate_generation_policy: payload.candidate_generation_policy.to_string(),
-                    objective_weighting_policy: payload.objective_weighting_policy.to_string(),
-                    objective_metric_bucket_policy: payload
-                        .objective_metric_bucket_policy
+            Ok(Box::new(ReturnComponentsStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                optimizer_state: CalibrationStageParameterOptimizerStateInput {
+                    backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
+                    random_seed: metadata.optimizer_adapter_metadata.random_seed,
+                    selection_policy: metadata
+                        .optimizer_adapter_metadata
+                        .selection_policy
                         .to_string(),
-                    activity_input_transport: payload.activity_input_transport,
-                    activity_selected_hawkes_candidate_id: payload
-                        .activity_selected_hawkes_candidate_id
-                        .clone(),
-                    activity_artifact_reference: payload.activity_artifact_reference.clone(),
-                }),
-            ))
+                    penalty_policy: metadata
+                        .optimizer_adapter_metadata
+                        .penalty_policy
+                        .to_string(),
+                    bounds_policy: metadata
+                        .optimizer_adapter_metadata
+                        .bounds_policy
+                        .to_string(),
+                    solver_settings: metadata.optimizer_adapter_metadata.solver_settings.clone(),
+                    input_candidate_count: metadata.input_candidate_count,
+                    valid_candidate_count: metadata.valid_candidate_count,
+                    selected_candidate_raw_objective: metadata.selected_candidate_raw_objective,
+                    selected_candidate_penalized_objective: metadata
+                        .selected_candidate_penalized_objective,
+                },
+                selected_candidate_id: payload.selected_candidate_id.clone(),
+                fitted_parameters: payload.fitted_parameters.clone(),
+                candidate_generation_policy: payload.candidate_generation_policy.to_string(),
+                objective_weighting_policy: payload.objective_weighting_policy.to_string(),
+                objective_metric_bucket_policy: payload.objective_metric_bucket_policy.to_string(),
+                activity_input_transport: payload.activity_input_transport,
+                activity_selected_hawkes_candidate_id: payload
+                    .activity_selected_hawkes_candidate_id
+                    .clone(),
+                activity_artifact_reference: payload.activity_artifact_reference.clone(),
+            }))
         }
         CalibrationStagedRunStageReport::LongVariance(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
@@ -1746,31 +1768,25 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::LongVariance(
-                Box::new(LongVarianceStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    fitted_parameters: payload.fitted_parameters,
-                    diagnostics: payload.diagnostics.clone(),
-                    return_components_input_transport: payload.return_components_input_transport,
-                    return_components_selected_candidate_id: payload
-                        .return_components_selected_candidate_id
-                        .clone(),
-                    return_components_artifact_reference: payload
-                        .return_components_artifact_reference
-                        .clone(),
-                }),
-            ))
+            Ok(Box::new(LongVarianceStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                fitted_parameters: payload.fitted_parameters,
+                diagnostics: payload.diagnostics.clone(),
+                return_components_input_transport: payload.return_components_input_transport,
+                return_components_selected_candidate_id: payload
+                    .return_components_selected_candidate_id
+                    .clone(),
+                return_components_artifact_reference: payload
+                    .return_components_artifact_reference
+                    .clone(),
+            }))
         }
         CalibrationStagedRunStageReport::NewsShocks(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
@@ -1788,34 +1804,28 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::NewsShocks(
-                Box::new(NewsShocksStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    news_process_configuration: payload.news_process_configuration.clone(),
-                    surprise_deterministic_intensity_profile: payload
-                        .surprise_deterministic_intensity_profile
-                        .clone(),
-                    diagnostics: payload.diagnostics.clone(),
-                    return_components_input_transport: payload.return_components_input_transport,
-                    return_components_selected_candidate_id: payload
-                        .return_components_selected_candidate_id
-                        .clone(),
-                    return_components_artifact_reference: payload
-                        .return_components_artifact_reference
-                        .clone(),
-                }),
-            ))
+            Ok(Box::new(NewsShocksStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                news_process_configuration: payload.news_process_configuration.clone(),
+                surprise_deterministic_intensity_profile: payload
+                    .surprise_deterministic_intensity_profile
+                    .clone(),
+                diagnostics: payload.diagnostics.clone(),
+                return_components_input_transport: payload.return_components_input_transport,
+                return_components_selected_candidate_id: payload
+                    .return_components_selected_candidate_id
+                    .clone(),
+                return_components_artifact_reference: payload
+                    .return_components_artifact_reference
+                    .clone(),
+            }))
         }
         CalibrationStagedRunStageReport::ReturnBackfit(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
@@ -1834,76 +1844,64 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::ReturnBackfit(
-                Box::new(ReturnBackfitStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    selected_candidate_id: payload.selected_candidate_id.clone(),
-                    effective_return_components_selected_candidate_id: payload
-                        .effective_return_components_payload
-                        .selected_candidate_id
-                        .clone(),
-                    effective_fitted_parameters: payload
-                        .effective_return_components_payload
-                        .fitted_parameters
-                        .clone(),
-                    candidate_generation_policy: payload
-                        .effective_return_components_payload
-                        .candidate_generation_policy
-                        .to_string(),
-                    objective_weighting_policy: payload
-                        .effective_return_components_payload
-                        .objective_weighting_policy
-                        .to_string(),
-                    objective_metric_bucket_policy: payload
-                        .effective_return_components_payload
-                        .objective_metric_bucket_policy
-                        .to_string(),
-                    diagnostics: payload.diagnostics.clone(),
-                    return_components_input_transport: payload.return_components_input_transport,
-                    return_components_selected_candidate_id: payload
-                        .return_components_selected_candidate_id
-                        .clone(),
-                    return_components_artifact_reference: payload
-                        .return_components_artifact_reference
-                        .clone(),
-                }),
-            ))
+            Ok(Box::new(ReturnBackfitStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                selected_candidate_id: payload.selected_candidate_id.clone(),
+                effective_return_components_selected_candidate_id: payload
+                    .effective_return_components_payload
+                    .selected_candidate_id
+                    .clone(),
+                effective_fitted_parameters: payload
+                    .effective_return_components_payload
+                    .fitted_parameters
+                    .clone(),
+                candidate_generation_policy: payload
+                    .effective_return_components_payload
+                    .candidate_generation_policy
+                    .to_string(),
+                objective_weighting_policy: payload
+                    .effective_return_components_payload
+                    .objective_weighting_policy
+                    .to_string(),
+                objective_metric_bucket_policy: payload
+                    .effective_return_components_payload
+                    .objective_metric_bucket_policy
+                    .to_string(),
+                diagnostics: payload.diagnostics.clone(),
+                return_components_input_transport: payload.return_components_input_transport,
+                return_components_selected_candidate_id: payload
+                    .return_components_selected_candidate_id
+                    .clone(),
+                return_components_artifact_reference: payload
+                    .return_components_artifact_reference
+                    .clone(),
+            }))
         }
-        CalibrationStagedRunStageReport::JointRefinement(report) => {
-            Ok(CalibrationStageParameterArtifactInput::JointRefinement(
-                Box::new(joint_refinement_like_stage_parameter_artifact_input(
-                    CalibrationStage::JointRefinement,
-                    report,
-                )?),
-            ))
-        }
-        CalibrationStagedRunStageReport::OptionRefinement(report) => {
-            Ok(CalibrationStageParameterArtifactInput::OptionRefinement(
-                Box::new(joint_refinement_like_stage_parameter_artifact_input(
-                    CalibrationStage::OptionRefinement,
-                    report,
-                )?),
-            ))
-        }
-        CalibrationStagedRunStageReport::Finalization(report) => {
-            Ok(CalibrationStageParameterArtifactInput::Finalization(
-                Box::new(joint_refinement_like_stage_parameter_artifact_input(
-                    CalibrationStage::Finalization,
-                    report,
-                )?),
-            ))
-        }
+        CalibrationStagedRunStageReport::JointRefinement(report) => Ok(Box::new(
+            joint_refinement_like_stage_parameter_artifact_input(
+                CalibrationStage::JointRefinement,
+                report,
+            )?,
+        )),
+        CalibrationStagedRunStageReport::OptionRefinement(report) => Ok(Box::new(
+            joint_refinement_like_stage_parameter_artifact_input(
+                CalibrationStage::OptionRefinement,
+                report,
+            )?,
+        )),
+        CalibrationStagedRunStageReport::Finalization(report) => Ok(Box::new(
+            joint_refinement_like_stage_parameter_artifact_input(
+                CalibrationStage::Finalization,
+                report,
+            )?,
+        )),
         CalibrationStagedRunStageReport::MeanReversion(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
@@ -1921,31 +1919,25 @@ fn stage_parameter_artifact_input(
                 },
             )?;
 
-            Ok(CalibrationStageParameterArtifactInput::MeanReversion(
-                Box::new(MeanReversionStageParameterArtifactInput {
-                    metadata: CalibrationStageParameterBuildMetadata {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata
-                            .stage_seed_derivation_policy
-                            .to_string(),
-                        solver_settings: metadata.solver_settings.clone(),
-                    },
-                    fitted_parameters: payload.fitted_parameters.clone(),
-                    diagnostics: payload.diagnostics.clone(),
-                    return_components_input_transport: payload.return_components_input_transport,
-                    return_components_selected_candidate_id: payload
-                        .return_components_selected_candidate_id
-                        .clone(),
-                    return_components_artifact_reference: payload
-                        .return_components_artifact_reference
-                        .clone(),
-                }),
-            ))
+            Ok(Box::new(MeanReversionStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
+                    run_global_seed: metadata.run_global_seed,
+                    stage_seed: metadata.stage_seed,
+                    stage_seed_source: metadata.stage_seed_source,
+                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
+                    solver_settings: metadata.solver_settings.clone(),
+                },
+                fitted_parameters: payload.fitted_parameters.clone(),
+                diagnostics: payload.diagnostics.clone(),
+                return_components_input_transport: payload.return_components_input_transport,
+                return_components_selected_candidate_id: payload
+                    .return_components_selected_candidate_id
+                    .clone(),
+                return_components_artifact_reference: payload
+                    .return_components_artifact_reference
+                    .clone(),
+            }))
         }
     }
 }
@@ -1976,6 +1968,7 @@ fn joint_refinement_like_stage_parameter_artifact_input(
     )?;
 
     Ok(JointRefinementStageParameterArtifactInput {
+        stage,
         metadata: CalibrationStageParameterBuildMetadata {
             stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
             run_global_seed: metadata.run_global_seed,
@@ -2027,6 +2020,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -2051,6 +2045,7 @@ pub(crate) fn build_pre_joint_run_contract_with_mode_and_resume(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
         ],
         build_solver_settings_for_pre_joint_pipeline(),
@@ -2069,6 +2064,7 @@ pub(crate) fn build_through_mean_reversion_run_contract_with_mode_and_resume(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -2127,6 +2123,7 @@ pub(crate) fn build_run_contract_for_caller_surface(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -2151,6 +2148,7 @@ pub(crate) fn build_pre_joint_run_contract_for_caller_surface(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
         ],
         build_solver_settings_for_pre_joint_pipeline(),
@@ -2169,6 +2167,7 @@ pub(crate) fn build_through_mean_reversion_run_contract_for_caller_surface(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
@@ -2250,6 +2249,7 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
     stage_graph_for_selected_stages(&[
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
+        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
         CalibrationStage::LongVariance,
         CalibrationStage::NewsShocks,
@@ -2269,6 +2269,10 @@ fn build_solver_settings_for_through_mean_reversion_pipeline() -> Vec<Calibratio
         },
         CalibrationStageSolverSettings {
             stage: CalibrationStage::Hawkes,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::ObservationModels,
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
@@ -2306,8 +2310,12 @@ pub(crate) fn stage_graph_for_selected_stages(
                 depends_on: CalibrationStage::Seasonality,
             },
             CalibrationStageDependency {
-                stage: CalibrationStage::ReturnComponents,
+                stage: CalibrationStage::ObservationModels,
                 depends_on: CalibrationStage::Hawkes,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::ReturnComponents,
+                depends_on: CalibrationStage::ObservationModels,
             },
             CalibrationStageDependency {
                 stage: CalibrationStage::LongVariance,
@@ -2414,7 +2422,18 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
-        hawkes_event_side_codes: None,
+        hawkes_event_side_codes: if include_hawkes_candidates
+            || include_return_candidate_generation_input
+        {
+            Some(hawkes_event_side_codes_fixture())
+        } else {
+            None
+        },
+        observation_models_stage_input: if include_return_candidate_generation_input {
+            Some(observation_models_stage_execution_fixture())
+        } else {
+            None
+        },
         return_components_candidate_generation_input: if include_return_candidate_generation_input {
             Some(return_components_stage_candidate_generation_fixture())
         } else {
@@ -2671,9 +2690,16 @@ pub(crate) fn build_hawkes_stage_run_spec(
 
     let hawkes_handoff = build_mode_aware_stage_handoff(
         CalibrationStage::Hawkes,
-        CalibrationStage::ReturnComponents,
+        CalibrationStage::ObservationModels,
         execution_mode,
         "artifact://hawkes/run-001",
+    );
+
+    let observation_models_handoff = build_mode_aware_stage_handoff(
+        CalibrationStage::ObservationModels,
+        CalibrationStage::ReturnComponents,
+        execution_mode,
+        "artifact://observation_models/run-001",
     );
 
     CalibrationRunSpec::builder(
@@ -2683,12 +2709,17 @@ pub(crate) fn build_hawkes_stage_run_spec(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
         ],
         build_seed_settings(),
         build_solver_settings_for_pre_joint_pipeline(),
     )
-    .with_stage_handoffs(vec![seasonality_handoff, hawkes_handoff])
+    .with_stage_handoffs(vec![
+        seasonality_handoff,
+        hawkes_handoff,
+        observation_models_handoff,
+    ])
     .build()
     .expect("hawkes stage run spec should validate")
 }
@@ -2919,6 +2950,17 @@ pub(crate) fn hawkes_stage_candidate_fixture() -> Vec<HawkesStageCandidateInput>
     ]
 }
 
+pub(crate) fn hawkes_event_side_codes_fixture() -> Vec<u8> {
+    vec![
+        HAWKES_EVENT_SIDE_CODE_BUY,
+        HAWKES_EVENT_SIDE_CODE_SELL,
+        HAWKES_EVENT_SIDE_CODE_BUY,
+        HAWKES_EVENT_SIDE_CODE_SELL,
+        HAWKES_EVENT_SIDE_CODE_BUY,
+        HAWKES_EVENT_SIDE_CODE_SELL,
+    ]
+}
+
 pub(crate) fn hawkes_stage_constraint_violating_candidate_fixture() -> HawkesStageCandidateInput {
     HawkesStageCandidateInput {
         candidate_id: "candidate_invalid_constraints".to_string(),
@@ -2961,6 +3003,28 @@ pub(crate) fn hawkes_directional_label_diagnostics_fixture()
         flat_move_carry_count: 9,
         price_up_inference_count: 35,
         price_down_inference_count: 30,
+    }
+}
+
+pub(crate) fn observation_models_stage_execution_fixture() -> ObservationModelsStageExecutionInput {
+    ObservationModelsStageExecutionInput {
+        observed_open_session_returns: return_components_stage_candidate_generation_fixture()
+            .observed_open_session_returns,
+        open_session_timestamp_transitions: vec![
+            ObservationModelsOpenSessionTimestampTransition {
+                previous_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
+                current_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
+            },
+            ObservationModelsOpenSessionTimestampTransition {
+                previous_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
+                current_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
+            },
+            ObservationModelsOpenSessionTimestampTransition {
+                previous_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
+                current_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
+            },
+        ],
+        source_responsibility_input: None,
     }
 }
 
@@ -3010,6 +3074,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
                 log_return: 0.004,
                 post_shock_activity_lift: 1.00,
                 sell_share_proxy: 0.48,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.48),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
@@ -3017,6 +3082,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
                 log_return: 0.018,
                 post_shock_activity_lift: 1.35,
                 sell_share_proxy: 0.62,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.62),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
@@ -3024,6 +3090,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
                 log_return: -0.014,
                 post_shock_activity_lift: 1.10,
                 sell_share_proxy: 0.58,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.58),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 19, 15, 0),
@@ -3031,6 +3098,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
                 log_return: 0.010,
                 post_shock_activity_lift: 0.95,
                 sell_share_proxy: 0.41,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.41),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 20, 0, 0),
@@ -3038,6 +3106,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
                 log_return: -0.003,
                 post_shock_activity_lift: 0.92,
                 sell_share_proxy: 0.55,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.55),
             },
         ],
         detected_intraday_jump_candidates: vec![
@@ -3081,6 +3150,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         },
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
             tick_size: None,
             tick_size_source: "test".to_string(),

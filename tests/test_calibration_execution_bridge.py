@@ -24,13 +24,14 @@ def test_run_staged_calibration_executes_in_memory_mode(calendar_registry) -> No
     assert [report.stage for report in response.stage_reports] == [
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
+        CalibrationStage.OBSERVATION_MODELS,
         CalibrationStage.RETURN_COMPONENTS,
         CalibrationStage.LONG_VARIANCE,
         CalibrationStage.NEWS_SHOCKS,
         CalibrationStage.RETURN_BACKFIT,
         CalibrationStage.MEAN_REVERSION,
     ]
-    assert len(response.emitted_checkpoints) == 7
+    assert len(response.emitted_checkpoints) == 8
 
 
 def test_run_staged_calibration_executes_in_disk_mode(calendar_registry, tmp_path) -> None:
@@ -46,7 +47,7 @@ def test_run_staged_calibration_executes_in_disk_mode(calendar_registry, tmp_pat
 
     assert response.execution_mode == CalibrationExecutionMode.DISK
     assert response.status == CalibrationStageExecutionStatus.SUCCESS
-    assert len(response.emitted_checkpoints) == 7
+    assert len(response.emitted_checkpoints) == 8
     assert any(tmp_path.rglob("*.json"))
 
 

@@ -7,9 +7,9 @@ from .datasets import DatasetSpec
 
 
 EMPIRICAL_TIMESTAMP_COLUMN: Final[str] = "event_timestamp_utc"
-SYNTHETIC_TIMESTAMP_COLUMN: Final[str] = "event_timestamp_utc"
+SYNTHETIC_TIMESTAMP_COLUMN: Final[str] = "timestamp_utc"
 EMPIRICAL_PRICE_COLUMN: Final[str] = "trade_price"
-SYNTHETIC_PRICE_COLUMN: Final[str] = "trade_price"
+SYNTHETIC_PRICE_COLUMN: Final[str] = "price"
 
 EMPIRICAL_RELATIVE_INPUT_PATH: Final[Path] = Path(
     "data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet"

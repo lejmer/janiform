@@ -1324,6 +1324,7 @@ fn build_run_config_with_options(
             interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
@@ -1557,6 +1558,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
@@ -1610,6 +1612,7 @@ fn build_one_interval_ordering_model_inputs(
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
@@ -1662,6 +1665,7 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
@@ -1938,6 +1942,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
                 self.combined_news_mark_draws()
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::EndogenousNoMoveEventMark
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
@@ -2005,6 +2010,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
+            | SimulationRandomnessSubstreamDomain::EndogenousNoMoveEventMark
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling

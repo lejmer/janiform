@@ -24,7 +24,7 @@ from ...errors import (
 from ...market_data.contracts import (
     CalibrationFlatCarryInput,
     CalibrationInputFileFormat,
-    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsCalibrationSettings,
 )
 from ...staged import CalibrationResumeSettings
 from ...staged.results import StagedCalibrationResponse, validate_staged_calibration_response
@@ -247,7 +247,7 @@ def _fit_preparation_configuration_payload(
             settings.to_payload()
             for settings in preparation.optimizer_settings_by_stage
         ],
-        "preprocessing_settings": _fit_preprocessing_settings_payload(preparation),
+        "calibration_settings": _fit_calibration_settings_payload(preparation),
         "mean_reversion": (
             None
             if preparation.mean_reversion is None
@@ -306,10 +306,10 @@ def _fit_preparation_configuration_payload(
     }
 
 
-def _fit_preprocessing_settings_payload(
+def _fit_calibration_settings_payload(
     preparation: FitPreparationConfiguration,
 ) -> Optional[dict[str, Any]]:
-    if preparation.preprocessing_settings is None:
+    if preparation.calibration_settings is None:
         if preparation.tick_size is None:
             return None
 
@@ -320,19 +320,19 @@ def _fit_preprocessing_settings_payload(
             ),
         }
 
-    preprocessing_settings_payload = preparation.preprocessing_settings.to_payload()
+    calibration_settings_payload = preparation.calibration_settings.to_payload()
     if preparation.tick_size is None:
-        return preprocessing_settings_payload
+        return calibration_settings_payload
 
-    return_components_payload = preprocessing_settings_payload.get("return_components")
-    preprocessing_settings_payload["return_components"] = (
+    return_components_payload = calibration_settings_payload.get("return_components")
+    calibration_settings_payload["return_components"] = (
         _return_components_payload_with_tick_size(
             preparation.tick_size,
             return_components_payload=return_components_payload,
         )
     )
 
-    return preprocessing_settings_payload
+    return calibration_settings_payload
 
 
 def _return_components_payload_with_tick_size(
@@ -341,12 +341,12 @@ def _return_components_payload_with_tick_size(
     return_components_payload: Any,
 ) -> dict[str, Any]:
     if return_components_payload is None:
-        payload = CalibrationMarketDataReturnComponentsPreprocessingSettings().to_payload()
+        payload = CalibrationMarketDataReturnComponentsCalibrationSettings().to_payload()
     elif isinstance(return_components_payload, dict):
         payload = dict(return_components_payload)
     else:
         raise calibration_error(
-            "preprocessing_settings.return_components",
+            "calibration_settings.return_components",
             "must be an object when provided",
         )
 

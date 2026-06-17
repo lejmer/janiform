@@ -50,6 +50,7 @@ const fn calibration_stage_seed_derivation_nonce(stage: CalibrationStage) -> u64
     match stage {
         CalibrationStage::Seasonality => 0x5E45_0A3D_B51F_4E91,
         CalibrationStage::Hawkes => 0xA67B_3D2C_17F8_94E0,
+        CalibrationStage::ObservationModels => 0x9F27_6C31_D4B8_A05E,
         CalibrationStage::ReturnComponents => 0x3CF2_D8A1_6B94_C705,
         CalibrationStage::LongVariance => 0xF1C4_729B_0E6D_38A5,
         CalibrationStage::NewsShocks => 0x86A4_D371_2FB0_9C5E,

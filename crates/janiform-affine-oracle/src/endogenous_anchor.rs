@@ -589,11 +589,25 @@ fn expected_interval_statistics_from_target_sum_first_moment(
             * factors.seasonality_factor
             * factors.delta;
 
+    let no_move_event_model = equation_specification.no_move_event_model;
+
+    let expected_baseline_a_plus =
+        baseline_expected_business_time * no_move_event_model.buy_baseline_move_probability();
+
+    let expected_endogenous_a_plus = target_sum_first_moment.integrated_target_plus
+        * no_move_event_model.buy_endogenous_move_probability();
+
+    let expected_baseline_a_minus =
+        baseline_expected_business_time * no_move_event_model.sell_baseline_move_probability();
+
+    let expected_endogenous_a_minus = target_sum_first_moment.integrated_target_minus
+        * no_move_event_model.sell_endogenous_move_probability();
+
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        baseline_expected_business_time,
-        target_sum_first_moment.integrated_target_plus,
-        baseline_expected_business_time,
-        target_sum_first_moment.integrated_target_minus,
+        expected_baseline_a_plus,
+        expected_endogenous_a_plus,
+        expected_baseline_a_minus,
+        expected_endogenous_a_minus,
         baseline_expected_business_time + target_sum_first_moment.integrated_target_plus,
         baseline_expected_business_time + target_sum_first_moment.integrated_target_minus,
     )
@@ -735,6 +749,7 @@ mod tests {
             GammaSeverityMarkConfiguration::try_new(2.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("equation specification should construct");
 
@@ -813,6 +828,7 @@ mod tests {
             GammaSeverityMarkConfiguration::try_new(4.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("equation specification should construct");
 
@@ -889,6 +905,7 @@ mod tests {
             GammaSeverityMarkConfiguration::try_new(2.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("equation specification should construct");
 

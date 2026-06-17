@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "7d616dca8137a63580cd5ae06865336364c10f5d0300209f642cb053ba6a8ce1",
+  "approved_snapshot_sha256": "7a03fff6b7fcf03693de80f2d937f891a54209ac67420afd5b8cd501c368955c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1735,6 +1735,16 @@
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-06-16",
+      "summary": "Add the observation-models calibration stage to public calibration contracts.",
+      "rationale": "The no-move and timestamp batching observation models are now calibrated as a first-class stage between Hawkes and return-components calibration, so the public stage enum and market-data diagnostics expose that workflow boundary directly.",
+      "snapshot_sha256": "7a03fff6b7fcf03693de80f2d937f891a54209ac67420afd5b8cd501c368955c",
+      "updated_surfaces": [
+        "janiform.calibration.staged",
+        "janiform.calibration.market_data"
       ]
     }
   ],

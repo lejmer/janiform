@@ -54,7 +54,7 @@ use crate::{
     MarketDataNormalizedTickOutput, MarketDataOptionSurfaceColumnMapping,
     MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
-    MarketDataTranslationPreprocessingSettings, OptionForwardParityWarningPolicy,
+    MarketDataTranslationCalibrationSettings, OptionForwardParityWarningPolicy,
     PriceCoordinatePolicy, PriceCoordinateResolutionInput, ResolvedPriceCoordinateSet,
     normalize_market_data_source_with_progress, prepare_market_data_loading_from_phases,
     prepare_market_data_loading_from_phases_with_progress,
@@ -178,7 +178,7 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
     #[serde(default)]
-    pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
+    pub calibration_settings: Option<MarketDataTranslationCalibrationSettings>,
     #[serde(default)]
     pub option_surface_source: Option<MarketDataInputFileReference>,
     #[serde(default)]
@@ -232,7 +232,7 @@ pub enum CalibrationTickObjectiveDataUsagePolicy {
 pub struct CalibrationMarketDataPreparationDiagnostics {
     pub workflow_scope: CalibrationMarketDataWorkflowScope,
     pub selected_stages: Vec<CalibrationStage>,
-    pub executed_preprocessing_steps: Vec<String>,
+    pub executed_calibration_steps: Vec<String>,
     pub timestamp_batching_observation: CalibrationTimestampBatchingObservationDiagnostic,
     pub tick_record_count: usize,
     pub coarse_data_record_count: usize,
@@ -564,6 +564,7 @@ fn selected_stages_for_scope(
         CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface => vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -575,6 +576,7 @@ fn selected_stages_for_scope(
         CalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
+            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -628,13 +630,13 @@ fn stable_seed_from_run_id(run_id: &str) -> u64 {
         .sum()
 }
 
-fn executed_preprocessing_steps(
+fn executed_calibration_steps(
     workflow_scope: CalibrationMarketDataWorkflowScope,
     coarse_data_present: bool,
     option_surface_present: bool,
     known_news_present: bool,
 ) -> Vec<String> {
-    let mut preprocessing_steps = vec![
+    let mut calibration_steps = vec![
         "source_loading".to_string(),
         "column_mapping_validation".to_string(),
         "timestamp_timezone_normalization".to_string(),
@@ -645,28 +647,29 @@ fn executed_preprocessing_steps(
     ];
 
     if known_news_present {
-        preprocessing_steps.push("known_news_window_filtering".to_string());
+        calibration_steps.push("known_news_window_filtering".to_string());
     }
 
     if !matches!(
         workflow_scope,
         CalibrationMarketDataWorkflowScope::SeasonalityOnly
     ) {
-        preprocessing_steps.push("hawkes_candidate_generation".to_string());
-        preprocessing_steps.push("return_components_candidate_generation".to_string());
+        calibration_steps.push("hawkes_candidate_generation".to_string());
+        calibration_steps.push("observation_models_input_generation".to_string());
+        calibration_steps.push("return_components_candidate_generation".to_string());
     }
 
     if option_surface_present {
-        preprocessing_steps.push("option_surface_quote_normalization".to_string());
+        calibration_steps.push("option_surface_quote_normalization".to_string());
     }
 
     if coarse_data_present {
-        preprocessing_steps.push("coarse_data_evidence_loading".to_string());
-        preprocessing_steps.push("coarse_data_fixed_interval_resolution".to_string());
-        preprocessing_steps.push("multi_resolution_evidence_routing".to_string());
+        calibration_steps.push("coarse_data_evidence_loading".to_string());
+        calibration_steps.push("coarse_data_fixed_interval_resolution".to_string());
+        calibration_steps.push("multi_resolution_evidence_routing".to_string());
     }
 
-    preprocessing_steps
+    calibration_steps
 }
 
 fn deterministic_defaults_applied(
@@ -675,7 +678,7 @@ fn deterministic_defaults_applied(
     let mut applied_defaults = Vec::new();
 
     let seasonality_settings = request
-        .preprocessing_settings
+        .calibration_settings
         .as_ref()
         .and_then(|settings| settings.seasonality.as_ref());
 
@@ -697,7 +700,7 @@ fn deterministic_defaults_applied(
     }
 
     if request
-        .preprocessing_settings
+        .calibration_settings
         .as_ref()
         .and_then(|settings| settings.return_components.as_ref())
         .is_none()
@@ -836,7 +839,7 @@ fn build_loading_request(
             tick_data_column_mapping: request.column_mapping.tick_data.clone(),
             coarse_data_input,
             normalization_policy: request.normalization_policy.clone(),
-            preprocessing_settings: request.preprocessing_settings.clone(),
+            calibration_settings: request.calibration_settings.clone(),
             option_surface_input,
             known_news_input,
             require_hawkes: selected_stages.contains(&CalibrationStage::Hawkes),
@@ -874,7 +877,7 @@ fn mean_reversion_stage_input_from_request(
     }
 
     let return_components_input = loading_output
-        .preprocessing_output
+        .calibration_output
         .return_components_candidate_generation_input
         .as_ref();
 
@@ -918,7 +921,7 @@ fn mean_reversion_stage_input_from_request(
     let open_session_price_observations =
         mean_reversion_stage_observations_relative_to_reference_price(
             loading_output
-                .preprocessing_output
+                .calibration_output
                 .mean_reversion_open_session_price_observations
                 .as_deref()
                 .unwrap_or(&[]),
@@ -938,7 +941,7 @@ fn mean_reversion_stage_input_from_request(
         .unwrap_or_default();
 
     let observed_session_duration_hours = loading_output
-        .preprocessing_output
+        .calibration_output
         .mean_reversion_observed_session_duration_hours
         .as_deref()
         .unwrap_or(&[]);
@@ -1766,14 +1769,12 @@ fn prepared_market_data_plan_from_loading_output(
     progress.emit_phase(MarketDataPreparationProgressPhase::PreparingCalibrationInputs)?;
 
     let return_components_input = loading_output
-        .preprocessing_output
+        .calibration_output
         .return_components_candidate_generation_input
         .as_ref();
 
-    let timestamp_batching_observation = timestamp_batching_observation_diagnostic(
-        selected_stages.as_slice(),
-        return_components_input.map(|input| &input.timestamp_batching_observation_model),
-    );
+    let timestamp_batching_observation =
+        timestamp_batching_observation_diagnostic(selected_stages.as_slice(), None);
 
     // The same diagnostic is both emitted to observers and retained in the
     // preparation payload so progress and artifacts agree.
@@ -1827,20 +1828,24 @@ fn prepared_market_data_plan_from_loading_output(
         request: run_request,
         seasonality_stage_input: Some(
             loading_output
-                .preprocessing_output
+                .calibration_output
                 .seasonality_stage_input
                 .clone(),
         ),
         hawkes_candidate_inputs: loading_output
-            .preprocessing_output
+            .calibration_output
             .hawkes_candidate_inputs
             .clone(),
         hawkes_event_side_codes: loading_output
-            .preprocessing_output
+            .calibration_output
             .hawkes_event_side_codes
             .clone(),
+        observation_models_stage_input: loading_output
+            .calibration_output
+            .observation_models_stage_input
+            .clone(),
         return_components_candidate_generation_input: loading_output
-            .preprocessing_output
+            .calibration_output
             .return_components_candidate_generation_input
             .clone(),
         coarse_data_records: loading_output.coarse_data_records.clone(),
@@ -1871,7 +1876,7 @@ fn prepared_market_data_plan_from_loading_output(
     let diagnostics = CalibrationMarketDataPreparationDiagnostics {
         workflow_scope: request.workflow_scope,
         selected_stages: selected_stages.clone(),
-        executed_preprocessing_steps: executed_preprocessing_steps(
+        executed_calibration_steps: executed_calibration_steps(
             request.workflow_scope,
             loading_output.coarse_data_summary.is_some(),
             loading_output.option_surface_summary.is_some(),
@@ -1902,22 +1907,20 @@ fn prepared_market_data_plan_from_loading_output(
             .as_ref()
             .map(|summary| summary.retained_row_count)
             .unwrap_or(0),
-        known_news_event_count: loading_output.preprocessing_output.known_news_event_count,
+        known_news_event_count: loading_output.calibration_output.known_news_event_count,
         known_news_events_outside_source_window_count: loading_output
-            .preprocessing_output
+            .calibration_output
             .known_news_events_outside_source_window_count,
-        session_open_tick_count: loading_output.preprocessing_output.session_open_tick_count,
-        session_closed_tick_count: loading_output
-            .preprocessing_output
-            .session_closed_tick_count,
+        session_open_tick_count: loading_output.calibration_output.session_open_tick_count,
+        session_closed_tick_count: loading_output.calibration_output.session_closed_tick_count,
         known_news_open_event_count: loading_output
-            .preprocessing_output
+            .calibration_output
             .known_news_open_event_count,
         known_news_closed_event_count: loading_output
-            .preprocessing_output
+            .calibration_output
             .known_news_closed_event_count,
         hawkes_candidate_count: loading_output
-            .preprocessing_output
+            .calibration_output
             .hawkes_candidate_inputs
             .as_ref()
             .map_or(0, Vec::len),
@@ -1931,7 +1934,7 @@ fn prepared_market_data_plan_from_loading_output(
             .map(|input| input.observed_close_open_boundary_observations.len())
             .unwrap_or(0),
         material_close_open_gap_count: loading_output
-            .preprocessing_output
+            .calibration_output
             .material_close_open_gap_count,
     };
 

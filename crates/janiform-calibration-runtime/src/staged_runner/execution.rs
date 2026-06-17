@@ -45,6 +45,7 @@ use super::reporting::{
     build_staged_run_cancellation_report, build_staged_run_failure_report,
     diagnostic_runtime_profile_entry_for_stage_report, retained_stage_report,
 };
+use super::resume_warmup::rebuild_recomputable_disk_resume_payloads;
 use crate::checkpointing::{
     CalibrationInMemoryStagePayloadState, CalibrationMemoryCheckpointStore,
     LoadedInMemoryCheckpointState,
@@ -420,6 +421,24 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             );
 
             persisted_stage_parameter_artifacts.push(artifact);
+        }
+
+        if let Err(failure) = rebuild_recomputable_disk_resume_payloads(
+            run_contract,
+            calendar_registry,
+            &staged_run_inputs,
+            &mut payload_state,
+            start_position,
+        ) {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                None,
+                failure,
+            );
         }
     }
 
@@ -1156,6 +1175,9 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::ObservationModels(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {

@@ -88,6 +88,12 @@ fn reference_transform_input_payload() -> Value {
                 "vol_of_vol": 0.0,
                 "buy_event_loading": 0.0,
                 "sell_event_loading": 0.0
+            },
+            "no_move_event_model": {
+                "buy_baseline_no_move_probability": 0.0,
+                "buy_endogenous_no_move_probability": 0.0,
+                "sell_baseline_no_move_probability": 0.0,
+                "sell_endogenous_no_move_probability": 0.0
             }
         },
         "activity_loadings": {
@@ -183,6 +189,7 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("closed-form fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("closed-form fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
@@ -223,6 +230,7 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("domain violation fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("domain violation fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(10.0, 0.0), ComplexScalar::new(10.0, 0.0)),
@@ -267,6 +275,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("blowup fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("blowup fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(0.0, 0.0), ComplexScalar::new(0.0, 0.0)),
@@ -323,6 +332,7 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("stiff fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("stiff fixture equation specification should construct"),
         total_activity_loadings(

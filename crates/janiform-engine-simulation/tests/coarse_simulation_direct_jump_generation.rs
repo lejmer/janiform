@@ -479,6 +479,7 @@ fn build_sufficient_statistics_model_inputs(
             kernel_parameters,
             gamma_severity_configuration,
             LongVarianceParameters::neutral(),
+            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("equation specification should construct"),
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(

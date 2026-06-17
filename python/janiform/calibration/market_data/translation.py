@@ -45,7 +45,7 @@ CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT = "market_data_translation"
 class MarketDataTranslationDiagnostics:
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
-    executed_preprocessing_steps: tuple[str, ...]
+    executed_calibration_steps: tuple[str, ...]
     timestamp_batching_observation: MarketDataTimestampBatchingObservationDiagnostic
     tick_record_count: int
     coarse_data_record_count: int
@@ -444,7 +444,7 @@ def _market_data_translation_diagnostics_from_payload(
     return MarketDataTranslationDiagnostics(
         workflow_scope=CalibrationMarketDataWorkflowScope(raw_payload["workflow_scope"]),
         selected_stages=tuple(CalibrationStage(stage) for stage in raw_payload["selected_stages"]),
-        executed_preprocessing_steps=tuple(raw_payload["executed_preprocessing_steps"]),
+        executed_calibration_steps=tuple(raw_payload["executed_calibration_steps"]),
         timestamp_batching_observation=(
             MarketDataTimestampBatchingObservationDiagnostic.from_mapping(
                 raw_payload["timestamp_batching_observation"],

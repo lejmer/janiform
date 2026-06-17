@@ -17,6 +17,7 @@ pub(crate) enum IntervalStochasticUpdate {
     EndogenousEvent {
         timestamp_utc_nanos: i64,
         side: SeededTickEventSide,
+        no_move: bool,
         generation_order: u64,
     },
     ExogenousNews {
@@ -52,6 +53,7 @@ impl IntervalStochasticUpdate {
                 timestamp_utc_nanos,
                 side,
                 generation_order,
+                ..
             } => (
                 timestamp_utc_nanos,
                 0,

@@ -10,7 +10,7 @@ use janiform_calibration_artifacts::calibration_stage_checkpoint_reference;
 
 pub(super) fn build_stage_parameter_artifact_input(
     stage_report: &CalibrationStagedRunStageReport,
-) -> Result<CalibrationStageParameterArtifactInput, String> {
+) -> Result<Box<dyn CalibrationStageParameterArtifactInput>, String> {
     match stage_report {
         CalibrationStagedRunStageReport::Seasonality(report) => {
             let payload = report
@@ -22,31 +22,29 @@ pub(super) fn build_stage_parameter_artifact_input(
                 .as_ref()
                 .ok_or_else(|| "successful seasonality stage is missing metadata".to_string())?;
 
-            Ok(CalibrationStageParameterArtifactInput::Seasonality(
-                Box::new(
-                    janiform_calibration_artifacts::SeasonalityStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        dataset_id: payload.dataset_id.clone(),
-                        exchange_code: payload.exchange_code.clone(),
-                        trade_events_data_reference: payload.trade_events_data_reference.clone(),
-                        estimator_version: metadata.estimator_version.clone(),
-                        timestamp_event_input_schema_version: payload
-                            .timestamp_event_input_schema_version
-                            .clone(),
-                        timestamp_event_preprocessed_schema_version: payload
-                            .timestamp_event_preprocessed_schema_version
-                            .clone(),
-                        clock_model_schema_version: payload.clock_model_schema_version.clone(),
-                        clock_model: payload.clock_model.clone(),
-                    },
-                ),
+            Ok(Box::new(
+                janiform_calibration_artifacts::SeasonalityStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    dataset_id: payload.dataset_id.clone(),
+                    exchange_code: payload.exchange_code.clone(),
+                    trade_events_data_reference: payload.trade_events_data_reference.clone(),
+                    estimator_version: metadata.estimator_version.clone(),
+                    timestamp_event_input_schema_version: payload
+                        .timestamp_event_input_schema_version
+                        .clone(),
+                    timestamp_event_preprocessed_schema_version: payload
+                        .timestamp_event_preprocessed_schema_version
+                        .clone(),
+                    clock_model_schema_version: payload.clock_model_schema_version.clone(),
+                    clock_model: payload.clock_model.clone(),
+                },
             ))
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
@@ -59,7 +57,7 @@ pub(super) fn build_stage_parameter_artifact_input(
                 .as_ref()
                 .ok_or_else(|| "successful hawkes stage is missing metadata".to_string())?;
 
-            Ok(CalibrationStageParameterArtifactInput::Hawkes(Box::new(
+            Ok(Box::new(
                 janiform_calibration_artifacts::HawkesStageParameterArtifactInput {
                     metadata: build_stage_parameter_metadata(
                         metadata.stage_output_schema_version,
@@ -94,7 +92,33 @@ pub(super) fn build_stage_parameter_artifact_input(
                     seasonality_dataset_id: payload.seasonality_dataset_id.clone(),
                     seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
                 },
-            )))
+            ))
+        }
+        CalibrationStagedRunStageReport::ObservationModels(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
+                "successful observation-models stage is missing its payload".to_string()
+            })?;
+            let metadata = report.metadata.as_ref().ok_or_else(|| {
+                "successful observation-models stage is missing metadata".to_string()
+            })?;
+
+            Ok(Box::new(
+                janiform_calibration_artifacts::ObservationModelsStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    no_move_event_model: payload.no_move_event_model,
+                    timestamp_batching_observation_model: payload
+                        .timestamp_batching_observation_model
+                        .clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                },
+            ))
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
@@ -104,54 +128,48 @@ pub(super) fn build_stage_parameter_artifact_input(
                 "successful return-components stage is missing metadata".to_string()
             })?;
 
-            Ok(CalibrationStageParameterArtifactInput::ReturnComponents(
-                Box::new(
-                    janiform_calibration_artifacts::ReturnComponentsStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        optimizer_state: build_stage_parameter_optimizer_state_input(
-                            StageParameterOptimizerStateInputBuildInput {
-                                backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
-                                random_seed: metadata.optimizer_adapter_metadata.random_seed,
-                                selection_policy: metadata
-                                    .optimizer_adapter_metadata
-                                    .selection_policy,
-                                penalty_policy: metadata.optimizer_adapter_metadata.penalty_policy,
-                                bounds_policy: metadata.optimizer_adapter_metadata.bounds_policy,
-                                solver_settings: metadata
-                                    .optimizer_adapter_metadata
-                                    .solver_settings
-                                    .clone(),
-                                input_candidate_count: metadata.input_candidate_count,
-                                valid_candidate_count: metadata.valid_candidate_count,
-                                selected_candidate_raw_objective: metadata
-                                    .selected_candidate_raw_objective,
-                                selected_candidate_penalized_objective: metadata
-                                    .selected_candidate_penalized_objective,
-                            },
-                        ),
-                        selected_candidate_id: payload.selected_candidate_id.clone(),
-                        fitted_parameters: payload.fitted_parameters.clone(),
-                        candidate_generation_policy: payload
-                            .candidate_generation_policy
-                            .to_string(),
-                        objective_weighting_policy: payload.objective_weighting_policy.to_string(),
-                        objective_metric_bucket_policy: payload
-                            .objective_metric_bucket_policy
-                            .to_string(),
-                        activity_input_transport: payload.activity_input_transport,
-                        activity_selected_hawkes_candidate_id: payload
-                            .activity_selected_hawkes_candidate_id
-                            .clone(),
-                        activity_artifact_reference: payload.activity_artifact_reference.clone(),
-                    },
-                ),
+            Ok(Box::new(
+                janiform_calibration_artifacts::ReturnComponentsStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    optimizer_state: build_stage_parameter_optimizer_state_input(
+                        StageParameterOptimizerStateInputBuildInput {
+                            backend_id: metadata.optimizer_adapter_metadata.backend_id.clone(),
+                            random_seed: metadata.optimizer_adapter_metadata.random_seed,
+                            selection_policy: metadata.optimizer_adapter_metadata.selection_policy,
+                            penalty_policy: metadata.optimizer_adapter_metadata.penalty_policy,
+                            bounds_policy: metadata.optimizer_adapter_metadata.bounds_policy,
+                            solver_settings: metadata
+                                .optimizer_adapter_metadata
+                                .solver_settings
+                                .clone(),
+                            input_candidate_count: metadata.input_candidate_count,
+                            valid_candidate_count: metadata.valid_candidate_count,
+                            selected_candidate_raw_objective: metadata
+                                .selected_candidate_raw_objective,
+                            selected_candidate_penalized_objective: metadata
+                                .selected_candidate_penalized_objective,
+                        },
+                    ),
+                    selected_candidate_id: payload.selected_candidate_id.clone(),
+                    fitted_parameters: payload.fitted_parameters.clone(),
+                    candidate_generation_policy: payload.candidate_generation_policy.to_string(),
+                    objective_weighting_policy: payload.objective_weighting_policy.to_string(),
+                    objective_metric_bucket_policy: payload
+                        .objective_metric_bucket_policy
+                        .to_string(),
+                    activity_input_transport: payload.activity_input_transport,
+                    activity_selected_hawkes_candidate_id: payload
+                        .activity_selected_hawkes_candidate_id
+                        .clone(),
+                    activity_artifact_reference: payload.activity_artifact_reference.clone(),
+                },
             ))
         }
         CalibrationStagedRunStageReport::LongVariance(report) => {
@@ -164,29 +182,26 @@ pub(super) fn build_stage_parameter_artifact_input(
                 .as_ref()
                 .ok_or_else(|| "successful long-variance stage is missing metadata".to_string())?;
 
-            Ok(CalibrationStageParameterArtifactInput::LongVariance(
-                Box::new(
-                    janiform_calibration_artifacts::LongVarianceStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        fitted_parameters: payload.fitted_parameters,
-                        diagnostics: payload.diagnostics.clone(),
-                        return_components_input_transport: payload
-                            .return_components_input_transport,
-                        return_components_selected_candidate_id: payload
-                            .return_components_selected_candidate_id
-                            .clone(),
-                        return_components_artifact_reference: payload
-                            .return_components_artifact_reference
-                            .clone(),
-                    },
-                ),
+            Ok(Box::new(
+                janiform_calibration_artifacts::LongVarianceStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    fitted_parameters: payload.fitted_parameters,
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
             ))
         }
         CalibrationStagedRunStageReport::NewsShocks(report) => {
@@ -200,32 +215,29 @@ pub(super) fn build_stage_parameter_artifact_input(
                 .as_ref()
                 .ok_or_else(|| "successful news-shocks stage is missing metadata".to_string())?;
 
-            Ok(CalibrationStageParameterArtifactInput::NewsShocks(
-                Box::new(
-                    janiform_calibration_artifacts::NewsShocksStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        news_process_configuration: payload.news_process_configuration.clone(),
-                        surprise_deterministic_intensity_profile: payload
-                            .surprise_deterministic_intensity_profile
-                            .clone(),
-                        diagnostics: payload.diagnostics.clone(),
-                        return_components_input_transport: payload
-                            .return_components_input_transport,
-                        return_components_selected_candidate_id: payload
-                            .return_components_selected_candidate_id
-                            .clone(),
-                        return_components_artifact_reference: payload
-                            .return_components_artifact_reference
-                            .clone(),
-                    },
-                ),
+            Ok(Box::new(
+                janiform_calibration_artifacts::NewsShocksStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    news_process_configuration: payload.news_process_configuration.clone(),
+                    surprise_deterministic_intensity_profile: payload
+                        .surprise_deterministic_intensity_profile
+                        .clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
             ))
         }
         CalibrationStagedRunStageReport::ReturnBackfit(report) => {
@@ -238,49 +250,46 @@ pub(super) fn build_stage_parameter_artifact_input(
                 .as_ref()
                 .ok_or_else(|| "successful return-backfit stage is missing metadata".to_string())?;
 
-            Ok(CalibrationStageParameterArtifactInput::ReturnBackfit(
-                Box::new(
-                    janiform_calibration_artifacts::ReturnBackfitStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        selected_candidate_id: payload.selected_candidate_id.clone(),
-                        effective_return_components_selected_candidate_id: payload
-                            .effective_return_components_payload
-                            .selected_candidate_id
-                            .clone(),
-                        effective_fitted_parameters: payload
-                            .effective_return_components_payload
-                            .fitted_parameters
-                            .clone(),
-                        candidate_generation_policy: payload
-                            .effective_return_components_payload
-                            .candidate_generation_policy
-                            .to_string(),
-                        objective_weighting_policy: payload
-                            .effective_return_components_payload
-                            .objective_weighting_policy
-                            .to_string(),
-                        objective_metric_bucket_policy: payload
-                            .effective_return_components_payload
-                            .objective_metric_bucket_policy
-                            .to_string(),
-                        diagnostics: payload.diagnostics.clone(),
-                        return_components_input_transport: payload
-                            .return_components_input_transport,
-                        return_components_selected_candidate_id: payload
-                            .return_components_selected_candidate_id
-                            .clone(),
-                        return_components_artifact_reference: payload
-                            .return_components_artifact_reference
-                            .clone(),
-                    },
-                ),
+            Ok(Box::new(
+                janiform_calibration_artifacts::ReturnBackfitStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    selected_candidate_id: payload.selected_candidate_id.clone(),
+                    effective_return_components_selected_candidate_id: payload
+                        .effective_return_components_payload
+                        .selected_candidate_id
+                        .clone(),
+                    effective_fitted_parameters: payload
+                        .effective_return_components_payload
+                        .fitted_parameters
+                        .clone(),
+                    candidate_generation_policy: payload
+                        .effective_return_components_payload
+                        .candidate_generation_policy
+                        .to_string(),
+                    objective_weighting_policy: payload
+                        .effective_return_components_payload
+                        .objective_weighting_policy
+                        .to_string(),
+                    objective_metric_bucket_policy: payload
+                        .effective_return_components_payload
+                        .objective_metric_bucket_policy
+                        .to_string(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
             ))
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
@@ -293,49 +302,46 @@ pub(super) fn build_stage_parameter_artifact_input(
                 .as_ref()
                 .ok_or_else(|| "successful mean-reversion stage is missing metadata".to_string())?;
 
-            Ok(CalibrationStageParameterArtifactInput::MeanReversion(
-                Box::new(
-                    janiform_calibration_artifacts::MeanReversionStageParameterArtifactInput {
-                        metadata: build_stage_parameter_metadata(
-                            metadata.stage_output_schema_version,
-                            metadata.run_global_seed,
-                            metadata.stage_seed,
-                            metadata.stage_seed_source,
-                            metadata.stage_seed_derivation_policy,
-                            metadata.solver_settings.clone(),
-                        ),
-                        fitted_parameters: payload.fitted_parameters.clone(),
-                        diagnostics: payload.diagnostics.clone(),
-                        return_components_input_transport: payload
-                            .return_components_input_transport,
-                        return_components_selected_candidate_id: payload
-                            .return_components_selected_candidate_id
-                            .clone(),
-                        return_components_artifact_reference: payload
-                            .return_components_artifact_reference
-                            .clone(),
-                    },
-                ),
+            Ok(Box::new(
+                janiform_calibration_artifacts::MeanReversionStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    fitted_parameters: payload.fitted_parameters.clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
             ))
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             build_joint_refinement_stage_parameter_artifact_input(
                 report,
-                CalibrationStageParameterArtifactInput::JointRefinement,
+                super::CalibrationStage::JointRefinement,
                 "joint-refinement",
             )
         }
         CalibrationStagedRunStageReport::OptionRefinement(report) => {
             build_joint_refinement_stage_parameter_artifact_input(
                 report,
-                CalibrationStageParameterArtifactInput::OptionRefinement,
+                super::CalibrationStage::OptionRefinement,
                 "option-refinement",
             )
         }
         CalibrationStagedRunStageReport::Finalization(report) => {
             build_joint_refinement_stage_parameter_artifact_input(
                 report,
-                CalibrationStageParameterArtifactInput::Finalization,
+                super::CalibrationStage::Finalization,
                 "finalization",
             )
         }
@@ -344,11 +350,9 @@ pub(super) fn build_stage_parameter_artifact_input(
 
 fn build_joint_refinement_stage_parameter_artifact_input(
     report: &crate::stages::joint_refinement::JointRefinementStageExecutionReport,
-    wrap: fn(
-        Box<janiform_calibration_artifacts::JointRefinementStageParameterArtifactInput>,
-    ) -> CalibrationStageParameterArtifactInput,
+    stage: super::CalibrationStage,
     stage_label: &str,
-) -> Result<CalibrationStageParameterArtifactInput, String> {
+) -> Result<Box<dyn CalibrationStageParameterArtifactInput>, String> {
     let payload = report
         .fitted_stage_payload
         .as_ref()
@@ -359,8 +363,9 @@ fn build_joint_refinement_stage_parameter_artifact_input(
         .as_ref()
         .ok_or_else(|| format!("successful {stage_label} stage is missing metadata"))?;
 
-    Ok(wrap(Box::new(
+    Ok(Box::new(
         janiform_calibration_artifacts::JointRefinementStageParameterArtifactInput {
+            stage,
             metadata: build_stage_parameter_metadata(
                 metadata.stage_output_schema_version,
                 metadata.run_global_seed,
@@ -393,7 +398,7 @@ fn build_joint_refinement_stage_parameter_artifact_input(
             objective_breakdown: payload.objective_breakdown.clone(),
             optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
         },
-    )))
+    ))
 }
 
 pub(super) fn build_stage_parameter_metadata(

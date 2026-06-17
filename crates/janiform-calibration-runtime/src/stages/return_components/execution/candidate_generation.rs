@@ -7,6 +7,7 @@ use janiform_model_kernels::news::{
     KnownNewsArrivalConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration, SurpriseNewsArrivalConfiguration,
 };
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use super::super::activity_coupling_fit;
 use super::super::constants::{
@@ -35,6 +36,7 @@ use super::super::mark_layer_fit;
 use super::super::objective_scoring_policy_fit;
 use super::super::price_range_policy_fit;
 use super::super::quantile_binning_fit;
+use super::super::return_clock_exposure_fit::fit_return_clock_exposure_parameters;
 use super::super::signal_partition_fit;
 use super::super::surprise_episode_selection_fit;
 use super::super::surprise_intensity_fit;
@@ -174,6 +176,11 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         request.derived_close_open_gap_candidates,
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
+    );
+
+    let fitted_return_clock_exposure_parameters = fit_return_clock_exposure_parameters(
+        sorted_signals.continuous_fit_returns.as_slice(),
+        candidate_generation_input.no_move_event_model,
     );
 
     emit_return_components_progress(
@@ -391,6 +398,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     let generated_candidates = enumerate_candidate_inputs(CandidateInputsEnumerationInput {
         candidate_generation_input,
         candidate_family_sets: &candidate_family_sets,
+        return_clock_exposure_parameters: fitted_return_clock_exposure_parameters,
         summary_statistics,
         _continuous_return_calibration_sample: &continuous_return_calibration_sample,
         fitted_surprise_deterministic_intensity_profile: &fitted_surprise_arrival_layer
@@ -526,6 +534,7 @@ fn build_candidate_provenance_template(
             "reject_non_finite_observed_open_session_returns".to_string(),
             "exclude_known_news_attributed_open_returns_from_continuous_nig_fit".to_string(),
             "exclude_selected_exogenous_surprise_episodes_from_continuous_nig_fit".to_string(),
+            "exclude_structural_zero_open_returns_from_continuous_nig_fit".to_string(),
             format!(
                 "continuous_return_filter_policy={}",
                 fitted_signal_partition_layer.continuous_return_filter_policy
@@ -591,6 +600,7 @@ fn enumerate_candidate_inputs(
     let CandidateInputsEnumerationInput {
         candidate_generation_input,
         candidate_family_sets,
+        return_clock_exposure_parameters,
         summary_statistics,
         _continuous_return_calibration_sample,
         fitted_surprise_deterministic_intensity_profile,
@@ -731,8 +741,8 @@ fn enumerate_candidate_inputs(
                     candidate_families,
                     candidate_provenance: candidate_provenance_template.clone(),
                     dominant_scale_driver,
-                    return_clock_exposure_parameters: candidate_generation_input
-                        .return_clock_exposure_parameters,
+                    return_clock_exposure_parameters,
+                    no_move_event_model: candidate_generation_input.no_move_event_model,
                     tick_grid_observation_model: candidate_generation_input
                         .tick_grid_observation_model
                         .clone(),
@@ -758,6 +768,7 @@ fn enumerate_candidate_inputs(
 struct CandidateInputsEnumerationInput<'a> {
     candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
     candidate_family_sets: &'a ReturnComponentsStageCandidateFamilySets,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     _continuous_return_calibration_sample:
         &'a super::super::continuous_fit::ReturnComponentsStageContinuousReturnCalibrationSample,

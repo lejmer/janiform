@@ -3,6 +3,7 @@ use super::{
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CalibrationInMemoryStagePayloadState, CalibrationStageParameterArtifact,
@@ -53,6 +54,19 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     seasonality_dataset_id: payload.seasonality_dataset_id.clone(),
                     seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
                 });
+        }
+        CalibrationStageParameterPayload::ObservationModels(payload) => {
+            payload_state.observation_models_stage_payload = Some(
+                crate::stages::observation_models::ObservationModelsStageFittedPayload {
+                    schema_version: CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
+                    no_move_event_model: payload.no_move_event_model,
+                    timestamp_batching_observation_model: payload
+                        .timestamp_batching_observation_model
+                        .clone(),
+                    open_session_return_source_activities: Vec::new(),
+                    diagnostics: payload.diagnostics.clone(),
+                },
+            );
         }
         CalibrationStageParameterPayload::ReturnComponents(payload) => {
             payload_state.return_components_stage_payload = Some(
@@ -218,7 +232,9 @@ pub(super) fn update_in_memory_payload_state(
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
             payload_state.hawkes_stage_payload = report.fitted_stage_payload.clone();
-            payload_state.seasonality_stage_payload = None;
+        }
+        CalibrationStagedRunStageReport::ObservationModels(report) => {
+            payload_state.observation_models_stage_payload = report.fitted_stage_payload.clone();
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             payload_state.return_components_stage_payload = report.fitted_stage_payload.clone();

@@ -4,6 +4,7 @@ use janiform::model::affine_oracle::{
 };
 use janiform::model::long_variance::LongVarianceParameters;
 use janiform::model::news::NewsProcessConfiguration;
+use janiform::model::no_move_event::NoMoveEventModel;
 use janiform::simulation::{
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
     run_coarse_simulation as run_coarse_simulation_core,
@@ -95,7 +96,7 @@ fn run_simulation_from_model_artifact(
 }
 
 #[pyfunction]
-#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, long_variance_parameters, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, seasonality_factor, known_news_intensity, surprise_news_intensity, interval_deltas))]
+#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, long_variance_parameters, no_move_event_model, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, seasonality_factor, known_news_intensity, surprise_news_intensity, interval_deltas))]
 #[expect(
     clippy::too_many_arguments,
     reason = "PyO3 boundary mirrors the public Python keyword API."
@@ -106,6 +107,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     nig_shared_plus_shift_configuration: &Bound<'_, PyAny>,
     news_process_configuration: &Bound<'_, PyAny>,
     long_variance_parameters: &Bound<'_, PyAny>,
+    no_move_event_model: &Bound<'_, PyAny>,
     initial_excitation_state: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     interval_alignment_policy: &str,
@@ -139,6 +141,14 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
             "long_variance_parameters failed to deserialize: {source}"
         ))
     })?;
+
+    let parsed_no_move_event_model =
+        serde_json::from_value::<NoMoveEventModel>(py_any_to_json_value(no_move_event_model)?)
+            .map_err(|source| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "no_move_event_model failed to deserialize: {source}"
+                ))
+            })?;
 
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
@@ -202,6 +212,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
                 .shared_mark_law
                 .gamma_severity_marks,
             parsed_long_variance_parameters,
+            parsed_no_move_event_model,
         ),
         parsed_nig_shared_plus_shift_configuration,
         &parsed_news_process_configuration,

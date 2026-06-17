@@ -18,11 +18,13 @@ pub const CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY: &str =
 pub enum CalibrationTimestampBatchingObservationDiagnosticState {
     /// A fixed timestamp bucket was inferred from open-session ticks.
     InferredFixedBucket,
-    /// Return-components preprocessing ran and no supported timestamp batching was detectable.
+    /// Return-components calibration ran and no supported timestamp batching was detectable.
     DisabledNoDetectableBatching,
-    /// The selected calibration scope does not include return-components preprocessing.
+    /// Fitting is owned by the observation-models calibration stage.
+    DeferredToObservationModelsStage,
+    /// The selected calibration scope does not include return-components calibration.
     NotEvaluatedReturnComponentsNotSelected,
-    /// Return-components preprocessing was selected but did not produce an input payload.
+    /// Return-components calibration was selected but did not produce an input payload.
     NotEvaluatedReturnComponentsInputUnavailable,
 }
 
@@ -32,6 +34,7 @@ impl CalibrationTimestampBatchingObservationDiagnosticState {
         match self {
             Self::InferredFixedBucket => "inferred_fixed_bucket",
             Self::DisabledNoDetectableBatching => "disabled_no_detectable_batching",
+            Self::DeferredToObservationModelsStage => "deferred_to_observation_models_stage",
             Self::NotEvaluatedReturnComponentsNotSelected => {
                 "not_evaluated_return_components_not_selected"
             }
@@ -51,9 +54,9 @@ pub struct CalibrationTimestampBatchingObservationDiagnostic {
     pub diagnostic_policy: String,
     /// Human and machine-readable state of the preparation-time inference.
     pub state: CalibrationTimestampBatchingObservationDiagnosticState,
-    /// Whether the selected workflow includes return-components preprocessing.
+    /// Whether the selected workflow includes return-components calibration.
     pub return_components_stage_selected: bool,
-    /// Fitted or disabled observation-layer model that downstream simulation will receive.
+    /// Preparation-time visibility snapshot. When fitting is deferred, the stage output owns the model.
     pub observation_model: TimestampBatchingObservationModel,
     /// Short user-facing summary suitable for progress displays.
     pub message: String,
@@ -72,7 +75,7 @@ pub(crate) fn timestamp_batching_observation_diagnostic(
     );
 
     // The preparation diagnostic owns a snapshot while the execution input retains
-    // the original preprocessing model for later stages.
+    // the original calibration model for later stages.
     let observation_model = timestamp_batching_observation_model
         .cloned()
         .unwrap_or_else(TimestampBatchingObservationModel::disabled);
@@ -92,6 +95,10 @@ fn timestamp_batching_observation_diagnostic_state(
     return_components_stage_selected: bool,
     timestamp_batching_observation_model: Option<&TimestampBatchingObservationModel>,
 ) -> CalibrationTimestampBatchingObservationDiagnosticState {
+    if return_components_stage_selected && timestamp_batching_observation_model.is_none() {
+        return CalibrationTimestampBatchingObservationDiagnosticState::DeferredToObservationModelsStage;
+    }
+
     match (
         return_components_stage_selected,
         timestamp_batching_observation_model
@@ -148,12 +155,16 @@ fn timestamp_batching_observation_message(
             "timestamp batching observation evaluated: disabled because no same-session duplicate timestamp quantum was detected"
                 .to_string()
         }
+        CalibrationTimestampBatchingObservationDiagnosticState::DeferredToObservationModelsStage => {
+            "timestamp batching observation fit is deferred to the observation-models calibration stage"
+                .to_string()
+        }
         CalibrationTimestampBatchingObservationDiagnosticState::NotEvaluatedReturnComponentsNotSelected => {
             "timestamp batching observation not evaluated because return components are not selected"
                 .to_string()
         }
         CalibrationTimestampBatchingObservationDiagnosticState::NotEvaluatedReturnComponentsInputUnavailable => {
-            "timestamp batching observation not evaluated because return-components preprocessing input is unavailable"
+            "timestamp batching observation not evaluated because return-components calibration input is unavailable"
                 .to_string()
         }
     }

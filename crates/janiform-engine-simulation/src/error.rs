@@ -19,6 +19,7 @@ use janiform_model_kernels::mean_reversion::{
 use janiform_model_kernels::news::{NewsActivityLoadingRateError, NewsProcessConfigurationError};
 use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
+use janiform_model_kernels::no_move_event::NoMoveEventModelError;
 use janiform_model_kernels::return_clock::{
     EffectiveReturnClocksBuildError, ReturnClockExposureParametersError,
 };
@@ -77,6 +78,9 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidReturnClockExposureParameters {
         source: Box<ReturnClockExposureParametersError>,
+    },
+    InvalidNoMoveEventModel {
+        source: Box<NoMoveEventModelError>,
     },
     InvalidLongVarianceParameters {
         source: Box<LongVarianceParametersError>,
@@ -290,6 +294,9 @@ impl Display for SeededTickSimulationRunError {
                     "return_clock_exposure_parameters are invalid: {source}"
                 )
             }
+            Self::InvalidNoMoveEventModel { source } => {
+                write!(formatter, "no_move_event_model is invalid: {source}")
+            }
             Self::InvalidLongVarianceParameters { source } => {
                 write!(formatter, "long_variance_parameters are invalid: {source}")
             }
@@ -502,6 +509,7 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
             Self::InvalidTimestampBatchingObservationModel { source } => Some(source.as_ref()),
             Self::InvalidReturnClockExposureParameters { source } => Some(source.as_ref()),
+            Self::InvalidNoMoveEventModel { source } => Some(source.as_ref()),
             Self::InvalidLongVarianceParameters { source } => Some(source.as_ref()),
             Self::InvalidInitialLongVarianceState { source } => Some(source.as_ref()),
             Self::InvalidLongVarianceStationaryLevel { source } => Some(source.as_ref()),

@@ -35,12 +35,12 @@ pub use loading::{
     PriceCoordinatePolicy, PriceCoordinateResolutionInput, PriceCoordinateResolutionOutput,
     ResolvedPriceCoordinate, ResolvedPriceCoordinateSet, ResolvedRollAdjustmentEvidence,
     build_market_data_session_definition_json, infer_market_data_option_quote_input_policy,
-    infer_market_data_tick_price_input_policy, load_and_preprocess_market_data_translation_request,
-    load_and_preprocess_market_data_translation_request_with_progress,
-    normalize_market_data_source, normalize_market_data_source_with_progress,
-    normalize_option_surface_source, normalize_option_surface_source_with_progress,
-    prepare_market_data_loading_from_phases, prepare_market_data_loading_from_phases_with_progress,
-    probe_market_data_source, resolve_market_data_option_surface_column_mapping_for_source,
+    infer_market_data_tick_price_input_policy, load_and_calibrate_market_data_translation_request,
+    load_and_calibrate_market_data_translation_request_with_progress, normalize_market_data_source,
+    normalize_market_data_source_with_progress, normalize_option_surface_source,
+    normalize_option_surface_source_with_progress, prepare_market_data_loading_from_phases,
+    prepare_market_data_loading_from_phases_with_progress, probe_market_data_source,
+    resolve_market_data_option_surface_column_mapping_for_source,
     resolve_market_data_session_configuration,
     resolve_market_data_tick_data_column_mapping_for_source, resolve_price_coordinates,
 };
@@ -60,13 +60,12 @@ pub use preparation_progress::{
     MarketDataPreparationProgressObserver, MarketDataPreparationProgressPhase,
 };
 pub use preprocessing::{
-    MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
-    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    MarketDataTranslationPreprocessingSettings,
-    MarketDataTranslationReturnComponentsPreprocessingSettings,
-    MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
-    preprocess_market_data_translation_request,
-    preprocessing_settings_with_return_components_tick_size,
+    MarketDataTranslationCalibrationError, MarketDataTranslationCalibrationOutput,
+    MarketDataTranslationCalibrationRequest, MarketDataTranslationCalibrationSettings,
+    MarketDataTranslationKnownNewsRecord, MarketDataTranslationReturnComponentsCalibrationSettings,
+    MarketDataTranslationSeasonalityCalibrationSettings, MarketDataTranslationTickRecord,
+    calibrate_market_data_translation_request,
+    calibration_settings_with_return_components_tick_size,
 };
 pub use preset_resolution::{
     PresetWorkflowResolutionError, built_in_preset_registry_index,

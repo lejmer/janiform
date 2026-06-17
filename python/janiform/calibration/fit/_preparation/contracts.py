@@ -12,7 +12,7 @@ from ...market_data.contracts import (
     CalibrationKnownNewsColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataCalibrationSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
@@ -65,7 +65,7 @@ class FitPreparationConfiguration:
     option_forward_parity_warning_policy: OptionForwardParityWarningPolicy
     output_preferences: CalibrationMarketDataOutputPreferences
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
-    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
+    calibration_settings: Optional[CalibrationMarketDataCalibrationSettings]
     tick_size: Optional[float]
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy

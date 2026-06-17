@@ -157,6 +157,7 @@ pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )

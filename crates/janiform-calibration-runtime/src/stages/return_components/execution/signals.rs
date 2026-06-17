@@ -6,6 +6,7 @@ use janiform_foundations::numeric::{
     strictly_positive_machine_value,
 };
 
+use super::super::activity_excess::positive_activity_excess;
 use super::super::contracts::{
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
     ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
@@ -157,10 +158,31 @@ pub(crate) fn sort_candidate_generation_signals(
             !known_news_attributed_open_return_timestamps
                 .contains(&observation.return_timestamp_utc_nanos)
                 && !exogenous_jump_timestamps.contains(&observation.return_timestamp_utc_nanos)
+                && observation.log_return != 0.0
                 && observation.log_return.abs()
                     <= fitted_signal_partition_layer.continuous_return_filter_threshold
         })
         .collect::<Vec<_>>();
+
+    if continuous_fit_returns.is_empty() {
+        continuous_fit_returns = observed_open_session_returns
+            .iter()
+            .copied()
+            .filter(|observation| {
+                observation.log_return != 0.0
+                    && observation.log_return.abs()
+                        <= fitted_signal_partition_layer.continuous_return_filter_threshold
+            })
+            .collect();
+    }
+
+    if continuous_fit_returns.is_empty() {
+        continuous_fit_returns = observed_open_session_returns
+            .iter()
+            .copied()
+            .filter(|observation| observation.log_return != 0.0)
+            .collect();
+    }
 
     if continuous_fit_returns.is_empty() {
         continuous_fit_returns = observed_open_session_returns
@@ -273,9 +295,7 @@ pub(crate) fn summarize_candidate_generation_signals(
         &sorted_signals
             .known_return_samples
             .iter()
-            .map(|sample| {
-                activity_coupling_target_from_post_shock_lift(sample.post_shock_activity_lift)
-            })
+            .map(|sample| positive_activity_excess(sample.post_shock_activity_lift))
             .collect::<Vec<_>>(),
     );
 
@@ -283,9 +303,7 @@ pub(crate) fn summarize_candidate_generation_signals(
         &sorted_signals
             .selected_surprise_jump_episodes
             .iter()
-            .map(|episode| {
-                activity_coupling_target_from_post_shock_lift(episode.post_shock_activity_lift)
-            })
+            .map(|episode| positive_activity_excess(episode.post_shock_activity_lift))
             .collect::<Vec<_>>(),
     );
 
@@ -414,14 +432,6 @@ pub(super) fn derive_continuous_fit_business_time_scales(
                 .unwrap_or(fallback_business_time_scale)
         })
         .collect()
-}
-
-fn activity_coupling_target_from_post_shock_lift(post_shock_activity_lift: f64) -> f64 {
-    if !post_shock_activity_lift.is_finite() {
-        return 0.0;
-    }
-
-    (post_shock_activity_lift - 1.0).max(0.0)
 }
 
 fn compute_observed_log_price_span(timestamped_returns: &[(i64, f64)]) -> f64 {

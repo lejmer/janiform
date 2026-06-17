@@ -79,7 +79,7 @@ class MarketDataCalibrationSourceSummary(ContractModel):
 class MarketDataCalibrationPreparationDiagnostics(ContractModel):
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
-    executed_preprocessing_steps: tuple[str, ...]
+    executed_calibration_steps: tuple[str, ...]
     timestamp_batching_observation: MarketDataTimestampBatchingObservationDiagnostic
     tick_record_count: int
     coarse_data_record_count: int
@@ -110,9 +110,9 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
                 CalibrationStage(str(stage))
                 for stage in raw_payload["selected_stages"]
             ),
-            executed_preprocessing_steps=tuple(
+            executed_calibration_steps=tuple(
                 str(step)
-                for step in raw_payload["executed_preprocessing_steps"]
+                for step in raw_payload["executed_calibration_steps"]
             ),
             timestamp_batching_observation=(
                 MarketDataTimestampBatchingObservationDiagnostic.from_mapping(
@@ -308,7 +308,7 @@ def _build_market_data_preparation_diagnostics(
     return MarketDataCalibrationPreparationDiagnostics(
         workflow_scope=diagnostics.workflow_scope,
         selected_stages=diagnostics.selected_stages,
-        executed_preprocessing_steps=diagnostics.executed_preprocessing_steps,
+        executed_calibration_steps=diagnostics.executed_calibration_steps,
         timestamp_batching_observation=diagnostics.timestamp_batching_observation,
         tick_record_count=diagnostics.tick_record_count,
         coarse_data_record_count=diagnostics.coarse_data_record_count,

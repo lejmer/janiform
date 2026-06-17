@@ -3,6 +3,7 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::no_move_event::NoMoveEventModel;
 
 use super::contracts::ExponentialAffineTransformEquationSpecification;
 
@@ -28,6 +29,7 @@ pub(crate) fn valid_equation_specification() -> ExponentialAffineTransformEquati
         GammaSeverityMarkConfiguration::try_new(1.8)
             .expect("valid gamma configuration should construct"),
         LongVarianceParameters::neutral(),
+        NoMoveEventModel::neutral(),
     )
     .expect("valid equation specification should construct")
 }

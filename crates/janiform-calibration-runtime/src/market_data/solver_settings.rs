@@ -116,7 +116,7 @@ fn stage_solver_geometry(
     match stage {
         CalibrationStage::Seasonality => {
             let timestamp_record_count = loading_output
-                .preprocessing_output
+                .calibration_output
                 .seasonality_stage_input
                 .timestamp_event_records
                 .len();
@@ -131,7 +131,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::Hawkes => {
             let candidate_inputs = loading_output
-                .preprocessing_output
+                .calibration_output
                 .hawkes_candidate_inputs
                 .as_deref()
                 .unwrap_or(&[]);
@@ -156,9 +156,30 @@ fn stage_solver_geometry(
                 scale_reference: 1.0,
             }
         }
+        CalibrationStage::ObservationModels => {
+            let candidate_generation_input = loading_output
+                .calibration_output
+                .return_components_candidate_generation_input
+                .as_ref();
+            let observation_models_stage_input = loading_output
+                .calibration_output
+                .observation_models_stage_input
+                .as_ref();
+
+            StageSolverGeometry {
+                parameter_dimension: 1,
+                objective_term_count: 2,
+                support_count: candidate_generation_input
+                    .map_or(0, |input| input.observed_open_session_returns.len())
+                    + observation_models_stage_input
+                        .map_or(0, |input| input.open_session_timestamp_transitions.len()),
+                candidate_geometry_count: 2,
+                scale_reference: 1.0,
+            }
+        }
         CalibrationStage::ReturnComponents => {
             let candidate_generation_input = loading_output
-                .preprocessing_output
+                .calibration_output
                 .return_components_candidate_generation_input
                 .as_ref();
 
@@ -191,7 +212,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::MeanReversion => {
             let observations = loading_output
-                .preprocessing_output
+                .calibration_output
                 .mean_reversion_open_session_price_observations
                 .as_deref()
                 .unwrap_or(&[]);
@@ -208,7 +229,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::LongVariance => {
             let candidate_generation_input = loading_output
-                .preprocessing_output
+                .calibration_output
                 .return_components_candidate_generation_input
                 .as_ref();
 
@@ -224,7 +245,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::NewsShocks => {
             let candidate_generation_input = loading_output
-                .preprocessing_output
+                .calibration_output
                 .return_components_candidate_generation_input
                 .as_ref();
 
@@ -244,7 +265,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::ReturnBackfit => {
             let candidate_generation_input = loading_output
-                .preprocessing_output
+                .calibration_output
                 .return_components_candidate_generation_input
                 .as_ref();
 
@@ -262,7 +283,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::JointRefinement => {
             let candidate_generation_input = loading_output
-                .preprocessing_output
+                .calibration_output
                 .return_components_candidate_generation_input
                 .as_ref();
 
@@ -284,7 +305,7 @@ fn stage_solver_geometry(
                 objective_term_count: 12,
                 support_count: return_support_count,
                 candidate_geometry_count: loading_output
-                    .preprocessing_output
+                    .calibration_output
                     .hawkes_candidate_inputs
                     .as_ref()
                     .map_or(0, Vec::len)
@@ -305,7 +326,7 @@ fn stage_solver_geometry(
         }
         CalibrationStage::Finalization => {
             let candidate_generation_input = loading_output
-                .preprocessing_output
+                .calibration_output
                 .return_components_candidate_generation_input
                 .as_ref();
 
@@ -493,6 +514,8 @@ mod tests {
     };
     use crate::{
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+        CalibrationObservationModelsOpenSessionTimestampTransition,
+        CalibrationObservationModelsStageExecutionInput,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsKnownNewsCalendarInput,
         CalibrationReturnComponentsObjectiveMetricWeights,
@@ -502,7 +525,7 @@ mod tests {
         CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
         CalibrationTimestampEventSessionFilter, HawkesStageObservedSourceRegime,
         MarketDataLoadingOutput, MarketDataSessionResolutionPayload, MarketDataSourceSummary,
-        MarketDataTranslationPreprocessingOutput,
+        MarketDataTranslationCalibrationOutput,
     };
 
     #[test]
@@ -559,7 +582,7 @@ mod tests {
                 metadata_discrepancies: Vec::new(),
                 resolved_session_definition_json: "{}".to_string(),
             },
-            preprocessing_output: MarketDataTranslationPreprocessingOutput {
+            calibration_output: MarketDataTranslationCalibrationOutput {
                 seasonality_stage_input: CalibrationSeasonalityStageExecutionInput {
                     timestamp_event_records: Vec::new(),
                     settings: Some(CalibrationSeasonalityStageExecutionSettings {
@@ -614,6 +637,20 @@ mod tests {
                     },
                 }]),
                 hawkes_event_side_codes: None,
+                observation_models_stage_input: Some(
+                    CalibrationObservationModelsStageExecutionInput {
+                        open_session_timestamp_transitions: vec![
+                            CalibrationObservationModelsOpenSessionTimestampTransition {
+                                previous_timestamp_utc_nanos: 1,
+                                current_timestamp_utc_nanos: 1,
+                            },
+                            CalibrationObservationModelsOpenSessionTimestampTransition {
+                                previous_timestamp_utc_nanos: 1,
+                                current_timestamp_utc_nanos: 2,
+                            },
+                        ],
+                    },
+                ),
                 return_components_candidate_generation_input: Some(
                     CalibrationReturnComponentsStageCandidateGenerationInput {
                         known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {
@@ -650,6 +687,8 @@ mod tests {
                         return_clock_exposure_parameters:
                             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
                             ),
+                        no_move_event_model:
+                            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
                         tick_grid_observation_model:
                             janiform_calibration_artifacts::TickGridObservationModel {
                                 tick_size: None,

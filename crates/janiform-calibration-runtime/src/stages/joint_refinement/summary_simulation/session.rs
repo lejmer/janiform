@@ -808,6 +808,9 @@ fn build_seeded_summary_simulation_run_config(
             return_clock_exposure_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .return_clock_exposure_parameters,
+            no_move_event_model: fitted_parameters
+                .return_components_fitted_parameters
+                .no_move_event_model,
             long_variance_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
@@ -973,6 +976,7 @@ pub(crate) mod tests {
     use janiform_model_kernels::news::{
         GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
     };
+    use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
     #[derive(Debug, Clone, PartialEq)]
     struct JointRefinementSummarySimulationFixture {
@@ -2223,6 +2227,7 @@ pub(crate) mod tests {
                     log_return: 0.004,
                     post_shock_activity_lift: 1.00,
                     sell_share_proxy: 0.48,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.48),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
@@ -2230,6 +2235,7 @@ pub(crate) mod tests {
                     log_return: 0.018,
                     post_shock_activity_lift: 1.35,
                     sell_share_proxy: 0.62,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.62),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
@@ -2237,6 +2243,7 @@ pub(crate) mod tests {
                     log_return: -0.014,
                     post_shock_activity_lift: 1.10,
                     sell_share_proxy: 0.58,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.58),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 19, 15, 0),
@@ -2244,6 +2251,7 @@ pub(crate) mod tests {
                     log_return: 0.010,
                     post_shock_activity_lift: 0.95,
                     sell_share_proxy: 0.41,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.41),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 20, 0, 0),
@@ -2251,6 +2259,7 @@ pub(crate) mod tests {
                     log_return: -0.003,
                     post_shock_activity_lift: 0.92,
                     sell_share_proxy: 0.55,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.55),
                 },
             ],
             detected_intraday_jump_candidates: vec![
@@ -2296,6 +2305,8 @@ pub(crate) mod tests {
             },
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+            no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(
+            ),
             tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
                 tick_size: None,
                 tick_size_source: "test".to_string(),

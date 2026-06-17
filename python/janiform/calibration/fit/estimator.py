@@ -39,7 +39,7 @@ from ..market_data.contracts import (
     CalibrationInputFileFormat,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataCalibrationSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
@@ -102,7 +102,7 @@ class JaniformEstimator:
     _option_forward_parity_warning_policy: OptionForwardParityWarningPolicy
     _output_preferences: CalibrationMarketDataOutputPreferences
     _optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
-    _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
+    _calibration_settings: Optional[CalibrationMarketDataCalibrationSettings]
     _tick_size: Optional[float]
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
@@ -137,7 +137,7 @@ class JaniformEstimator:
         option_forward_parity_warning_threshold: Optional[float] = None,
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
         optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
-        preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
+        calibration_settings: Optional[CalibrationMarketDataCalibrationSettings] = None,
         tick_size: Optional[float] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
@@ -175,12 +175,12 @@ class JaniformEstimator:
             raise calibration_error("cpu_count", "must be non-negative when provided")
 
         if (
-            preprocessing_settings is not None
-            and not isinstance(preprocessing_settings, CalibrationMarketDataPreprocessingSettings)
+            calibration_settings is not None
+            and not isinstance(calibration_settings, CalibrationMarketDataCalibrationSettings)
         ):
             raise calibration_error(
-                "preprocessing_settings",
-                "must be a CalibrationMarketDataPreprocessingSettings when provided",
+                "calibration_settings",
+                "must be a CalibrationMarketDataCalibrationSettings when provided",
             )
 
         validated_tick_size = _validate_optional_tick_size(tick_size)
@@ -296,7 +296,7 @@ class JaniformEstimator:
         )
         self._output_preferences = _DEFAULT_OUTPUT_PREFERENCES if output_preferences is None else output_preferences
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
-        self._preprocessing_settings = preprocessing_settings
+        self._calibration_settings = calibration_settings
         self._tick_size = validated_tick_size
         self._mean_reversion = mean_reversion
         self._pricing_interval_schedule_policy = (
@@ -448,7 +448,7 @@ class JaniformEstimator:
             option_forward_parity_warning_policy=self._option_forward_parity_warning_policy,
             output_preferences=self._output_preferences,
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
-            preprocessing_settings=self._preprocessing_settings,
+            calibration_settings=self._calibration_settings,
             tick_size=self._tick_size,
             mean_reversion=self._mean_reversion,
             pricing_interval_schedule_policy=(
@@ -690,20 +690,20 @@ def _public_request_payload_without_internal_tick_size(
     raw_request_payload: dict[str, Any],
 ) -> dict[str, Any]:
     request_payload = dict(raw_request_payload)
-    raw_preprocessing_settings = request_payload.get("preprocessing_settings")
-    if not isinstance(raw_preprocessing_settings, dict):
+    raw_calibration_settings = request_payload.get("calibration_settings")
+    if not isinstance(raw_calibration_settings, dict):
         return request_payload
 
-    preprocessing_settings = dict(raw_preprocessing_settings)
-    raw_return_components = preprocessing_settings.get("return_components")
+    calibration_settings = dict(raw_calibration_settings)
+    raw_return_components = calibration_settings.get("return_components")
     if not isinstance(raw_return_components, dict):
-        request_payload["preprocessing_settings"] = preprocessing_settings
+        request_payload["calibration_settings"] = calibration_settings
         return request_payload
 
     return_components = dict(raw_return_components)
     return_components.pop("tick_size", None)
-    preprocessing_settings["return_components"] = return_components
-    request_payload["preprocessing_settings"] = preprocessing_settings
+    calibration_settings["return_components"] = return_components
+    request_payload["calibration_settings"] = calibration_settings
 
     return request_payload
 

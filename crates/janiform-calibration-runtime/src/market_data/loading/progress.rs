@@ -51,7 +51,7 @@ pub enum MarketDataLoadingProgressPhase {
     NormalizingRecords,
     /// Normalized source rows are being sorted, filtered, resolved, and summarized.
     FinalizingRecords,
-    /// Cross-source calibration preprocessing inputs are being assembled.
+    /// Cross-source calibration inputs are being assembled.
     BuildingCalibrationInputs,
     /// Observed timestamp batching behavior is being inferred from loaded tick records.
     InferringTimestampBatchingObservation,

@@ -4,8 +4,8 @@ use arrow_array::RecordBatch;
 
 use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
 use crate::market_data::preprocessing::{
-    MarketDataTranslationPreprocessingRequest, MarketDataTranslationTickRecord,
-    preprocess_market_data_translation_request,
+    MarketDataTranslationCalibrationRequest, MarketDataTranslationTickRecord,
+    calibrate_market_data_translation_request,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
@@ -48,25 +48,25 @@ use super::shared::{
     dedup_vec, file_format_string, normalized_float_key,
 };
 
-pub fn load_and_preprocess_market_data_translation_request(
+pub fn load_and_calibrate_market_data_translation_request(
     request: MarketDataLoadingRequest,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
     let mut progress = MarketDataLoadingProgressContext::disabled();
 
-    load_and_preprocess_market_data_translation_request_with_context(request, &mut progress)
+    load_and_calibrate_market_data_translation_request_with_context(request, &mut progress)
 }
 
-/// Load and preprocess market data while reporting source loading progress.
-pub fn load_and_preprocess_market_data_translation_request_with_progress(
+/// Load and calibrate market data while reporting source loading progress.
+pub fn load_and_calibrate_market_data_translation_request_with_progress(
     request: MarketDataLoadingRequest,
     progress_observer: MarketDataLoadingProgressObserver<'_>,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
     let mut progress = MarketDataLoadingProgressContext::observed(progress_observer);
 
-    load_and_preprocess_market_data_translation_request_with_context(request, &mut progress)
+    load_and_calibrate_market_data_translation_request_with_context(request, &mut progress)
 }
 
-fn load_and_preprocess_market_data_translation_request_with_context(
+fn load_and_calibrate_market_data_translation_request_with_context(
     request: MarketDataLoadingRequest,
     progress: &mut MarketDataLoadingProgressContext<'_>,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
@@ -393,7 +393,7 @@ fn prepare_market_data_loading_from_phases_with_context(
         None,
     ))?;
 
-    let preprocessing_request = MarketDataTranslationPreprocessingRequest {
+    let calibration_request = MarketDataTranslationCalibrationRequest {
         exchange_code: request.session_configuration.exchange_code,
         trade_events_data_reference: request.trade_events_data_reference,
         tick_records: normalized_tick_output.tick_records.clone(),
@@ -414,10 +414,10 @@ fn prepare_market_data_loading_from_phases_with_context(
             }),
         require_hawkes: request.require_hawkes,
         require_return_components: request.require_return_components,
-        preprocessing_settings: request.preprocessing_settings,
+        calibration_settings: request.calibration_settings,
     };
 
-    if preprocessing_request.require_return_components {
+    if calibration_request.require_return_components {
         progress.emit(MarketDataLoadingProgressEvent::new(
             MarketDataLoadingSource::TickData,
             MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation,
@@ -426,13 +426,13 @@ fn prepare_market_data_loading_from_phases_with_context(
         ))?;
     }
 
-    let preprocessing_output =
-        preprocess_market_data_translation_request(preprocessing_request, &calendar_registry)
-            .map_err(MarketDataLoadingError::Preprocessing)?;
+    let calibration_output =
+        calibrate_market_data_translation_request(calibration_request, &calendar_registry)
+            .map_err(MarketDataLoadingError::Calibration)?;
 
     Ok(MarketDataLoadingOutput {
         session_resolution,
-        preprocessing_output,
+        calibration_output,
         tick_data_summary: normalized_tick_output.tick_data_summary.clone(),
         coarse_data_summary,
         coarse_data_records,

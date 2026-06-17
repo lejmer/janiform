@@ -1,4 +1,4 @@
-use super::contracts::MarketDataTranslationPreprocessingError;
+use super::contracts::MarketDataTranslationCalibrationError;
 use super::shared::{
     CalendarDate, DateTime, Datelike, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
     ExchangeCalendarRegistryLookupError, FromStr, LocalResult, MarketState, NaiveDate, SessionTime,
@@ -8,19 +8,19 @@ use super::shared::{
 pub(super) fn required_definition_and_timezone<'a>(
     calendar_registry: &'a ExchangeCalendarRegistry,
     exchange_code: &str,
-) -> Result<(&'a ExchangeCalendarDefinition, Tz), MarketDataTranslationPreprocessingError> {
+) -> Result<(&'a ExchangeCalendarDefinition, Tz), MarketDataTranslationCalibrationError> {
     let definition =
         calendar_registry
             .get_required(exchange_code)
             .map_err(|error| match error {
                 ExchangeCalendarRegistryLookupError::MissingExchangeId { exchange_code } => {
-                    MarketDataTranslationPreprocessingError::MissingExchangeId { exchange_code }
+                    MarketDataTranslationCalibrationError::MissingExchangeId { exchange_code }
                 }
             })?;
 
     let timezone_name = definition.timezone_name();
     let timezone = Tz::from_str(timezone_name).map_err(|_| {
-        MarketDataTranslationPreprocessingError::InvalidTimezoneName {
+        MarketDataTranslationCalibrationError::InvalidTimezoneName {
             exchange_code: exchange_code.to_string(),
             timezone_name: timezone_name.to_string(),
         }
@@ -34,7 +34,7 @@ pub(super) fn resolve_market_state_and_session_window(
     timezone: Tz,
     exchange_code: &str,
     timestamp_utc: DateTime<Utc>,
-) -> Result<(MarketState, Option<SessionWindowUtc>), MarketDataTranslationPreprocessingError> {
+) -> Result<(MarketState, Option<SessionWindowUtc>), MarketDataTranslationCalibrationError> {
     let timestamp_local = timestamp_utc.with_timezone(&timezone);
     let local_date = CalendarDate::from_local_timestamp(&timestamp_local);
     let local_weekday = TradingWeekday::from_chrono_weekday(timestamp_local.weekday());
@@ -79,7 +79,7 @@ pub(super) fn build_session_window_utc(
     exchange_code: &str,
     local_date: CalendarDate,
     session_window: &SessionWindowDefinition,
-) -> Result<SessionWindowUtc, MarketDataTranslationPreprocessingError> {
+) -> Result<SessionWindowUtc, MarketDataTranslationCalibrationError> {
     let open_local = local_datetime_for_session_time(
         timezone,
         exchange_code,
@@ -103,7 +103,7 @@ pub(super) fn build_session_window_utc(
             .with_timezone(&Utc)
             .timestamp_nanos_opt()
             .ok_or_else(|| {
-                MarketDataTranslationPreprocessingError::SessionBoundaryOutOfNanosecondRange {
+                MarketDataTranslationCalibrationError::SessionBoundaryOutOfNanosecondRange {
                     exchange_code: exchange_code.to_string(),
                     local_date: format!(
                         "{:04}-{:02}-{:02}",
@@ -116,7 +116,7 @@ pub(super) fn build_session_window_utc(
             .with_timezone(&Utc)
             .timestamp_nanos_opt()
             .ok_or_else(|| {
-                MarketDataTranslationPreprocessingError::SessionBoundaryOutOfNanosecondRange {
+                MarketDataTranslationCalibrationError::SessionBoundaryOutOfNanosecondRange {
                     exchange_code: exchange_code.to_string(),
                     local_date: format!(
                         "{:04}-{:02}-{:02}",
@@ -135,7 +135,7 @@ pub(super) fn local_datetime_for_session_time(
     local_time_label: &str,
     hour: u8,
     minute: u8,
-) -> Result<DateTime<Tz>, MarketDataTranslationPreprocessingError> {
+) -> Result<DateTime<Tz>, MarketDataTranslationCalibrationError> {
     let (resolved_year, resolved_month, resolved_day, resolved_hour, resolved_minute) =
         if hour == 24 && minute == 0 {
             let next_day = NaiveDate::from_ymd_opt(
@@ -145,7 +145,7 @@ pub(super) fn local_datetime_for_session_time(
             )
             .and_then(|date| date.succ_opt())
             .ok_or_else(|| {
-                MarketDataTranslationPreprocessingError::AmbiguousSessionBoundary {
+                MarketDataTranslationCalibrationError::AmbiguousSessionBoundary {
                     exchange_code: exchange_code.to_string(),
                     timezone_name: timezone.name().to_string(),
                     local_date: local_date.to_string(),
@@ -180,7 +180,7 @@ pub(super) fn local_datetime_for_session_time(
     ) {
         LocalResult::Single(timestamp_local) => Ok(timestamp_local),
         LocalResult::Ambiguous(_, _) | LocalResult::None => Err(
-            MarketDataTranslationPreprocessingError::AmbiguousSessionBoundary {
+            MarketDataTranslationCalibrationError::AmbiguousSessionBoundary {
                 exchange_code: exchange_code.to_string(),
                 timezone_name: timezone.name().to_string(),
                 local_date: local_date.to_string(),
