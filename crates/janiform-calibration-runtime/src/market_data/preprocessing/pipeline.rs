@@ -1,8 +1,8 @@
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::contracts::{
-    MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
-    MarketDataTranslationPreprocessingRequest,
+    MarketDataTranslationCalibrationError, MarketDataTranslationCalibrationOutput,
+    MarketDataTranslationCalibrationRequest,
 };
 use super::hawkes_inputs::{
     HawkesCandidateInputsBuildInput, build_hawkes_candidate_inputs, build_hawkes_event_side_codes,
@@ -12,15 +12,17 @@ use super::return_components_inputs::{
     ReturnComponentsCandidateGenerationInputBuildInput,
     build_return_components_candidate_generation_input,
     derive_mean_reversion_open_session_grid_inputs,
+    derive_observation_models_open_session_timestamp_transitions,
 };
 use super::seasonality_input::build_seasonality_stage_input;
 use super::session_windows::required_definition_and_timezone;
 use super::tick_resolution::preprocess_tick_records;
+use crate::execution_bridge::CalibrationObservationModelsStageExecutionInput;
 
-pub fn preprocess_market_data_translation_request(
-    request: MarketDataTranslationPreprocessingRequest,
+pub fn calibrate_market_data_translation_request(
+    request: MarketDataTranslationCalibrationRequest,
     calendar_registry: &ExchangeCalendarRegistry,
-) -> Result<MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingError> {
+) -> Result<MarketDataTranslationCalibrationOutput, MarketDataTranslationCalibrationError> {
     let (definition, timezone) =
         required_definition_and_timezone(calendar_registry, request.exchange_code.as_str())?;
 
@@ -43,7 +45,7 @@ pub fn preprocess_market_data_translation_request(
         retained_known_news.retained_records.as_slice(),
         request.trade_events_data_reference,
         request
-            .preprocessing_settings
+            .calibration_settings
             .as_ref()
             .and_then(|settings| settings.seasonality.as_ref()),
     );
@@ -72,6 +74,7 @@ pub fn preprocess_market_data_translation_request(
 
     let (
         return_components_candidate_generation_input,
+        observation_models_stage_input,
         mean_reversion_open_session_price_observations,
         mean_reversion_observed_session_duration_hours,
         material_close_open_gap_count,
@@ -88,8 +91,8 @@ pub fn preprocess_market_data_translation_request(
                 retained_known_news: retained_known_news.retained_records.as_slice(),
                 source_window: tick_summary.source_window.clone(),
                 _option_surface_quote_values: request.option_surface_quote_values.as_slice(),
-                preprocessing_settings: request
-                    .preprocessing_settings
+                calibration_settings: request
+                    .calibration_settings
                     .as_ref()
                     .and_then(|settings| settings.return_components.as_ref()),
             },
@@ -98,21 +101,29 @@ pub fn preprocess_market_data_translation_request(
         let mean_reversion_grid_inputs = derive_mean_reversion_open_session_grid_inputs(
             tick_summary.open_price_ticks.as_slice(),
         );
+        let observation_models_stage_input = CalibrationObservationModelsStageExecutionInput {
+            open_session_timestamp_transitions:
+                derive_observation_models_open_session_timestamp_transitions(
+                    tick_summary.open_price_ticks.as_slice(),
+                ),
+        };
 
         (
             Some(output.0),
+            Some(observation_models_stage_input),
             Some(mean_reversion_grid_inputs.0),
             Some(mean_reversion_grid_inputs.1),
             output.1,
         )
     } else {
-        (None, None, None, 0)
+        (None, None, None, None, 0)
     };
 
-    Ok(MarketDataTranslationPreprocessingOutput {
+    Ok(MarketDataTranslationCalibrationOutput {
         seasonality_stage_input,
         hawkes_candidate_inputs,
         hawkes_event_side_codes,
+        observation_models_stage_input,
         return_components_candidate_generation_input,
         mean_reversion_open_session_price_observations,
         mean_reversion_observed_session_duration_hours,

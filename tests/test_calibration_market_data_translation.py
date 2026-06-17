@@ -18,11 +18,11 @@ from janiform.calibration.market_data import (
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
     CalibrationMarketDataColumnMapping,
+    CalibrationMarketDataCalibrationSettings,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreprocessingSettings,
-    CalibrationMarketDataReturnComponentsPreprocessingSettings,
-    CalibrationMarketDataSeasonalityPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsCalibrationSettings,
+    CalibrationMarketDataSeasonalityCalibrationSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionQuoteInputPolicy,
@@ -52,6 +52,7 @@ from janiform.simulation import TimestampBatchingObservationMode
 FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
     CalibrationStage.SEASONALITY,
     CalibrationStage.HAWKES,
+    CalibrationStage.OBSERVATION_MODELS,
     CalibrationStage.RETURN_COMPONENTS,
     CalibrationStage.LONG_VARIANCE,
     CalibrationStage.NEWS_SHOCKS,
@@ -430,7 +431,7 @@ def test_translate_market_data_request_reports_direct_mean_reversion_coverage_on
     )
 
 
-def test_translate_market_data_request_applies_explicit_preprocessing_settings(
+def test_translate_market_data_request_applies_explicit_calibration_settings(
     tmp_path: Path,
     calendar_registry_json: str,
 ) -> None:
@@ -488,8 +489,8 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
             event_timestamp_column="event_timestamp_utc",
             event_identifier_column="event_code",
         ),
-        preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
-            seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+        calibration_settings=CalibrationMarketDataCalibrationSettings(
+            seasonality=CalibrationMarketDataSeasonalityCalibrationSettings(
                 session_filter=SessionFilter.ALL,
                 sparse_hour_event_threshold=2,
                 maximum_harmonic_orders={
@@ -498,7 +499,7 @@ def test_translate_market_data_request_applies_explicit_preprocessing_settings(
                     "weekly": 3,
                 },
             ),
-            return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+            return_components=CalibrationMarketDataReturnComponentsCalibrationSettings(
                 intraday_jump_threshold_multiplier=6.0,
                 close_open_gap_tolerance_multiplier=2.0,
             ),
@@ -1209,7 +1210,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert prepared.staged_request.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
     assert prepared.diagnostics.selected_stages == FULL_WITHOUT_OPTION_SURFACE_STAGES
     assert prepared.staged_request.selected_stages == prepared.diagnostics.selected_stages
-    assert prepared.diagnostics.executed_preprocessing_steps == (
+    assert prepared.diagnostics.executed_calibration_steps == (
         "source_loading",
         "column_mapping_validation",
         "timestamp_timezone_normalization",
@@ -1219,12 +1220,13 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         "workflow_scope_selection",
         "known_news_window_filtering",
         "hawkes_candidate_generation",
+        "observation_models_input_generation",
         "return_components_candidate_generation",
     )
     assert prepared.diagnostics.known_news_event_count == 2
     assert prepared.diagnostics.known_news_events_outside_source_window_count == 1
     assert prepared.diagnostics.timestamp_batching_observation.state == (
-        MarketDataTimestampBatchingObservationDiagnosticState.DISABLED_NO_DETECTABLE_BATCHING
+        MarketDataTimestampBatchingObservationDiagnosticState.DEFERRED_TO_OBSERVATION_MODELS_STAGE
     )
     assert (
         prepared.diagnostics.timestamp_batching_observation.return_components_stage_selected
@@ -1235,8 +1237,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         == TimestampBatchingObservationMode.DISABLED
     )
     assert prepared.diagnostics.timestamp_batching_observation.message == (
-        "timestamp batching observation evaluated: disabled because no same-session duplicate "
-        "timestamp quantum was detected"
+        "timestamp batching observation fit is deferred to the observation-models calibration stage"
     )
     assert prepared.provenance.tick_data_summary.file_format == CalibrationInputFileFormat.CSV
     assert prepared.provenance.known_news_summary is not None
@@ -1412,7 +1413,7 @@ def _build_market_data_request(
     option_surface_source: Optional[CalibrationInputFileReference] = None,
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
-    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
+    calibration_settings: Optional[CalibrationMarketDataCalibrationSettings] = None,
     exchange_code: str = "XNYS",
     session_timezone: Optional[str] = "America/New_York",
 ) -> MarketDataCalibrationRequest:
@@ -1448,7 +1449,7 @@ def _build_market_data_request(
             execution_mode=CalibrationExecutionMode.MEMORY,
             emit_input_provenance_report=True,
         ),
-        preprocessing_settings=preprocessing_settings,
+        calibration_settings=calibration_settings,
         option_surface_source=option_surface_source,
         known_news_inputs=known_news_inputs,
         mean_reversion=mean_reversion,

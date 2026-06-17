@@ -20,6 +20,7 @@ pub(crate) fn calibration_stage(stage: CalibrationStageOption) -> CalibrationSta
     match stage {
         CalibrationStageOption::Seasonality => CalibrationStage::Seasonality,
         CalibrationStageOption::Hawkes => CalibrationStage::Hawkes,
+        CalibrationStageOption::ObservationModels => CalibrationStage::ObservationModels,
         CalibrationStageOption::ReturnComponents => CalibrationStage::ReturnComponents,
         CalibrationStageOption::LongVariance => CalibrationStage::LongVariance,
         CalibrationStageOption::NewsShocks => CalibrationStage::NewsShocks,

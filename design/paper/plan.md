@@ -23,7 +23,7 @@
 
 | Category                  | Compute / plot                                                                                               |
 |---------------------------|--------------------------------------------------------------------------------------------------------------|
-| Tick realism              | Inter-arrival distribution, event-count bursts, zero-return/no-move frequency                                |
+| Tick realism              | Inter-arrival distribution, event-count bursts, zero-return frequency                                        |
 | Activity                  | Real vs fitted intraday activity curve; buy/sell event intensities                                           |
 | Seasonality               | (s(t)) by time-of-day, weekday, day-of-year, special days                                                    |
 | Hawkes behavior           | Excitation decay examples; branching ratio / spectral-radius diagnostics                                     |

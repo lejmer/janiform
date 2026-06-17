@@ -1,4 +1,4 @@
-use super::contracts::MarketDataTranslationPreprocessingError;
+use super::contracts::MarketDataTranslationCalibrationError;
 use super::known_news_samples::{
     attributed_open_return_timestamps, open_session_known_news_activity_share,
 };
@@ -20,14 +20,14 @@ use janiform_model_kernels::hawkes::{
 
 pub(super) fn build_hawkes_event_side_codes(
     resolved_ticks: &[ResolvedTickRecord],
-) -> Result<Vec<u8>, MarketDataTranslationPreprocessingError> {
+) -> Result<Vec<u8>, MarketDataTranslationCalibrationError> {
     resolved_ticks
         .iter()
         .map(|resolved_tick| match resolved_tick.trade_sign {
             Some(TradeSign::Buy) => Ok(HAWKES_EVENT_SIDE_CODE_BUY),
             Some(TradeSign::Sell) => Ok(HAWKES_EVENT_SIDE_CODE_SELL),
             None => Err(
-                MarketDataTranslationPreprocessingError::HawkesRequiresResolvedTradeSigns {
+                MarketDataTranslationCalibrationError::HawkesRequiresResolvedTradeSigns {
                     source_row_number: resolved_tick.source_row_number,
                 },
             ),
@@ -37,7 +37,7 @@ pub(super) fn build_hawkes_event_side_codes(
 
 pub(super) fn build_hawkes_candidate_inputs(
     input: HawkesCandidateInputsBuildInput<'_>,
-) -> Result<Vec<CalibrationHawkesStageCandidateInput>, MarketDataTranslationPreprocessingError> {
+) -> Result<Vec<CalibrationHawkesStageCandidateInput>, MarketDataTranslationCalibrationError> {
     let HawkesCandidateInputsBuildInput {
         resolved_ticks,
         open_price_ticks,
@@ -54,15 +54,14 @@ pub(super) fn build_hawkes_candidate_inputs(
         .find(|resolved_tick| resolved_tick.trade_sign.is_none())
     {
         return Err(
-            MarketDataTranslationPreprocessingError::HawkesRequiresResolvedTradeSigns {
+            MarketDataTranslationCalibrationError::HawkesRequiresResolvedTradeSigns {
                 source_row_number: missing_sign_tick.source_row_number,
             },
         );
     }
 
-    let directional_label_diagnostics = directional_label_diagnostics.ok_or(
-        MarketDataTranslationPreprocessingError::HawkesRequiresDirectionalLabelDiagnostics,
-    )?;
+    let directional_label_diagnostics = directional_label_diagnostics
+        .ok_or(MarketDataTranslationCalibrationError::HawkesRequiresDirectionalLabelDiagnostics)?;
 
     let tick_count = resolved_ticks.len();
 

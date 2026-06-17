@@ -22,6 +22,13 @@ pub(super) fn hawkes_adjacent_open_gap(
     Some(HawkesAdjacentOpenGap { raw_gap_seconds })
 }
 
+pub(crate) fn hawkes_open_events_are_adjacent(
+    previous_timestamp_utc_nanos: i64,
+    timestamp_utc_nanos: i64,
+) -> bool {
+    hawkes_adjacent_open_gap(previous_timestamp_utc_nanos, timestamp_utc_nanos).is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::hawkes_adjacent_open_gap;

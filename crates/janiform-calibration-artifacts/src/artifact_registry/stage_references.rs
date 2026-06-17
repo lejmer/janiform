@@ -5,6 +5,7 @@ pub fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
     match stage {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
+        CalibrationStage::ObservationModels => "observation_models",
         CalibrationStage::ReturnComponents => "return_components",
         CalibrationStage::LongVariance => "long_variance",
         CalibrationStage::NewsShocks => "news_shocks",
@@ -26,6 +27,7 @@ pub fn calibration_stage_from_token(token: &str) -> Option<CalibrationStage> {
     match token {
         "seasonality" => Some(CalibrationStage::Seasonality),
         "hawkes" => Some(CalibrationStage::Hawkes),
+        "observation_models" => Some(CalibrationStage::ObservationModels),
         "return_components" => Some(CalibrationStage::ReturnComponents),
         "long_variance" => Some(CalibrationStage::LongVariance),
         "news_shocks" => Some(CalibrationStage::NewsShocks),

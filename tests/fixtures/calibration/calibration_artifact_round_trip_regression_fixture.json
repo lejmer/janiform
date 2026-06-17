@@ -45,6 +45,7 @@
       "expected_stage_order": [
         "seasonality",
         "hawkes",
+        "observation_models",
         "return_components",
         "long_variance",
         "news_shocks",

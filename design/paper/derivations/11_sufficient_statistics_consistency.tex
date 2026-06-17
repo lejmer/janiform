@@ -43,9 +43,9 @@ vector
         Z_{t_{k+1}}
     \right).
 \]
-Here \(B_{Z,k}^\pm\) are long-variance-scaled baseline return-clock exposures,
-\(E_k^\pm\) are endogenous activity exposures, \(N_k^\pm\) are side event
-counts, and \(Z_{t_{k+1}}\) is the terminal long-variance state.
+Here \(B_{Z,k}^\pm\) are total long-variance-scaled baseline exposures,
+\(E_k^\pm\) are total endogenous activity exposures, \(N_k^\pm\) are total
+side event counts, and \(Z_{t_{k+1}}\) is the terminal long-variance state.
 
 Open-news and closed-gap return increments are additional additive return
 components.
@@ -60,10 +60,10 @@ through their Hawkes news excitation.
 Symbol & Meaning & Units or domain\\
 \midrule
 \(\mathcal S_k\) & Decomposed interval sufficient statistics & Non-negative clocks and counts, positive terminal \(Z\)\\
-\(B_{Z,k}^\pm\) & Baseline return-clock exposure scaled by long variance & Non-negative business time\\
+\(B_{Z,k}^\pm\) & Baseline exposure scaled by long variance & Non-negative business time\\
 \(E_k^\pm\) & Endogenous side activity exposure & Non-negative business time\\
-\(A_k^\pm\) & Effective NIG return clock & \(B_{Z,k}^\pm+\eta_\pm E_k^\pm\)\\
-\(N_k^\pm\) & Buy and sell event counts & Non-negative integers\\
+\(A_{\mathrm{return},k}^\pm\) & Effective NIG return clock & \(B_{Z,k}^\pm+\eta_\pm E_k^\pm\)\\
+\(N_k^\pm\) & Total buy and sell event counts & Non-negative integers\\
 \(Z_{t_{k+1}}\) & Terminal long-variance state & Positive\\
 \(\mathbf Y_{t_k}\) & Hawkes excitation state at interval start & Non-negative vector\\
 \(\Delta M_k,\Delta G_k\) & Open-news and closed-gap return increments & Finite log returns\\
@@ -147,8 +147,8 @@ Given \(\mathcal S_k\), the side return clocks are fixed:
 \]
 By the conditional CF/MGF derivation, the NIG trading block depends on the
 interval path only through \(A_k^+\) and \(A_k^-\).
-Thus, any construction that preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\) preserves
-the conditional trading-time law.
+Thus, any construction that preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\)
+preserves the conditional trading-time law.
 
 The jump and gap components enter additively:
 \[
@@ -181,11 +181,13 @@ decomposed quantities directly and then apply the same boundary update.
 Affine pricing uses the same decomposition in transform form.
 The affine schedule transform takes separate loadings for
 \[
-    B_Z^+,\quad E^+,\quad B_Z^-,\quad E^-,\quad N^+,\quad N^-,
-    \quad Z_T,
+    B_Z^+,\quad E^+,\quad B_Z^-,
+    \quad E^-,\quad N^+,\quad N^-,\quad Z_T,
 \]
-and evaluates the joint transform by propagating \((C,\mathbf D,V)\). The
-terminal cumulant adapter in \texttt{07\_terminal\_cumulant\_adapter.tex}
+where the activity loadings apply to total activity exposure and the count
+loadings apply to total events.
+It evaluates the joint transform by propagating \((C,\mathbf D,V)\).
+The terminal cumulant adapter in \texttt{07\_terminal\_cumulant\_adapter.tex}
 maps pricing arguments into those same activity and count loadings.
 
 Therefore, the four paths are consistent at the level of the transition law
@@ -201,11 +203,11 @@ long-variance boundary and terminal states, finite routed news and gap returns,
 valid Hawkes state updates, and finite NIG side-driver transforms or samples.
 
 The statistic \(\mathcal S_k\) is sufficient for the trading-time return law
-and the structural transition pieces listed above. It is not a claim that all
-diagnostic paths use identical random-number streams or identical numerical
-approximations. Distributional equality between seeded aggregation and direct
-coarse generation must be checked by the paper's aggregation and
-sufficient-statistics plots.
+and the structural transition pieces listed above.
+It is not a claim that all diagnostic paths use identical random-number streams
+or identical numerical approximations.
+Distributional equality between seeded aggregation and direct coarse generation
+must be checked by the paper's aggregation and sufficient-statistics plots.
 
 \section{Consequences}
 

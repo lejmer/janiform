@@ -170,6 +170,7 @@ where
             kernel_parameters.lambda_bar,
             interval_seasonality_factor,
         );
+
         if current_total_intensity <= 0.0 {
             drift_state_to_timestamp(scheduling_state, kernel_parameters, segment_end_utc_nanos)?;
             break;
@@ -251,6 +252,7 @@ where
         } else {
             scheduling_state.simulated_state = candidate_state;
         }
+
         scheduling_state.simulated_timestamp_utc_nanos = candidate_timestamp_utc_nanos;
     }
 
@@ -294,6 +296,7 @@ where
 
     let candidate_timestamp_utc_nanos =
         simulated_timestamp_utc_nanos.saturating_add(waiting_time_nanos);
+
     if candidate_timestamp_utc_nanos >= segment_end_utc_nanos {
         None
     } else {
@@ -397,6 +400,7 @@ fn project_non_negative_intensities(
     } else {
         0.0
     };
+
     let lambda_minus = if lambda_minus.is_finite() {
         lambda_minus
     } else {
@@ -420,6 +424,7 @@ where
     }
 
     let clamped_uniform_draw = raw_uniform_draw.min(1.0 - f64::EPSILON);
+
     -clamped_uniform_draw.ln() / intensity_per_hour
 }
 
@@ -447,6 +452,7 @@ fn sample_endogenous_event_side_from_intensities(
     }
 
     let buy_probability = (lambda_plus / total_intensity).clamp(0.0, 1.0);
+
     if side_draw < buy_probability {
         SeededTickEventSide::Buy
     } else {

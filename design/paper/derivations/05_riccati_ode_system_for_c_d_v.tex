@@ -131,8 +131,8 @@ Then the affine schedule loadings solve
             +H_-^E(\mathbf D(\tau),V(\tau)),\\
         V'(\tau)
         &=
-        -\kappa_zV(\tau)
-        +\frac{1}{2}\sigma_z^2V(\tau)^2
+        -\kappa_z V(\tau)
+        +\frac{1}{2}\sigma_z^2 V(\tau)^2
         -s_k\bar\lambda\big(u_+^B+u_-^B\big),\\
         C'(\tau)
         &=
@@ -180,8 +180,8 @@ and a sell event has multiplier
     z_-\exp(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-).
 \]
 Subtracting one gives the usual jump-generator increment.
-Subtracting the activity clock loading gives the Hamiltonian associated with
-the clock type.
+Subtracting the activity-clock loading gives the Hamiltonian associated
+with the clock type.
 For endogenous activity, this yields \(H_+^E\) multiplying
 \(Y^{++}+Y^{+-}\) and \(H_-^E\) multiplying \(Y^{-+}+Y^{--}\).
 Combining with Hawkes decay gives the four \(\mathbf D\) equations.
@@ -195,7 +195,12 @@ Their pure event contribution is
         +z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-) -1
     \right].
 \]
-Because \(H_\pm^B+u_\pm^B=z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1\),
+Because
+\[
+    H_\pm^B+u_\pm^B
+    =
+    z_\pm\exp(\mathbf D\cdot\mathbf k_\pm+V\chi_\pm)-1,
+\]
 this is the baseline term in \(C'\):
 \[
     s_k\bar\lambda\left(H_+^B+u_+^B+H_-^B+u_-^B\right).
@@ -212,7 +217,7 @@ The continuous long-variance generator contributes
 \[
     \kappa_z\bar zV(\tau)
     +\left(
-        -\kappa_zV(\tau)+\frac{1}{2}\sigma_z^2V(\tau)^2
+        -\kappa_z V(\tau)+\frac{1}{2}\sigma_z^2 V(\tau)^2
     \right)z.
 \]
 The constant part enters \(C'\), and the \(z\)-linear part enters \(V'\).

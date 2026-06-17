@@ -629,6 +629,20 @@ pub struct HawkesStageFittedPayload {
     pub seasonality_artifact_reference: Option<String>,
 }
 
+impl HawkesStageFittedPayload {
+    pub(crate) fn without_candidate_diagnostics(&self) -> Self {
+        Self {
+            schema_version: self.schema_version,
+            selected_candidate_id: self.selected_candidate_id.clone(),
+            fitted_parameters: self.fitted_parameters.clone(),
+            candidate_diagnostics: Vec::new(),
+            seasonality_input_transport: self.seasonality_input_transport,
+            seasonality_dataset_id: self.seasonality_dataset_id.clone(),
+            seasonality_artifact_reference: self.seasonality_artifact_reference.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HawkesStageHandoffOutput {
     pub from_stage: CalibrationStage,
@@ -692,6 +706,19 @@ pub enum HawkesStageExecutionFailure {
         candidate_id: String,
         error_message: String,
     },
+}
+
+impl HawkesStageExecutionFailure {
+    pub(crate) fn without_candidate_diagnostics(&self) -> Self {
+        match self {
+            Self::ConstraintViolationsForAllCandidates { .. } => {
+                Self::ConstraintViolationsForAllCandidates {
+                    candidate_diagnostics: Vec::new(),
+                }
+            }
+            failure => failure.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

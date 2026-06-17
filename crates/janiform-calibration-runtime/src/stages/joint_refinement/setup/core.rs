@@ -148,11 +148,6 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
     let hawkes_fitted_parameters = if option_pricing_only {
         context.baseline_hawkes_fitted_parameters.clone()
     } else {
-        let stationary_event_rate_scale = parameter_vector[context
-            .active_parameter_layout
-            .log_stationary_event_rate_scale_index]
-            .exp();
-
         let beta_scale =
             parameter_vector[context.active_parameter_layout.log_beta_scale_index].exp();
 
@@ -197,7 +192,7 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
             * beta_scale;
 
         let stationary_open_event_rate_per_hour =
-            context.baseline_modeled_open_event_rate_per_hour * stationary_event_rate_scale;
+            context.observed_data.observed_open_event_rate_per_hour;
         let lambda_bar = baseline_intensity_for_stationary_total_intensity(
             stationary_open_event_rate_per_hour,
             alpha_loadings,
@@ -747,6 +742,8 @@ pub(in crate::stages::joint_refinement) fn build_parameter_bounds(
         lower_bounds[*index] = -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
         upper_bounds[*index] = JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
     }
+    lower_bounds[active_parameter_layout.log_stationary_event_rate_scale_index] = 0.0;
+    upper_bounds[active_parameter_layout.log_stationary_event_rate_scale_index] = 0.0;
 
     let (nig_lower_bounds, nig_upper_bounds) = joint_nig_search_bounds_from_feasible_sources(
         baseline_15m_calibration_sample,
@@ -2876,9 +2873,6 @@ fn apply_activity_alignment(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     activity_log_shift: f64,
 ) {
-    parameter_vector[active_parameter_layout.log_stationary_event_rate_scale_index] =
-        activity_log_shift;
-
     if let Some(index) = active_parameter_layout.known_activity_scale_index {
         parameter_vector[index] = activity_log_shift;
     }

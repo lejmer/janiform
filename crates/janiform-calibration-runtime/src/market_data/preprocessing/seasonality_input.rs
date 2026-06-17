@@ -1,7 +1,7 @@
 use super::shared::{
     BTreeMap, CalibrationSeasonalityStageExecutionInput,
     CalibrationSeasonalityStageExecutionSettings, CalibrationTimestampEventRecord,
-    CalibrationTimestampEventSessionFilter, MarketDataTranslationSeasonalityPreprocessingSettings,
+    CalibrationTimestampEventSessionFilter, MarketDataTranslationSeasonalityCalibrationSettings,
     ResolvedKnownNewsRecord,
 };
 
@@ -9,10 +9,10 @@ pub(super) fn build_seasonality_stage_input(
     timestamp_event_records: Vec<CalibrationTimestampEventRecord>,
     _retained_known_news: &[ResolvedKnownNewsRecord],
     trade_events_data_reference: String,
-    preprocessing_settings: Option<&MarketDataTranslationSeasonalityPreprocessingSettings>,
+    calibration_settings: Option<&MarketDataTranslationSeasonalityCalibrationSettings>,
 ) -> CalibrationSeasonalityStageExecutionInput {
-    let seasonality_settings = preprocessing_settings.cloned().unwrap_or(
-        MarketDataTranslationSeasonalityPreprocessingSettings {
+    let seasonality_settings = calibration_settings.cloned().unwrap_or(
+        MarketDataTranslationSeasonalityCalibrationSettings {
             session_filter: CalibrationTimestampEventSessionFilter::OpenOnly,
             sparse_hour_event_threshold: 1,
             maximum_harmonic_orders: BTreeMap::new(),

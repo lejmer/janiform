@@ -59,29 +59,28 @@ pub fn evaluate_exponential_affine_transform_hamiltonians(
     d_vector: ExponentialAffineTransformDVector,
 ) -> ExponentialAffineTransformHamiltonians {
     let equation_specification = transform_input.equation_specification;
-    let activity_loadings = transform_input.activity_loadings;
 
     let d_dot_k_plus = d_vector.dot_loadings(equation_specification.k_plus());
     let d_dot_k_minus = d_vector.dot_loadings(equation_specification.k_minus());
 
     ExponentialAffineTransformHamiltonians::new(
         evaluate_hamiltonian_component(
-            activity_loadings.u_plus_baseline,
+            transform_input.activity_loadings.u_plus_baseline,
             transform_input.z_plus,
             d_dot_k_plus,
         ),
         evaluate_hamiltonian_component(
-            activity_loadings.u_plus_endogenous,
+            transform_input.activity_loadings.u_plus_endogenous,
             transform_input.z_plus,
             d_dot_k_plus,
         ),
         evaluate_hamiltonian_component(
-            activity_loadings.u_minus_baseline,
+            transform_input.activity_loadings.u_minus_baseline,
             transform_input.z_minus,
             d_dot_k_minus,
         ),
         evaluate_hamiltonian_component(
-            activity_loadings.u_minus_endogenous,
+            transform_input.activity_loadings.u_minus_endogenous,
             transform_input.z_minus,
             d_dot_k_minus,
         ),

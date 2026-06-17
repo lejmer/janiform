@@ -6,6 +6,7 @@ pub(crate) mod joint_refinement;
 pub(crate) mod long_variance;
 pub(crate) mod mean_reversion;
 pub(crate) mod news_shocks;
+pub(crate) mod observation_models;
 pub(crate) mod optimization;
 pub(crate) mod parallelism;
 pub(crate) mod progress;

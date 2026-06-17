@@ -30,7 +30,6 @@
       "buy_side_tick_count": 1851810,
       "event_count": 13979843,
       "label": "Empirical",
-      "no_move_tick_count": 10276866,
       "original_timestamp_order_is_monotonic": true,
       "price_column": "trade_price",
       "sell_side_tick_count": 1851166,
@@ -41,19 +40,20 @@
       "timestamp_null_count": 0,
       "total_tick_count": 13979843,
       "value_column": "trade_price",
-      "value_null_count": 0
+      "value_null_count": 0,
+      "zero_return_tick_count": 10276866
     }
   },
   "figure": {
     "id": "activity_intraday_profile_total_empirical_market_data",
     "title": "Empirical ES continuous futures total activity intraday profile"
   },
-  "generated_at_utc": "2026-06-13T23:48:25.934739+00:00",
+  "generated_at_utc": "2026-06-17T22:33:29.839253+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\activity_intraday_profile.py"
     ],
-    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
+    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/activity_intraday_profile.py"
@@ -119,7 +119,7 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/activity_intraday_profile/activity_intraday_profile_total.pdf",
       "role": "figure",
-      "sha256": "78e34d030aa0a6e0d6cab5676b9f49129b8dc38d9221f4adbb7b12e7e6f8ce6e",
+      "sha256": "8efa012db8a81de238bcd8bd59b701d0d2feb9746df4952077d46c502b5ac48b",
       "size_bytes": 21172
     }
   ],

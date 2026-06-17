@@ -694,36 +694,32 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
 
     build_calibration_stage_parameter_artifact(
         run_contract,
-        CalibrationStageParameterArtifactInput::Seasonality(Box::new(
-            SeasonalityStageParameterArtifactInput {
-                metadata: CalibrationStageParameterBuildMetadata {
-                    stage_output_schema_version:
-                        CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
-                    run_global_seed: stage_seed_metadata.run_global_seed,
-                    stage_seed: stage_seed_metadata.stage_seed,
-                    stage_seed_source: stage_seed_metadata.stage_seed_source,
-                    stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY
-                        .to_string(),
-                    solver_settings,
-                },
-                dataset_id: format!("dataset://{}", run_contract.run_spec.run_id),
-                exchange_code: run_contract.run_spec.data_inputs.exchange_code.clone(),
-                trade_events_data_reference: run_contract
-                    .run_spec
-                    .data_inputs
-                    .trade_events_data_reference
-                    .clone(),
-                estimator_version: CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION
+        SeasonalityStageParameterArtifactInput {
+            metadata: CalibrationStageParameterBuildMetadata {
+                stage_output_schema_version: CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION
                     .to_string(),
-                timestamp_event_input_schema_version: "market_time.timestamp_event_input.v1"
-                    .to_string(),
-                timestamp_event_preprocessed_schema_version:
-                    "calibration.timestamp_event_preprocessed.v1".to_string(),
-                clock_model_schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION
-                    .to_string(),
-                clock_model: flat_business_time_clock_model(),
+                run_global_seed: stage_seed_metadata.run_global_seed,
+                stage_seed: stage_seed_metadata.stage_seed,
+                stage_seed_source: stage_seed_metadata.stage_seed_source,
+                stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY.to_string(),
+                solver_settings,
             },
-        )),
+            dataset_id: format!("dataset://{}", run_contract.run_spec.run_id),
+            exchange_code: run_contract.run_spec.data_inputs.exchange_code.clone(),
+            trade_events_data_reference: run_contract
+                .run_spec
+                .data_inputs
+                .trade_events_data_reference
+                .clone(),
+            estimator_version: CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
+            timestamp_event_input_schema_version: "market_time.timestamp_event_input.v1"
+                .to_string(),
+            timestamp_event_preprocessed_schema_version:
+                "calibration.timestamp_event_preprocessed.v1".to_string(),
+            clock_model_schema_version: FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION
+                .to_string(),
+            clock_model: flat_business_time_clock_model(),
+        },
     )
     .expect("seasonality stage parameter artifact should build")
 }
@@ -802,47 +798,41 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
 
     build_calibration_stage_parameter_artifact(
         run_contract,
-        CalibrationStageParameterArtifactInput::ReturnComponents(Box::new(
-            ReturnComponentsStageParameterArtifactInput {
-                metadata: CalibrationStageParameterBuildMetadata {
-                    stage_output_schema_version:
-                        CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
-                    run_global_seed: stage_seed_metadata.run_global_seed,
-                    stage_seed: stage_seed_metadata.stage_seed,
-                    stage_seed_source: stage_seed_metadata.stage_seed_source,
-                    stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY
-                        .to_string(),
-                    solver_settings: solver_settings.clone(),
-                },
-                optimizer_state: CalibrationStageParameterOptimizerStateInput {
-                    backend_id: "return_components.fixture_search.v1".to_string(),
-                    random_seed: stage_seed_metadata.stage_seed,
-                    selection_policy:
-                        "validity_then_weighted_objective_then_lexicographic_tie_break.v1"
-                            .to_string(),
-                    penalty_policy: "hard_constraint_violation_additive_penalty.v1".to_string(),
-                    bounds_policy: "candidate_family_cartesian_product.v1".to_string(),
-                    solver_settings: solver_settings.clone(),
-                    input_candidate_count: 12,
-                    valid_candidate_count: 9,
-                    selected_candidate_raw_objective: 1.25,
-                    selected_candidate_penalized_objective: 1.25,
-                },
-                selected_candidate_id: "return_candidate_balanced".to_string(),
-                fitted_parameters,
-                candidate_generation_policy:
-                    "return_components.candidate_generation.layered_family_search.v1".to_string(),
-                objective_weighting_policy:
-                    "return_components.objective_weighting.weighted_metric_sum.v1".to_string(),
-                objective_metric_bucket_policy:
-                    "return_components.objective_metrics.bucketed_fit_quality.v1".to_string(),
-                activity_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                activity_selected_hawkes_candidate_id: Some(
-                    "candidate_stable_low_loss".to_string(),
-                ),
-                activity_artifact_reference: None,
+        ReturnComponentsStageParameterArtifactInput {
+            metadata: CalibrationStageParameterBuildMetadata {
+                stage_output_schema_version:
+                    CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                run_global_seed: stage_seed_metadata.run_global_seed,
+                stage_seed: stage_seed_metadata.stage_seed,
+                stage_seed_source: stage_seed_metadata.stage_seed_source,
+                stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY.to_string(),
+                solver_settings: solver_settings.clone(),
             },
-        )),
+            optimizer_state: CalibrationStageParameterOptimizerStateInput {
+                backend_id: "return_components.fixture_search.v1".to_string(),
+                random_seed: stage_seed_metadata.stage_seed,
+                selection_policy:
+                    "validity_then_weighted_objective_then_lexicographic_tie_break.v1".to_string(),
+                penalty_policy: "hard_constraint_violation_additive_penalty.v1".to_string(),
+                bounds_policy: "candidate_family_cartesian_product.v1".to_string(),
+                solver_settings: solver_settings.clone(),
+                input_candidate_count: 12,
+                valid_candidate_count: 9,
+                selected_candidate_raw_objective: 1.25,
+                selected_candidate_penalized_objective: 1.25,
+            },
+            selected_candidate_id: "return_candidate_balanced".to_string(),
+            fitted_parameters,
+            candidate_generation_policy:
+                "return_components.candidate_generation.layered_family_search.v1".to_string(),
+            objective_weighting_policy:
+                "return_components.objective_weighting.weighted_metric_sum.v1".to_string(),
+            objective_metric_bucket_policy:
+                "return_components.objective_metrics.bucketed_fit_quality.v1".to_string(),
+            activity_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
+            activity_selected_hawkes_candidate_id: Some("candidate_stable_low_loss".to_string()),
+            activity_artifact_reference: None,
+        },
     )
     .expect("return-components stage parameter artifact should build")
 }

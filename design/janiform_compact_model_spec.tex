@@ -18,6 +18,9 @@
         L^-_{A_{\mathrm{return},t}^-}
         + M_t + G_t.
     \]
+    The return clocks \(A_{\mathrm{return},t}^\pm\) are continuous activity
+    exposures built from baseline event opportunity, Hawkes excitation, and
+    long-variance scaling.
 
     \section*{2. Observed-State Mean Reversion Layer}
     Let \(\Sigma_k\) denote the structural Janiform boundary state on interval \(k\), and let
@@ -111,8 +114,8 @@
         \{\mathrm{intraday},\mathrm{weekly},\mathrm{annual}\}.
     \]
     For each axis \(a\in\mathcal A\), let \(\phi_a(t)\in[0,1)\) be the
-    exchange-local phase and \(K_a\) the harmonic order. The source
-    deterministic clock is
+    exchange-local phase and \(K_a\) the harmonic order.
+    The source deterministic clock is
     \[
         s_\star(t)=\exp(\ell(t)),
     \]
@@ -148,7 +151,7 @@
     \[
         n_{\mathcal K}
         =
-        \frac{\sum_jE_j^s}{\sum_jE_j^O},
+        \frac{\sum_j E_j^s}{\sum_j E_j^O},
     \]
     and the stored interval factor is
     \[
@@ -157,8 +160,9 @@
         \frac{E_k^s}{\Delta_k n_{\mathcal K}}.
     \]
     If the requested range has no open exposure, all materialized
-    seasonality factors are zero. The runtime baseline opportunity on interval
-    \(I_k\) is therefore \(\bar\lambda s_k\Delta_k\).
+    seasonality factors are zero.
+    The runtime baseline opportunity on interval \(I_k\) is therefore
+    \(\bar\lambda s_k\Delta_k\).
 
     Let news arrivals be a superposition
     \[
@@ -196,11 +200,12 @@
         \right).
     \]
     Any deterministic surprise-news calendar profile is upstream of
-    \(m_k^{\mathrm{surprise}}\). The runtime contract consumes the
-    non-negative materialized interval rates
+    \(m_k^{\mathrm{surprise}}\).
+    The runtime contract consumes the non-negative materialized interval rates
     \(\nu_k^{\mathrm{known}}\) and \(\nu_k^{\mathrm{surprise}}\), with
     \(\nu_k^{\mathrm{news}}=\nu_k^{\mathrm{known}}+\nu_k^{\mathrm{surprise}}\).
-    Arrivals are allowed in both open and closed windows, while direct gap increments remain closed-only in \(G_t\).
+    Arrivals are allowed in both open and closed windows, while direct gap
+    increments remain closed-only in \(G_t\).
     Trade seasonality \(s_\star(t)\), or its interval factor \(s_k\), modulates
     the baseline trade-arrival intensity only and does not modulate news
     arrival intensity.
@@ -385,6 +390,8 @@
     Hawkes excitation controls short- and medium-horizon stochastic volatility through
     realized endogenous activity and through event feedback into \(Z_t\).
     Unequal buy/sell excitation return-clock exposure controls skew.
+    The event-counting processes \(N_t^\pm\) are the market-event counts that
+    drive Hawkes excitation, long-variance jumps, and activity-premium pricing counts.
     The simulated trading-time increment is
     \[
         X_{\mathrm{trading}}
@@ -536,10 +543,8 @@
     Scheduled timestamps are applied at their persisted event times, and \(\nu_k^{\mathrm{known}}\)
     is the equivalent interval-rate representation used by the affine transform.
     The surprise-news term remains compound Poisson.
-    Setting \(u_\pm^B=u_\pm^E\) recovers the total integrated-activity query.
-    Pricing and sufficient-statistics paths can therefore request either total
-    activity or separate baseline and excitation loadings from the same affine
-    oracle.
+    Pricing and sufficient-statistics paths request total baseline and
+    excitation activity exposure from the same affine oracle.
 
     The domain condition is
     \[
@@ -629,8 +634,11 @@
     Seeded tick simulation, coarse simulation, sufficient-statistics sampling,
     and affine pricing use the same decomposition
     \[
-        (B_Z^+,E^+,B_Z^-,E^-,N^+,N^-,Z_T).
+        (B_Z^+,E^+,B_Z^-,E^-,
+        N^+,N^-,Z_T).
     \]
+    \(N^\pm\) are total side event counts, while the activity terms are total
+    return-clock exposures.
     Direct coarse generation and aggregation of seeded ticks are therefore two
     views of the same transition law, not independent approximations with
     different return-clock definitions.

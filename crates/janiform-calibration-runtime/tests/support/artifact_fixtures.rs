@@ -3,23 +3,25 @@
 use janiform_calibration_artifacts::{
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationLossAdmissibility,
     CalibrationObjectivePolicy, CalibrationRunContract, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
-    CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
-    CalibrationStageParameterOptimizerStateInput, HawkesStageFittedParameters,
-    HawkesStageParameterArtifactInput, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    JointRefinementStageParameterArtifactInput, JointRefinementStageRestartDiagnostics,
-    JointRefinementStageRuntimeProfile, LongVarianceStageDiagnostics,
-    LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
-    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
-    MeanReversionStageParameterArtifactInput, NewsShocksStageDiagnostics,
-    NewsShocksStageParameterArtifactInput, ReturnBackfitStageDiagnostics,
-    ReturnBackfitStageParameterArtifactInput, ReturnBackfitStageVarianceBudgetDiagnostic,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    SeasonalityStageParameterArtifactInput, SurpriseNewsDeterministicIntensityProfile,
-    TickGridObservationModel, build_calibration_stage_parameter_artifact, calibration_stage_token,
+    CalibrationStageParameterBuildMetadata, CalibrationStageParameterOptimizerStateInput,
+    HawkesStageFittedParameters, HawkesStageParameterArtifactInput,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptimizerDiagnostics, JointRefinementStageParameterArtifactInput,
+    JointRefinementStageRestartDiagnostics, JointRefinementStageRuntimeProfile,
+    LongVarianceStageDiagnostics, LongVarianceStageParameterArtifactInput,
+    MeanReversionStageCalibrationGrid, MeanReversionStageDiagnostics,
+    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
+    NewsShocksStageDiagnostics, NewsShocksStageParameterArtifactInput,
+    ObservationModelsStageDiagnostics, ObservationModelsStageParameterArtifactInput,
+    ReturnBackfitStageDiagnostics, ReturnBackfitStageParameterArtifactInput,
+    ReturnBackfitStageVarianceBudgetDiagnostic, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageParameterArtifactInput, SeasonalityStageParameterArtifactInput,
+    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
+    build_calibration_stage_parameter_artifact, calibration_stage_token,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::KnownNewsArrivalConfiguration;
@@ -50,93 +52,79 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
     vec![
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::Seasonality(Box::new(
-                regression_seasonality_stage_parameter_input(run_contract),
-            )),
+            regression_seasonality_stage_parameter_input(run_contract),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::Hawkes(Box::new(
-                regression_hawkes_stage_parameter_input(
-                    run_contract,
-                    hawkes_fitted_parameters.clone(),
-                ),
-            )),
+            regression_hawkes_stage_parameter_input(run_contract, hawkes_fitted_parameters.clone()),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::ReturnComponents(Box::new(
-                regression_return_components_stage_parameter_input(
-                    run_contract,
-                    return_components_fitted_parameters.clone(),
-                ),
-            )),
+            regression_observation_models_stage_parameter_input(run_contract),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::LongVariance(Box::new(
-                regression_long_variance_stage_parameter_input(
-                    run_contract,
-                    return_components_fitted_parameters.long_variance_parameters,
-                ),
-            )),
+            regression_return_components_stage_parameter_input(
+                run_contract,
+                return_components_fitted_parameters.clone(),
+            ),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::NewsShocks(Box::new(
-                regression_news_shocks_stage_parameter_input(
-                    run_contract,
-                    &return_components_fitted_parameters,
-                ),
-            )),
+            regression_long_variance_stage_parameter_input(
+                run_contract,
+                return_components_fitted_parameters.long_variance_parameters,
+            ),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::ReturnBackfit(Box::new(
-                regression_return_backfit_stage_parameter_input(
-                    run_contract,
-                    return_components_fitted_parameters.clone(),
-                ),
-            )),
+            regression_news_shocks_stage_parameter_input(
+                run_contract,
+                &return_components_fitted_parameters,
+            ),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::MeanReversion(Box::new(
-                regression_mean_reversion_stage_parameter_input(
-                    run_contract,
-                    mean_reversion_fitted_parameters.clone(),
-                ),
-            )),
+            regression_return_backfit_stage_parameter_input(
+                run_contract,
+                return_components_fitted_parameters.clone(),
+            ),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::JointRefinement(Box::new(
-                regression_joint_refinement_stage_parameter_input(
-                    run_contract,
-                    CalibrationStage::JointRefinement,
-                    hawkes_fitted_parameters.clone(),
-                    return_components_fitted_parameters.clone(),
-                ),
-            )),
+            regression_mean_reversion_stage_parameter_input(
+                run_contract,
+                mean_reversion_fitted_parameters.clone(),
+            ),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
-            CalibrationStageParameterArtifactInput::Finalization(Box::new(
-                regression_joint_refinement_stage_parameter_input(
-                    run_contract,
-                    CalibrationStage::Finalization,
-                    hawkes_fitted_parameters,
-                    return_components_fitted_parameters,
-                ),
-            )),
+            regression_joint_refinement_stage_parameter_input(
+                run_contract,
+                CalibrationStage::JointRefinement,
+                hawkes_fitted_parameters.clone(),
+                return_components_fitted_parameters.clone(),
+            ),
+        ),
+        build_regression_stage_parameter_artifact(
+            run_contract,
+            regression_joint_refinement_stage_parameter_input(
+                run_contract,
+                CalibrationStage::Finalization,
+                hawkes_fitted_parameters,
+                return_components_fitted_parameters,
+            ),
         ),
     ]
 }
 
-fn build_regression_stage_parameter_artifact(
+fn build_regression_stage_parameter_artifact<I>(
     run_contract: &CalibrationRunContract,
-    stage_input: CalibrationStageParameterArtifactInput,
-) -> CalibrationStageParameterArtifact {
+    stage_input: I,
+) -> CalibrationStageParameterArtifact
+where
+    I: janiform_calibration_artifacts::IntoCalibrationStageParameterArtifactInput,
+{
     build_calibration_stage_parameter_artifact(run_contract, stage_input)
         .expect("regression stage artifact should build")
 }
@@ -186,6 +174,27 @@ fn regression_hawkes_stage_parameter_input(
     }
 }
 
+fn regression_observation_models_stage_parameter_input(
+    run_contract: &CalibrationRunContract,
+) -> ObservationModelsStageParameterArtifactInput {
+    ObservationModelsStageParameterArtifactInput {
+        metadata: regression_stage_build_metadata(
+            run_contract,
+            CalibrationStage::ObservationModels,
+            CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
+        ),
+        timestamp_batching_observation_model:
+            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            ),
+        diagnostics: ObservationModelsStageDiagnostics {
+            estimation_policy: "artifact_regression_fixture.v1".to_string(),
+            observed_open_session_return_count: 0,
+            same_session_timestamp_transition_count: 0,
+            same_timestamp_continuation_count: 0,
+        },
+    }
+}
+
 fn regression_return_components_stage_parameter_input(
     run_contract: &CalibrationRunContract,
     fitted_parameters: ReturnComponentsStageFittedParameters,
@@ -208,7 +217,7 @@ fn regression_return_components_stage_parameter_input(
         activity_input_transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
         activity_selected_hawkes_candidate_id: None,
         activity_artifact_reference: Some(format!(
-            "artifact://hawkes/{}",
+            "artifact://observation_models/{}",
             run_contract.run_spec.run_id
         )),
     }
@@ -391,6 +400,7 @@ fn regression_joint_refinement_stage_parameter_input(
     return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
 ) -> JointRefinementStageParameterArtifactInput {
     JointRefinementStageParameterArtifactInput {
+        stage,
         metadata: regression_stage_build_metadata(
             run_contract,
             stage,

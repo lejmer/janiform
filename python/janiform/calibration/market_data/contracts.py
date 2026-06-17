@@ -213,7 +213,7 @@ class CalibrationMeanReversionConfiguration(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
+class CalibrationMarketDataSeasonalityCalibrationSettings(ContractModel):
     session_filter: SessionFilter = SessionFilter.OPEN_ONLY
     sparse_hour_event_threshold: int = 1
     maximum_harmonic_orders: dict[str, int] = field(default_factory=dict)
@@ -239,11 +239,11 @@ class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> CalibrationMarketDataSeasonalityPreprocessingSettings:
+    ) -> CalibrationMarketDataSeasonalityCalibrationSettings:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
-        return CalibrationMarketDataSeasonalityPreprocessingSettings(
+        return CalibrationMarketDataSeasonalityCalibrationSettings(
             session_filter=SessionFilter(
                 raw_payload.get(
                     "session_filter",
@@ -317,7 +317,7 @@ def _validate_maximum_harmonic_orders(
 
 
 @dataclass(frozen=True, slots=True)
-class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
+class CalibrationMarketDataReturnComponentsCalibrationSettings(ContractModel):
     intraday_jump_threshold_multiplier: float = 4.0
     close_open_gap_tolerance_multiplier: float = 3.0
 
@@ -345,7 +345,7 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> CalibrationMarketDataReturnComponentsPreprocessingSettings:
+    ) -> CalibrationMarketDataReturnComponentsCalibrationSettings:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
@@ -359,7 +359,7 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
             error_factory=calibration_error,
         )
 
-        return CalibrationMarketDataReturnComponentsPreprocessingSettings(
+        return CalibrationMarketDataReturnComponentsCalibrationSettings(
             intraday_jump_threshold_multiplier=require_positive_finite_number(
                 raw_payload,
                 "intraday_jump_threshold_multiplier",
@@ -376,22 +376,22 @@ class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class CalibrationMarketDataPreprocessingSettings(ContractModel):
-    seasonality: Optional[CalibrationMarketDataSeasonalityPreprocessingSettings] = None
-    return_components: Optional[CalibrationMarketDataReturnComponentsPreprocessingSettings] = None
+class CalibrationMarketDataCalibrationSettings(ContractModel):
+    seasonality: Optional[CalibrationMarketDataSeasonalityCalibrationSettings] = None
+    return_components: Optional[CalibrationMarketDataReturnComponentsCalibrationSettings] = None
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> CalibrationMarketDataPreprocessingSettings:
+    ) -> CalibrationMarketDataCalibrationSettings:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
-        return CalibrationMarketDataPreprocessingSettings(
+        return CalibrationMarketDataCalibrationSettings(
             seasonality=(
-                CalibrationMarketDataSeasonalityPreprocessingSettings.from_mapping(
+                CalibrationMarketDataSeasonalityCalibrationSettings.from_mapping(
                     require_mapping(
                         raw_payload,
                         "seasonality",
@@ -404,7 +404,7 @@ class CalibrationMarketDataPreprocessingSettings(ContractModel):
                 else None
             ),
             return_components=(
-                CalibrationMarketDataReturnComponentsPreprocessingSettings.from_mapping(
+                CalibrationMarketDataReturnComponentsCalibrationSettings.from_mapping(
                     require_mapping(
                         raw_payload,
                         "return_components",
@@ -1153,11 +1153,11 @@ __all__ = [
     "CalibrationKnownNewsColumnMapping",
     "CalibrationKnownNewsInput",
     "CalibrationMarketDataColumnMapping",
-    "CalibrationMarketDataPreprocessingSettings",
+    "CalibrationMarketDataCalibrationSettings",
     "CalibrationMarketDataNormalizationPolicy",
     "CalibrationMarketDataOutputPreferences",
-    "CalibrationMarketDataReturnComponentsPreprocessingSettings",
-    "CalibrationMarketDataSeasonalityPreprocessingSettings",
+    "CalibrationMarketDataReturnComponentsCalibrationSettings",
+    "CalibrationMarketDataSeasonalityCalibrationSettings",
     "CalibrationMarketDataWorkflowScope",
     "CalibrationMeanReversionConfiguration",
     "CalibrationOptionQuoteInputPolicy",

@@ -479,6 +479,7 @@ fn apply_stage_reports_to_model_parameters(
                     stage_parameters.hawkes = Some(hawkes_parameters(payload)?);
                 }
             }
+            CalibrationStagedRunStageReport::ObservationModels(_) => {}
             CalibrationStagedRunStageReport::ReturnComponents(report) => {
                 if let Some(payload) = &report.fitted_stage_payload {
                     stage_parameters.return_components =
@@ -541,6 +542,7 @@ fn apply_stage_parameter_artifact_to_model_parameters(
         CalibrationStageParameterPayload::Hawkes(payload) => {
             stage_parameters.hawkes = Some(hawkes_parameters_from_artifact(payload)?);
         }
+        CalibrationStageParameterPayload::ObservationModels(_) => {}
         CalibrationStageParameterPayload::ReturnComponents(payload) => {
             stage_parameters.return_components =
                 Some(return_components_parameters_from_artifact(payload)?);
@@ -832,6 +834,9 @@ fn stage_statuses(report: &CalibrationStagedRunReport) -> Vec<Value> {
             CalibrationStagedRunStageReport::Hawkes(report) => {
                 json!({"stage": "hawkes", "status": report.status})
             }
+            CalibrationStagedRunStageReport::ObservationModels(report) => {
+                json!({"stage": "observation_models", "status": report.status})
+            }
             CalibrationStagedRunStageReport::ReturnComponents(report) => {
                 json!({"stage": "return_components", "status": report.status})
             }
@@ -941,6 +946,7 @@ fn selected_candidate_ids(report: &CalibrationStagedRunReport) -> Value {
                 }
             }
             CalibrationStagedRunStageReport::Seasonality(_)
+            | CalibrationStagedRunStageReport::ObservationModels(_)
             | CalibrationStagedRunStageReport::MeanReversion(_) => {}
         }
     }

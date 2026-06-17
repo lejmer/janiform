@@ -4,13 +4,13 @@ use janiform_calibration_artifacts::CalibrationExecutionMode;
 use support::shared::{
     CalibrationRunContract, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageGraph, CalibrationStageHandoffTransport,
-    CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
-    CalibrationStageSolverSettings, MeanReversionAnchorModel, MeanReversionBoundaryState,
-    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
-    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
-    MeanReversionStageCandidateSeriesDiagnostics, MeanReversionStageDiagnostics,
-    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
-    MeanReversionStageSeriesSummary, build_calibration_stage_parameter_artifact, build_data_inputs,
+    CalibrationStageParameterBuildMetadata, CalibrationStageSolverSettings,
+    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, MeanReversionStageCalibrationGrid,
+    MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
+    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
+    MeanReversionStageParameterArtifactInput, MeanReversionStageSeriesSummary,
+    build_calibration_stage_parameter_artifact, build_data_inputs,
     build_endogenous_mean_reversion_parameters, build_solver_settings,
     load_calibration_stage_parameter_artifact_from_disk,
     persist_calibration_stage_parameter_artifact_to_run_directory,
@@ -276,31 +276,25 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
 
     let artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
-        CalibrationStageParameterArtifactInput::MeanReversion(
-            Box::new(
-            MeanReversionStageParameterArtifactInput {
-                metadata: CalibrationStageParameterBuildMetadata {
-                    stage_output_schema_version:
-                        janiform_calibration_artifacts::CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION
-                            .to_string(),
-                    run_global_seed: stage_seed_metadata.run_global_seed,
-                    stage_seed: stage_seed_metadata.stage_seed,
-                    stage_seed_source: stage_seed_metadata.stage_seed_source,
-                    stage_seed_derivation_policy:
-                        janiform_calibration_artifacts::CALIBRATION_STAGE_SEED_DERIVATION_POLICY
-                            .to_string(),
-                    solver_settings,
-                },
-                fitted_parameters: fitted_parameters.clone(),
-                diagnostics,
-                return_components_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                return_components_selected_candidate_id: Some(
-                    "return_candidate_balanced".to_string(),
-                ),
-                return_components_artifact_reference: None,
+        MeanReversionStageParameterArtifactInput {
+            metadata: CalibrationStageParameterBuildMetadata {
+                stage_output_schema_version:
+                    janiform_calibration_artifacts::CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION
+                        .to_string(),
+                run_global_seed: stage_seed_metadata.run_global_seed,
+                stage_seed: stage_seed_metadata.stage_seed,
+                stage_seed_source: stage_seed_metadata.stage_seed_source,
+                stage_seed_derivation_policy:
+                    janiform_calibration_artifacts::CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                        .to_string(),
+                solver_settings,
             },
-            ),
-        ),
+            fitted_parameters: fitted_parameters.clone(),
+            diagnostics,
+            return_components_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
+            return_components_selected_candidate_id: Some("return_candidate_balanced".to_string()),
+            return_components_artifact_reference: None,
+        },
     )
     .expect("mean-reversion stage parameter artifact should build");
 

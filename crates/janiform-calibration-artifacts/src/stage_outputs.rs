@@ -41,6 +41,14 @@ pub struct TickGridObservationModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObservationModelsStageDiagnostics {
+    pub estimation_policy: String,
+    pub observed_open_session_return_count: usize,
+    pub same_session_timestamp_transition_count: u64,
+    pub same_timestamp_continuation_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,

@@ -1,4 +1,4 @@
-use super::contracts::MarketDataTranslationPreprocessingError;
+use super::contracts::MarketDataTranslationCalibrationError;
 use super::known_news_samples::activity_lift;
 use super::session_windows::{build_session_window_utc, session_windows_for_local_date};
 use super::shared::{
@@ -15,7 +15,7 @@ pub(super) fn derive_close_open_boundary_observations(
     open_price_tick_timestamps: &[i64],
 ) -> Result<
     Vec<CalibrationReturnComponentsObservedCloseOpenBoundaryObservation>,
-    MarketDataTranslationPreprocessingError,
+    MarketDataTranslationCalibrationError,
 > {
     let mut observations_by_boundary: BTreeMap<
         (i64, i64),
@@ -73,21 +73,21 @@ pub(super) fn first_open_boundary_after_close(
     exchange_code: &str,
     close_timestamp_utc_nanos: i64,
     upper_bound_timestamp_utc_nanos: i64,
-) -> Result<Option<i64>, MarketDataTranslationPreprocessingError> {
+) -> Result<Option<i64>, MarketDataTranslationCalibrationError> {
     if upper_bound_timestamp_utc_nanos <= close_timestamp_utc_nanos {
         return Ok(None);
     }
 
     let search_start_timestamp = datetime_from_nanos(
         close_timestamp_utc_nanos.saturating_add(1),
-        MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+        MarketDataTranslationCalibrationError::InvalidSessionBoundary {
             exchange_code: exchange_code.to_string(),
             timestamp_utc_nanos: close_timestamp_utc_nanos.saturating_add(1),
         },
     )?;
     let search_end_timestamp = datetime_from_nanos(
         upper_bound_timestamp_utc_nanos,
-        MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+        MarketDataTranslationCalibrationError::InvalidSessionBoundary {
             exchange_code: exchange_code.to_string(),
             timestamp_utc_nanos: upper_bound_timestamp_utc_nanos,
         },
@@ -106,7 +106,7 @@ pub(super) fn first_open_boundary_after_close(
                 current_local_date.day as u32,
             )
             .ok_or_else(
-                || MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+                || MarketDataTranslationCalibrationError::InvalidSessionBoundary {
                     exchange_code: exchange_code.to_string(),
                     timestamp_utc_nanos: close_timestamp_utc_nanos,
                 },
@@ -144,12 +144,12 @@ pub(super) fn first_open_boundary_after_close(
             current_local_date.day as u32,
         )
         .and_then(|date| date.succ_opt())
-        .ok_or_else(|| {
-            MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+        .ok_or_else(
+            || MarketDataTranslationCalibrationError::InvalidSessionBoundary {
                 exchange_code: exchange_code.to_string(),
                 timestamp_utc_nanos: upper_bound_timestamp_utc_nanos,
-            }
-        })?;
+            },
+        )?;
 
         current_local_date = CalendarDate {
             year: next_date.year(),

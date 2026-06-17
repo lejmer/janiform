@@ -23,7 +23,9 @@ use janiform_model_kernels::news::{
     SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::return_clock::{
+    ReturnClockExposureParameters, SideSourceActivityDecomposition,
+};
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::constants::{
@@ -270,9 +272,18 @@ pub struct ReturnComponentsObservedOpenSessionReturn {
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
     pub sell_share_proxy: f64,
+    pub source_activity: SideSourceActivityDecomposition,
 }
 
 impl ReturnComponentsObservedOpenSessionReturn {
+    pub fn with_source_activity(
+        mut self,
+        source_activity: SideSourceActivityDecomposition,
+    ) -> Self {
+        self.source_activity = source_activity;
+        self
+    }
+
     pub(super) fn validate(
         self,
         source_window: ReturnComponentsStageSignalSourceWindow,
@@ -324,6 +335,13 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 },
             );
         }
+
+        self.source_activity.validate().map_err(|source| {
+            ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionSourceActivity {
+                return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+                error_message: source.to_string(),
+            }
+        })?;
 
         Ok(())
     }
@@ -676,6 +694,7 @@ impl ReturnComponentsStageCandidateGenerationInput {
         }
 
         self.close_open_gap_detection_policy.validate()?;
+
         if !self.open_session_sell_share_proxy.is_finite()
             || !(0.0..=1.0).contains(&self.open_session_sell_share_proxy)
         {
@@ -699,7 +718,9 @@ impl ReturnComponentsStageCandidateGenerationInput {
                     error_message: source.to_string(),
                 }
             })?;
+
         validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
+
         self.timestamp_batching_observation_model
             .validate()
             .map_err(|source| {
@@ -707,6 +728,7 @@ impl ReturnComponentsStageCandidateGenerationInput {
                     error_message: source.to_string(),
                 }
             })?;
+
         self.objective_metric_weights.validate()?;
 
         Ok(())
@@ -791,6 +813,10 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     InvalidObservedOpenSessionSellShareProxy {
         return_timestamp_utc_nanos: i64,
         value: f64,
+    },
+    InvalidObservedOpenSessionSourceActivity {
+        return_timestamp_utc_nanos: i64,
+        error_message: String,
     },
     IntradayJumpOutsideSourceWindow {
         jump_timestamp_utc_nanos: i64,
@@ -1016,6 +1042,13 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "observed open-session return sell-share proxy at {return_timestamp_utc_nanos} must be finite and within [0, 1], found {value}"
+            ),
+            Self::InvalidObservedOpenSessionSourceActivity {
+                return_timestamp_utc_nanos,
+                error_message,
+            } => write!(
+                formatter,
+                "observed open-session return source activity at {return_timestamp_utc_nanos} is invalid: {error_message}"
             ),
             Self::IntradayJumpOutsideSourceWindow {
                 jump_timestamp_utc_nanos,
@@ -1563,9 +1596,11 @@ impl ReturnComponentsStageDiagnosticPolicy {
         if self.fit_policy.trim().is_empty() {
             return Err("fit_policy must be non-empty".to_string());
         }
+
         if self.insufficient_evidence_state.trim().is_empty() {
             return Err("insufficient_evidence_state must be non-empty".to_string());
         }
+
         if self.identified_component_state.trim().is_empty() {
             return Err("identified_component_state must be non-empty".to_string());
         }
@@ -1589,9 +1624,11 @@ impl ReturnComponentsStageObjectiveScoringPolicy {
         if self.fit_policy.trim().is_empty() {
             return Err("fit_policy must be non-empty".to_string());
         }
+
         if self.price_range_excess_transform.trim().is_empty() {
             return Err("price_range_excess_transform must be non-empty".to_string());
         }
+
         if self.dominant_scale_driver_order.is_empty() {
             return Err("dominant_scale_driver_order must be non-empty".to_string());
         }
@@ -1701,9 +1738,11 @@ impl ReturnComponentsStageQuantileBinningPolicy {
         if self.fit_policy.trim().is_empty() {
             return Err("fit_policy must be non-empty".to_string());
         }
+
         if self.jump_abs_return_bin_edges.is_empty() {
             return Err("jump_abs_return_bin_edges must be non-empty".to_string());
         }
+
         if self.gap_abs_return_bin_edges.is_empty() {
             return Err("gap_abs_return_bin_edges must be non-empty".to_string());
         }
@@ -2208,6 +2247,7 @@ impl ReturnComponentsStageCandidateInput {
         if self.candidate_id.trim().is_empty() {
             return Err(ReturnComponentsStageCandidateInputError::MissingCandidateId);
         }
+
         if self.objective_terms.is_empty() {
             return Err(ReturnComponentsStageCandidateInputError::MissingObjectiveTerms);
         }

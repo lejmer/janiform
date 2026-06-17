@@ -12,13 +12,13 @@ from janiform.calibration.market_data import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
+    CalibrationMarketDataCalibrationSettings,
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataPreprocessingSettings,
-    CalibrationMarketDataReturnComponentsPreprocessingSettings,
-    CalibrationMarketDataSeasonalityPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsCalibrationSettings,
+    CalibrationMarketDataSeasonalityCalibrationSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
@@ -317,7 +317,7 @@ def test_market_data_calibration_request_roundtrip_preserves_optimizer_settings_
     assert deserialized_request == request
 
 
-def test_market_data_calibration_request_roundtrip_preserves_preprocessing_settings() -> None:
+def test_market_data_calibration_request_roundtrip_preserves_calibration_settings() -> None:
     base_request = _valid_market_data_request_model()
     request = MarketDataCalibrationRequest(
         schema_version=base_request.schema_version,
@@ -328,8 +328,8 @@ def test_market_data_calibration_request_roundtrip_preserves_preprocessing_setti
         workflow_scope=base_request.workflow_scope,
         normalization_policy=base_request.normalization_policy,
         output_preferences=base_request.output_preferences,
-        preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
-            seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+        calibration_settings=CalibrationMarketDataCalibrationSettings(
+            seasonality=CalibrationMarketDataSeasonalityCalibrationSettings(
                 session_filter=SessionFilter.ALL,
                 sparse_hour_event_threshold=2,
                 maximum_harmonic_orders={
@@ -338,7 +338,7 @@ def test_market_data_calibration_request_roundtrip_preserves_preprocessing_setti
                     "weekly": 3,
                 },
             ),
-            return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+            return_components=CalibrationMarketDataReturnComponentsCalibrationSettings(
                 intraday_jump_threshold_multiplier=6.0,
                 close_open_gap_tolerance_multiplier=2.0,
             ),

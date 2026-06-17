@@ -8,7 +8,7 @@ use janiform_market_time::business_time_clock::FourierBusinessTimeClockAxis;
 
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-    CalibrationMeanReversionStageObservation,
+    CalibrationMeanReversionStageObservation, CalibrationObservationModelsStageExecutionInput,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationTimestampEventSessionFilter,
 };
@@ -18,7 +18,7 @@ const DEFAULT_RETURN_COMPONENTS_CLOSE_OPEN_GAP_TOLERANCE_MULTIPLIER: f64 = 3.0;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataTranslationPreprocessingRequest {
+pub struct MarketDataTranslationCalibrationRequest {
     pub exchange_code: String,
     pub trade_events_data_reference: String,
     pub tick_records: Vec<MarketDataTranslationTickRecord>,
@@ -33,21 +33,21 @@ pub struct MarketDataTranslationPreprocessingRequest {
     pub require_hawkes: bool,
     pub require_return_components: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
+    pub calibration_settings: Option<MarketDataTranslationCalibrationSettings>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataTranslationPreprocessingSettings {
+pub struct MarketDataTranslationCalibrationSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seasonality: Option<MarketDataTranslationSeasonalityPreprocessingSettings>,
+    pub seasonality: Option<MarketDataTranslationSeasonalityCalibrationSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub return_components: Option<MarketDataTranslationReturnComponentsPreprocessingSettings>,
+    pub return_components: Option<MarketDataTranslationReturnComponentsCalibrationSettings>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
+pub struct MarketDataTranslationSeasonalityCalibrationSettings {
     pub session_filter: CalibrationTimestampEventSessionFilter,
     pub sparse_hour_event_threshold: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -56,14 +56,14 @@ pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataTranslationReturnComponentsPreprocessingSettings {
+pub struct MarketDataTranslationReturnComponentsCalibrationSettings {
     pub intraday_jump_threshold_multiplier: f64,
     pub close_open_gap_tolerance_multiplier: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tick_size: Option<f64>,
 }
 
-impl Default for MarketDataTranslationReturnComponentsPreprocessingSettings {
+impl Default for MarketDataTranslationReturnComponentsCalibrationSettings {
     fn default() -> Self {
         Self {
             intraday_jump_threshold_multiplier:
@@ -75,30 +75,30 @@ impl Default for MarketDataTranslationReturnComponentsPreprocessingSettings {
     }
 }
 
-/// Return preprocessing settings with `tick_size` applied to return components when absent.
+/// Return calibration settings with `tick_size` applied to return components when absent.
 ///
 /// The caller owns tick-size precedence and validation. This helper only merges
-/// a selected fallback into an owned preprocessing payload without replacing an
+/// a selected fallback into an owned calibration payload without replacing an
 /// already supplied return-components tick size.
-pub fn preprocessing_settings_with_return_components_tick_size(
-    preprocessing_settings: Option<&MarketDataTranslationPreprocessingSettings>,
+pub fn calibration_settings_with_return_components_tick_size(
+    calibration_settings: Option<&MarketDataTranslationCalibrationSettings>,
     tick_size: Option<f64>,
-) -> Option<MarketDataTranslationPreprocessingSettings> {
+) -> Option<MarketDataTranslationCalibrationSettings> {
     let Some(tick_size) = tick_size else {
-        return preprocessing_settings.cloned();
+        return calibration_settings.cloned();
     };
 
     let mut effective_settings =
-        preprocessing_settings
+        calibration_settings
             .cloned()
-            .unwrap_or(MarketDataTranslationPreprocessingSettings {
+            .unwrap_or(MarketDataTranslationCalibrationSettings {
                 seasonality: None,
                 return_components: None,
             });
 
     let return_components = effective_settings
         .return_components
-        .get_or_insert_with(MarketDataTranslationReturnComponentsPreprocessingSettings::default);
+        .get_or_insert_with(MarketDataTranslationReturnComponentsCalibrationSettings::default);
 
     if return_components.tick_size.is_none() {
         return_components.tick_size = Some(tick_size);
@@ -128,12 +128,14 @@ pub struct MarketDataTranslationKnownNewsRecord {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarketDataTranslationPreprocessingOutput {
+pub struct MarketDataTranslationCalibrationOutput {
     pub seasonality_stage_input: CalibrationSeasonalityStageExecutionInput,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_candidate_inputs: Option<Vec<CalibrationHawkesStageCandidateInput>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_event_side_codes: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_models_stage_input: Option<CalibrationObservationModelsStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
@@ -152,7 +154,7 @@ pub struct MarketDataTranslationPreprocessingOutput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MarketDataTranslationPreprocessingError {
+pub enum MarketDataTranslationCalibrationError {
     MissingExchangeId {
         exchange_code: String,
     },
@@ -181,9 +183,6 @@ pub enum MarketDataTranslationPreprocessingError {
     InvalidTickGridReferencePrice {
         reference_price: Option<f64>,
     },
-    InvalidTimestampBatchingObservationModel {
-        error_message: String,
-    },
     InvalidSessionBoundary {
         exchange_code: String,
         timestamp_utc_nanos: i64,
@@ -201,7 +200,7 @@ pub enum MarketDataTranslationPreprocessingError {
     },
 }
 
-impl Display for MarketDataTranslationPreprocessingError {
+impl Display for MarketDataTranslationCalibrationError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingExchangeId { exchange_code } => {
@@ -238,12 +237,12 @@ impl Display for MarketDataTranslationPreprocessingError {
             ),
             Self::HawkesRequiresResolvedTradeSigns { source_row_number } => write!(
                 formatter,
-                "hawkes preprocessing requires resolved trade signs for source_row_number `{source_row_number}`"
+                "hawkes input calibration requires resolved trade signs for source_row_number `{source_row_number}`"
             ),
             Self::HawkesRequiresDirectionalLabelDiagnostics => {
                 write!(
                     formatter,
-                    "hawkes preprocessing requires directional label diagnostics"
+                    "hawkes input calibration requires directional label diagnostics"
                 )
             }
             Self::MissingOpenSessionPriceObservations => write!(
@@ -252,11 +251,7 @@ impl Display for MarketDataTranslationPreprocessingError {
             ),
             Self::InvalidTickGridReferencePrice { reference_price } => write!(
                 formatter,
-                "tick-grid observation preprocessing requires a finite positive reference price, found `{reference_price:?}`"
-            ),
-            Self::InvalidTimestampBatchingObservationModel { error_message } => write!(
-                formatter,
-                "timestamp batching observation preprocessing produced an invalid model: {error_message}"
+                "tick-grid observation calibration requires a finite positive reference price, found `{reference_price:?}`"
             ),
             Self::InvalidSessionBoundary {
                 exchange_code,
@@ -286,4 +281,4 @@ impl Display for MarketDataTranslationPreprocessingError {
     }
 }
 
-impl Error for MarketDataTranslationPreprocessingError {}
+impl Error for MarketDataTranslationCalibrationError {}

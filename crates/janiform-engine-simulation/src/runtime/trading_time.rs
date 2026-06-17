@@ -4,7 +4,7 @@ use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_foundations::time::{elapsed_utc_nanos_to_hours, utc_datetime_from_nanos};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::return_clock::{
-    IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
+    EffectiveReturnClocks, IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
     compute_effective_return_clocks,
 };
 
@@ -29,8 +29,8 @@ struct OpenMarketElapsedTimeWeights {
 
 pub(crate) type IntervalOpenMarketSegments = Vec<(i64, i64)>;
 
-pub(crate) struct TransitionTradingTimeReturnInput<'a, R> {
-    pub(crate) driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TransitionReturnClockInput<'a> {
     pub(crate) state: HawkesExcitationState,
     pub(crate) lambda_bar: f64,
     pub(crate) beta: f64,
@@ -41,17 +41,12 @@ pub(crate) struct TransitionTradingTimeReturnInput<'a, R> {
     pub(crate) previous_timestamp_utc_nanos: i64,
     pub(crate) timestamp_utc_nanos: i64,
     pub(crate) interval_index: usize,
-    pub(crate) randomness_stream: R,
 }
 
-pub(crate) fn sample_transition_trading_time_return<R>(
-    input: TransitionTradingTimeReturnInput<'_, R>,
-) -> Result<TradingTimeReturnComponents, SeededTickSimulationRunError>
-where
-    R: SimulationRandomnessStream,
-{
-    let TransitionTradingTimeReturnInput {
-        driver_parameters,
+pub(crate) fn compute_transition_return_clocks(
+    input: TransitionReturnClockInput<'_>,
+) -> Result<EffectiveReturnClocks, SeededTickSimulationRunError> {
+    let TransitionReturnClockInput {
         state,
         lambda_bar,
         beta,
@@ -62,7 +57,6 @@ where
         previous_timestamp_utc_nanos,
         timestamp_utc_nanos,
         interval_index,
-        mut randomness_stream,
     } = input;
 
     let open_market_elapsed_time_weights = integrate_open_market_elapsed_time_weights(
@@ -112,29 +106,43 @@ where
         interval_index,
     )?;
 
-    let effective_return_clocks = compute_effective_return_clocks(
+    let buy_activity = IntegratedSideActivityDecomposition::new(
+        integrated_buy_activity.baseline_activity * baseline_long_variance_clock_scale,
+        integrated_buy_activity.endogenous_activity,
+    );
+
+    let sell_activity = IntegratedSideActivityDecomposition::new(
+        integrated_sell_activity.baseline_activity * baseline_long_variance_clock_scale,
+        integrated_sell_activity.endogenous_activity,
+    );
+
+    compute_effective_return_clocks(
         return_clock_exposure_parameters,
-        IntegratedSideActivityDecomposition::new(
-            integrated_buy_activity.baseline_activity * baseline_long_variance_clock_scale,
-            integrated_buy_activity.endogenous_activity,
-        ),
-        IntegratedSideActivityDecomposition::new(
-            integrated_sell_activity.baseline_activity * baseline_long_variance_clock_scale,
-            integrated_sell_activity.endogenous_activity,
-        ),
+        buy_activity,
+        sell_activity,
     )
     .map_err(
         |source| SeededTickSimulationRunError::EffectiveReturnClockBuildFailure {
             interval_index,
             source: Box::new(source),
         },
-    )?;
+    )
+}
 
+pub(crate) fn sample_trading_time_return_from_return_clocks<R>(
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    effective_return_clocks: EffectiveReturnClocks,
+    interval_index: usize,
+    randomness_stream: &mut R,
+) -> Result<TradingTimeReturnComponents, SeededTickSimulationRunError>
+where
+    R: SimulationRandomnessStream,
+{
     let trading_time_contributions = driver_parameters
         .sample_trading_time_return_increment(
             effective_return_clocks.buy_return_clock,
             effective_return_clocks.sell_return_clock,
-            &mut randomness_stream,
+            randomness_stream,
         )
         .map_err(
             |source| SeededTickSimulationRunError::TradingTimeSamplingFailure {
@@ -282,33 +290,10 @@ fn interval_open_market_segments_for_range(
         &end_timestamp_utc.with_timezone(&market_state_resolver.timezone),
     );
 
-    let mut current_date = NaiveDate::from_ymd_opt(
-        start_local_date.year,
-        start_local_date.month as u32,
-        start_local_date.day as u32,
-    )
-    .ok_or(
-        SeededTickSimulationRunError::CalendarSessionBoundaryResolutionFailed {
-            exchange_code: market_state_resolver.exchange_code.to_string(),
-            timezone_name: market_state_resolver.timezone.name().to_string(),
-            local_date: start_local_date.to_string(),
-            local_time: "00:00".to_string(),
-        },
-    )?;
+    let mut current_date =
+        naive_date_from_calendar_date(market_state_resolver, start_local_date, "00:00")?;
 
-    let last_date = NaiveDate::from_ymd_opt(
-        end_local_date.year,
-        end_local_date.month as u32,
-        end_local_date.day as u32,
-    )
-    .ok_or(
-        SeededTickSimulationRunError::CalendarSessionBoundaryResolutionFailed {
-            exchange_code: market_state_resolver.exchange_code.to_string(),
-            timezone_name: market_state_resolver.timezone.name().to_string(),
-            local_date: end_local_date.to_string(),
-            local_time: "00:00".to_string(),
-        },
-    )?;
+    let last_date = naive_date_from_calendar_date(market_state_resolver, end_local_date, "00:00")?;
 
     let mut open_market_segments = Vec::new();
 
@@ -386,6 +371,26 @@ fn session_boundary_timestamp_utc_nanos(
         )
 }
 
+fn naive_date_from_calendar_date(
+    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
+    local_date: CalendarDate,
+    local_time: &str,
+) -> Result<NaiveDate, SeededTickSimulationRunError> {
+    NaiveDate::from_ymd_opt(
+        local_date.year,
+        local_date.month as u32,
+        local_date.day as u32,
+    )
+    .ok_or_else(
+        || SeededTickSimulationRunError::CalendarSessionBoundaryResolutionFailed {
+            exchange_code: market_state_resolver.exchange_code.to_string(),
+            timezone_name: market_state_resolver.timezone.name().to_string(),
+            local_date: local_date.to_string(),
+            local_time: local_time.to_string(),
+        },
+    )
+}
+
 fn local_datetime_for_session_boundary(
     market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     local_date: CalendarDate,
@@ -394,20 +399,22 @@ fn local_datetime_for_session_boundary(
 ) -> Result<DateTime<Tz>, SeededTickSimulationRunError> {
     let (resolved_year, resolved_month, resolved_day, resolved_hour, resolved_minute) =
         if session_time.hour() == 24 && session_time.minute() == 0 {
-            let next_day = NaiveDate::from_ymd_opt(
-                local_date.year,
-                local_date.month as u32,
-                local_date.day as u32,
-            )
-            .and_then(|date| date.succ_opt())
-            .ok_or(
+            let session_time_string = session_time.to_string();
+
+            let current_day = naive_date_from_calendar_date(
+                market_state_resolver,
+                local_date,
+                &session_time_string,
+            )?;
+
+            let next_day = current_day.succ_opt().ok_or_else(|| {
                 SeededTickSimulationRunError::CalendarSessionBoundaryResolutionFailed {
                     exchange_code: market_state_resolver.exchange_code.to_string(),
                     timezone_name: market_state_resolver.timezone.name().to_string(),
                     local_date: local_date.to_string(),
-                    local_time: session_time.to_string(),
-                },
-            )?;
+                    local_time: session_time_string,
+                }
+            })?;
 
             (
                 next_day.year(),

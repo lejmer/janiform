@@ -11,6 +11,7 @@
     "selected_stages": [
       "seasonality",
       "hawkes",
+      "observation_models",
       "return_components",
       "long_variance",
       "news_shocks",
@@ -40,6 +41,17 @@
       },
       {
         "stage": "hawkes",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "observation_models",
         "optimizer_settings": {
           "solver_name": "lbfgs",
           "max_iterations": 250,
@@ -170,6 +182,22 @@
       }
     }
   ],
+  "observation_models_stage_input": {
+    "open_session_timestamp_transitions": [
+      {
+        "previous_timestamp_utc_nanos": 1770046200000000000,
+        "current_timestamp_utc_nanos": 1770046200000000000
+      },
+      {
+        "previous_timestamp_utc_nanos": 1770046200000000000,
+        "current_timestamp_utc_nanos": 1770048300000000000
+      },
+      {
+        "previous_timestamp_utc_nanos": 1770048300000000000,
+        "current_timestamp_utc_nanos": 1770123600000000000
+      }
+    ]
+  },
   "return_components_candidate_generation_input": {
     "known_news_calendar": {
       "source_window": {

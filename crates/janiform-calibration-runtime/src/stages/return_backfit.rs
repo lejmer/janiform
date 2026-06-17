@@ -20,6 +20,7 @@ use janiform_model_kernels::news::{
     expected_news_activity_loading_rate,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::long_variance::LongVarianceStageFittedPayload;
@@ -27,6 +28,7 @@ use crate::stages::news_shocks::NewsShocksStageFittedPayload;
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateDiagnostic,
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageFittedPayload,
+    return_clock_proxy,
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use crate::surprise_profile::average_surprise_news_weekly_profile_multiplier_over_interval;
@@ -228,17 +230,21 @@ fn build_return_backfit_fitted_stage_payload(
     let selected_candidate =
         selected_return_components_candidate(&effective_return_components_payload)?;
 
-    let backfit_budget = return_backfit_variance_budget(
+    let backfit_budget = return_backfit_variance_budget(ReturnBackfitVarianceBudgetInput {
         hawkes_stage_payload,
         candidate_generation_input,
         selected_candidate,
-        effective_return_components_payload
+        nig_configuration: effective_return_components_payload
             .fitted_parameters
             .nig_shared_plus_shift_configuration,
-        long_variance_stage_payload.fitted_parameters,
-        &news_shocks_stage_payload.news_process_configuration,
-        &news_shocks_stage_payload.surprise_deterministic_intensity_profile,
-    )?;
+        return_clock_exposure_parameters: effective_return_components_payload
+            .fitted_parameters
+            .return_clock_exposure_parameters,
+        long_variance_parameters: long_variance_stage_payload.fitted_parameters,
+        news_process_configuration: &news_shocks_stage_payload.news_process_configuration,
+        surprise_deterministic_intensity_profile: &news_shocks_stage_payload
+            .surprise_deterministic_intensity_profile,
+    })?;
 
     let original_nig_configuration = effective_return_components_payload
         .fitted_parameters
@@ -322,6 +328,27 @@ struct ReturnBackfitVarianceBudget {
     observed_target_scale: f64,
 }
 
+struct ReturnBackfitVarianceBudgetInput<'a> {
+    hawkes_stage_payload: &'a HawkesStageFittedPayload,
+    candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
+    selected_candidate: &'a ReturnComponentsStageCandidateDiagnostic,
+    nig_configuration: NigSharedPlusShiftConfiguration,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
+    long_variance_parameters: LongVarianceParameters,
+    news_process_configuration: &'a NewsProcessConfiguration,
+    surprise_deterministic_intensity_profile: &'a SurpriseNewsDeterministicIntensityProfile,
+}
+
+struct LongVarianceClockScaleMultiplierInput<'a> {
+    hawkes_stage_payload: &'a HawkesStageFittedPayload,
+    candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
+    news_process_configuration: &'a NewsProcessConfiguration,
+    surprise_deterministic_intensity_profile: &'a SurpriseNewsDeterministicIntensityProfile,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
+    long_variance_parameters: LongVarianceParameters,
+    aligned_returns: &'a [ReturnComponentsObservedOpenSessionReturn],
+}
+
 fn selected_return_components_candidate(
     payload: &ReturnComponentsStageFittedPayload,
 ) -> Result<&ReturnComponentsStageCandidateDiagnostic, String> {
@@ -338,25 +365,32 @@ fn selected_return_components_candidate(
 }
 
 fn return_backfit_variance_budget(
-    hawkes_stage_payload: &HawkesStageFittedPayload,
-    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    selected_candidate: &ReturnComponentsStageCandidateDiagnostic,
-    nig_configuration: NigSharedPlusShiftConfiguration,
-    long_variance_parameters: LongVarianceParameters,
-    news_process_configuration: &NewsProcessConfiguration,
-    surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
+    input: ReturnBackfitVarianceBudgetInput<'_>,
 ) -> Result<ReturnBackfitVarianceBudget, String> {
+    let ReturnBackfitVarianceBudgetInput {
+        hawkes_stage_payload,
+        candidate_generation_input,
+        selected_candidate,
+        nig_configuration,
+        return_clock_exposure_parameters,
+        long_variance_parameters,
+        news_process_configuration,
+        surprise_deterministic_intensity_profile,
+    } = input;
+
     let observed_open_session_returns =
         sorted_observed_open_session_returns_for_backfit(candidate_generation_input)?;
 
-    let long_variance_clock_scale_multiplier = long_variance_clock_scale_multiplier(
-        hawkes_stage_payload,
-        candidate_generation_input,
-        news_process_configuration,
-        surprise_deterministic_intensity_profile,
-        long_variance_parameters,
-        observed_open_session_returns.as_slice(),
-    )?;
+    let long_variance_clock_scale_multiplier =
+        long_variance_clock_scale_multiplier(LongVarianceClockScaleMultiplierInput {
+            hawkes_stage_payload,
+            candidate_generation_input,
+            news_process_configuration,
+            surprise_deterministic_intensity_profile,
+            return_clock_exposure_parameters,
+            long_variance_parameters,
+            aligned_returns: observed_open_session_returns.as_slice(),
+        })?;
 
     let observed_target_scale = selected_candidate
         .return_distribution_diagnostic
@@ -429,13 +463,18 @@ fn sorted_observed_open_session_returns_for_backfit(
 }
 
 fn long_variance_clock_scale_multiplier(
-    hawkes_stage_payload: &HawkesStageFittedPayload,
-    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
-    news_process_configuration: &NewsProcessConfiguration,
-    surprise_deterministic_intensity_profile: &SurpriseNewsDeterministicIntensityProfile,
-    long_variance_parameters: LongVarianceParameters,
-    aligned_returns: &[ReturnComponentsObservedOpenSessionReturn],
+    input: LongVarianceClockScaleMultiplierInput<'_>,
 ) -> Result<f64, String> {
+    let LongVarianceClockScaleMultiplierInput {
+        hawkes_stage_payload,
+        candidate_generation_input,
+        news_process_configuration,
+        surprise_deterministic_intensity_profile,
+        return_clock_exposure_parameters,
+        long_variance_parameters,
+        aligned_returns,
+    } = input;
+
     let stationary_mean_reversion_level = stationary_mean_reversion_level_for_backfit(
         hawkes_stage_payload,
         candidate_generation_input,
@@ -459,8 +498,11 @@ fn long_variance_clock_scale_multiplier(
                 format!("return-backfit long-variance clock replay failed: {source}")
             })?;
 
-        original_return_count_scale += 1.0;
-        long_variance_return_count_scale += clock_scale;
+        original_return_count_scale +=
+            return_clock_proxy(*observation, return_clock_exposure_parameters, 1.0);
+
+        long_variance_return_count_scale +=
+            return_clock_proxy(*observation, return_clock_exposure_parameters, clock_scale);
 
         state = state
             .apply_mean_reversion_drift(
@@ -473,6 +515,7 @@ fn long_variance_clock_scale_multiplier(
             })?;
 
         let sell_share = observation.sell_share_proxy.clamp(0.0, 1.0);
+
         let event_loading = long_variance_parameters.buy_event_loading * (1.0 - sell_share)
             + long_variance_parameters.sell_event_loading * sell_share;
 
@@ -486,7 +529,6 @@ fn long_variance_clock_scale_multiplier(
     }
 
     let scale_multiplier: f64 = long_variance_return_count_scale / original_return_count_scale;
-
     if !scale_multiplier.is_finite() || scale_multiplier <= 0.0 {
         return Err(format!(
             "return-backfit produced invalid long-variance scale multiplier {scale_multiplier}"
@@ -513,12 +555,12 @@ fn stationary_mean_reversion_level_for_backfit(
     long_variance_parameters: LongVarianceParameters,
 ) -> Result<f64, String> {
     let source_window = candidate_generation_input.known_news_calendar.source_window;
+
     let source_window_duration_hours = duration_nanos_to_hours(
         source_window
             .window_end_utc_nanos
             .saturating_sub(source_window.window_start_utc_nanos),
     );
-
     if !source_window_duration_hours.is_finite() || source_window_duration_hours <= 0.0 {
         return Err("return-backfit requires a positive source-window duration".to_string());
     }

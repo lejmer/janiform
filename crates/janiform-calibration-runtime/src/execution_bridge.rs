@@ -25,7 +25,9 @@ use janiform_model_kernels::hawkes::{
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
-use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use janiform_model_kernels::return_clock::{
+    ReturnClockExposureParameters, SideSourceActivityDecomposition,
+};
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
@@ -42,6 +44,9 @@ use super::stages::hawkes::{HawkesStageCandidateInput, HawkesStageObservedSource
 use super::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageGridCandidate,
     MeanReversionStageObservation, default_mean_reversion_predictive_evidence_alpha,
+};
+use super::stages::observation_models::{
+    ObservationModelsOpenSessionTimestampTransition, ObservationModelsStageExecutionInput,
 };
 use super::stages::return_components::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -80,6 +85,8 @@ pub struct CalibrationStagedExecutionInput {
     pub hawkes_candidate_inputs: Option<Vec<CalibrationHawkesStageCandidateInput>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_event_side_codes: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_models_stage_input: Option<CalibrationObservationModelsStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
@@ -229,6 +236,20 @@ pub struct CalibrationReturnComponentsDetectedIntradayJumpCandidate {
     pub jump_timestamp_utc_nanos: i64,
     pub jump_return: f64,
     pub post_shock_activity_lift: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationObservationModelsOpenSessionTimestampTransition {
+    pub previous_timestamp_utc_nanos: i64,
+    pub current_timestamp_utc_nanos: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationObservationModelsStageExecutionInput {
+    pub open_session_timestamp_transitions:
+        Vec<CalibrationObservationModelsOpenSessionTimestampTransition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -534,6 +555,8 @@ impl CalibrationStagedExecutionInput {
 
         let seasonality_selected = selected_stages.contains(&CalibrationStage::Seasonality);
         let hawkes_selected = selected_stages.contains(&CalibrationStage::Hawkes);
+        let observation_models_selected =
+            selected_stages.contains(&CalibrationStage::ObservationModels);
         let return_components_selected =
             selected_stages.contains(&CalibrationStage::ReturnComponents);
         let mean_reversion_selected = selected_stages.contains(&CalibrationStage::MeanReversion);
@@ -564,6 +587,28 @@ impl CalibrationStagedExecutionInput {
             return Err(
                 CalibrationStagedExecutionBridgeError::UnexpectedStageExecutionInput {
                     stage: CalibrationStage::Hawkes,
+                },
+            );
+        }
+
+        if return_components_selected && !observation_models_selected {
+            return Err(
+                CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
+                    stage: CalibrationStage::ObservationModels,
+                },
+            );
+        }
+        if observation_models_selected && self.observation_models_stage_input.is_none() {
+            return Err(
+                CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
+                    stage: CalibrationStage::ObservationModels,
+                },
+            );
+        }
+        if !observation_models_selected && self.observation_models_stage_input.is_some() {
+            return Err(
+                CalibrationStagedExecutionBridgeError::UnexpectedStageExecutionInput {
+                    stage: CalibrationStage::ObservationModels,
                 },
             );
         }
@@ -612,6 +657,35 @@ impl CalibrationStagedExecutionInput {
                 CalibrationStagedExecutionBridgeError::InvalidRunContract { source }
             })?;
 
+        let return_components_candidate_generation_input = self
+            .return_components_candidate_generation_input
+            .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core);
+
+        let observation_models_stage_input = match (
+            self.observation_models_stage_input,
+            return_components_candidate_generation_input.as_ref(),
+        ) {
+            (Some(input), Some(candidate_generation_input)) => {
+                // Intentional copy because the observation-model stage and the
+                // downstream return-components template both own their inputs.
+                Some(
+                    input.into_core(
+                        candidate_generation_input
+                            .observed_open_session_returns
+                            .clone(),
+                    ),
+                )
+            }
+            (None, _) => None,
+            (Some(_), None) => {
+                return Err(
+                    CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
+                        stage: CalibrationStage::ReturnComponents,
+                    },
+                );
+            }
+        };
+
         let staged_run_inputs = CalibrationStagedRunInputs {
             seasonality_stage_input: self
                 .seasonality_stage_input
@@ -624,9 +698,8 @@ impl CalibrationStagedExecutionInput {
                     .collect()
             }),
             hawkes_event_side_codes: self.hawkes_event_side_codes,
-            return_components_candidate_generation_input: self
-                .return_components_candidate_generation_input
-                .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core),
+            observation_models_stage_input,
+            return_components_candidate_generation_input,
             coarse_data_records: self.coarse_data_records,
             tick_objective_data_usage_policy: self.tick_objective_data_usage_policy,
             mean_reversion_stage_input: self
@@ -727,8 +800,12 @@ fn canonical_stage_graph_for_selected_stages(
             depends_on: CalibrationStage::Seasonality,
         },
         CalibrationStageDependency {
-            stage: CalibrationStage::ReturnComponents,
+            stage: CalibrationStage::ObservationModels,
             depends_on: CalibrationStage::Hawkes,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::ReturnComponents,
+            depends_on: CalibrationStage::ObservationModels,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::LongVariance,
@@ -892,6 +969,32 @@ impl CalibrationHawkesDirectionalLabelDiagnostics {
     }
 }
 
+impl CalibrationObservationModelsStageExecutionInput {
+    fn into_core(
+        self,
+        observed_open_session_returns: Vec<ReturnComponentsObservedOpenSessionReturn>,
+    ) -> ObservationModelsStageExecutionInput {
+        ObservationModelsStageExecutionInput {
+            observed_open_session_returns,
+            open_session_timestamp_transitions: self
+                .open_session_timestamp_transitions
+                .into_iter()
+                .map(CalibrationObservationModelsOpenSessionTimestampTransition::into_core)
+                .collect(),
+            source_responsibility_input: None,
+        }
+    }
+}
+
+impl CalibrationObservationModelsOpenSessionTimestampTransition {
+    const fn into_core(self) -> ObservationModelsOpenSessionTimestampTransition {
+        ObservationModelsOpenSessionTimestampTransition {
+            previous_timestamp_utc_nanos: self.previous_timestamp_utc_nanos,
+            current_timestamp_utc_nanos: self.current_timestamp_utc_nanos,
+        }
+    }
+}
+
 impl CalibrationReturnComponentsStageCandidateGenerationInput {
     fn into_core(self) -> ReturnComponentsStageCandidateGenerationInput {
         ReturnComponentsStageCandidateGenerationInput {
@@ -976,6 +1079,9 @@ impl CalibrationReturnComponentsObservedOpenSessionReturn {
             log_return: self.log_return,
             post_shock_activity_lift: self.post_shock_activity_lift,
             sell_share_proxy: self.sell_share_proxy,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(
+                self.sell_share_proxy,
+            ),
         }
     }
 }
@@ -1187,6 +1293,8 @@ mod tests {
         CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
         CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
         CalibrationMeanReversionStageObservation,
+        CalibrationObservationModelsOpenSessionTimestampTransition,
+        CalibrationObservationModelsStageExecutionInput,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsDetectedIntradayJumpCandidate,
         CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -1231,6 +1339,7 @@ mod tests {
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
+                CalibrationStage::ObservationModels,
                 CalibrationStage::ReturnComponents,
                 CalibrationStage::MeanReversion,
             ],
@@ -1245,6 +1354,7 @@ mod tests {
             vec![
                 stage_solver_settings(CalibrationStage::Seasonality),
                 stage_solver_settings(CalibrationStage::Hawkes),
+                stage_solver_settings(CalibrationStage::ObservationModels),
                 stage_solver_settings(CalibrationStage::ReturnComponents),
                 stage_solver_settings(CalibrationStage::MeanReversion),
             ],
@@ -1319,6 +1429,18 @@ mod tests {
                 },
             }]),
             hawkes_event_side_codes: None,
+            observation_models_stage_input: Some(CalibrationObservationModelsStageExecutionInput {
+                open_session_timestamp_transitions: vec![
+                    CalibrationObservationModelsOpenSessionTimestampTransition {
+                        previous_timestamp_utc_nanos: 1_770_046_200_000_000_000,
+                        current_timestamp_utc_nanos: 1_770_046_200_000_000_000,
+                    },
+                    CalibrationObservationModelsOpenSessionTimestampTransition {
+                        previous_timestamp_utc_nanos: 1_770_046_200_000_000_000,
+                        current_timestamp_utc_nanos: 1_770_048_300_000_000_000,
+                    },
+                ],
+            }),
             return_components_candidate_generation_input: Some(
                 CalibrationReturnComponentsStageCandidateGenerationInput {
                     known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {
@@ -1504,6 +1626,7 @@ mod tests {
                 CalibrationStage::Seasonality,
                 CalibrationStage::MeanReversion,
                 CalibrationStage::Hawkes,
+                CalibrationStage::ObservationModels,
                 CalibrationStage::ReturnComponents,
             ]
         );

@@ -1,4 +1,4 @@
-use super::contracts::{MarketDataTranslationPreprocessingError, MarketDataTranslationTickRecord};
+use super::contracts::{MarketDataTranslationCalibrationError, MarketDataTranslationTickRecord};
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::{
     CalibrationTimestampEventRecord, ExchangeCalendarDefinition, MarketState, OpenTickRecord,
@@ -11,7 +11,7 @@ pub(super) fn preprocess_tick_records(
     definition: &ExchangeCalendarDefinition,
     timezone: Tz,
     exchange_code: &str,
-) -> Result<TickPreprocessingSummary, MarketDataTranslationPreprocessingError> {
+) -> Result<TickPreprocessingSummary, MarketDataTranslationCalibrationError> {
     let mut resolved_ticks: Vec<ResolvedTickRecord> = Vec::with_capacity(tick_records.len());
     let mut open_price_ticks: Vec<OpenTickRecord> = Vec::new();
 
@@ -27,7 +27,7 @@ pub(super) fn preprocess_tick_records(
     for tick_record in tick_records {
         let timestamp_utc = datetime_from_nanos(
             tick_record.timestamp_utc_nanos,
-            MarketDataTranslationPreprocessingError::TickTimestampOutOfRange {
+            MarketDataTranslationCalibrationError::TickTimestampOutOfRange {
                 source_row_number: tick_record.source_row_number,
             },
         )?;
@@ -62,7 +62,7 @@ pub(super) fn preprocess_tick_records(
                 if let Some(price) = tick_record.price {
                     if price <= 0.0 {
                         return Err(
-                            MarketDataTranslationPreprocessingError::InvalidOpenSessionPrice {
+                            MarketDataTranslationCalibrationError::InvalidOpenSessionPrice {
                                 source_row_number: tick_record.source_row_number,
                                 price,
                             },
@@ -71,7 +71,7 @@ pub(super) fn preprocess_tick_records(
 
                     let Some(session_window) = session_window else {
                         return Err(
-                            MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+                            MarketDataTranslationCalibrationError::InvalidSessionBoundary {
                                 exchange_code: exchange_code.to_string(),
                                 timestamp_utc_nanos: tick_record.timestamp_utc_nanos,
                             },

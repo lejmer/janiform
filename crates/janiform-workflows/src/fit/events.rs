@@ -8,7 +8,8 @@ use janiform_calibration_runtime::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent, HawkesStageProgressPhase,
     JointRefinementProgressCandidateAssessment, JointRefinementStageProgressPhase,
-    ReturnComponentsStageProgressPhase, SeasonalityStageProgressPhase,
+    ObservationModelsStageProgressPhase, ReturnComponentsStageProgressPhase,
+    SeasonalityStageProgressPhase,
 };
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
@@ -996,6 +997,18 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::ReportAssembly) => {
             "hawkes_report_assembly"
         }
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::InputPreflight,
+        ) => "observation_models_input_preflight",
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::HawkesSourceActivityFit,
+        ) => "hawkes_source_activity_fit",
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::TimestampBatchingModelFit,
+        ) => "timestamp_batching_model_fit",
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::ReportAssembly,
+        ) => "observation_models_report_assembly",
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
         ) => "continuous_nig_proxy_em",
@@ -1077,6 +1090,18 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::ReportAssembly) => {
             "report assembly"
         }
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::InputPreflight,
+        ) => "input preflight",
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::HawkesSourceActivityFit,
+        ) => "source-activity fit",
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::TimestampBatchingModelFit,
+        ) => "timestamp batching fit",
+        CalibrationStageProgressPhase::ObservationModels(
+            ObservationModelsStageProgressPhase::ReportAssembly,
+        ) => "report assembly",
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::InputPreflight,
         ) => "input preflight",

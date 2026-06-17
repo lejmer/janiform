@@ -102,7 +102,7 @@ where
     }
 
     fn fill_bytes(&mut self, destination: &mut [u8]) {
-        let mut exact_chunks = destination.chunks_exact_mut(std::mem::size_of::<u64>());
+        let mut exact_chunks = destination.chunks_exact_mut(size_of::<u64>());
 
         for chunk in &mut exact_chunks {
             chunk.copy_from_slice(&self.next_u64().to_le_bytes());

@@ -1,42 +1,42 @@
 {
   "data_summary": {
     "synthetic_model_output": {
-      "event_count": 12066398,
+      "event_count": 13942058,
       "intraday_profile": {
         "empty_bucket_count": 0,
-        "maximum_bucket_observation_count": 1564202,
+        "maximum_bucket_observation_count": 1766875,
         "median_inter_arrival_seconds": {
-          "maximum": 0.615496953,
-          "minimum": 0.036342656
+          "maximum": 0.533668352,
+          "minimum": 0.032123904
         },
-        "minimum_bucket_observation_count": 83441,
+        "minimum_bucket_observation_count": 94792,
         "nonempty_bucket_count": 24
       },
       "label": "Janiform synthetic",
       "negative_inter_arrival_count_after_sorting": 0,
       "original_timestamp_order_is_monotonic": true,
-      "positive_inter_arrival_count": 12066397,
+      "positive_inter_arrival_count": 13634402,
       "positive_inter_arrival_seconds": {
-        "maximum": 176400.183887188,
-        "minimum": 2e-09
+        "maximum": 176400.122589696,
+        "minimum": 2.56e-07
       },
-      "raw_inter_arrival_count": 12066397,
+      "raw_inter_arrival_count": 13942057,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.269032407+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.214543616+00:00",
       "timestamp_null_count": 0,
-      "zero_inter_arrival_count": 0
+      "zero_inter_arrival_count": 307655
     }
   },
   "figure": {
     "id": "inter_arrival_intraday_profile_synthetic_model_output",
     "title": "Janiform synthetic ES inter-arrival intraday profile"
   },
-  "generated_at_utc": "2026-06-13T23:48:40.029263+00:00",
+  "generated_at_utc": "2026-06-17T22:33:45.657923+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\inter_arrival_intraday_profile.py"
     ],
-    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
+    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_intraday_profile.py"
@@ -60,11 +60,11 @@
         "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 12066398,
-      "parquet_row_group_count": 12,
+      "parquet_row_count": 13942058,
+      "parquet_row_group_count": 14,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 126990425,
+      "size_bytes": 144571712,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -80,8 +80,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_intraday_profile/inter_arrival_intraday_profile_synthetic.pdf",
       "role": "figure",
-      "sha256": "0adf51fda5415903b9c422c0f2f579d9a812ce4e36c05327d15cc2144ff42a7f",
-      "size_bytes": 19218
+      "sha256": "e27d64bdbe3e53475dd57c607bb06ba777e08e57f7dc72c9b2c1a91c044f67d3",
+      "size_bytes": 19225
     }
   ],
   "parameters": {

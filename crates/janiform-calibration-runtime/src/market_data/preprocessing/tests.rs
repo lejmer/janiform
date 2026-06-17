@@ -9,10 +9,10 @@ use super::hawkes_inputs::{
 use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::activity_lift;
 use super::return_components_inputs::{
-    infer_tick_size_from_open_prices, infer_timestamp_batch_observation_from_open_ticks,
+    derive_observation_models_open_session_timestamp_transitions, infer_tick_size_from_open_prices,
 };
 use super::session_windows::resolve_market_state_and_session_window;
-use super::shared::OpenTickRecord;
+use super::shared::{CalibrationObservationModelsOpenSessionTimestampTransition, OpenTickRecord};
 use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
     MarketState, RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
@@ -482,7 +482,7 @@ fn tick_size_inference_uses_chronological_same_session_price_changes() {
 }
 
 #[test]
-fn timestamp_batching_inference_uses_same_session_duplicates_and_timestamp_quantum() {
+fn observation_models_timestamp_transitions_keep_same_session_duplicates() {
     let session_open = utc_nanos(2026, 3, 2, 9, 30, 0);
     let session_close = utc_nanos(2026, 3, 2, 16, 0, 0);
     let next_session_open = utc_nanos(2026, 3, 3, 9, 30, 0);
@@ -527,16 +527,33 @@ fn timestamp_batching_inference_uses_same_session_duplicates_and_timestamp_quant
         },
     ];
 
-    let inferred_batching =
-        infer_timestamp_batch_observation_from_open_ticks(open_price_ticks.as_slice())
-            .expect("same-session duplicate timestamps should identify timestamp batching");
+    let transitions =
+        derive_observation_models_open_session_timestamp_transitions(open_price_ticks.as_slice());
 
-    assert_eq!(inferred_batching.bucket_width_nanos, batch_width_nanos);
-    assert_eq!(inferred_batching.same_timestamp_continuation_count, 1);
     assert_eq!(
-        inferred_batching.same_session_observation_transition_count,
-        3
+        transitions,
+        vec![
+            transition(session_open, session_open + batch_width_nanos),
+            transition(
+                session_open + batch_width_nanos,
+                session_open + batch_width_nanos
+            ),
+            transition(
+                session_open + batch_width_nanos,
+                session_open + 3 * batch_width_nanos
+            ),
+        ]
     );
+}
+
+const fn transition(
+    previous_timestamp_utc_nanos: i64,
+    current_timestamp_utc_nanos: i64,
+) -> CalibrationObservationModelsOpenSessionTimestampTransition {
+    CalibrationObservationModelsOpenSessionTimestampTransition {
+        previous_timestamp_utc_nanos,
+        current_timestamp_utc_nanos,
+    }
 }
 
 fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

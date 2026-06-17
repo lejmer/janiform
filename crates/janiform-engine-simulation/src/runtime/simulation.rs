@@ -58,8 +58,9 @@ use super::timestamp_observation::{
 };
 use super::timing_diagnostics::SeededTickSimulationTimingDiagnosticsAccumulator;
 use super::trading_time::{
-    TransitionTradingTimeReturnInput, build_interval_open_market_segments,
-    integrate_open_market_elapsed_hours, sample_transition_trading_time_return,
+    TransitionReturnClockInput, build_interval_open_market_segments,
+    compute_transition_return_clocks, integrate_open_market_elapsed_hours,
+    sample_trading_time_return_from_return_clocks,
 };
 use super::updates::{
     IntervalStochasticUpdate, is_public_seeded_fine_path_record,
@@ -469,12 +470,6 @@ where
         interval_index as u64,
     );
 
-    let mut endogenous_auxiliary_stream = randomness_factory.create_substream(
-        run_config.seed,
-        SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
-        interval_index as u64,
-    );
-
     let mut endogenous_wait_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp,
@@ -501,8 +496,6 @@ where
         },
         randomness_factory,
     )?;
-
-    endogenous_auxiliary_stream.next_unit_interval_f64();
 
     let endogenous_interval_updates = schedule_endogenous_interval_events_with_event_time_feedback(
         EndogenousIntervalSchedulingInput {
@@ -653,9 +646,6 @@ where
 
     let market_state = market_state_resolver.resolve_market_state_at_nanos(timestamp_utc_nanos)?;
 
-    let (open_jump_return, closed_gap_return) =
-        realize_pending_jump_returns(runtime_state, market_state);
-
     let elapsed_open_hours_since_previous_update = integrate_open_market_elapsed_hours(
         interval_inputs.interval_open_market_segments,
         previous_timestamp_utc_nanos,
@@ -671,27 +661,32 @@ where
         elapsed_open_hours_since_previous_update,
     )?;
 
-    let trading_time_return =
-        sample_transition_trading_time_return(TransitionTradingTimeReturnInput {
-            driver_parameters: fine_path_state.driver_parameters,
-            state: transition_state,
-            lambda_bar: fine_path_state.lambda_bar,
-            beta: run_config.model_inputs.kernel_parameters.beta,
-            seasonality_factor: interval_inputs.interval_seasonality_factor,
-            return_clock_exposure_parameters: run_config
-                .model_inputs
-                .return_clock_exposure_parameters,
-            baseline_long_variance_clock_scale: long_variance_transition.baseline_clock_scale,
-            interval_open_market_segments: interval_inputs.interval_open_market_segments,
-            previous_timestamp_utc_nanos,
-            timestamp_utc_nanos,
-            interval_index: interval_inputs.interval_index,
-            randomness_stream: randomness_factory.create_substream(
-                run_config.seed,
-                SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
-                runtime_state.next_transition_index,
-            ),
-        })?;
+    let transition_return_clocks = compute_transition_return_clocks(TransitionReturnClockInput {
+        state: transition_state,
+        lambda_bar: fine_path_state.lambda_bar,
+        beta: run_config.model_inputs.kernel_parameters.beta,
+        seasonality_factor: interval_inputs.interval_seasonality_factor,
+        return_clock_exposure_parameters: run_config.model_inputs.return_clock_exposure_parameters,
+        baseline_long_variance_clock_scale: long_variance_transition.baseline_clock_scale,
+        interval_open_market_segments: interval_inputs.interval_open_market_segments,
+        previous_timestamp_utc_nanos,
+        timestamp_utc_nanos,
+        interval_index: interval_inputs.interval_index,
+    })?;
+
+    let (open_jump_return, closed_gap_return) =
+        realize_pending_jump_returns(runtime_state, market_state);
+
+    let trading_time_return = sample_trading_time_return_from_return_clocks(
+        fine_path_state.driver_parameters,
+        transition_return_clocks,
+        interval_inputs.interval_index,
+        &mut randomness_factory.create_substream(
+            run_config.seed,
+            SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
+            runtime_state.next_transition_index,
+        ),
+    )?;
 
     let raw_total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
@@ -1113,12 +1108,12 @@ where
 
 fn realize_pending_jump_returns<R>(
     runtime_state: &mut SeededTickSimulationRuntimeState<R>,
-    market_state: janiform_market_time::calendar::MarketState,
+    market_state: MarketState,
 ) -> (f64, f64)
 where
     R: SimulationRandomnessStream,
 {
-    if market_state != janiform_market_time::calendar::MarketState::Open {
+    if market_state != MarketState::Open {
         return (0.0, 0.0);
     }
 

@@ -49,7 +49,7 @@ fn janiform_exposes_representative_semantic_facade_imports() {
     >();
 
     let _ = governance::benchmarking::run_oracle_pricer_sufficient_statistics_benchmark_harness;
-    let _ = calibration::market_data::preprocess_market_data_translation_request;
+    let _ = calibration::market_data::calibrate_market_data_translation_request;
     let _ = model::factors::interval_factor_grid::provide_interval_factor_grid;
     let _ = pricing::run_vanilla_option_pricing;
     let _ = model::sufficient_statistics::solve_sufficient_statistics_transform_slices;

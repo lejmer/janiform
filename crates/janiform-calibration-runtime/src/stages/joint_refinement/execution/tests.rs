@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
+use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
 use super::super::objective::{
     JointCandidateBreakdownComparisonInput, business_time_bucket_return_scale_fit,
@@ -938,7 +939,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     );
     assert_eq!(
         mean_absolute_return_activity_seed[log_stationary_event_rate_index],
-        0.25
+        0.0
     );
 
     let tick_realized_variance_seed = restart_seed_by_id(
@@ -1129,7 +1130,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
     );
     assert_eq!(
         nig_basin_activity_seed[active_parameter_layout.log_stationary_event_rate_scale_index],
-        0.25
+        0.0
     );
     assert_eq!(
         nig_basin_activity_seed[active_parameter_layout
@@ -1177,7 +1178,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
     assert_eq!(
         nig_alpha_delta_activity_seed
             [active_parameter_layout.log_stationary_event_rate_scale_index],
-        0.25
+        0.0
     );
     assert_eq!(
         nig_alpha_delta_activity_seed[active_parameter_layout
@@ -1331,6 +1332,7 @@ fn sampled_observed_tick_returns_use_raw_open_session_returns() {
             log_return: 0.01,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 2,
@@ -1338,6 +1340,7 @@ fn sampled_observed_tick_returns_use_raw_open_session_returns() {
             log_return: 0.02,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 3,
@@ -1345,6 +1348,7 @@ fn sampled_observed_tick_returns_use_raw_open_session_returns() {
             log_return: 0.03,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: 4,
@@ -1352,6 +1356,7 @@ fn sampled_observed_tick_returns_use_raw_open_session_returns() {
             log_return: 0.04,
             post_shock_activity_lift: 0.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
     ];
 

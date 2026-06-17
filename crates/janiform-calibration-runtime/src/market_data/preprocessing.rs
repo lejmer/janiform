@@ -13,11 +13,10 @@ mod tests;
 mod tick_resolution;
 
 pub use contracts::{
-    MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
-    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    MarketDataTranslationPreprocessingSettings,
-    MarketDataTranslationReturnComponentsPreprocessingSettings,
-    MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
-    preprocessing_settings_with_return_components_tick_size,
+    MarketDataTranslationCalibrationError, MarketDataTranslationCalibrationOutput,
+    MarketDataTranslationCalibrationRequest, MarketDataTranslationCalibrationSettings,
+    MarketDataTranslationKnownNewsRecord, MarketDataTranslationReturnComponentsCalibrationSettings,
+    MarketDataTranslationSeasonalityCalibrationSettings, MarketDataTranslationTickRecord,
+    calibration_settings_with_return_components_tick_size,
 };
-pub use pipeline::preprocess_market_data_translation_request;
+pub use pipeline::calibrate_market_data_translation_request;

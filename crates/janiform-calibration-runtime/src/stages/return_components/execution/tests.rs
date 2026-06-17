@@ -10,6 +10,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
 use super::super::contracts::{
@@ -299,6 +300,7 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
                 log_return: 1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
@@ -306,6 +308,7 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
                 log_return: -1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
         ],
         continuous_fit_returns: vec![
@@ -315,6 +318,7 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
                 log_return: 1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
@@ -322,6 +326,7 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
                 log_return: -1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
         ],
         intraday_jump_candidates: Vec::new(),
@@ -373,6 +378,7 @@ fn business_time_scales_use_full_finite_same_session_elapsed_time() {
             log_return: 0.0,
             post_shock_activity_lift: 1.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
@@ -380,6 +386,7 @@ fn business_time_scales_use_full_finite_same_session_elapsed_time() {
             log_return: 0.0,
             post_shock_activity_lift: 1.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
         ReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 5, 1),
@@ -387,6 +394,7 @@ fn business_time_scales_use_full_finite_same_session_elapsed_time() {
             log_return: 0.0,
             post_shock_activity_lift: 1.0,
             sell_share_proxy: 0.5,
+            source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
         },
     ];
     let sorted_signals = ReturnComponentsStageSortedSignalInputs {
@@ -431,6 +439,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 log_return: 0.0,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
@@ -438,6 +447,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 log_return: 0.0,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
@@ -445,6 +455,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 log_return: 1.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.0,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.0),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
@@ -452,6 +463,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 log_return: -2.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 1.0,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(1.0),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 4),
@@ -459,6 +471,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 log_return: 3.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.0,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.0),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 5),
@@ -466,6 +479,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 log_return: 5.0e-3,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 1.0,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(1.0),
             },
         ],
         detected_intraday_jump_candidates: vec![ReturnComponentsDetectedIntradayJumpCandidate {
@@ -528,7 +542,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         .filter(|return_value| *return_value != 0.0)
         .collect();
 
-    assert_eq!(sorted_signals.continuous_fit_returns.len(), 6);
+    assert_eq!(sorted_signals.continuous_fit_returns.len(), 4);
     assert_eq!(
         retained_non_zero_returns,
         vec![1.0e-4, -2.0e-4, 3.0e-4, 5.0e-3]
@@ -550,6 +564,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 log_return: 1.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.20,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.20),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
@@ -557,6 +572,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 log_return: -0.7e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.80,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.80),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
@@ -564,6 +580,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 log_return: 1.5e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.30,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.30),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
@@ -571,6 +588,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 log_return: -1.2e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.70,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.70),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 4),
@@ -578,6 +596,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 log_return: 0.8e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.35,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.35),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 5),
@@ -585,6 +604,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 log_return: -1.4e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.65,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.65),
             },
         ],
         detected_intraday_jump_candidates: Vec::new(),
@@ -656,6 +676,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
                 log_return: 1.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
@@ -663,6 +684,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
                 log_return: 2.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
@@ -670,6 +692,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
                 log_return: 3.0e-4,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
         ],
         detected_intraday_jump_candidates: Vec::new(),
@@ -782,6 +805,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
                 log_return: 1.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.4,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.4),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
@@ -789,6 +813,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
                 log_return: -2.0e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.6,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.6),
             },
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
@@ -796,6 +821,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
                 log_return: 1.5e-6,
                 post_shock_activity_lift: 1.0,
                 sell_share_proxy: 0.5,
+                source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
             },
         ],
         detected_intraday_jump_candidates: Vec::new(),

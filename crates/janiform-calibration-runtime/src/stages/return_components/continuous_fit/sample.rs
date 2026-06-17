@@ -7,6 +7,7 @@ use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, smallest_positive_value,
     strictly_positive_machine_value,
 };
+use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
 use super::super::contracts::ReturnComponentsObservedOpenSessionReturn;
 use super::super::execution::{
@@ -376,6 +377,14 @@ pub(super) fn build_equal_business_time_blocks(
                 .as_slice(),
         );
 
+        let source_activity = aligned_pairs
+            .iter()
+            .map(|(observation, _)| observation.source_activity)
+            .fold(
+                SideSourceActivityDecomposition::zero(),
+                SideSourceActivityDecomposition::component_sum,
+            );
+
         let last_observation = aligned_pairs
             .last()
             .map(|(observation, _)| *observation)
@@ -388,6 +397,7 @@ pub(super) fn build_equal_business_time_blocks(
                 log_return: total_log_return,
                 post_shock_activity_lift: weighted_activity_lift,
                 sell_share_proxy: weighted_sell_share,
+                source_activity,
             },
             total_business_time,
         )];
@@ -401,6 +411,7 @@ pub(super) fn build_equal_business_time_blocks(
     let mut running_business_time = 0.0;
     let mut running_weighted_activity_lift = 0.0;
     let mut running_weighted_sell_share = 0.0;
+    let mut running_source_activity = SideSourceActivityDecomposition::zero();
     let mut running_weight_sum = 0.0;
 
     let mut emitted_block_count = 0usize;
@@ -421,6 +432,8 @@ pub(super) fn build_equal_business_time_blocks(
         running_weighted_activity_lift +=
             observation.post_shock_activity_lift * positive_business_time;
         running_weighted_sell_share += observation.sell_share_proxy * positive_business_time;
+        running_source_activity =
+            running_source_activity.component_sum(observation.source_activity);
         running_weight_sum += positive_business_time;
         cumulative_business_time += positive_business_time;
 
@@ -447,6 +460,7 @@ pub(super) fn build_equal_business_time_blocks(
                 post_shock_activity_lift: running_weighted_activity_lift / weight_denominator,
                 sell_share_proxy: (running_weighted_sell_share / weight_denominator)
                     .clamp(0.0, 1.0),
+                source_activity: running_source_activity,
             },
             running_business_time.max(business_time_floor),
         ));
@@ -458,6 +472,7 @@ pub(super) fn build_equal_business_time_blocks(
         running_business_time = 0.0;
         running_weighted_activity_lift = 0.0;
         running_weighted_sell_share = 0.0;
+        running_source_activity = SideSourceActivityDecomposition::zero();
         running_weight_sum = 0.0;
     }
 

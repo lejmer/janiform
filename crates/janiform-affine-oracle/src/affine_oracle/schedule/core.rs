@@ -595,18 +595,16 @@ fn evaluate_schedule_tangent_rhs(
     let plus_state_derivative = complex_multiply(plus_factor, plus_loading_derivative);
     let minus_state_derivative = complex_multiply(minus_factor, minus_loading_derivative);
 
-    let direct = direct_tangent.activity_loadings;
-
     let baseline_rate = transform_input.seasonality_factor
         * equation_specification.hawkes_kernel_parameters.lambda_bar;
 
     let h_plus_endogenous_derivative = plus_state_derivative
         .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
-        .subtract(direct.u_plus_endogenous);
+        .subtract(direct_tangent.activity_loadings.u_plus_endogenous);
 
     let h_minus_endogenous_derivative = minus_state_derivative
         .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus))
-        .subtract(direct.u_minus_endogenous);
+        .subtract(direct_tangent.activity_loadings.u_minus_endogenous);
 
     let baseline_event_derivative = plus_state_derivative
         .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
@@ -657,9 +655,10 @@ fn evaluate_schedule_tangent_rhs(
                 .scale(long_variance_parameters.vol_of_vol.powi(2)),
             )
             .plus(
-                direct
+                direct_tangent
+                    .activity_loadings
                     .u_plus_baseline
-                    .plus(direct.u_minus_baseline)
+                    .plus(direct_tangent.activity_loadings.u_minus_baseline)
                     .scale(-baseline_rate),
             ),
         c_value: tangent_state
@@ -683,7 +682,7 @@ fn evaluate_long_variance_schedule_hamiltonians(
     state: AffineState,
 ) -> ScheduleHamiltonians {
     let equation_specification = transform_input.equation_specification;
-    let activity_loadings = transform_input.activity_loadings;
+
     let long_variance_parameters = equation_specification.long_variance_parameters;
 
     let plus_argument = state
@@ -706,22 +705,22 @@ fn evaluate_long_variance_schedule_hamiltonians(
 
     ScheduleHamiltonians {
         h_plus_baseline: evaluate_schedule_hamiltonian_component(
-            activity_loadings.u_plus_baseline,
+            transform_input.activity_loadings.u_plus_baseline,
             transform_input.z_plus,
             plus_argument,
         ),
         h_plus_endogenous: evaluate_schedule_hamiltonian_component(
-            activity_loadings.u_plus_endogenous,
+            transform_input.activity_loadings.u_plus_endogenous,
             transform_input.z_plus,
             plus_argument,
         ),
         h_minus_baseline: evaluate_schedule_hamiltonian_component(
-            activity_loadings.u_minus_baseline,
+            transform_input.activity_loadings.u_minus_baseline,
             transform_input.z_minus,
             minus_argument,
         ),
         h_minus_endogenous: evaluate_schedule_hamiltonian_component(
-            activity_loadings.u_minus_endogenous,
+            transform_input.activity_loadings.u_minus_endogenous,
             transform_input.z_minus,
             minus_argument,
         ),

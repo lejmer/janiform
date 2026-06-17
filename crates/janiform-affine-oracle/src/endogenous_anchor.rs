@@ -589,11 +589,16 @@ fn expected_interval_statistics_from_target_sum_first_moment(
             * factors.seasonality_factor
             * factors.delta;
 
+    let expected_baseline_a_plus = baseline_expected_business_time;
+    let expected_endogenous_a_plus = target_sum_first_moment.integrated_target_plus;
+    let expected_baseline_a_minus = baseline_expected_business_time;
+    let expected_endogenous_a_minus = target_sum_first_moment.integrated_target_minus;
+
     SufficientStatisticsExpectedIntervalStatistics::try_new(
-        baseline_expected_business_time,
-        target_sum_first_moment.integrated_target_plus,
-        baseline_expected_business_time,
-        target_sum_first_moment.integrated_target_minus,
+        expected_baseline_a_plus,
+        expected_endogenous_a_plus,
+        expected_baseline_a_minus,
+        expected_endogenous_a_minus,
         baseline_expected_business_time + target_sum_first_moment.integrated_target_plus,
         baseline_expected_business_time + target_sum_first_moment.integrated_target_minus,
     )

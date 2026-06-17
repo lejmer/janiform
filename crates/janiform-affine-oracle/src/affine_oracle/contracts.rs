@@ -247,7 +247,7 @@ impl Display for ExponentialAffineTransformNewsIntensityInputError {
 
 impl Error for ExponentialAffineTransformNewsIntensityInputError {}
 
-/// Integrated-activity Laplace loadings split by baseline and endogenous activity.
+/// Integrated-activity Laplace loadings split by baseline and endogenous source.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformActivityLoadings {
     pub u_plus_baseline: ComplexScalar,

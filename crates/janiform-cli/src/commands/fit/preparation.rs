@@ -5,10 +5,10 @@ use std::time::Instant;
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::calibration::market_data::{
     MarketDataPreparationProgressError, MarketDataPreparationProgressEvent,
-    MarketDataTranslationPreprocessingSettings, OptionForwardParityWarningPolicy,
-    PreparedMarketDataCalibrationPlan, infer_market_data_run_id_from_path,
-    prepare_market_data_calibration_plan, prepare_market_data_calibration_plan_with_observer,
-    preprocessing_settings_with_return_components_tick_size,
+    MarketDataTranslationCalibrationSettings, OptionForwardParityWarningPolicy,
+    PreparedMarketDataCalibrationPlan, calibration_settings_with_return_components_tick_size,
+    infer_market_data_run_id_from_path, prepare_market_data_calibration_plan,
+    prepare_market_data_calibration_plan_with_observer,
 };
 use janiform::calibration::presets::ResolvedMarketProfile;
 use janiform::calibration::staged::{
@@ -198,7 +198,7 @@ pub(crate) fn prepare_fit_preview(
             emit_input_provenance_report: true,
         },
         optimizer_settings_by_stage: Vec::new(),
-        preprocessing_settings: preprocessing_settings_from_tick_size(
+        calibration_settings: calibration_settings_from_tick_size(
             preview_options.tick_size,
             market_profile_tick_size,
         )?,
@@ -418,10 +418,10 @@ fn mean_reversion_configuration_from_overrides(
     })
 }
 
-fn preprocessing_settings_from_tick_size(
+fn calibration_settings_from_tick_size(
     explicit_tick_size: Option<f64>,
     market_profile_tick_size: Option<f64>,
-) -> Result<Option<MarketDataTranslationPreprocessingSettings>, CliError> {
+) -> Result<Option<MarketDataTranslationCalibrationSettings>, CliError> {
     let Some(tick_size) = explicit_tick_size.or(market_profile_tick_size) else {
         return Ok(None);
     };
@@ -439,7 +439,7 @@ fn preprocessing_settings_from_tick_size(
         }
     })?;
 
-    Ok(preprocessing_settings_with_return_components_tick_size(
+    Ok(calibration_settings_with_return_components_tick_size(
         None,
         Some(tick_size),
     ))

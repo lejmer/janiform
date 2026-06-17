@@ -522,7 +522,7 @@ def _preparation_diagnostics_payload(
     return {
         "workflow_scope": _workflow_scope_value(configuration),
         "selected_stages": list(selected_stages),
-        "executed_preprocessing_steps": [],
+        "executed_calibration_steps": [],
         "timestamp_batching_observation": (
             build_disabled_timestamp_batching_observation_diagnostic_payload(
                 return_components_stage_selected=return_components_stage_selected,

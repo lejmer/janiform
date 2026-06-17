@@ -15,9 +15,10 @@ use super::dataset_snapshot::{
     calibration_dataset_snapshot_artifact_path, calibration_dataset_snapshot_artifact_reference,
 };
 use super::manifest::calibration_artifact_manifest_path;
+use super::shared::CalibrationArtifactIoError;
 use super::stage_parameter::{
     CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION, CalibrationStageParameterArtifact,
-    calibration_stage_parameter_artifact_path,
+    calibration_stage_parameter_artifact_path, load_calibration_stage_parameter_artifact_from_disk,
 };
 use super::validation_metric::{
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_VERSION, CalibrationValidationMetricArtifact,
@@ -254,16 +255,11 @@ pub fn reload_calibration_artifact_run_from_disk(
             request.run_id.as_str(),
             stage,
         );
-        let stage_parameter_artifact =
-            load_artifact_with_schema_check::<CalibrationStageParameterArtifact, _>(
-                request.run_id.as_str(),
-                stage_path.as_path(),
-                CalibrationArtifactReloadComponent::StageParameter { stage },
-                CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION,
-                |payload: &CalibrationStageParameterArtifact| {
-                    payload.validate().map_err(|source| source.to_string())
-                },
-            )?;
+        let stage_parameter_artifact = load_stage_parameter_artifact_with_schema_check(
+            request.run_id.as_str(),
+            stage_path.as_path(),
+            stage,
+        )?;
 
         ensure_run_id_matches(
             CalibrationArtifactReloadComponent::StageParameter { stage },
@@ -580,30 +576,45 @@ fn collect_stage_output_references(
     run_id: &str,
 ) -> Result<BTreeMap<CalibrationStage, String>, CalibrationArtifactReloadError> {
     let mut stage_references = BTreeMap::new();
-    for stage in [
-        CalibrationStage::Seasonality,
-        CalibrationStage::Hawkes,
-        CalibrationStage::ReturnComponents,
-        CalibrationStage::LongVariance,
-        CalibrationStage::NewsShocks,
-        CalibrationStage::ReturnBackfit,
-        CalibrationStage::MeanReversion,
-        CalibrationStage::JointRefinement,
-        CalibrationStage::Finalization,
-    ] {
-        if let Some(artifact_reference) = maybe_unique_manifest_reference(
-            manifest_path,
-            manifest,
-            run_id,
-            CalibrationArtifactKind::StageOutput,
-            Some(stage),
-            CalibrationArtifactReloadComponent::StageParameter { stage },
-        )? {
-            stage_references.insert(stage, artifact_reference);
+
+    for artifact_reference in manifest
+        .artifact_references
+        .iter()
+        .filter(|artifact_reference| {
+            artifact_reference.artifact_kind == CalibrationArtifactKind::StageOutput
+        })
+    {
+        let Some(stage) = artifact_reference.stage else {
+            return Err(stage_output_without_stage_error(run_id, manifest_path));
+        };
+
+        // The reload result owns artifact references after the manifest borrow ends.
+        let current_reference = artifact_reference.artifact_reference.clone();
+        if let Some(existing_reference) = stage_references.insert(stage, current_reference.clone())
+        {
+            return Err(
+                CalibrationArtifactReloadError::DuplicateManifestComponentReference {
+                    run_id: run_id.to_string(),
+                    component: CalibrationArtifactReloadComponent::StageParameter { stage },
+                    artifact_references: vec![existing_reference, current_reference],
+                },
+            );
         }
     }
 
     Ok(stage_references)
+}
+
+fn stage_output_without_stage_error(
+    run_id: &str,
+    manifest_path: &Path,
+) -> CalibrationArtifactReloadError {
+    CalibrationArtifactReloadError::CorruptedArtifact {
+        run_id: run_id.to_string(),
+        component: CalibrationArtifactReloadComponent::Manifest,
+        path: manifest_path.display().to_string(),
+        error_message: "stage_output manifest entries must include a stage".to_string(),
+    }
 }
 
 fn require_unique_manifest_reference(
@@ -666,12 +677,7 @@ fn maybe_unique_manifest_reference(
                             && artifact_reference.stage.is_none()
                     });
             if missing_stage_entry.is_some() {
-                return Err(CalibrationArtifactReloadError::CorruptedArtifact {
-                    run_id: run_id.to_string(),
-                    component: CalibrationArtifactReloadComponent::Manifest,
-                    path: manifest_path.display().to_string(),
-                    error_message: "stage_output manifest entries must include a stage".to_string(),
-                });
+                return Err(stage_output_without_stage_error(run_id, manifest_path));
             }
         }
 
@@ -738,6 +744,92 @@ where
     T: DeserializeOwned,
     Validate: FnOnce(&T) -> Result<(), String>,
 {
+    let document = load_artifact_document_with_schema_check(
+        run_id,
+        artifact_path,
+        component,
+        expected_schema_version,
+    )?;
+
+    let payload: T = serde_json::from_value(document).map_err(|source| {
+        CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
+            component,
+            path: artifact_path.display().to_string(),
+            error_message: source.to_string(),
+        }
+    })?;
+    validate(&payload).map_err(|error_message| {
+        CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
+            component,
+            path: artifact_path.display().to_string(),
+            error_message,
+        }
+    })?;
+
+    Ok(payload)
+}
+
+fn load_stage_parameter_artifact_with_schema_check(
+    run_id: &str,
+    artifact_path: &Path,
+    stage: CalibrationStage,
+) -> Result<CalibrationStageParameterArtifact, CalibrationArtifactReloadError> {
+    let component = CalibrationArtifactReloadComponent::StageParameter { stage };
+    load_artifact_document_with_schema_check(
+        run_id,
+        artifact_path,
+        component,
+        CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION,
+    )?;
+
+    load_calibration_stage_parameter_artifact_from_disk(artifact_path).map_err(|source| {
+        map_stage_parameter_artifact_load_error(run_id, artifact_path, stage, source)
+    })
+}
+
+fn map_stage_parameter_artifact_load_error(
+    run_id: &str,
+    artifact_path: &Path,
+    stage: CalibrationStage,
+    source: CalibrationArtifactIoError,
+) -> CalibrationArtifactReloadError {
+    let component = CalibrationArtifactReloadComponent::StageParameter { stage };
+
+    match source {
+        CalibrationArtifactIoError::ReadFailed { error_message, .. } => {
+            CalibrationArtifactReloadError::ArtifactReadFailed {
+                run_id: run_id.to_string(),
+                component,
+                path: artifact_path.display().to_string(),
+                error_message,
+            }
+        }
+        CalibrationArtifactIoError::DeserializationFailed { error_message, .. }
+        | CalibrationArtifactIoError::ValidationFailed { error_message, .. } => {
+            CalibrationArtifactReloadError::CorruptedArtifact {
+                run_id: run_id.to_string(),
+                component,
+                path: artifact_path.display().to_string(),
+                error_message,
+            }
+        }
+        other => CalibrationArtifactReloadError::CorruptedArtifact {
+            run_id: run_id.to_string(),
+            component,
+            path: artifact_path.display().to_string(),
+            error_message: other.to_string(),
+        },
+    }
+}
+
+fn load_artifact_document_with_schema_check(
+    run_id: &str,
+    artifact_path: &Path,
+    component: CalibrationArtifactReloadComponent,
+    expected_schema_version: &str,
+) -> Result<Value, CalibrationArtifactReloadError> {
     let content = fs::read_to_string(artifact_path).map_err(|source| match source.kind() {
         std::io::ErrorKind::NotFound => CalibrationArtifactReloadError::MissingArtifactFile {
             run_id: run_id.to_string(),
@@ -772,24 +864,7 @@ where
         });
     }
 
-    let payload: T = serde_json::from_value(document).map_err(|source| {
-        CalibrationArtifactReloadError::CorruptedArtifact {
-            run_id: run_id.to_string(),
-            component,
-            path: artifact_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-    validate(&payload).map_err(|error_message| {
-        CalibrationArtifactReloadError::CorruptedArtifact {
-            run_id: run_id.to_string(),
-            component,
-            path: artifact_path.display().to_string(),
-            error_message,
-        }
-    })?;
-
-    Ok(payload)
+    Ok(document)
 }
 
 fn extract_schema_version(

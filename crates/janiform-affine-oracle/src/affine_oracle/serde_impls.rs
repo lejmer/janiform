@@ -28,6 +28,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
     {
         let payload =
             ExponentialAffineTransformEquationSpecificationPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.hawkes_kernel_parameters,
             payload.gamma_severity_mark_configuration,

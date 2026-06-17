@@ -207,7 +207,7 @@ def load_activity_profile_dataset(
 
     buy_side_mask = price_delta > 0.0
     sell_side_mask = price_delta < 0.0
-    no_move_mask = price_delta == 0.0
+    zero_return_mask = price_delta == 0.0
 
     total_bucket_indices = intraday_bucket_indices(timestamps, bin_minutes)
     side_bucket_indices = intraday_bucket_indices(valid_comparison_timestamps, bin_minutes)
@@ -239,7 +239,7 @@ def load_activity_profile_dataset(
         "side_comparison_count": int(price_delta.size),
         "buy_side_tick_count": int(np.count_nonzero(buy_side_mask)),
         "sell_side_tick_count": int(np.count_nonzero(sell_side_mask)),
-        "no_move_tick_count": int(np.count_nonzero(no_move_mask)),
+        "zero_return_tick_count": int(np.count_nonzero(zero_return_mask)),
         "total_tick_count": int(timestamps.size),
         "activity_profiles": {
             side.value: profile_summary(profile) for side, profile in profiles.items()

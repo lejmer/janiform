@@ -14,18 +14,18 @@ use janiform::calibration::market_data::{
     MarketDataFitInputInferenceRequest, MarketDataInputFileReference, MarketDataLoadingOutput,
     MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataSourceProbePayload,
-    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
-    MarketDataTranslationPreprocessingRequest,
+    MarketDataTickDataColumnMapping, MarketDataTranslationCalibrationOutput,
+    MarketDataTranslationCalibrationRequest,
     PreparedMarketDataCalibrationPlan as PreparedMarketDataPlanCore,
+    calibrate_market_data_translation_request as calibrate_market_data_translation_request_native,
     exchange_code_from_market_profile_reference as exchange_code_from_market_profile_reference_native,
     exchange_code_from_session_reference as exchange_code_from_session_reference_native,
     infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_fit_inputs as infer_market_data_fit_inputs_native,
-    load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
+    load_and_calibrate_market_data_translation_request as load_and_calibrate_market_data_translation_request_native,
     normalize_market_data_source as normalize_market_data_source_native,
     prepare_market_data_calibration_plan as prepare_market_data_calibration_plan_core,
     prepare_market_data_calibration_plan_from_phases as prepare_market_data_calibration_plan_from_phases_core,
-    preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
     probe_market_data_source as probe_market_data_source_native,
     resolve_market_data_session_configuration as resolve_market_data_session_configuration_native,
     resolve_market_profile_configuration as resolve_market_profile_configuration_native,
@@ -327,32 +327,32 @@ fn exchange_code_from_market_profile_reference(
 }
 
 #[pyfunction]
-#[pyo3(signature = (preprocessing_request, calendar_registry))]
-fn preprocess_market_data_translation_request(
+#[pyo3(signature = (calibration_request, calendar_registry))]
+fn calibrate_market_data_translation_request(
     py: Python<'_>,
-    preprocessing_request: &Bound<'_, PyAny>,
+    calibration_request: &Bound<'_, PyAny>,
     calendar_registry: &PyCalendarRegistry,
 ) -> PyResult<Py<PyAny>> {
-    let preprocessing_request: MarketDataTranslationPreprocessingRequest =
-        serde_json::from_value(py_any_to_json_value(preprocessing_request)?).map_err(|source| {
+    let calibration_request: MarketDataTranslationCalibrationRequest =
+        serde_json::from_value(py_any_to_json_value(calibration_request)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
-                "failed to deserialize market-data preprocessing request: {source}"
+                "failed to deserialize market-data calibration request: {source}"
             ))
         })?;
 
-    let preprocessing_output = py
+    let calibration_output = py
         .detach(|| {
-            preprocess_market_data_translation_request_native(
-                preprocessing_request,
+            calibrate_market_data_translation_request_native(
+                calibration_request,
                 &calendar_registry.registry,
             )
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
-    market_data_translation_preprocessing_output_to_py_object(py, &preprocessing_output).map_err(
+    market_data_translation_calibration_output_to_py_object(py, &calibration_output).map_err(
         |source| {
             CalibrationExecutionError::new_err(format!(
-                "failed to materialize market-data preprocessing output: {source}"
+                "failed to materialize market-data calibration output: {source}"
             ))
         },
     )
@@ -360,7 +360,7 @@ fn preprocess_market_data_translation_request(
 
 #[pyfunction]
 #[pyo3(signature = (loading_request))]
-fn load_and_preprocess_market_data_translation_request(
+fn load_and_calibrate_market_data_translation_request(
     py: Python<'_>,
     loading_request: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
@@ -372,7 +372,7 @@ fn load_and_preprocess_market_data_translation_request(
         })?;
 
     let loading_output = py
-        .detach(|| load_and_preprocess_market_data_translation_request_native(loading_request))
+        .detach(|| load_and_calibrate_market_data_translation_request_native(loading_request))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     market_data_loading_output_to_py_object(py, &loading_output).map_err(|source| {
@@ -600,13 +600,13 @@ fn market_data_session_resolution_to_py_object(
     json_value_to_py_object(py, &raw_value)
 }
 
-fn market_data_translation_preprocessing_output_to_py_object(
+fn market_data_translation_calibration_output_to_py_object(
     py: Python<'_>,
-    preprocessing_output: &MarketDataTranslationPreprocessingOutput,
+    calibration_output: &MarketDataTranslationCalibrationOutput,
 ) -> PyResult<Py<PyAny>> {
-    let raw_value = serde_json::to_value(preprocessing_output).map_err(|source| {
+    let raw_value = serde_json::to_value(calibration_output).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
-            "failed to serialize market-data preprocessing output: {source}"
+            "failed to serialize market-data calibration output: {source}"
         ))
     })?;
 
@@ -1281,6 +1281,9 @@ fn flatten_stage_report_for_python(
         CalibrationStagedRunStageReport::Hawkes(stage_report) => {
             ("hawkes", serde_json::to_value(stage_report)?)
         }
+        CalibrationStagedRunStageReport::ObservationModels(stage_report) => {
+            ("observation_models", serde_json::to_value(stage_report)?)
+        }
         CalibrationStagedRunStageReport::ReturnComponents(stage_report) => {
             ("return_components", serde_json::to_value(stage_report)?)
         }
@@ -1365,12 +1368,12 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
 
     module.add_function(wrap_pyfunction!(
-        preprocess_market_data_translation_request,
+        calibrate_market_data_translation_request,
         module
     )?)?;
 
     module.add_function(wrap_pyfunction!(
-        load_and_preprocess_market_data_translation_request,
+        load_and_calibrate_market_data_translation_request,
         module
     )?)?;
 

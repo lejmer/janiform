@@ -24,13 +24,12 @@ and terminal pricing derivations.
 
 \section{Setup}
 
-On one interval \(h\), condition on the decomposed return clocks
+On one interval \(h\), condition on the decomposed total side activity
 \[
     \mathcal C_h
     =
     \sigma\!\left(B_{Z,h}^+,E_h^+,B_{Z,h}^-,E_h^-\right).
 \]
-
 The effective buy and sell return clocks are
 \[
     A_h^+
@@ -75,8 +74,8 @@ Symbol & Meaning & Units or domain\\
 \midrule
 \(A_h^+\) & Effective buy-side return clock & Non-negative business time\\
 \(A_h^-\) & Effective sell-side return clock & Non-negative business time\\
-\(B_{Z,h}^\pm\) & Baseline return-clock exposure scaled by long variance & Non-negative business time\\
-\(E_h^\pm\) & Endogenous side activity exposure & Non-negative business time\\
+\(B_{Z,h}^\pm\) & Total baseline activity exposure scaled by long variance & Non-negative business time\\
+\(E_h^\pm\) & Total endogenous side activity exposure & Non-negative business time\\
 \(\eta_\pm\) & Endogenous activity return-clock exposure multiplier & Positive\\
 \(\psi_\pm(u)\) & Unit-time NIG characteristic exponent for side \(\pm\) & Complex transform domain\\
 \(K_\pm(q)\) & Unit-time NIG log-MGF, \(K_\pm(q)=\psi_\pm(-iq)\) & Moment domain\\

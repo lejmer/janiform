@@ -30,6 +30,12 @@ pub const CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION: &str =
     "calibration.orchestration.stage_output.hawkes.v1";
 pub const CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY: &str =
     "explicit_run_spec_handoffs_mode_aware_transport.v1";
+pub const CALIBRATION_OBSERVATION_MODELS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_execution.observation_models.report.v1";
+pub const CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_output.observation_models.v1";
+pub const CALIBRATION_OBSERVATION_MODELS_STAGE_HANDOFF_POLICY: &str =
+    "explicit_run_spec_handoffs_mode_aware_transport.v1";
 pub const CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
     "calibration.orchestration.stage_execution.return_components.report.v1";
 pub const CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION: &str =

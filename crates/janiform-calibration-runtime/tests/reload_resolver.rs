@@ -333,6 +333,12 @@ fn assert_stage_artifact_reload_matches(
                 );
             }
             (
+                CalibrationStageParameterPayload::ObservationModels(reloaded_payload),
+                CalibrationStageParameterPayload::ObservationModels(expected_payload),
+            ) => {
+                assert_eq!(reloaded_payload, expected_payload);
+            }
+            (
                 CalibrationStageParameterPayload::ReturnComponents(reloaded_payload),
                 CalibrationStageParameterPayload::ReturnComponents(expected_payload),
             ) => {

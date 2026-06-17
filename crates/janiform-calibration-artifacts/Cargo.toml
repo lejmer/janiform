@@ -51,5 +51,9 @@ name = "run_spec_and_contracts"
 path = "tests/run_spec_and_contracts.rs"
 
 [[test]]
+name = "stage_parameter_compaction"
+path = "tests/stage_parameter_compaction.rs"
+
+[[test]]
 name = "validation_metric_artifact"
 path = "tests/validation_metric_artifact.rs"

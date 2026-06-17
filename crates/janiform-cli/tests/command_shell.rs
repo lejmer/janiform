@@ -1637,7 +1637,7 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
 
     assert_eq!(
-        payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
+        payload["preparation_request"]["calibration_settings"]["return_components"]["tick_size"],
         serde_json::json!(0.00001)
     );
     assert_eq!(
@@ -1653,6 +1653,7 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
         serde_json::json!([
             "seasonality",
             "hawkes",
+            "observation_models",
             "return_components",
             "long_variance",
             "news_shocks",
@@ -1703,7 +1704,7 @@ fn fit_staged_plan_uses_market_profile_tick_size_fallback() {
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
 
     assert_eq!(
-        payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
+        payload["preparation_request"]["calibration_settings"]["return_components"]["tick_size"],
         serde_json::json!(0.00001)
     );
 
@@ -1746,7 +1747,7 @@ fn fit_staged_plan_explicit_tick_size_overrides_market_profile_tick_size() {
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
 
     assert_eq!(
-        payload["preparation_request"]["preprocessing_settings"]["return_components"]["tick_size"],
+        payload["preparation_request"]["calibration_settings"]["return_components"]["tick_size"],
         serde_json::json!(0.00002)
     );
 

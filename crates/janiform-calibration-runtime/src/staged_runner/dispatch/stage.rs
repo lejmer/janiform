@@ -1,6 +1,9 @@
 use std::path::Path;
 
 use janiform_foundations::cancellation::CancellationToken;
+use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
+
+use crate::stages::return_components::open_session_returns_with_source_activities;
 
 use super::super::{
     CalibrationInMemoryStagePayloadState, CalibrationRunSpec, CalibrationStage,
@@ -12,12 +15,16 @@ use super::super::{
     HawkesStageProgressUpdate, HawkesStageSeasonalityInput, JointRefinementStageProgressUpdate,
     LongVarianceStageExecutionInput, LongVarianceStageProgressUpdate,
     MeanReversionStageProgressUpdate, NewsShocksStageExecutionInput,
-    ReturnBackfitStageExecutionInput, ReturnComponentsStageExecutionInput,
-    ReturnComponentsStageProgressUpdate, run_hawkes_calibration_stage,
-    run_hawkes_calibration_stage_with_progress_observer, run_long_variance_calibration_stage,
+    ObservationModelsHawkesSourceResponsibilityInput, ObservationModelsStageProgressUpdate,
+    ReturnBackfitStageExecutionInput, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageExecutionInput, ReturnComponentsStageProgressUpdate,
+    run_hawkes_calibration_stage, run_hawkes_calibration_stage_with_progress_observer,
+    run_long_variance_calibration_stage,
     run_long_variance_calibration_stage_with_progress_observer,
     run_mean_reversion_calibration_stage,
     run_mean_reversion_calibration_stage_with_progress_observer, run_news_shocks_calibration_stage,
+    run_observation_models_calibration_stage,
+    run_observation_models_calibration_stage_with_progress_observer,
     run_return_backfit_calibration_stage, run_return_components_calibration_stage,
     run_return_components_calibration_stage_with_progress_observer,
     run_seasonality_calibration_stage,
@@ -46,6 +53,7 @@ pub(in crate::staged_runner) fn run_stage_for_staged_execution(
     match input.stage {
         CalibrationStage::Seasonality => run_seasonality_staged_execution_stage(input),
         CalibrationStage::Hawkes => run_hawkes_staged_execution_stage(input),
+        CalibrationStage::ObservationModels => run_observation_models_staged_execution_stage(input),
         CalibrationStage::ReturnComponents => run_return_components_staged_execution_stage(input),
         CalibrationStage::LongVariance => run_long_variance_staged_execution_stage(input),
         CalibrationStage::NewsShocks => run_news_shocks_staged_execution_stage(input),
@@ -125,7 +133,7 @@ fn run_hawkes_staged_execution_stage(
     let event_side_codes = input
         .staged_run_inputs
         .hawkes_event_side_codes
-        .take()
+        .clone()
         .unwrap_or_default();
 
     let stage_input = HawkesStageExecutionInput {
@@ -207,19 +215,94 @@ fn hawkes_seasonality_input(
     }
 }
 
+fn run_observation_models_staged_execution_stage(
+    input: RunStageForStagedExecutionInput<'_, '_>,
+) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    let Some(mut stage_input) = input
+        .staged_run_inputs
+        .observation_models_stage_input
+        .take()
+    else {
+        return Err(CalibrationStagedRunFailure::MissingStageInput {
+            stage: CalibrationStage::ObservationModels,
+        });
+    };
+
+    let seasonality_payload = cloned_in_memory_stage_payload(
+        &input.payload_state.seasonality_stage_payload,
+        CalibrationStage::Seasonality,
+        CalibrationStage::ObservationModels,
+    )?;
+    let hawkes_payload = cloned_in_memory_stage_payload(
+        &input.payload_state.hawkes_stage_payload,
+        CalibrationStage::Hawkes,
+        CalibrationStage::ObservationModels,
+    )?;
+    let Some(event_side_codes) = input.staged_run_inputs.hawkes_event_side_codes.clone() else {
+        return Err(CalibrationStagedRunFailure::MissingStageInput {
+            stage: CalibrationStage::Hawkes,
+        });
+    };
+
+    stage_input.source_responsibility_input =
+        Some(ObservationModelsHawkesSourceResponsibilityInput {
+            seasonality_payload,
+            event_side_codes,
+            hawkes_fitted_parameters: hawkes_payload.fitted_parameters,
+        });
+
+    if input.observer.is_none() {
+        return Ok(CalibrationStagedRunStageReport::ObservationModels(
+            Box::new(run_observation_models_calibration_stage(
+                input.run_spec,
+                stage_input,
+            )),
+        ));
+    }
+
+    let mut progress_forwarder = |progress_update: ObservationModelsStageProgressUpdate| {
+        forward_simple_stage_progress(
+            input.observer,
+            SimpleStageProgressForwardInput {
+                run_spec: input.run_spec,
+                stage: CalibrationStage::ObservationModels,
+                stage_index: input.stage_index,
+                stage_count: input.stage_count,
+                progress_phase: progress_update.phase,
+                completed_units: progress_update.completed_units,
+                total_units: progress_update.total_units,
+                stage_progress_percent: Some(progress_update.stage_progress_percent()),
+                aggregate_progress_percent: progress_update.aggregate_progress_percent,
+                current_item_label: progress_update.current_item_label,
+                current_evaluation_count: None,
+                total_evaluation_budget: None,
+                evaluation_progress_percent: None,
+                current_global_loss: None,
+                best_global_loss: None,
+                current_convergence_ratio: None,
+            },
+        );
+    };
+
+    Ok(CalibrationStagedRunStageReport::ObservationModels(
+        Box::new(
+            run_observation_models_calibration_stage_with_progress_observer(
+                input.run_spec,
+                stage_input,
+                Some(&mut progress_forwarder),
+            ),
+        ),
+    ))
+}
+
 fn run_return_components_staged_execution_stage(
     input: RunStageForStagedExecutionInput<'_, '_>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
-    // Return-component candidate generation is reused by later joint-refinement stages.
-    let Some(candidate_generation_input) = input
-        .staged_run_inputs
-        .return_components_candidate_generation_input
-        .clone()
-    else {
-        return Err(CalibrationStagedRunFailure::MissingStageInput {
-            stage: CalibrationStage::ReturnComponents,
-        });
-    };
+    let candidate_generation_input = return_components_candidate_generation_input(
+        input.staged_run_inputs,
+        input.payload_state,
+        CalibrationStage::ReturnComponents,
+    )?;
 
     let stage_input = ReturnComponentsStageExecutionInput {
         activity_input: return_components_activity_input(input.run_spec, input.payload_state)?,
@@ -288,6 +371,59 @@ fn return_components_activity_input(
             })
         }
     }
+}
+
+pub(super) fn return_components_candidate_generation_input(
+    staged_run_inputs: &CalibrationStagedRunInputs,
+    payload_state: &CalibrationInMemoryStagePayloadState,
+    consuming_stage: CalibrationStage,
+) -> Result<ReturnComponentsStageCandidateGenerationInput, CalibrationStagedRunFailure> {
+    // Intentional copy because the candidate template is reused by return components
+    // and later stages with the same fitted observation-model overlay.
+    let Some(mut candidate_generation_input) = staged_run_inputs
+        .return_components_candidate_generation_input
+        .clone()
+    else {
+        return Err(CalibrationStagedRunFailure::MissingStageInput {
+            stage: consuming_stage,
+        });
+    };
+
+    let observation_models_stage_payload = cloned_in_memory_stage_payload(
+        &payload_state.observation_models_stage_payload,
+        CalibrationStage::ObservationModels,
+        consuming_stage,
+    )?;
+
+    candidate_generation_input.timestamp_batching_observation_model =
+        observation_models_stage_payload.timestamp_batching_observation_model;
+    overlay_open_session_return_source_activities(
+        &mut candidate_generation_input,
+        &observation_models_stage_payload.open_session_return_source_activities,
+        consuming_stage,
+    )?;
+
+    Ok(candidate_generation_input)
+}
+
+fn overlay_open_session_return_source_activities(
+    candidate_generation_input: &mut ReturnComponentsStageCandidateGenerationInput,
+    source_activities: &[SideSourceActivityDecomposition],
+    consuming_stage: CalibrationStage,
+) -> Result<(), CalibrationStagedRunFailure> {
+    candidate_generation_input.observed_open_session_returns =
+        open_session_returns_with_source_activities(
+            candidate_generation_input
+                .observed_open_session_returns
+                .as_slice(),
+            source_activities,
+        )
+        .map_err(|source| CalibrationStagedRunFailure::StageExecutionFailed {
+            stage: consuming_stage,
+            error_message: Some(source.to_string()),
+        })?;
+
+    Ok(())
 }
 
 fn forward_return_components_stage_progress(
@@ -428,12 +564,11 @@ fn run_long_variance_staged_execution_stage(
             .payload_state
             .return_components_stage_payload
             .clone(),
-        // Intentional copy because return-component observations are reused by
-        // later stages after the long-variance stage consumes its input value.
-        candidate_generation_input: input
-            .staged_run_inputs
-            .return_components_candidate_generation_input
-            .clone(),
+        candidate_generation_input: Some(return_components_candidate_generation_input(
+            input.staged_run_inputs,
+            input.payload_state,
+            CalibrationStage::LongVariance,
+        )?),
         coarse_data_records: input.staged_run_inputs.coarse_data_records.clone(),
         tick_objective_data_usage_policy: input.staged_run_inputs.tick_objective_data_usage_policy,
     };
@@ -581,10 +716,11 @@ fn run_return_backfit_staged_execution_stage(
             input.payload_state,
         )?),
         hawkes_stage_payload: input.payload_state.hawkes_stage_payload.clone(),
-        candidate_generation_input: input
-            .staged_run_inputs
-            .return_components_candidate_generation_input
-            .clone(),
+        candidate_generation_input: Some(return_components_candidate_generation_input(
+            input.staged_run_inputs,
+            input.payload_state,
+            CalibrationStage::ReturnBackfit,
+        )?),
         return_components_stage_payload: input
             .payload_state
             .return_components_stage_payload

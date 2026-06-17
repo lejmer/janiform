@@ -1,38 +1,38 @@
 {
   "data_summary": {
     "synthetic_model_output": {
-      "event_count": 12066398,
+      "event_count": 13942058,
       "label": "Janiform synthetic",
       "negative_inter_arrival_count_after_sorting": 0,
       "original_timestamp_order_is_monotonic": true,
-      "positive_inter_arrival_count": 12066397,
+      "positive_inter_arrival_count": 13634402,
       "positive_inter_arrival_seconds": {
-        "maximum": 176400.183887188,
-        "minimum": 2e-09,
+        "maximum": 176400.122589696,
+        "minimum": 2.56e-07,
         "quantiles": {
-          "p50": 0.063067882,
-          "p90": 0.35555318140000036,
-          "p95": 0.6326497139999999,
-          "p99": 1.5924659900799945
+          "p50": 0.055700992,
+          "p90": 0.3133562624000001,
+          "p95": 0.557533184,
+          "p99": 1.4124393625600042
         }
       },
-      "raw_inter_arrival_count": 12066397,
+      "raw_inter_arrival_count": 13942057,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.269032407+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.214543616+00:00",
       "timestamp_null_count": 0,
-      "zero_inter_arrival_count": 0
+      "zero_inter_arrival_count": 307655
     }
   },
   "figure": {
     "id": "inter_arrival_distribution_synthetic_model_output",
     "title": "Janiform synthetic ES inter-arrival distribution"
   },
-  "generated_at_utc": "2026-06-13T23:48:29.715793+00:00",
+  "generated_at_utc": "2026-06-17T22:33:34.646300+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\inter_arrival_distribution.py"
     ],
-    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
+    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/inter_arrival_distribution.py"
@@ -56,11 +56,11 @@
         "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 12066398,
-      "parquet_row_group_count": 12,
+      "parquet_row_count": 13942058,
+      "parquet_row_group_count": 14,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 126990425,
+      "size_bytes": 144571712,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -75,8 +75,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/inter_arrival_distribution/inter_arrival_distribution_synthetic.pdf",
       "role": "figure",
-      "sha256": "b26244196774ed79f79c99d98f08bf64d3204e772958cd9136bd7daf1f3d8e1d",
-      "size_bytes": 16565
+      "sha256": "290d5ad270c393cf418dd0a5847111923db96655bafd9d2e4c80073b20bd2e9d",
+      "size_bytes": 16519
     }
   ],
   "parameters": {
@@ -95,7 +95,7 @@
     "curves": [
       {
         "label": "Janiform synthetic",
-        "nonzero_density_bin_count": 56
+        "nonzero_density_bin_count": 55
       }
     ],
     "plot_type": "log_log_density_curve",

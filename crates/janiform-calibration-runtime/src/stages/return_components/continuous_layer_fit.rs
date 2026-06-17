@@ -169,6 +169,7 @@ pub(crate) fn fit_continuous_return_layer(
 mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
     use janiform_foundations::time::NANOS_PER_HOUR;
+    use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
     use super::{
         build_nig_search_candidates, evaluate_continuous_nig_candidate, fit_continuous_return_layer,
@@ -198,6 +199,7 @@ mod tests {
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -205,6 +207,7 @@ mod tests {
                     log_return: -1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
             ],
             continuous_fit_returns: vec![
@@ -214,6 +217,7 @@ mod tests {
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -221,6 +225,7 @@ mod tests {
                     log_return: -1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.5,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.5),
                 },
             ],
             intraday_jump_candidates: Vec::new(),
@@ -294,6 +299,7 @@ mod tests {
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.25,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.25),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -301,6 +307,7 @@ mod tests {
                     log_return: -0.7e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.75,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.75),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
@@ -308,6 +315,7 @@ mod tests {
                     log_return: 0.9e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.35,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.35),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
@@ -315,6 +323,7 @@ mod tests {
                     log_return: -1.1e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.65,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.65),
                 },
             ],
             continuous_fit_returns: vec![
@@ -324,6 +333,7 @@ mod tests {
                     log_return: 1.0e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.25,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.25),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 2,
@@ -331,6 +341,7 @@ mod tests {
                     log_return: -0.7e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.75,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.75),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 3,
@@ -338,6 +349,7 @@ mod tests {
                     log_return: 0.9e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.35,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.35),
                 },
                 ReturnComponentsObservedOpenSessionReturn {
                     return_timestamp_utc_nanos: 4,
@@ -345,6 +357,7 @@ mod tests {
                     log_return: -1.1e-6,
                     post_shock_activity_lift: 1.0,
                     sell_share_proxy: 0.65,
+                    source_activity: SideSourceActivityDecomposition::from_sell_share_proxy(0.65),
                 },
             ],
             intraday_jump_candidates: Vec::new(),

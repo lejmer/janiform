@@ -1,21 +1,21 @@
 {
   "diagnostics": {
     "export": {
-      "chunk_count": 40728,
-      "record_count": 10426367
+      "chunk_count": 54462,
+      "record_count": 13942058
     },
     "native": {
       "estimated_debug_trace_bytes": 0,
-      "estimated_event_projection_index_bytes": 90813824,
-      "estimated_fine_path_bytes": 2089813120,
-      "estimated_public_projection_index_bytes": 90861440,
-      "estimated_total_retained_bytes": 2271488384,
-      "event_count": 10425836,
-      "public_transition_count": 10426367,
-      "transition_count": 10426600
+      "estimated_event_projection_index_bytes": 140810560,
+      "estimated_fine_path_bytes": 3240833216,
+      "estimated_public_projection_index_bytes": 140905792,
+      "estimated_total_retained_bytes": 3522549568,
+      "event_count": 13941527,
+      "public_transition_count": 13942058,
+      "transition_count": 13942291
     }
   },
-  "primary_output_path": "C:\\Users\\anton\\source\\repos\\janiform\\paper/data/synthetic_es_continuous.parquet",
+  "primary_output_path": "C:\\Users\\anton\\source\\repos\\janiform\\paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
   "schema_version": "janiform.workflow_report.v1",
   "simulation_kind": "seeded_tick",
   "workflow": "simulate"

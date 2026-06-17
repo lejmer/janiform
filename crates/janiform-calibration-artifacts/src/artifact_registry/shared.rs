@@ -420,6 +420,22 @@ where
     T: DeserializeOwned,
     Validate: FnOnce(&T) -> Result<(), String>,
 {
+    let payload = load_json_artifact(artifact_kind, artifact_path)?;
+
+    validate(&payload).map_err(|error_message| {
+        CalibrationArtifactIoError::validation_failed(artifact_kind, error_message)
+    })?;
+
+    Ok(payload)
+}
+
+pub(crate) fn load_json_artifact<T>(
+    artifact_kind: CalibrationArtifactPersistenceKind,
+    artifact_path: &Path,
+) -> Result<T, CalibrationArtifactIoError>
+where
+    T: DeserializeOwned,
+{
     let content = fs::read_to_string(artifact_path).map_err(|source| {
         CalibrationArtifactIoError::read_failed(
             artifact_kind,
@@ -428,17 +444,11 @@ where
         )
     })?;
 
-    let payload: T = serde_json::from_str(content.as_str()).map_err(|source| {
+    serde_json::from_str(content.as_str()).map_err(|source| {
         CalibrationArtifactIoError::deserialization_failed(
             artifact_kind,
             artifact_path.display().to_string(),
             source.to_string(),
         )
-    })?;
-
-    validate(&payload).map_err(|error_message| {
-        CalibrationArtifactIoError::validation_failed(artifact_kind, error_message)
-    })?;
-
-    Ok(payload)
+    })
 }

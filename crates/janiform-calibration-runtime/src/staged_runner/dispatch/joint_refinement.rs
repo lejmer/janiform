@@ -20,7 +20,9 @@ use super::handoffs::{
     cloned_in_memory_stage_payload, expected_stage_handoff_artifact_reference,
     expected_stage_handoff_transport,
 };
-use super::stage::effective_return_components_upstream_stage;
+use super::stage::{
+    effective_return_components_upstream_stage, return_components_candidate_generation_input,
+};
 
 pub(super) struct JointRefinementLikeStageRunInput<'a, 'observer> {
     pub(super) stage: CalibrationStage,
@@ -91,6 +93,7 @@ pub(super) fn run_joint_refinement_like_stage(
         }
         CalibrationStage::Seasonality
         | CalibrationStage::Hawkes
+        | CalibrationStage::ObservationModels
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::NewsShocks
@@ -192,6 +195,7 @@ pub(super) fn joint_refinement_like_stage_input(
         candidate_generation_input: joint_refinement_candidate_generation_input(
             consuming_stage,
             staged_run_inputs,
+            payload_state,
         )?,
         coarse_data_records: staged_run_inputs.coarse_data_records.clone(),
         tick_objective_data_usage_policy: staged_run_inputs.tick_objective_data_usage_policy,
@@ -226,18 +230,9 @@ fn joint_refinement_seasonality_factors_input(
 fn joint_refinement_candidate_generation_input(
     consuming_stage: CalibrationStage,
     staged_run_inputs: &CalibrationStagedRunInputs,
+    payload_state: &CalibrationInMemoryStagePayloadState,
 ) -> Result<ReturnComponentsStageCandidateGenerationInput, CalibrationStagedRunFailure> {
-    // Return-component candidate generation is reused by all joint-refinement-like stages.
-    let Some(candidate_generation_input) = staged_run_inputs
-        .return_components_candidate_generation_input
-        .clone()
-    else {
-        return Err(CalibrationStagedRunFailure::MissingStageInput {
-            stage: consuming_stage,
-        });
-    };
-
-    Ok(candidate_generation_input)
+    return_components_candidate_generation_input(staged_run_inputs, payload_state, consuming_stage)
 }
 
 fn joint_refinement_payload_source<T: Clone>(
@@ -308,6 +303,7 @@ fn option_refinement_dispatch_settings(
         }
         CalibrationStage::Seasonality
         | CalibrationStage::Hawkes
+        | CalibrationStage::ObservationModels
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::NewsShocks
