@@ -395,8 +395,6 @@ pub(super) fn return_components_candidate_generation_input(
         consuming_stage,
     )?;
 
-    candidate_generation_input.no_move_event_model =
-        observation_models_stage_payload.no_move_event_model;
     candidate_generation_input.timestamp_batching_observation_model =
         observation_models_stage_payload.timestamp_batching_observation_model;
     overlay_open_session_return_source_activities(

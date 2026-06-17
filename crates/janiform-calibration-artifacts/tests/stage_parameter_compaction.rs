@@ -13,7 +13,6 @@ use janiform_calibration_artifacts::{
     persist_calibration_stage_parameter_artifact_to_disk,
 };
 use janiform_market_time::business_time_clock::FOURIER_BUSINESS_TIME_CLOCK_MODEL_SCHEMA_VERSION;
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 use serde_json::Value;
 use support::shared::{
@@ -135,7 +134,6 @@ fn observation_models_stage_parameter_artifact_round_trips_compact_model_payload
                 stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY.to_string(),
                 solver_settings: build_solver_settings(),
             },
-            no_move_event_model: NoMoveEventModel::neutral(),
             timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
             diagnostics: ObservationModelsStageDiagnostics {
                 estimation_policy: "stage_parameter_compaction_test.v1".to_string(),
@@ -180,7 +178,6 @@ fn observation_models_stage_parameter_artifact_round_trips_compact_model_payload
         payload_keys,
         BTreeSet::from([
             "diagnostics".to_string(),
-            "no_move_event_model".to_string(),
             "timestamp_batching_observation_model".to_string(),
         ])
     );

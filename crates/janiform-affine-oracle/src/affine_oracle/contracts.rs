@@ -13,7 +13,6 @@ use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
     NewsComponentMarkScaleConfigurationError, NewsMarkConfigurationError,
 };
-use janiform_model_kernels::no_move_event::{NoMoveEventModel, NoMoveEventModelError};
 
 /// Canonical equation specification shared by pricing and sufficient-statistics solver consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -26,9 +25,6 @@ pub struct ExponentialAffineTransformEquationSpecification {
 
     /// Long-variance parameters for baseline return-clock uncertainty.
     pub long_variance_parameters: LongVarianceParameters,
-
-    /// Economic no-move probabilities used to thin return clocks without changing event counts.
-    pub no_move_event_model: NoMoveEventModel,
 }
 
 impl ExponentialAffineTransformEquationSpecification {
@@ -36,13 +32,11 @@ impl ExponentialAffineTransformEquationSpecification {
         hawkes_kernel_parameters: HawkesKernelParameters,
         gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
         long_variance_parameters: LongVarianceParameters,
-        no_move_event_model: NoMoveEventModel,
     ) -> Self {
         Self {
             hawkes_kernel_parameters,
             gamma_severity_mark_configuration,
             long_variance_parameters,
-            no_move_event_model,
         }
     }
 
@@ -50,13 +44,11 @@ impl ExponentialAffineTransformEquationSpecification {
         hawkes_kernel_parameters: HawkesKernelParameters,
         gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
         long_variance_parameters: LongVarianceParameters,
-        no_move_event_model: NoMoveEventModel,
     ) -> Result<Self, ExponentialAffineTransformEquationSpecificationError> {
         let specification = Self::new(
             hawkes_kernel_parameters,
             gamma_severity_mark_configuration,
             long_variance_parameters,
-            no_move_event_model,
         );
         specification.validate()?;
         Ok(specification)
@@ -86,10 +78,6 @@ impl ExponentialAffineTransformEquationSpecification {
             ExponentialAffineTransformEquationSpecificationError::InvalidLongVarianceParameters {
                 source,
             }
-        })?;
-
-        self.no_move_event_model.validate().map_err(|source| {
-            ExponentialAffineTransformEquationSpecificationError::InvalidNoMoveEventModel { source }
         })?;
 
         Ok(())
@@ -126,7 +114,6 @@ pub enum ExponentialAffineTransformEquationSpecificationError {
     InvalidHawkesKernelParameters { source: HawkesKernelParameterError },
     InvalidGammaSeverityMarkConfiguration { source: NewsMarkConfigurationError },
     InvalidLongVarianceParameters { source: LongVarianceParametersError },
-    InvalidNoMoveEventModel { source: NoMoveEventModelError },
 }
 
 impl Display for ExponentialAffineTransformEquationSpecificationError {
@@ -144,10 +131,6 @@ impl Display for ExponentialAffineTransformEquationSpecificationError {
                 formatter,
                 "equation specification long_variance_parameters are invalid: {source}"
             ),
-            Self::InvalidNoMoveEventModel { source } => write!(
-                formatter,
-                "equation specification no_move_event_model is invalid: {source}"
-            ),
         }
     }
 }
@@ -158,7 +141,6 @@ impl Error for ExponentialAffineTransformEquationSpecificationError {
             Self::InvalidHawkesKernelParameters { source } => Some(source),
             Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
-            Self::InvalidNoMoveEventModel { source } => Some(source),
         }
     }
 }
@@ -265,10 +247,7 @@ impl Display for ExponentialAffineTransformNewsIntensityInputError {
 
 impl Error for ExponentialAffineTransformNewsIntensityInputError {}
 
-/// Moving integrated-activity Laplace loadings split by baseline and endogenous source.
-///
-/// The affine oracle applies the no-move model to total source activity before
-/// these loadings enter the event Hamiltonians.
+/// Integrated-activity Laplace loadings split by baseline and endogenous source.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformActivityLoadings {
     pub u_plus_baseline: ComplexScalar,

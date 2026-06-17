@@ -355,7 +355,6 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
         hawkes_kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(2.0).expect("gamma severity marks should validate"),
         LongVarianceParameters::neutral(),
-        janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
     )
     .expect("equation specification should validate");
     let nig_configuration = NigSharedPlusShiftConfiguration::try_new(1.6, 0.15, 0.5, 0.0, -0.1)

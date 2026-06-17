@@ -687,8 +687,6 @@ mod tests {
                         return_clock_exposure_parameters:
                             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
                             ),
-                        no_move_event_model:
-                            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
                         tick_grid_observation_model:
                             janiform_calibration_artifacts::TickGridObservationModel {
                                 tick_size: None,

@@ -381,9 +381,6 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
                     .clone(),
                 return_clock_exposure_parameters,
                 long_variance_parameters,
-                no_move_event_model: context
-                    .baseline_return_components_fitted_parameters
-                    .no_move_event_model,
                 tick_grid_observation_model: context
                     .baseline_return_components_fitted_parameters
                     .tick_grid_observation_model

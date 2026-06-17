@@ -12,7 +12,6 @@ use janiform_model_kernels::mean_reversion::{
 };
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
@@ -55,7 +54,6 @@ pub struct ReturnComponentsStageFittedParameters {
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub no_move_event_model: NoMoveEventModel,
     pub long_variance_parameters: LongVarianceParameters,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,

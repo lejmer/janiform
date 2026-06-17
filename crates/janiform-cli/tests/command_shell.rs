@@ -1653,6 +1653,7 @@ fn fit_staged_plan_accepts_explicit_tick_size() {
         serde_json::json!([
             "seasonality",
             "hawkes",
+            "observation_models",
             "return_components",
             "long_variance",
             "news_shocks",

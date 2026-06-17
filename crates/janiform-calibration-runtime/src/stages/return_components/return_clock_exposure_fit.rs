@@ -1,4 +1,3 @@
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::{
     IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
 };
@@ -12,59 +11,44 @@ enum ReturnClockSide {
 }
 
 pub(crate) fn fit_return_clock_exposure_parameters(
-    moving_return_evidence: &[ReturnComponentsObservedOpenSessionReturn],
-    no_move_event_model: NoMoveEventModel,
+    return_evidence: &[ReturnComponentsObservedOpenSessionReturn],
 ) -> ReturnClockExposureParameters {
-    let buy_scale = fit_side_return_clock_scale(
-        moving_return_evidence,
-        no_move_event_model,
-        ReturnClockSide::Buy,
-    )
-    .unwrap_or(ReturnClockExposureParameters::neutral().buy_excitation_return_clock_scale);
+    let buy_scale = fit_side_return_clock_scale(return_evidence, ReturnClockSide::Buy)
+        .unwrap_or(ReturnClockExposureParameters::neutral().buy_excitation_return_clock_scale);
 
-    let sell_scale = fit_side_return_clock_scale(
-        moving_return_evidence,
-        no_move_event_model,
-        ReturnClockSide::Sell,
-    )
-    .unwrap_or(ReturnClockExposureParameters::neutral().sell_excitation_return_clock_scale);
+    let sell_scale = fit_side_return_clock_scale(return_evidence, ReturnClockSide::Sell)
+        .unwrap_or(ReturnClockExposureParameters::neutral().sell_excitation_return_clock_scale);
 
     ReturnClockExposureParameters::try_new(buy_scale, sell_scale)
         .unwrap_or_else(|_| ReturnClockExposureParameters::neutral())
 }
 
-pub(crate) fn moving_return_clock_proxy(
+pub(crate) fn return_clock_proxy(
     observation: ReturnComponentsObservedOpenSessionReturn,
-    no_move_event_model: NoMoveEventModel,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
     baseline_clock_scale: f64,
 ) -> f64 {
-    side_moving_return_clock(
+    side_return_clock(
         observation.source_activity.buy_activity,
-        no_move_event_model.buy_baseline_move_probability(),
-        no_move_event_model.buy_endogenous_move_probability(),
         return_clock_exposure_parameters.buy_excitation_return_clock_scale,
         baseline_clock_scale,
-    ) + side_moving_return_clock(
+    ) + side_return_clock(
         observation.source_activity.sell_activity,
-        no_move_event_model.sell_baseline_move_probability(),
-        no_move_event_model.sell_endogenous_move_probability(),
         return_clock_exposure_parameters.sell_excitation_return_clock_scale,
         baseline_clock_scale,
     )
 }
 
 fn fit_side_return_clock_scale(
-    moving_return_evidence: &[ReturnComponentsObservedOpenSessionReturn],
-    no_move_event_model: NoMoveEventModel,
+    return_evidence: &[ReturnComponentsObservedOpenSessionReturn],
     side: ReturnClockSide,
 ) -> Option<f64> {
-    let side_second_moment = side_weighted_second_moment(moving_return_evidence, side)?;
+    let side_second_moment = side_weighted_second_moment(return_evidence, side)?;
 
     let mut numerator = 0.0;
     let mut denominator = 0.0;
 
-    for observation in moving_return_evidence {
+    for observation in return_evidence {
         if observation.log_return == 0.0 {
             continue;
         }
@@ -80,11 +64,8 @@ fn fit_side_return_clock_scale(
             continue;
         }
 
-        let baseline_clock =
-            side_baseline_move_probability(no_move_event_model, side) * activity.baseline_activity;
-
-        let endogenous_clock = side_endogenous_move_probability(no_move_event_model, side)
-            * activity.endogenous_activity;
+        let baseline_clock = activity.baseline_activity;
+        let endogenous_clock = activity.endogenous_activity;
 
         if endogenous_clock <= 0.0 {
             continue;
@@ -110,13 +91,13 @@ fn fit_side_return_clock_scale(
 }
 
 fn side_weighted_second_moment(
-    moving_return_evidence: &[ReturnComponentsObservedOpenSessionReturn],
+    return_evidence: &[ReturnComponentsObservedOpenSessionReturn],
     side: ReturnClockSide,
 ) -> Option<f64> {
     let mut weighted_second_moment_sum = 0.0;
     let mut weight_sum = 0.0;
 
-    for observation in moving_return_evidence {
+    for observation in return_evidence {
         if observation.log_return == 0.0 {
             continue;
         }
@@ -152,46 +133,23 @@ fn side_activity(
     }
 }
 
-fn side_moving_return_clock(
+fn side_return_clock(
     activity: IntegratedSideActivityDecomposition,
-    baseline_move_probability: f64,
-    endogenous_move_probability: f64,
     excitation_return_clock_scale: f64,
     baseline_clock_scale: f64,
 ) -> f64 {
-    baseline_move_probability * activity.baseline_activity * baseline_clock_scale
-        + excitation_return_clock_scale * endogenous_move_probability * activity.endogenous_activity
-}
-
-fn side_baseline_move_probability(
-    no_move_event_model: NoMoveEventModel,
-    side: ReturnClockSide,
-) -> f64 {
-    match side {
-        ReturnClockSide::Buy => no_move_event_model.buy_baseline_move_probability(),
-        ReturnClockSide::Sell => no_move_event_model.sell_baseline_move_probability(),
-    }
-}
-
-fn side_endogenous_move_probability(
-    no_move_event_model: NoMoveEventModel,
-    side: ReturnClockSide,
-) -> f64 {
-    match side {
-        ReturnClockSide::Buy => no_move_event_model.buy_endogenous_move_probability(),
-        ReturnClockSide::Sell => no_move_event_model.sell_endogenous_move_probability(),
-    }
+    activity.baseline_activity * baseline_clock_scale
+        + excitation_return_clock_scale * activity.endogenous_activity
 }
 
 #[cfg(test)]
 mod tests {
-    use janiform_model_kernels::no_move_event::NoMoveEventModel;
     use janiform_model_kernels::return_clock::{
         IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
         SideSourceActivityDecomposition,
     };
 
-    use super::{fit_return_clock_exposure_parameters, moving_return_clock_proxy};
+    use super::{fit_return_clock_exposure_parameters, return_clock_proxy};
     use crate::stages::return_components::ReturnComponentsObservedOpenSessionReturn;
 
     #[test]
@@ -203,35 +161,26 @@ mod tests {
             observed_return(4, -0.04, sell_activity(0.0, 1.0)),
         ];
 
-        let fitted = fit_return_clock_exposure_parameters(
-            observations.as_slice(),
-            NoMoveEventModel::neutral(),
-        );
+        let fitted = fit_return_clock_exposure_parameters(observations.as_slice());
 
         assert!(fitted.buy_excitation_return_clock_scale > 1.0);
         assert!(fitted.sell_excitation_return_clock_scale > 1.0);
     }
 
     #[test]
-    fn return_clock_exposure_fit_stays_neutral_without_endogenous_moving_evidence() {
+    fn return_clock_exposure_fit_stays_neutral_without_endogenous_evidence() {
         let observations = vec![
             observed_return(1, 0.01, buy_activity(1.0, 0.0)),
             observed_return(2, -0.01, sell_activity(1.0, 0.0)),
         ];
 
-        let fitted = fit_return_clock_exposure_parameters(
-            observations.as_slice(),
-            NoMoveEventModel::neutral(),
-        );
+        let fitted = fit_return_clock_exposure_parameters(observations.as_slice());
 
         assert_eq!(fitted, ReturnClockExposureParameters::neutral());
     }
 
     #[test]
-    fn moving_return_clock_proxy_applies_no_move_and_long_variance_to_baseline_clock() {
-        let no_move_event_model = NoMoveEventModel::try_new(0.25, 0.5, 0.0, 0.75)
-            .expect("no-move probabilities should validate");
-
+    fn return_clock_proxy_applies_long_variance_to_baseline_clock() {
         let return_clock_exposure_parameters = ReturnClockExposureParameters::try_new(2.0, 3.0)
             .expect("return clock exposure should validate");
 
@@ -243,14 +192,10 @@ mod tests {
                 IntegratedSideActivityDecomposition::new(0.125, 0.125),
             ),
         );
-        let clock = moving_return_clock_proxy(
-            observation,
-            no_move_event_model,
-            return_clock_exposure_parameters,
-            4.0,
-        );
 
-        assert_eq!(clock, 2.09375);
+        let clock = return_clock_proxy(observation, return_clock_exposure_parameters, 4.0);
+
+        assert_eq!(clock, 3.125);
     }
 
     fn observed_return(

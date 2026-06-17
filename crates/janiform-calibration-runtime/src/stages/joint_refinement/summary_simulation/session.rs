@@ -808,9 +808,6 @@ fn build_seeded_summary_simulation_run_config(
             return_clock_exposure_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .return_clock_exposure_parameters,
-            no_move_event_model: fitted_parameters
-                .return_components_fitted_parameters
-                .no_move_event_model,
             long_variance_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
@@ -2305,8 +2302,6 @@ pub(crate) mod tests {
             },
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-            no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(
-            ),
             tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
                 tick_size: None,
                 tick_size_source: "test".to_string(),

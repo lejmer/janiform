@@ -1,10 +1,9 @@
 use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_foundations::time::elapsed_utc_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
-    HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionError,
-    HawkesTransitionStep, evolve_hawkes_state,
+    HawkesExcitationState, HawkesKernelParameters, HawkesTransitionError, HawkesTransitionStep,
+    evolve_hawkes_state,
 };
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 
 use crate::artifacts::SeededTickEventSide;
 use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, NANOS_PER_HOUR};
@@ -23,7 +22,6 @@ pub(crate) struct EndogenousIntervalSchedulingInput<'a, 'registry> {
     pub(crate) interval_seasonality_factor: f64,
     pub(crate) interval_start_utc_nanos: i64,
     pub(crate) interval_end_utc_nanos: i64,
-    pub(crate) no_move_event_model: NoMoveEventModel,
     pub(crate) exogenous_interval_updates: &'a [IntervalStochasticUpdate],
     pub(crate) market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
 }
@@ -32,19 +30,16 @@ pub(crate) fn schedule_endogenous_interval_events_with_event_time_feedback<
     WaitStream,
     AcceptanceStream,
     SideStream,
-    NoMoveStream,
 >(
     input: EndogenousIntervalSchedulingInput<'_, '_>,
     endogenous_wait_stream: &mut WaitStream,
     endogenous_acceptance_stream: &mut AcceptanceStream,
     endogenous_side_stream: &mut SideStream,
-    endogenous_no_move_stream: &mut NoMoveStream,
 ) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
 where
     WaitStream: SimulationRandomnessStream,
     AcceptanceStream: SimulationRandomnessStream,
     SideStream: SimulationRandomnessStream,
-    NoMoveStream: SimulationRandomnessStream,
 {
     let EndogenousIntervalSchedulingInput {
         interval_start_state,
@@ -52,7 +47,6 @@ where
         interval_seasonality_factor,
         interval_start_utc_nanos,
         interval_end_utc_nanos,
-        no_move_event_model,
         exogenous_interval_updates,
         market_state_resolver,
     } = input;
@@ -95,14 +89,12 @@ where
                 interval_seasonality_factor,
                 segment_end_utc_nanos,
                 baseline_total_intensity,
-                no_move_event_model,
                 market_state_resolver,
                 endogenous_interval_updates: &mut endogenous_interval_updates,
             },
             endogenous_wait_stream,
             endogenous_acceptance_stream,
             endogenous_side_stream,
-            endogenous_no_move_stream,
         )?;
 
         if segment_end_utc_nanos == interval_end_utc_nanos
@@ -145,23 +137,20 @@ struct EndogenousSegmentSimulationInput<'a, 'registry> {
     interval_seasonality_factor: f64,
     segment_end_utc_nanos: i64,
     baseline_total_intensity: f64,
-    no_move_event_model: NoMoveEventModel,
     market_state_resolver: &'a SeededSimulationMarketStateResolver<'registry>,
     endogenous_interval_updates: &'a mut Vec<IntervalStochasticUpdate>,
 }
 
-fn simulate_endogenous_segment<WaitStream, AcceptanceStream, SideStream, NoMoveStream>(
+fn simulate_endogenous_segment<WaitStream, AcceptanceStream, SideStream>(
     input: EndogenousSegmentSimulationInput<'_, '_>,
     endogenous_wait_stream: &mut WaitStream,
     endogenous_acceptance_stream: &mut AcceptanceStream,
     endogenous_side_stream: &mut SideStream,
-    endogenous_no_move_stream: &mut NoMoveStream,
 ) -> Result<(), SeededTickSimulationRunError>
 where
     WaitStream: SimulationRandomnessStream,
     AcceptanceStream: SimulationRandomnessStream,
     SideStream: SimulationRandomnessStream,
-    NoMoveStream: SimulationRandomnessStream,
 {
     let EndogenousSegmentSimulationInput {
         scheduling_state,
@@ -169,7 +158,6 @@ where
         interval_seasonality_factor,
         segment_end_utc_nanos,
         baseline_total_intensity,
-        no_move_event_model,
         market_state_resolver,
         endogenous_interval_updates,
     } = input;
@@ -237,15 +225,6 @@ where
                 endogenous_side_stream.next_unit_interval_f64(),
             );
 
-            let no_move = sample_endogenous_event_no_move_mark(
-                no_move_event_model,
-                side,
-                kernel_parameters.lambda_bar,
-                interval_seasonality_factor,
-                candidate_state,
-                endogenous_no_move_stream.next_unit_interval_f64(),
-            )?;
-
             let state_after_event = evolve_hawkes_state(
                 candidate_state,
                 kernel_parameters,
@@ -265,7 +244,6 @@ where
                 IntervalStochasticUpdate::EndogenousEvent {
                     timestamp_utc_nanos: candidate_timestamp_utc_nanos,
                     side,
-                    no_move,
                     generation_order,
                 },
             )?;
@@ -283,38 +261,6 @@ where
     }
 
     Ok(())
-}
-
-fn sample_endogenous_event_no_move_mark(
-    no_move_event_model: NoMoveEventModel,
-    side: SeededTickEventSide,
-    lambda_bar: f64,
-    seasonality_factor: f64,
-    state: HawkesExcitationState,
-    no_move_draw: f64,
-) -> Result<bool, SeededTickSimulationRunError> {
-    let baseline_rate = (lambda_bar * seasonality_factor.max(0.0)).max(0.0);
-
-    let endogenous_rate = match side {
-        SeededTickEventSide::Buy => state.target_plus_sum().max(0.0),
-        SeededTickEventSide::Sell => state.target_minus_sum().max(0.0),
-    };
-
-    let hawkes_side = match side {
-        SeededTickEventSide::Buy => HawkesEventSide::Buy,
-        SeededTickEventSide::Sell => HawkesEventSide::Sell,
-    };
-
-    let no_move_probability = no_move_event_model
-        .event_no_move_probability(hawkes_side, baseline_rate, endogenous_rate)
-        .map_err(
-            |source| SeededTickSimulationRunError::InvalidNoMoveEventModel {
-                source: Box::new(source),
-            },
-        )?
-        .unwrap_or(0.0);
-
-    Ok(no_move_draw < no_move_probability)
 }
 
 fn next_segment_end_utc_nanos(

@@ -769,9 +769,6 @@ fn build_joint_coarse_model_inputs(
                 fitted_parameters
                     .return_components_fitted_parameters
                     .long_variance_parameters,
-                fitted_parameters
-                    .return_components_fitted_parameters
-                    .no_move_event_model,
             )
             .map_err(|source| format!("invalid coarse equation specification: {source}"))?,
             nig_shared_plus_shift_configuration: fitted_parameters

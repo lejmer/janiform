@@ -30,7 +30,7 @@
       "buy_side_tick_count": 915557,
       "event_count": 12066398,
       "label": "Janiform synthetic",
-      "no_move_tick_count": 10244904,
+      "zero_return_tick_count": 10244904,
       "original_timestamp_order_is_monotonic": true,
       "price_column": "price",
       "sell_side_tick_count": 905936,

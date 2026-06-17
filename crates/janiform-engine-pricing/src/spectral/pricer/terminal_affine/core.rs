@@ -642,7 +642,6 @@ mod tests {
             base_parameters.news_process_configuration,
             base_parameters.nig_shared_plus_shift_configuration,
             base_parameters.return_clock_exposure_parameters,
-            base_parameters.no_move_event_model,
             long_variance_parameters,
             base_parameters.pricing_kernel_parameters,
         )

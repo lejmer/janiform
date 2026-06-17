@@ -1,7 +1,6 @@
 mod contracts;
 mod execution;
 mod hawkes_source_fit;
-mod no_move_fit;
 mod progress;
 mod timestamp_fit;
 

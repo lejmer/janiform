@@ -55,10 +55,6 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
                 .fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
-            context
-                .fitted_parameters
-                .return_components_fitted_parameters
-                .no_move_event_model,
         )
         .map_err(|source| validation_error("equation_specification", source.to_string()))?,
         context

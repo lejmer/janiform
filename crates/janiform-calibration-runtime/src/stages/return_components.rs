@@ -88,5 +88,5 @@ pub(crate) use execution::{
 pub use execution::{
     evaluate_return_components_exact_candidate, run_return_components_calibration_stage,
 };
-pub(crate) use return_clock_exposure_fit::moving_return_clock_proxy;
+pub(crate) use return_clock_exposure_fit::return_clock_proxy;
 pub(crate) use source_activity::open_session_returns_with_source_activities;

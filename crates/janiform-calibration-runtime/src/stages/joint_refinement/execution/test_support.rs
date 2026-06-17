@@ -71,7 +71,6 @@ pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParame
             normalization_policy: "test".to_string(),
         },
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         tick_grid_observation_model: TickGridObservationModel {

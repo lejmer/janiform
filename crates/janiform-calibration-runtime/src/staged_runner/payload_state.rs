@@ -59,7 +59,6 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
             payload_state.observation_models_stage_payload = Some(
                 crate::stages::observation_models::ObservationModelsStageFittedPayload {
                     schema_version: CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
-                    no_move_event_model: payload.no_move_event_model,
                     timestamp_batching_observation_model: payload
                         .timestamp_batching_observation_model
                         .clone(),

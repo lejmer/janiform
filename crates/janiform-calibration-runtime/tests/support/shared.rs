@@ -1685,7 +1685,6 @@ fn stage_parameter_artifact_input(
                     stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
                     solver_settings: metadata.solver_settings.clone(),
                 },
-                no_move_event_model: payload.no_move_event_model,
                 timestamp_batching_observation_model: payload
                     .timestamp_batching_observation_model
                     .clone(),
@@ -3150,7 +3149,6 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         },
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
             tick_size: None,
             tick_size_source: "test".to_string(),

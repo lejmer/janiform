@@ -23,7 +23,6 @@ use janiform_model_kernels::news::{
     SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, SideSourceActivityDecomposition,
 };
@@ -661,7 +660,6 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub no_move_event_model: NoMoveEventModel,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
@@ -720,12 +718,6 @@ impl ReturnComponentsStageCandidateGenerationInput {
                     error_message: source.to_string(),
                 }
             })?;
-
-        self.no_move_event_model.validate().map_err(|source| {
-            ReturnComponentsStageCandidateGenerationInputError::InvalidNoMoveEventModel {
-                error_message: source.to_string(),
-            }
-        })?;
 
         validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
 
@@ -915,9 +907,6 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         error_message: String,
     },
     InvalidReturnClockExposureParameters {
-        error_message: String,
-    },
-    InvalidNoMoveEventModel {
         error_message: String,
     },
     InvalidTickSize {
@@ -1203,10 +1192,6 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             Self::InvalidReturnClockExposureParameters { error_message } => write!(
                 formatter,
                 "return_clock_exposure_parameters are invalid for candidate generation: {error_message}"
-            ),
-            Self::InvalidNoMoveEventModel { error_message } => write!(
-                formatter,
-                "no_move_event_model is invalid for candidate generation: {error_message}"
             ),
             Self::InvalidTickSize { value } => write!(
                 formatter,
@@ -2109,7 +2094,6 @@ pub struct ReturnComponentsStageCandidateInput {
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub no_move_event_model: NoMoveEventModel,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
 }
@@ -2158,9 +2142,6 @@ pub enum ReturnComponentsStageCandidateInputError {
     },
     InvalidMetricBucketValue {
         value: f64,
-    },
-    InvalidNoMoveEventModel {
-        error_message: String,
     },
     InvalidObjectiveTerm {
         term_id: String,
@@ -2241,10 +2222,6 @@ impl Display for ReturnComponentsStageCandidateInputError {
                 formatter,
                 "objective metric bucket values must be finite and non-negative, found {value}"
             ),
-            Self::InvalidNoMoveEventModel { error_message } => write!(
-                formatter,
-                "candidate no_move_event_model is invalid: {error_message}"
-            ),
             Self::InvalidObjectiveTerm { term_id, source } => {
                 write!(formatter, "objective term `{term_id}` is invalid: {source}")
             }
@@ -2278,12 +2255,6 @@ impl ReturnComponentsStageCandidateInput {
         self.candidate_families.validate()?;
         self.candidate_provenance.validate()?;
         self.objective_metric_buckets.validate()?;
-
-        self.no_move_event_model.validate().map_err(|source| {
-            ReturnComponentsStageCandidateInputError::InvalidNoMoveEventModel {
-                error_message: source.to_string(),
-            }
-        })?;
 
         let mut has_continuous_distribution_term = false;
         let mut has_surprise_arrival_term = false;

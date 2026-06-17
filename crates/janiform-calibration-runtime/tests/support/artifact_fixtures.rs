@@ -183,7 +183,6 @@ fn regression_observation_models_stage_parameter_input(
             CalibrationStage::ObservationModels,
             CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
         ),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         timestamp_batching_observation_model:
             janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
             ),
@@ -504,7 +503,6 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
             normalization_policy: "artifact_regression_fixture.v1".to_string(),
         },
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         tick_grid_observation_model: TickGridObservationModel {

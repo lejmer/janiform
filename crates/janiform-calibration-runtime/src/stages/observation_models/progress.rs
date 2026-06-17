@@ -4,7 +4,7 @@ use serde::Serialize;
 #[serde(rename_all = "snake_case")]
 pub enum ObservationModelsStageProgressPhase {
     InputPreflight,
-    NoMoveEventModelFit,
+    HawkesSourceActivityFit,
     TimestampBatchingModelFit,
     ReportAssembly,
 }

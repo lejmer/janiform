@@ -25,7 +25,6 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigur
 use janiform_model_kernels::nig::{
     NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
 };
-use janiform_model_kernels::no_move_event::{NoMoveEventModel, NoMoveEventModelError};
 use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, ReturnClockExposureParametersError,
 };
@@ -455,7 +454,6 @@ pub struct VanillaOptionPricingModelParameters {
     pub news_process_configuration: NewsProcessConfiguration,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub no_move_event_model: NoMoveEventModel,
     pub long_variance_parameters: LongVarianceParameters,
     pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
@@ -466,7 +464,6 @@ impl VanillaOptionPricingModelParameters {
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
-        no_move_event_model: NoMoveEventModel,
         long_variance_parameters: LongVarianceParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Self {
@@ -475,7 +472,6 @@ impl VanillaOptionPricingModelParameters {
             news_process_configuration,
             nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters,
-            no_move_event_model,
             long_variance_parameters,
             pricing_kernel_parameters,
         }
@@ -486,7 +482,6 @@ impl VanillaOptionPricingModelParameters {
         news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
-        no_move_event_model: NoMoveEventModel,
         long_variance_parameters: LongVarianceParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
@@ -495,7 +490,6 @@ impl VanillaOptionPricingModelParameters {
             news_process_configuration,
             nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters,
-            no_move_event_model,
             long_variance_parameters,
             pricing_kernel_parameters,
         );
@@ -538,10 +532,6 @@ impl VanillaOptionPricingModelParameters {
                 }
             })?;
 
-        self.no_move_event_model.validate().map_err(|source| {
-            VanillaOptionPricingModelParametersError::InvalidNoMoveEventModel { source }
-        })?;
-
         self.long_variance_parameters.validate().map_err(|source| {
             VanillaOptionPricingModelParametersError::InvalidLongVarianceParameters { source }
         })?;
@@ -571,9 +561,6 @@ pub enum VanillaOptionPricingModelParametersError {
     InvalidReturnClockExposureParameters {
         source: ReturnClockExposureParametersError,
     },
-    InvalidNoMoveEventModel {
-        source: NoMoveEventModelError,
-    },
     InvalidLongVarianceParameters {
         source: LongVarianceParametersError,
     },
@@ -601,10 +588,6 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.return_clock_exposure_parameters are invalid: {source}"
             ),
-            Self::InvalidNoMoveEventModel { source } => write!(
-                formatter,
-                "model_parameters.no_move_event_model is invalid: {source}"
-            ),
             Self::InvalidLongVarianceParameters { source } => write!(
                 formatter,
                 "model_parameters.long_variance_parameters are invalid: {source}"
@@ -624,7 +607,6 @@ impl Error for VanillaOptionPricingModelParametersError {
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidReturnClockExposureParameters { source } => Some(source),
-            Self::InvalidNoMoveEventModel { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidPricingKernelParameters { source } => Some(source),
         }
@@ -2557,7 +2539,6 @@ struct VanillaOptionPricingModelParametersPayload {
     news_process_configuration: NewsProcessConfiguration,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
-    no_move_event_model: NoMoveEventModel,
     long_variance_parameters: LongVarianceParameters,
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
@@ -2574,7 +2555,6 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
             payload.news_process_configuration,
             payload.nig_shared_plus_shift_configuration,
             payload.return_clock_exposure_parameters,
-            payload.no_move_event_model,
             payload.long_variance_parameters,
             payload.pricing_kernel_parameters,
         )

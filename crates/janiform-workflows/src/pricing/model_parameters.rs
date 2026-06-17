@@ -27,10 +27,6 @@ pub(in crate::pricing) fn build_vanilla_option_pricing_model_parameters(
         context
             .fitted_parameters
             .return_components_fitted_parameters
-            .no_move_event_model,
-        context
-            .fitted_parameters
-            .return_components_fitted_parameters
             .long_variance_parameters,
         context.fitted_parameters.pricing_kernel_parameters(),
     )

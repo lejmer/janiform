@@ -1001,8 +1001,8 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
             ObservationModelsStageProgressPhase::InputPreflight,
         ) => "observation_models_input_preflight",
         CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::NoMoveEventModelFit,
-        ) => "no_move_event_model_fit",
+            ObservationModelsStageProgressPhase::HawkesSourceActivityFit,
+        ) => "hawkes_source_activity_fit",
         CalibrationStageProgressPhase::ObservationModels(
             ObservationModelsStageProgressPhase::TimestampBatchingModelFit,
         ) => "timestamp_batching_model_fit",
@@ -1094,8 +1094,8 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
             ObservationModelsStageProgressPhase::InputPreflight,
         ) => "input preflight",
         CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::NoMoveEventModelFit,
-        ) => "no-move fit",
+            ObservationModelsStageProgressPhase::HawkesSourceActivityFit,
+        ) => "source-activity fit",
         CalibrationStageProgressPhase::ObservationModels(
             ObservationModelsStageProgressPhase::TimestampBatchingModelFit,
         ) => "timestamp batching fit",

@@ -3,7 +3,6 @@ use chrono_tz::Tz;
 use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_foundations::time::{elapsed_utc_nanos_to_hours, utc_datetime_from_nanos};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::{
     EffectiveReturnClocks, IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
     compute_effective_return_clocks,
@@ -31,13 +30,12 @@ struct OpenMarketElapsedTimeWeights {
 pub(crate) type IntervalOpenMarketSegments = Vec<(i64, i64)>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TransitionMovingReturnClockInput<'a> {
+pub(crate) struct TransitionReturnClockInput<'a> {
     pub(crate) state: HawkesExcitationState,
     pub(crate) lambda_bar: f64,
     pub(crate) beta: f64,
     pub(crate) seasonality_factor: f64,
     pub(crate) return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub(crate) no_move_event_model: NoMoveEventModel,
     pub(crate) baseline_long_variance_clock_scale: f64,
     pub(crate) interval_open_market_segments: &'a [(i64, i64)],
     pub(crate) previous_timestamp_utc_nanos: i64,
@@ -45,16 +43,15 @@ pub(crate) struct TransitionMovingReturnClockInput<'a> {
     pub(crate) interval_index: usize,
 }
 
-pub(crate) fn compute_transition_moving_return_clocks(
-    input: TransitionMovingReturnClockInput<'_>,
+pub(crate) fn compute_transition_return_clocks(
+    input: TransitionReturnClockInput<'_>,
 ) -> Result<EffectiveReturnClocks, SeededTickSimulationRunError> {
-    let TransitionMovingReturnClockInput {
+    let TransitionReturnClockInput {
         state,
         lambda_bar,
         beta,
         seasonality_factor,
         return_clock_exposure_parameters,
-        no_move_event_model,
         baseline_long_variance_clock_scale,
         interval_open_market_segments,
         previous_timestamp_utc_nanos,
@@ -109,32 +106,20 @@ pub(crate) fn compute_transition_moving_return_clocks(
         interval_index,
     )?;
 
-    let moving_buy_activity = no_move_event_model
-        .moving_buy_activity(IntegratedSideActivityDecomposition::new(
-            integrated_buy_activity.baseline_activity * baseline_long_variance_clock_scale,
-            integrated_buy_activity.endogenous_activity,
-        ))
-        .map_err(
-            |source| SeededTickSimulationRunError::InvalidNoMoveEventModel {
-                source: Box::new(source),
-            },
-        )?;
+    let buy_activity = IntegratedSideActivityDecomposition::new(
+        integrated_buy_activity.baseline_activity * baseline_long_variance_clock_scale,
+        integrated_buy_activity.endogenous_activity,
+    );
 
-    let moving_sell_activity = no_move_event_model
-        .moving_sell_activity(IntegratedSideActivityDecomposition::new(
-            integrated_sell_activity.baseline_activity * baseline_long_variance_clock_scale,
-            integrated_sell_activity.endogenous_activity,
-        ))
-        .map_err(
-            |source| SeededTickSimulationRunError::InvalidNoMoveEventModel {
-                source: Box::new(source),
-            },
-        )?;
+    let sell_activity = IntegratedSideActivityDecomposition::new(
+        integrated_sell_activity.baseline_activity * baseline_long_variance_clock_scale,
+        integrated_sell_activity.endogenous_activity,
+    );
 
     compute_effective_return_clocks(
         return_clock_exposure_parameters,
-        moving_buy_activity,
-        moving_sell_activity,
+        buy_activity,
+        sell_activity,
     )
     .map_err(
         |source| SeededTickSimulationRunError::EffectiveReturnClockBuildFailure {

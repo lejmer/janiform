@@ -17,7 +17,6 @@ use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
 };
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 
 use super::catalog::BenchmarkScenarioWorkloadProfile;
 use super::harness::OraclePricerSufficientStatisticsBenchmarkHarnessError;
@@ -61,7 +60,6 @@ pub fn build_equation_specification(
         hawkes_kernel_parameters,
         gamma_mark_configuration,
         LongVarianceParameters::neutral(),
-        NoMoveEventModel::neutral(),
     ))
 }
 

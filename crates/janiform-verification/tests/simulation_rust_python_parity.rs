@@ -545,7 +545,6 @@ fn run_fixture_case(
             interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-            no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,

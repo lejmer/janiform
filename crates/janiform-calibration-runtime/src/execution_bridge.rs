@@ -25,7 +25,6 @@ use janiform_model_kernels::hawkes::{
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, SideSourceActivityDecomposition,
 };
@@ -310,7 +309,6 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub no_move_event_model: NoMoveEventModel,
     pub tick_grid_observation_model: TickGridObservationModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
@@ -1025,7 +1023,6 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
             open_session_sell_share_proxy: self.open_session_sell_share_proxy,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
             return_clock_exposure_parameters: self.return_clock_exposure_parameters,
-            no_move_event_model: self.no_move_event_model,
             tick_grid_observation_model: self.tick_grid_observation_model,
             timestamp_batching_observation_model: self.timestamp_batching_observation_model,
             objective_metric_weights: self.objective_metric_weights.into_core(),
@@ -1325,7 +1322,6 @@ mod tests {
         HawkesStructuredRhoSelfDominancePolicy,
     };
     use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
-    use janiform_model_kernels::no_move_event::NoMoveEventModel;
 
     use crate::stages::mean_reversion::default_mean_reversion_predictive_evidence_alpha;
 
@@ -1512,7 +1508,6 @@ mod tests {
                     return_clock_exposure_parameters:
                         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
                         ),
-                    no_move_event_model: NoMoveEventModel::neutral(),
                     tick_grid_observation_model: TickGridObservationModel {
                         tick_size: None,
                         tick_size_source: "test".to_string(),

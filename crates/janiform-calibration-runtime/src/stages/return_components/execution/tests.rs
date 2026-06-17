@@ -495,7 +495,6 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
@@ -617,7 +616,6 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
@@ -706,7 +704,6 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
@@ -836,7 +833,6 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),
         timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
@@ -875,7 +871,6 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         surprise_deterministic_intensity_profile: default_surprise_deterministic_intensity_profile(
         ),
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        no_move_event_model: janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         tick_grid_observation_model: default_tick_grid_observation_model(),

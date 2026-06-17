@@ -11,7 +11,6 @@ use super::super::contracts::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformInput,
     ExponentialAffineTransformOutputError,
 };
-use super::super::moving_activity_loadings::MovingActivityLoadings;
 use super::super::news_transform::{
     GammaNormalNewsTransformComponents, evaluate_gamma_normal_news_transform,
     evaluate_gamma_normal_news_transform_tangent,
@@ -499,11 +498,6 @@ fn evaluate_schedule_base_rhs(
 
     let long_variance_parameters = equation_specification.long_variance_parameters;
 
-    let moving_activity_loadings = MovingActivityLoadings::from_total_activity_loadings(
-        equation_specification.no_move_event_model,
-        transform_input.activity_loadings,
-    );
-
     let baseline_rate = transform_input.seasonality_factor
         * equation_specification.hawkes_kernel_parameters.lambda_bar;
 
@@ -517,19 +511,20 @@ fn evaluate_schedule_base_rhs(
                 .scale(0.5 * long_variance_parameters.vol_of_vol.powi(2)),
         )
         .plus(
-            moving_activity_loadings
-                .buy_baseline
-                .plus(moving_activity_loadings.sell_baseline)
+            transform_input
+                .activity_loadings
+                .u_plus_baseline
+                .plus(transform_input.activity_loadings.u_minus_baseline)
                 .scale(-baseline_rate),
         );
 
     let baseline_event_term = hamiltonians
         .h_plus_baseline
-        .plus(moving_activity_loadings.buy_baseline)
+        .plus(transform_input.activity_loadings.u_plus_baseline)
         .plus(
             hamiltonians
                 .h_minus_baseline
-                .plus(moving_activity_loadings.sell_baseline),
+                .plus(transform_input.activity_loadings.u_minus_baseline),
         )
         .scale(baseline_rate);
 
@@ -555,11 +550,6 @@ fn evaluate_schedule_tangent_rhs(
     let equation_specification = transform_input.equation_specification;
     let beta = equation_specification.hawkes_kernel_parameters.beta;
     let long_variance_parameters = equation_specification.long_variance_parameters;
-
-    let moving_direct_loadings = MovingActivityLoadings::from_total_activity_loadings(
-        equation_specification.no_move_event_model,
-        direct_tangent.activity_loadings,
-    );
 
     let long_variance_level = stationary_long_variance_level(transform_input)?;
 
@@ -610,11 +600,11 @@ fn evaluate_schedule_tangent_rhs(
 
     let h_plus_endogenous_derivative = plus_state_derivative
         .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
-        .subtract(moving_direct_loadings.buy_endogenous);
+        .subtract(direct_tangent.activity_loadings.u_plus_endogenous);
 
     let h_minus_endogenous_derivative = minus_state_derivative
         .plus(complex_multiply(direct_tangent.z_minus, exp_d_dot_k_minus))
-        .subtract(moving_direct_loadings.sell_endogenous);
+        .subtract(direct_tangent.activity_loadings.u_minus_endogenous);
 
     let baseline_event_derivative = plus_state_derivative
         .plus(complex_multiply(direct_tangent.z_plus, exp_d_dot_k_plus))
@@ -665,9 +655,10 @@ fn evaluate_schedule_tangent_rhs(
                 .scale(long_variance_parameters.vol_of_vol.powi(2)),
             )
             .plus(
-                moving_direct_loadings
-                    .buy_baseline
-                    .plus(moving_direct_loadings.sell_baseline)
+                direct_tangent
+                    .activity_loadings
+                    .u_plus_baseline
+                    .plus(direct_tangent.activity_loadings.u_minus_baseline)
                     .scale(-baseline_rate),
             ),
         c_value: tangent_state
@@ -692,11 +683,6 @@ fn evaluate_long_variance_schedule_hamiltonians(
 ) -> ScheduleHamiltonians {
     let equation_specification = transform_input.equation_specification;
 
-    let moving_activity_loadings = MovingActivityLoadings::from_total_activity_loadings(
-        equation_specification.no_move_event_model,
-        transform_input.activity_loadings,
-    );
-
     let long_variance_parameters = equation_specification.long_variance_parameters;
 
     let plus_argument = state
@@ -719,22 +705,22 @@ fn evaluate_long_variance_schedule_hamiltonians(
 
     ScheduleHamiltonians {
         h_plus_baseline: evaluate_schedule_hamiltonian_component(
-            moving_activity_loadings.buy_baseline,
+            transform_input.activity_loadings.u_plus_baseline,
             transform_input.z_plus,
             plus_argument,
         ),
         h_plus_endogenous: evaluate_schedule_hamiltonian_component(
-            moving_activity_loadings.buy_endogenous,
+            transform_input.activity_loadings.u_plus_endogenous,
             transform_input.z_plus,
             plus_argument,
         ),
         h_minus_baseline: evaluate_schedule_hamiltonian_component(
-            moving_activity_loadings.sell_baseline,
+            transform_input.activity_loadings.u_minus_baseline,
             transform_input.z_minus,
             minus_argument,
         ),
         h_minus_endogenous: evaluate_schedule_hamiltonian_component(
-            moving_activity_loadings.sell_endogenous,
+            transform_input.activity_loadings.u_minus_endogenous,
             transform_input.z_minus,
             minus_argument,
         ),

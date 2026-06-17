@@ -1038,9 +1038,6 @@ fn build_endogenous_mean_reversion_calibration_context(
             return_components_payload
                 .fitted_parameters
                 .long_variance_parameters,
-            return_components_payload
-                .fitted_parameters
-                .no_move_event_model,
         ),
         return_components_payload
             .fitted_parameters

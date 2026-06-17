@@ -51,10 +51,6 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
             .fitted_parameters
             .return_components_fitted_parameters
             .return_clock_exposure_parameters,
-        no_move_event_model: context
-            .fitted_parameters
-            .return_components_fitted_parameters
-            .no_move_event_model,
         long_variance_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
@@ -97,10 +93,6 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
             .fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
-        context
-            .fitted_parameters
-            .return_components_fitted_parameters
-            .no_move_event_model,
     )
     .map_err(|source| validation_error("equation_specification", source.to_string()))?;
 

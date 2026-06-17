@@ -1,6 +1,5 @@
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 
-use super::moving_activity_loadings::MovingActivityLoadings;
 use super::news_transform::{
     GammaNormalNewsTransformComponents, evaluate_gamma_normal_news_transform,
 };
@@ -53,40 +52,35 @@ impl ExponentialAffineTransformOdeRhs {
 /// Evaluate shared `H_plus` and `H_minus` Hamiltonians at one `D` state.
 ///
 /// Equation reference:
-/// - `H_plus_*(D) = z_plus * exp(D · k_plus) - 1 - p_plus_* u_plus_*`
-/// - `H_minus_*(D) = z_minus * exp(D · k_minus) - 1 - p_minus_* u_minus_*`
+/// - `H_plus_*(D) = z_plus * exp(D · k_plus) - 1 - u_plus_*`
+/// - `H_minus_*(D) = z_minus * exp(D · k_minus) - 1 - u_minus_*`
 pub fn evaluate_exponential_affine_transform_hamiltonians(
     transform_input: ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
 ) -> ExponentialAffineTransformHamiltonians {
     let equation_specification = transform_input.equation_specification;
 
-    let moving_activity_loadings = MovingActivityLoadings::from_total_activity_loadings(
-        equation_specification.no_move_event_model,
-        transform_input.activity_loadings,
-    );
-
     let d_dot_k_plus = d_vector.dot_loadings(equation_specification.k_plus());
     let d_dot_k_minus = d_vector.dot_loadings(equation_specification.k_minus());
 
     ExponentialAffineTransformHamiltonians::new(
         evaluate_hamiltonian_component(
-            moving_activity_loadings.buy_baseline,
+            transform_input.activity_loadings.u_plus_baseline,
             transform_input.z_plus,
             d_dot_k_plus,
         ),
         evaluate_hamiltonian_component(
-            moving_activity_loadings.buy_endogenous,
+            transform_input.activity_loadings.u_plus_endogenous,
             transform_input.z_plus,
             d_dot_k_plus,
         ),
         evaluate_hamiltonian_component(
-            moving_activity_loadings.sell_baseline,
+            transform_input.activity_loadings.u_minus_baseline,
             transform_input.z_minus,
             d_dot_k_minus,
         ),
         evaluate_hamiltonian_component(
-            moving_activity_loadings.sell_endogenous,
+            transform_input.activity_loadings.u_minus_endogenous,
             transform_input.z_minus,
             d_dot_k_minus,
         ),

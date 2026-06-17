@@ -16,7 +16,6 @@
 
 mod constants;
 mod contracts;
-mod moving_activity_loadings;
 mod news_transform;
 mod rhs;
 mod runge_kutta;

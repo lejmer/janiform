@@ -131,24 +131,19 @@
     If it has no open exposure, all materialized seasonality factors
     are zero.
 
-    Each endogenous market event has an economic no-move mark.
-    Let \(q_B^\pm,q_E^\pm\in[0,1]\) be side-specific no-move probabilities for
-    baseline and endogenous event sources, and let
-    \(p_B^\pm=1-q_B^\pm\), \(p_E^\pm=1-q_E^\pm\) be the corresponding
-    moving-event probabilities.
-    The buy and sell return clocks are the moving-event clocks
+    The buy and sell return clocks are
     \begin{gather*}
         A_t^+
         =
-        p_B^+\int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
+        \int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
         +
-        \eta_+p_E^+\int_0^t \mathcal O(u)
+        \eta_+\int_0^t \mathcal O(u)
         \big(Y_u^{++}+Y_u^{+-}\big)\,du,\\
         A_t^-
         =
-        p_B^-\int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
+        \int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
         +
-        \eta_-p_E^-\int_0^t \mathcal O(u)
+        \eta_-\int_0^t \mathcal O(u)
         \big(Y_u^{-+}+Y_u^{--}\big)\,du.\\
     \end{gather*}
     Equivalently,
@@ -157,30 +152,19 @@
         =
         \mathcal O(t)
         \left[
-            p_B^+s_\star(t)\bar\lambda Z_t
+            s_\star(t)\bar\lambda Z_t
             +
-            \eta_+p_E^+\big(Y_t^{++}+Y_t^{+-}\big)
+            \eta_+\big(Y_t^{++}+Y_t^{+-}\big)
         \right]dt,\\
         dA_t^-
         =
         \mathcal O(t)
         \left[
-            p_B^-s_\star(t)\bar\lambda Z_t
+            s_\star(t)\bar\lambda Z_t
             +
-            \eta_-p_E^-\big(Y_t^{-+}+Y_t^{--}\big)
+            \eta_-\big(Y_t^{-+}+Y_t^{--}\big)
         \right]dt.\\
     \end{gather*}
-    At a market event time \(T_n^\pm\), let \(I_n^\pm\in\{0,1\}\) be the
-    moving-event mark.
-    The endogenous tape-return contribution is gated by
-    \[
-        \Delta X_{T_n^\pm}^{\mathrm{trade}}
-        =
-        I_n^\pm\Delta X_{T_n^\pm}^{*,\pm},
-    \]
-    so \(I_n^\pm=0\) is an economic zero-return event.
-    The processes \(N_t^\pm\) count total market events and drive Hawkes and
-    long-variance feedback before moving-event thinning.
 
     Trade arrivals have intensities
     \[
@@ -218,8 +202,7 @@
         +
         \chi_-\,dN_t^-,
     \]
-    Here \(N_t^\pm\) count total market events, not only moving events, and
-    \(\bar z\) is chosen so that \(Z_t\) has unit stationary mean.
+    Here \(\bar z\) is chosen so that \(Z_t\) has unit stationary mean.
 
     At news times \(\tau_m^c\), \(c\in\{\mathrm{known},\mathrm{surprise}\}\),
     \begin{gather*}
@@ -266,7 +249,7 @@
         \Theta_{\mathrm{trade}}
         =
         (\bar\lambda,s_\star(\cdot),\beta,\alpha_{ij},\rho_{ij},
-        \eta_+,\eta_-,q_B^\pm,q_E^\pm),\\
+        \eta_+,\eta_-),\\
         \Theta_Z
         =
         (\kappa_z,\sigma_z,\chi_+,\chi_-,Z_0),\\

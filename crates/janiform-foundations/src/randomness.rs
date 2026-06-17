@@ -32,7 +32,6 @@ pub enum SimulationRandomnessSubstreamDomain {
     ObservedOptionsPhysicalDistributionPath = 14,
     LongVarianceDiffusion = 15,
     TimestampBatchingObservation = 16,
-    EndogenousNoMoveEventMark = 17,
 }
 
 impl SimulationRandomnessSubstreamDomain {

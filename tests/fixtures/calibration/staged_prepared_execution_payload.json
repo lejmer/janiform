@@ -276,12 +276,6 @@
       "buy_excitation_return_clock_scale": 1.0,
       "sell_excitation_return_clock_scale": 1.0
     },
-    "no_move_event_model": {
-      "buy_baseline_no_move_probability": 0.0,
-      "buy_endogenous_no_move_probability": 0.0,
-      "sell_baseline_no_move_probability": 0.0,
-      "sell_endogenous_no_move_probability": 0.0
-    },
     "tick_grid_observation_model": {
       "tick_size": null,
       "tick_size_source": "unavailable",

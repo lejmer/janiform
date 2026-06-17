@@ -275,7 +275,6 @@ fn build_run_request(seed: u64, horizon_interval_count: usize) -> SufficientStat
         GammaSeverityMarkConfiguration::try_new(1.7)
             .expect("fixture gamma mark configuration should construct"),
         LongVarianceParameters::neutral(),
-        janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
     )
     .expect("fixture equation specification should construct");
 

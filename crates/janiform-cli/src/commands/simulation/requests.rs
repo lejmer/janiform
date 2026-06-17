@@ -13,7 +13,6 @@ use janiform::model::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform::model::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform::model::news::NewsProcessConfiguration;
 use janiform::model::nig::NigSharedPlusShiftConfiguration;
-use janiform::model::no_move_event::NoMoveEventModel;
 use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
@@ -59,7 +58,6 @@ struct SeededTickSimulationRequestDocument {
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
     interval_factor_grid_summary: SeededTickIntervalFactorGridSummary,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
-    no_move_event_model: NoMoveEventModel,
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
@@ -161,7 +159,6 @@ pub(crate) fn load_seeded_tick_simulation_request(
             initial_mean_reversion_boundary_state: document.initial_mean_reversion_boundary_state,
             interval_factor_grid,
             return_clock_exposure_parameters: document.return_clock_exposure_parameters,
-            no_move_event_model: document.no_move_event_model,
             long_variance_parameters: document.long_variance_parameters,
             initial_long_variance_state: document.initial_long_variance_state,
             observed_price_tick_size: document.observed_price_tick_size,

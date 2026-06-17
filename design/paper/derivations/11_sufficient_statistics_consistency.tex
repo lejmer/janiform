@@ -34,21 +34,18 @@ vector
     \mathcal S_k
     =
     \left(
-        \widehat B_{Z,k}^+,
-        \widehat E_k^+,
-        \widehat B_{Z,k}^-,
-        \widehat E_k^-,
+        B_{Z,k}^+,
+        E_k^+,
+        B_{Z,k}^-,
+        E_k^-,
         N_k^+,
         N_k^-,
         Z_{t_{k+1}}
     \right).
 \]
-Here \(\widehat B_{Z,k}^\pm=p_B^\pm B_{Z,k}^\pm\) are moving
-long-variance-scaled baseline exposures, \(\widehat E_k^\pm=p_E^\pm E_k^\pm\)
-are moving endogenous activity exposures, \(N_k^\pm\) are total side event
-counts, and \(Z_{t_{k+1}}\) is the terminal long-variance state.
-No-move events therefore remain in \(N_k^\pm\) and the terminal state while
-being excluded from the NIG return-clock exposure.
+Here \(B_{Z,k}^\pm\) are total long-variance-scaled baseline exposures,
+\(E_k^\pm\) are total endogenous activity exposures, \(N_k^\pm\) are total
+side event counts, and \(Z_{t_{k+1}}\) is the terminal long-variance state.
 
 Open-news and closed-gap return increments are additional additive return
 components.
@@ -63,9 +60,9 @@ through their Hawkes news excitation.
 Symbol & Meaning & Units or domain\\
 \midrule
 \(\mathcal S_k\) & Decomposed interval sufficient statistics & Non-negative clocks and counts, positive terminal \(Z\)\\
-\(\widehat B_{Z,k}^\pm\) & Moving baseline exposure scaled by long variance & Non-negative business time\\
-\(\widehat E_k^\pm\) & Moving endogenous side activity exposure & Non-negative business time\\
-\(A_{\mathrm{return},k}^\pm\) & Effective NIG return clock & \(\widehat B_{Z,k}^\pm+\eta_\pm\widehat E_k^\pm\)\\
+\(B_{Z,k}^\pm\) & Baseline exposure scaled by long variance & Non-negative business time\\
+\(E_k^\pm\) & Endogenous side activity exposure & Non-negative business time\\
+\(A_{\mathrm{return},k}^\pm\) & Effective NIG return clock & \(B_{Z,k}^\pm+\eta_\pm E_k^\pm\)\\
 \(N_k^\pm\) & Total buy and sell event counts & Non-negative integers\\
 \(Z_{t_{k+1}}\) & Terminal long-variance state & Positive\\
 \(\mathbf Y_{t_k}\) & Hawkes excitation state at interval start & Non-negative vector\\
@@ -86,10 +83,10 @@ The Hawkes boundary update depends on elapsed time and side event counts.
 & Propagating \(\mathbf Y_{t_k}\) to \(\mathbf Y_{t_{k+1}}\).
 & Tick aggregation and coarse state updates must produce the same terminal excitation state when counts match.\\
 Long variance affects baseline return clocks and has its own terminal state.
-& Including \(\widehat B_{Z,k}^\pm\) and \(Z_{t_{k+1}}\) in \(\mathcal S_k\).
+& Including \(B_{Z,k}^\pm\) and \(Z_{t_{k+1}}\) in \(\mathcal S_k\).
 & Pricing and multi-interval simulation need both realized exposure and terminal variance memory.\\
-Baseline and endogenous moving activity are kept separate.
-& Defining \(\widehat B_Z^\pm\) and \(\widehat E^\pm\) rather than only \(A^\pm\).
+Baseline and endogenous activity are kept separate.
+& Defining \(B_Z^\pm\) and \(E^\pm\) rather than only \(A^\pm\).
 & Pricing and diagnostic queries need different loadings for predictable and excitation-driven activity.\\
 Open news and closed gaps are additive return components with explicit routing.
 & Adding \(\Delta M_k+\Delta G_k\) outside the trading-time NIG block.
@@ -113,7 +110,7 @@ The trading-time return law is
     -
     \left(L_{A_k^-}^--A_k^-m_-\right),
     \qquad
-    A_k^\pm=\widehat B_{Z,k}^\pm+\eta_\pm\widehat E_k^\pm.
+    A_k^\pm=B_{Z,k}^\pm+\eta_\pm E_k^\pm.
 \]
 The full interval core return is
 \[
@@ -144,14 +141,14 @@ Start from the Janiform interval return decomposition:
 \]
 Given \(\mathcal S_k\), the side return clocks are fixed:
 \[
-    A_k^+=\widehat B_{Z,k}^++\eta_+\widehat E_k^+,
+    A_k^+=B_{Z,k}^++\eta_+E_k^+,
     \qquad
-    A_k^-=\widehat B_{Z,k}^-+\eta_-\widehat E_k^-.
+    A_k^-=B_{Z,k}^-+\eta_-E_k^-.
 \]
 By the conditional CF/MGF derivation, the NIG trading block depends on the
 interval path only through \(A_k^+\) and \(A_k^-\).
-Thus, any construction that preserves \(\widehat B_{Z,k}^\pm\) and
-\(\widehat E_k^\pm\) preserves the conditional trading-time law.
+Thus, any construction that preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\)
+preserves the conditional trading-time law.
 
 The jump and gap components enter additively:
 \[
@@ -184,14 +181,14 @@ decomposed quantities directly and then apply the same boundary update.
 Affine pricing uses the same decomposition in transform form.
 The affine schedule transform takes separate loadings for
 \[
-    \widehat B_Z^+,\quad \widehat E^+,\quad \widehat B_Z^-,
-    \quad \widehat E^-,\quad N^+,\quad N^-,\quad Z_T,
+    B_Z^+,\quad E^+,\quad B_Z^-,
+    \quad E^-,\quad N^+,\quad N^-,\quad Z_T,
 \]
-where the activity loadings apply to the moving exposures after no-move
-thinning and the count loadings apply to total events.
+where the activity loadings apply to total activity exposure and the count
+loadings apply to total events.
 It evaluates the joint transform by propagating \((C,\mathbf D,V)\).
 The terminal cumulant adapter in \texttt{07\_terminal\_cumulant\_adapter.tex}
-maps pricing arguments into those same moving-activity and count loadings.
+maps pricing arguments into those same activity and count loadings.
 
 Therefore, the four paths are consistent at the level of the transition law
 whenever they preserve \(\mathcal S_k\), the routed news/gap return

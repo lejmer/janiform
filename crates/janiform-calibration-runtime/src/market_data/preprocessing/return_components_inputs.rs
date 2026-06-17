@@ -23,7 +23,6 @@ use super::shared::{
 };
 use janiform_calibration_artifacts::TickGridObservationModel;
 use janiform_foundations::time::duration_nanos_to_hours;
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
@@ -161,7 +160,6 @@ pub(super) fn build_return_components_candidate_generation_input(
         open_session_sell_share_proxy: round_to(open_tick_sell_share, 6),
         shared_mark_law_template,
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
-        no_move_event_model: NoMoveEventModel::neutral(),
         tick_grid_observation_model,
         timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {

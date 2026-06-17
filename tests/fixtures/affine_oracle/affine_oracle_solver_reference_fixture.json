@@ -54,12 +54,6 @@
             "vol_of_vol": 0.0,
             "buy_event_loading": 0.0,
             "sell_event_loading": 0.0
-          },
-          "no_move_event_model": {
-            "buy_baseline_no_move_probability": 0.0,
-            "buy_endogenous_no_move_probability": 0.0,
-            "sell_baseline_no_move_probability": 0.0,
-            "sell_endogenous_no_move_probability": 0.0
           }
         },
         "activity_loadings": {
@@ -188,12 +182,6 @@
             "vol_of_vol": 0.0,
             "buy_event_loading": 0.0,
             "sell_event_loading": 0.0
-          },
-          "no_move_event_model": {
-            "buy_baseline_no_move_probability": 0.0,
-            "buy_endogenous_no_move_probability": 0.0,
-            "sell_baseline_no_move_probability": 0.0,
-            "sell_endogenous_no_move_probability": 0.0
           }
         },
         "activity_loadings": {
@@ -322,12 +310,6 @@
             "vol_of_vol": 0.0,
             "buy_event_loading": 0.0,
             "sell_event_loading": 0.0
-          },
-          "no_move_event_model": {
-            "buy_baseline_no_move_probability": 0.0,
-            "buy_endogenous_no_move_probability": 0.0,
-            "sell_baseline_no_move_probability": 0.0,
-            "sell_endogenous_no_move_probability": 0.0
           }
         },
         "activity_loadings": {

@@ -166,7 +166,6 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-        janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )

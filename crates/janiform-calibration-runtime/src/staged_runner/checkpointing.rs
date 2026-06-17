@@ -112,7 +112,6 @@ pub(super) fn build_stage_parameter_artifact_input(
                         metadata.stage_seed_derivation_policy,
                         metadata.solver_settings.clone(),
                     ),
-                    no_move_event_model: payload.no_move_event_model,
                     timestamp_batching_observation_model: payload
                         .timestamp_batching_observation_model
                         .clone(),

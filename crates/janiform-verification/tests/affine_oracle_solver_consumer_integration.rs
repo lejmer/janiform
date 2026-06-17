@@ -183,7 +183,6 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("fixture gamma mark configuration should construct"),
             LongVarianceParameters::neutral(),
-            janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         )
         .expect("fixture equation specification should construct"),
         ExponentialAffineTransformActivityLoadings::total_activity(
@@ -265,7 +264,6 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         )
         .expect("pricing fixture NIG configuration should construct"),
         ReturnClockExposureParameters::neutral(),
-        janiform_model_kernels::no_move_event::NoMoveEventModel::neutral(),
         janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
         VanillaOptionPricingKernelParameters::identity(),
     )

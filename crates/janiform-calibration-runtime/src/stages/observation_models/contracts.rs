@@ -4,7 +4,6 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageSeedSource, HawkesStageFittedParameters, ObservationModelsStageDiagnostics,
 };
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 
@@ -36,7 +35,6 @@ pub struct ObservationModelsHawkesSourceResponsibilityInput {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ObservationModelsStageFittedPayload {
     pub schema_version: &'static str,
-    pub no_move_event_model: NoMoveEventModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub open_session_return_source_activities: Vec<SideSourceActivityDecomposition>,
     pub diagnostics: ObservationModelsStageDiagnostics,
@@ -46,7 +44,6 @@ impl ObservationModelsStageFittedPayload {
     pub(crate) fn without_source_activity_vector(&self) -> Self {
         Self {
             schema_version: self.schema_version,
-            no_move_event_model: self.no_move_event_model,
             timestamp_batching_observation_model: self.timestamp_batching_observation_model.clone(),
             open_session_return_source_activities: Vec::new(),
             diagnostics: self.diagnostics.clone(),
@@ -75,7 +72,6 @@ pub enum ObservationModelsStageExecutionFailure {
     MissingObservedOpenSessionReturns,
     MissingHawkesSourceResponsibilityInput,
     InvalidHawkesSourceResponsibilityInput { error_message: String },
-    InvalidNoMoveEventModel { error_message: String },
     InvalidTimestampBatchingObservationModel { error_message: String },
 }
 

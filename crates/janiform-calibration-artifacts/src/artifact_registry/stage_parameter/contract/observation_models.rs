@@ -1,4 +1,3 @@
-use janiform_model_kernels::no_move_event::NoMoveEventModel;
 use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +16,6 @@ use super::support::validate_optimizer_state_absence;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationModelsStageParameterPayload {
-    pub no_move_event_model: NoMoveEventModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub diagnostics: ObservationModelsStageDiagnostics,
 }
@@ -25,7 +23,6 @@ pub struct ObservationModelsStageParameterPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObservationModelsStageParameterArtifactInput {
     pub metadata: CalibrationStageParameterBuildMetadata,
-    pub no_move_event_model: NoMoveEventModel,
     pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
     pub diagnostics: ObservationModelsStageDiagnostics,
 }
@@ -60,7 +57,6 @@ pub(super) fn build_observation_models_stage_parameter_artifact(
     let metadata = input.metadata;
 
     let payload = ObservationModelsStageParameterPayload {
-        no_move_event_model: input.no_move_event_model,
         timestamp_batching_observation_model: input.timestamp_batching_observation_model,
         diagnostics: input.diagnostics,
     };
@@ -81,13 +77,6 @@ pub(super) fn validate_observation_models_stage_parameter_payload(
     payload: &ObservationModelsStageParameterPayload,
     optimizer_state: Option<&CalibrationStageParameterOptimizerState>,
 ) -> Result<(), CalibrationStageParameterArtifactValidationError> {
-    payload.no_move_event_model.validate().map_err(|source| {
-        CalibrationStageParameterArtifactValidationError::InvalidNoMoveEventModel {
-            stage,
-            error_message: source.to_string(),
-        }
-    })?;
-
     payload
         .timestamp_batching_observation_model
         .validate()

@@ -96,10 +96,6 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         error_message: String,
     },
-    InvalidNoMoveEventModel {
-        stage: CalibrationStage,
-        error_message: String,
-    },
     InvalidTimestampBatchingObservationModel {
         stage: CalibrationStage,
         error_message: String,
@@ -205,13 +201,6 @@ impl Display for CalibrationStageParameterArtifactValidationError {
             } => write!(
                 formatter,
                 "stage parameter artifact for `{stage:?}` uses invalid optimizer_state: {error_message}"
-            ),
-            Self::InvalidNoMoveEventModel {
-                stage,
-                error_message,
-            } => write!(
-                formatter,
-                "stage parameter artifact for `{stage:?}` uses invalid no_move_event_model: {error_message}"
             ),
             Self::InvalidTimestampBatchingObservationModel {
                 stage,

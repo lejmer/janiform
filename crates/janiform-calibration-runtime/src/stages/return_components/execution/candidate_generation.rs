@@ -178,10 +178,8 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         &fitted_surprise_episode_selection_layer,
     );
 
-    let fitted_return_clock_exposure_parameters = fit_return_clock_exposure_parameters(
-        sorted_signals.continuous_fit_returns.as_slice(),
-        candidate_generation_input.no_move_event_model,
-    );
+    let fitted_return_clock_exposure_parameters =
+        fit_return_clock_exposure_parameters(sorted_signals.continuous_fit_returns.as_slice());
 
     emit_return_components_progress(
         progress_sender,
@@ -742,7 +740,6 @@ fn enumerate_candidate_inputs(
                     candidate_provenance: candidate_provenance_template.clone(),
                     dominant_scale_driver,
                     return_clock_exposure_parameters,
-                    no_move_event_model: candidate_generation_input.no_move_event_model,
                     tick_grid_observation_model: candidate_generation_input
                         .tick_grid_observation_model
                         .clone(),

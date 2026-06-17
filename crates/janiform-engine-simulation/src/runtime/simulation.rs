@@ -59,8 +59,8 @@ use super::timestamp_observation::{
 };
 use super::timing_diagnostics::SeededTickSimulationTimingDiagnosticsAccumulator;
 use super::trading_time::{
-    TransitionMovingReturnClockInput, build_interval_open_market_segments,
-    compute_transition_moving_return_clocks, integrate_open_market_elapsed_hours,
+    TransitionReturnClockInput, build_interval_open_market_segments,
+    compute_transition_return_clocks, integrate_open_market_elapsed_hours,
     sample_trading_time_return_from_return_clocks,
 };
 use super::updates::{
@@ -487,12 +487,6 @@ where
         interval_index as u64,
     );
 
-    let mut endogenous_no_move_stream = randomness_factory.create_substream(
-        run_config.seed,
-        SimulationRandomnessSubstreamDomain::EndogenousNoMoveEventMark,
-        interval_index as u64,
-    );
-
     let exogenous_interval_updates = schedule_exogenous_interval_news_updates(
         ExogenousIntervalNewsSchedulingInput {
             interval_index,
@@ -515,14 +509,12 @@ where
             interval_seasonality_factor: interval_inputs.interval_seasonality_factor,
             interval_start_utc_nanos: interval_inputs.interval_start_utc_nanos,
             interval_end_utc_nanos: interval_inputs.interval_end_utc_nanos,
-            no_move_event_model: run_config.model_inputs.no_move_event_model,
             exogenous_interval_updates: &exogenous_interval_updates,
             market_state_resolver,
         },
         &mut endogenous_wait_stream,
         &mut endogenous_acceptance_stream,
         &mut endogenous_side_stream,
-        &mut endogenous_no_move_stream,
     )?;
 
     merge_ordered_interval_updates(endogenous_interval_updates, exogenous_interval_updates)
@@ -624,7 +616,6 @@ where
     previous_timestamp_utc_nanos: i64,
     timestamp_utc_nanos: i64,
     transition_state: HawkesExcitationState,
-    emit_price_return: bool,
 }
 
 struct SeededTransitionReturnPreparation {
@@ -654,7 +645,6 @@ where
         previous_timestamp_utc_nanos,
         timestamp_utc_nanos,
         transition_state,
-        emit_price_return,
     } = input;
 
     let elapsed_hours_since_previous_update =
@@ -677,49 +667,21 @@ where
         elapsed_open_hours_since_previous_update,
     )?;
 
-    let transition_return_clocks =
-        compute_transition_moving_return_clocks(TransitionMovingReturnClockInput {
-            state: transition_state,
-            lambda_bar: fine_path_state.lambda_bar,
-            beta: run_config.model_inputs.kernel_parameters.beta,
-            seasonality_factor: interval_inputs.interval_seasonality_factor,
-            return_clock_exposure_parameters: run_config
-                .model_inputs
-                .return_clock_exposure_parameters,
-            no_move_event_model: run_config.model_inputs.no_move_event_model,
-            baseline_long_variance_clock_scale: long_variance_transition.baseline_clock_scale,
-            interval_open_market_segments: interval_inputs.interval_open_market_segments,
-            previous_timestamp_utc_nanos,
-            timestamp_utc_nanos,
-            interval_index: interval_inputs.interval_index,
-        })?;
+    let transition_return_clocks = compute_transition_return_clocks(TransitionReturnClockInput {
+        state: transition_state,
+        lambda_bar: fine_path_state.lambda_bar,
+        beta: run_config.model_inputs.kernel_parameters.beta,
+        seasonality_factor: interval_inputs.interval_seasonality_factor,
+        return_clock_exposure_parameters: run_config.model_inputs.return_clock_exposure_parameters,
+        baseline_long_variance_clock_scale: long_variance_transition.baseline_clock_scale,
+        interval_open_market_segments: interval_inputs.interval_open_market_segments,
+        previous_timestamp_utc_nanos,
+        timestamp_utc_nanos,
+        interval_index: interval_inputs.interval_index,
+    })?;
 
     runtime_state.pending_buy_return_clock += transition_return_clocks.buy_return_clock;
     runtime_state.pending_sell_return_clock += transition_return_clocks.sell_return_clock;
-
-    if !emit_price_return {
-        let return_components =
-            SufficientStatisticsReturnComponents::try_new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0).map_err(
-                |source| SeededTickSimulationRunError::InvalidReturnComponents {
-                    interval_index: interval_inputs.interval_index,
-                    source: Box::new(source),
-                },
-            )?;
-
-        return Ok(SeededTransitionReturnPreparation {
-            elapsed_hours_since_previous_update,
-            elapsed_open_hours_since_previous_update,
-            market_state,
-            long_variance_transition,
-            projected_core_increment: SeededProjectedCoreIncrement {
-                observed_core_increment: 0.0,
-                tick_grid_residual_log_return: 0.0,
-            },
-            apply_observed_state_update: false,
-            total_return: 0.0,
-            return_components,
-        });
-    }
 
     let (open_jump_return, closed_gap_return) =
         realize_pending_jump_returns(runtime_state, market_state);
@@ -848,11 +810,6 @@ where
             apply_timestamp_batching,
         });
 
-    let emit_price_return = match interval_update {
-        IntervalStochasticUpdate::EndogenousEvent { no_move, .. } => !no_move,
-        IntervalStochasticUpdate::ExogenousNews { .. } => true,
-    };
-
     let transition_return =
         prepare_seeded_transition_return(SeededTransitionReturnPreparationInput {
             run_config,
@@ -864,7 +821,6 @@ where
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: latent_transition_time_utc_nanos,
             transition_state: previous_state,
-            emit_price_return,
         })?;
 
     if transition_return.apply_observed_state_update {
@@ -1033,7 +989,6 @@ where
             previous_timestamp_utc_nanos,
             timestamp_utc_nanos: latent_transition_time_utc_nanos,
             transition_state: previous_state,
-            emit_price_return: true,
         })?;
 
     runtime_state.observed_state = runtime_state
