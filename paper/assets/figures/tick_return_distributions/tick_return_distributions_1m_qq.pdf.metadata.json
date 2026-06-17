@@ -37,12 +37,12 @@
     "id": "tick_return_distributions_1m_qq_empirical_market_data",
     "title": "Empirical ES 1m normal QQ plot"
   },
-  "generated_at_utc": "2026-06-13T23:49:03.257540+00:00",
+  "generated_at_utc": "2026-06-17T22:34:08.731684+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
+    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
@@ -109,7 +109,7 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_1m_qq.pdf",
       "role": "figure",
-      "sha256": "ae87f9b4d02d7e605abb94926c057029b94f91e4b7d54a960469de597560289c",
+      "sha256": "3a67371ac8ad478d907b3cbfd798a39be5bb14295ffc24e61e9851a5b16e475e",
       "size_bytes": 20852
     }
   ],

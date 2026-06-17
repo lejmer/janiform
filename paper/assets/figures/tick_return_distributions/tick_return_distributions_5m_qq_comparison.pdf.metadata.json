@@ -33,33 +33,33 @@
       "value_null_count": 0
     },
     "synthetic_model_output": {
-      "event_count": 12066398,
-      "finite_return_count": 12066008,
+      "event_count": 13942058,
+      "finite_return_count": 13941621,
       "horizon": "5m",
       "horizon_duration_nanos": 300000000000,
       "label": "Janiform synthetic",
       "original_timestamp_order_is_monotonic": true,
-      "positive_price_count": 12066398,
+      "positive_price_count": 13942058,
       "price_column": "price",
       "return_summary": {
-        "maximum": 56.91382036767223,
-        "mean": -0.03441984528988627,
-        "minimum": -51.056167284873055,
+        "maximum": 42.85423202000871,
+        "mean": 0.30441301848574703,
+        "minimum": -52.27545355989349,
         "quantiles": {
-          "p001": -39.03463697485803,
-          "p01": -26.725455231364492,
-          "p05": -16.944816696877766,
-          "p50": 0.0,
-          "p95": 16.44989800961838,
-          "p99": 25.950497723847832,
-          "p999": 36.862215992918834
+          "p001": -33.55558605045772,
+          "p01": -23.351260333583923,
+          "p05": -14.839591003816821,
+          "p50": 0.3498607692087319,
+          "p95": 15.543377386411095,
+          "p99": 23.420227984729536,
+          "p999": 32.3664325535411
         },
-        "standard_deviation": 10.042538321869573
+        "standard_deviation": 9.132952312603125
       },
       "return_unit": "log_return_basis_points",
-      "source_observation_count": 12066008,
+      "source_observation_count": 13941621,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.269032407+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.214543616+00:00",
       "timestamp_null_count": 0,
       "value_column": "price",
       "value_null_count": 0
@@ -69,12 +69,12 @@
     "id": "tick_return_distributions_5m_qq_comparison",
     "title": "Empirical vs Janiform synthetic ES 5m QQ plot"
   },
-  "generated_at_utc": "2026-06-13T23:49:12.443635+00:00",
+  "generated_at_utc": "2026-06-17T22:34:18.329514+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "1f93cf432930ca1bf18fc95c4bc2228747776064",
+    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
@@ -146,11 +146,11 @@
         "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 12066398,
-      "parquet_row_group_count": 12,
+      "parquet_row_count": 13942058,
+      "parquet_row_group_count": 14,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 126990425,
+      "size_bytes": 144571712,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -167,8 +167,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_5m_qq_comparison.pdf",
       "role": "figure",
-      "sha256": "8bbe8985164a3c2a79ffe67e13e717141609cff2e7104103386e01f0ccc0c6ff",
-      "size_bytes": 22878
+      "sha256": "c14446e160df6d44906f5e02199ead5edf3f116417d9c58b82087de91a3fce18",
+      "size_bytes": 22921
     }
   ],
   "parameters": {
@@ -217,8 +217,8 @@
         "point_count": 401,
         "x_maximum": 76.02510377509475,
         "x_minimum": -51.61142969278387,
-        "y_maximum": 36.862215992918834,
-        "y_minimum": -39.03463697485803
+        "y_maximum": 32.3664325535411,
+        "y_minimum": -33.55558605045772
       }
     ],
     "plot_type": "qq_plot",
