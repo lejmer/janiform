@@ -12,7 +12,6 @@ use janiform_model_kernels::hawkes::{
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 use janiform_model_kernels::news::expected_news_activity_loading_rate;
 use janiform_model_kernels::nig::NigBuySellDriverParameters;
-use janiform_model_kernels::return_clock::EffectiveReturnClocks;
 use tracing::debug;
 
 use crate::artifacts::{
@@ -249,8 +248,6 @@ where
     long_variance_state: LongVarianceState,
     news_routing_totals: SeededTickSimulationNewsRoutingTotals,
     next_known_scheduled_news_timestamp_position: usize,
-    pending_buy_return_clock: f64,
-    pending_sell_return_clock: f64,
     pending_open_jump_return: f64,
     pending_closed_gap_return: f64,
     observed_state: SeededObservedState,
@@ -290,8 +287,6 @@ where
         long_variance_state: run_config.model_inputs.initial_long_variance_state,
         news_routing_totals: SeededTickSimulationNewsRoutingTotals::default(),
         next_known_scheduled_news_timestamp_position: 0,
-        pending_buy_return_clock: 0.0,
-        pending_sell_return_clock: 0.0,
         pending_open_jump_return: 0.0,
         pending_closed_gap_return: 0.0,
         observed_state: SeededObservedState::from_boundary_state(
@@ -624,7 +619,6 @@ struct SeededTransitionReturnPreparation {
     market_state: MarketState,
     long_variance_transition: LongVarianceTransitionSample,
     projected_core_increment: SeededProjectedCoreIncrement,
-    apply_observed_state_update: bool,
     total_return: f64,
     return_components: SufficientStatisticsReturnComponents,
 }
@@ -680,18 +674,12 @@ where
         interval_index: interval_inputs.interval_index,
     })?;
 
-    runtime_state.pending_buy_return_clock += transition_return_clocks.buy_return_clock;
-    runtime_state.pending_sell_return_clock += transition_return_clocks.sell_return_clock;
-
     let (open_jump_return, closed_gap_return) =
         realize_pending_jump_returns(runtime_state, market_state);
 
-    let pending_return_clocks =
-        realize_pending_return_clocks(runtime_state, interval_inputs.interval_index)?;
-
     let trading_time_return = sample_trading_time_return_from_return_clocks(
         fine_path_state.driver_parameters,
-        pending_return_clocks,
+        transition_return_clocks,
         interval_inputs.interval_index,
         &mut randomness_factory.create_substream(
             run_config.seed,
@@ -734,7 +722,6 @@ where
         market_state,
         long_variance_transition,
         projected_core_increment,
-        apply_observed_state_update: true,
         total_return,
         return_components,
     })
@@ -823,13 +810,11 @@ where
             transition_state: previous_state,
         })?;
 
-    if transition_return.apply_observed_state_update {
-        runtime_state.observed_state = runtime_state.observed_state.apply_projected_core_increment(
-            fine_path_state.mean_reversion_kappa,
-            transition_return.elapsed_open_hours_since_previous_update,
-            transition_return.projected_core_increment,
-        );
-    }
+    runtime_state.observed_state = runtime_state.observed_state.apply_projected_core_increment(
+        fine_path_state.mean_reversion_kappa,
+        transition_return.elapsed_open_hours_since_previous_update,
+        transition_return.projected_core_increment,
+    );
 
     let transition_step =
         interval_update.transition_step(transition_return.elapsed_hours_since_previous_update);
@@ -1139,32 +1124,6 @@ where
     runtime_state.pending_closed_gap_return = 0.0;
 
     (open_jump_return, closed_gap_return)
-}
-
-fn realize_pending_return_clocks<R>(
-    runtime_state: &mut SeededTickSimulationRuntimeState<R>,
-    interval_index: usize,
-) -> Result<EffectiveReturnClocks, SeededTickSimulationRunError>
-where
-    R: SimulationRandomnessStream,
-{
-    let return_clocks = EffectiveReturnClocks::try_new(
-        runtime_state.pending_buy_return_clock,
-        runtime_state.pending_sell_return_clock,
-    )
-    .map_err(|source| SeededTickSimulationRunError::EffectiveReturnClockBuildFailure {
-        interval_index,
-        source: Box::new(
-            janiform_model_kernels::return_clock::EffectiveReturnClocksBuildError::InvalidEffectiveClocks {
-                source,
-            },
-        ),
-    })?;
-
-    runtime_state.pending_buy_return_clock = 0.0;
-    runtime_state.pending_sell_return_clock = 0.0;
-
-    Ok(return_clocks)
 }
 
 fn build_stream_completion<R>(
