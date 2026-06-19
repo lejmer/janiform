@@ -40,14 +40,18 @@ For the full public API policy and Python snapshot guardrail workflow, see [Main
 
 ## Crates and modules
 
-- `lib.rs` files must be thin and never include declarations.
-- Never use wildcard imports such as `::*`.
-- Always import items explicitly.
-- When introducing a new concept, feature, or API, decide whether an existing crate is the right owner.
-- Consider whether a new crate is warranted for a new substantial concept.
-- Refactor existing code as needed so ownership remains clear.
-- Crate README files are generated from crate metadata by `scripts/generate_crate_readmes.py`.
-- Do not write crate README files manually.
+* `lib.rs` files must be thin crate roots and must not contain implementation code.
+* Never use wildcard imports such as `::*`.
+* Always import items explicitly.
+* When introducing a new concept, feature, or API, decide whether an existing crate is the right owner.
+* Consider whether a new crate is warranted for a new substantial concept.
+* Refactor existing code as needed so ownership remains clear.
+* Do not use the legacy `mod.rs` module layout.
+* When a module needs to be split into smaller files, keep the parent module as a thin module root containing only submodule declarations, reexports, crate-local wiring, and minimal documentation.
+* Store the split implementation in aptly named files under a same-named subdirectory, using the modern Rust layout: `foo.rs` plus `foo/bar.rs`, `foo/baz.rs`, etc., not `foo/mod.rs`.
+* When splitting an existing large module, move the implementation out of the old module file. The old file should become the thin module root, not remain a mixed root-and-implementation file.
+* Crate README files are generated from crate metadata by `scripts/generate_crate_readmes.py`.
+* Do not write crate README files manually.
 
 For workspace-level crate guidance, see [Crates](crates.md).
 
