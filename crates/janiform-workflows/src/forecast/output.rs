@@ -19,8 +19,11 @@ pub struct ForecastExpectedPathRow {
     #[serde(serialize_with = "serialize_utc_datetime")]
     pub timestamp_utc: DateTime<Utc>,
     pub expected_log_return: f64,
-    pub expected_price_ratio: f64,
     pub expected_log_price: f64,
+    pub geometric_mean_price_ratio: f64,
+    pub geometric_mean_price: f64,
+    pub log_expected_price_ratio: f64,
+    pub expected_price_ratio: f64,
     pub expected_price: f64,
 }
 
@@ -82,6 +85,11 @@ pub struct ForecastQuantile {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ForecastScalarSummary {
     pub initial_price: f64,
+    pub expected_terminal_log_return: f64,
+    pub expected_terminal_log_price: f64,
+    pub geometric_mean_terminal_price_ratio: f64,
+    pub geometric_mean_terminal_price: f64,
+    pub log_expected_terminal_price_ratio: f64,
     pub expected_terminal_price_ratio: f64,
     pub expected_terminal_price: f64,
     #[serde(deserialize_with = "deserialize_utc_datetime")]
@@ -182,8 +190,11 @@ pub(super) fn expected_path_table_schema(
             column("interval_index", "uint64"),
             column("timestamp_utc", "timestamp[ns, UTC]"),
             column("expected_log_return", "float64"),
-            column("expected_price_ratio", "float64"),
             column("expected_log_price", "float64"),
+            column("geometric_mean_price_ratio", "float64"),
+            column("geometric_mean_price", "float64"),
+            column("log_expected_price_ratio", "float64"),
+            column("expected_price_ratio", "float64"),
             column("expected_price", "float64"),
         ],
     }

@@ -2,6 +2,7 @@ mod core;
 mod cumulant;
 mod diagnostics;
 mod mean_reversion;
+mod moments;
 
 pub(crate) use core::{
     TerminalAffineExpectedLogReturnInput, TerminalAffineExplicitLogPriceDomain,

@@ -996,29 +996,33 @@ fn estimate_current_state_from_observed_data(
     kernel_parameters: &Bound<'_, PyAny>,
     long_variance_parameters: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    reference_price: f64,
     state_time_utc_nanos: i64,
     observed_log_return: f64,
     observation_timestamps_utc: &Bound<'_, PyAny>,
     observation_trade_prices: &Bound<'_, PyAny>,
     observation_trade_sides: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let estimation_output =
-        estimate_current_state_from_observed_data_core(CurrentStateEstimationInput {
-            kernel_parameters: parse_current_state_kernel_parameters(kernel_parameters)?,
-            long_variance_parameters: parse_current_state_long_variance_parameters(
-                long_variance_parameters,
-            )?,
-            mean_reversion_fitted_parameters: parse_current_state_mean_reversion_parameters(
-                mean_reversion_fitted_parameters,
-            )?,
-            state_time_utc_nanos,
-            observed_log_return,
-            observation_timestamp_utc_nanos: parse_current_state_timestamp_nanos(
-                observation_timestamps_utc,
-            )?,
-            observation_trade_prices: parse_current_state_trade_prices(observation_trade_prices)?,
-            observation_trade_sides: parse_current_state_trade_sides(observation_trade_sides)?,
-        })
+    let input = CurrentStateEstimationInput {
+        kernel_parameters: parse_current_state_kernel_parameters(kernel_parameters)?,
+        long_variance_parameters: parse_current_state_long_variance_parameters(
+            long_variance_parameters,
+        )?,
+        mean_reversion_fitted_parameters: parse_current_state_mean_reversion_parameters(
+            mean_reversion_fitted_parameters,
+        )?,
+        reference_price,
+        state_time_utc_nanos,
+        observed_log_return,
+        observation_timestamp_utc_nanos: parse_current_state_timestamp_nanos(
+            observation_timestamps_utc,
+        )?,
+        observation_trade_prices: parse_current_state_trade_prices(observation_trade_prices)?,
+        observation_trade_sides: parse_current_state_trade_sides(observation_trade_sides)?,
+    };
+
+    let estimation_output = py
+        .detach(|| estimate_current_state_from_observed_data_core(input))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     current_state_value_to_py_object(py, &estimation_output, "current-state estimation output")
@@ -1042,7 +1046,7 @@ fn update_current_state_tracker(
     observation_trade_prices: &Bound<'_, PyAny>,
     observation_trade_sides: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let tracker_snapshot = update_current_state_tracker_core(CurrentStateTrackerUpdateInput {
+    let input = CurrentStateTrackerUpdateInput {
         kernel_parameters: parse_current_state_kernel_parameters(kernel_parameters)?,
         long_variance_parameters: parse_current_state_long_variance_parameters(
             long_variance_parameters,
@@ -1059,8 +1063,11 @@ fn update_current_state_tracker(
         )?,
         observation_trade_prices: parse_current_state_trade_prices(observation_trade_prices)?,
         observation_trade_sides: parse_current_state_trade_sides(observation_trade_sides)?,
-    })
-    .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+    };
+
+    let tracker_snapshot = py
+        .detach(|| update_current_state_tracker_core(input))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     current_state_value_to_py_object(py, &tracker_snapshot, "current-state tracker snapshot")
 }

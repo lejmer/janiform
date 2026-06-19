@@ -127,22 +127,29 @@ fn resolve_bundle_path(target_path: &Path) -> Result<PathBuf, WorkflowError> {
     let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
     let base_name = format!("forecast_{timestamp}");
 
-    for suffix in 0..=usize::MAX {
-        let candidate = if suffix == 0 {
-            target_path.join(&base_name)
-        } else {
-            target_path.join(format!("{base_name}_{suffix}"))
+    let mut suffix: Option<usize> = None;
+
+    loop {
+        let candidate = match suffix {
+            None => target_path.join(&base_name),
+            Some(suffix_value) => target_path.join(format!("{base_name}_{suffix_value}")),
         };
 
         if !candidate.exists() {
             return Ok(candidate);
         }
-    }
 
-    Err(WorkflowError::ForecastArtifactMalformed {
-        path: target_path.to_path_buf(),
-        message: "could not resolve a unique forecast bundle child directory".to_string(),
-    })
+        suffix = Some(match suffix {
+            None => 1,
+            Some(suffix_value) => suffix_value.checked_add(1).ok_or_else(|| {
+                WorkflowError::ForecastArtifactMalformed {
+                    path: target_path.to_path_buf(),
+                    message: "could not resolve a unique forecast bundle child directory"
+                        .to_string(),
+                }
+            })?,
+        });
+    }
 }
 
 fn write_expected_path_table(
@@ -181,8 +188,11 @@ fn write_expected_path_csv(
             "interval_index",
             "timestamp_utc",
             "expected_log_return",
-            "expected_price_ratio",
             "expected_log_price",
+            "geometric_mean_price_ratio",
+            "geometric_mean_price",
+            "log_expected_price_ratio",
+            "expected_price_ratio",
             "expected_price",
         ])
         .map_err(|source| csv_error(output_path, source))?;
@@ -193,8 +203,11 @@ fn write_expected_path_csv(
                 row.interval_index.to_string(),
                 format_timestamp_utc(row.timestamp_utc),
                 row.expected_log_return.to_string(),
-                row.expected_price_ratio.to_string(),
                 row.expected_log_price.to_string(),
+                row.geometric_mean_price_ratio.to_string(),
+                row.geometric_mean_price.to_string(),
+                row.log_expected_price_ratio.to_string(),
+                row.expected_price_ratio.to_string(),
                 row.expected_price.to_string(),
             ])
             .map_err(|source| csv_error(output_path, source))?;
@@ -257,8 +270,11 @@ fn write_expected_path_parquet(
             false,
         ),
         Field::new("expected_log_return", DataType::Float64, false),
-        Field::new("expected_price_ratio", DataType::Float64, false),
         Field::new("expected_log_price", DataType::Float64, false),
+        Field::new("geometric_mean_price_ratio", DataType::Float64, false),
+        Field::new("geometric_mean_price", DataType::Float64, false),
+        Field::new("log_expected_price_ratio", DataType::Float64, false),
+        Field::new("expected_price_ratio", DataType::Float64, false),
         Field::new("expected_price", DataType::Float64, false),
     ]));
 
@@ -289,12 +305,27 @@ fn write_expected_path_parquet(
         )),
         Arc::new(Float64Array::from(
             rows.iter()
-                .map(|row| row.expected_price_ratio)
+                .map(|row| row.expected_log_price)
                 .collect::<Vec<_>>(),
         )),
         Arc::new(Float64Array::from(
             rows.iter()
-                .map(|row| row.expected_log_price)
+                .map(|row| row.geometric_mean_price_ratio)
+                .collect::<Vec<_>>(),
+        )),
+        Arc::new(Float64Array::from(
+            rows.iter()
+                .map(|row| row.geometric_mean_price)
+                .collect::<Vec<_>>(),
+        )),
+        Arc::new(Float64Array::from(
+            rows.iter()
+                .map(|row| row.log_expected_price_ratio)
+                .collect::<Vec<_>>(),
+        )),
+        Arc::new(Float64Array::from(
+            rows.iter()
+                .map(|row| row.expected_price_ratio)
                 .collect::<Vec<_>>(),
         )),
         Arc::new(Float64Array::from(

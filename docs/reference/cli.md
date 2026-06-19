@@ -25,6 +25,7 @@ This document contains the help content for the `janiform` command-line program.
 * [`janiform simulate`↴](#janiform-simulate)
 * [`janiform simulate seeded-ticks`↴](#janiform-simulate-seeded-ticks)
 * [`janiform simulate coarse-interval`↴](#janiform-simulate-coarse-interval)
+* [`janiform forecast`↴](#janiform-forecast)
 * [`janiform presets`↴](#janiform-presets)
 * [`janiform presets list`↴](#janiform-presets-list)
 * [`janiform presets show`↴](#janiform-presets-show)
@@ -71,6 +72,7 @@ See also:
 * `report` — Render reports from saved Janiform outputs.
 * `price` — Price derivatives with a fitted Janiform model.
 * `simulate` — Simulate paths from a fitted Janiform model.
+* `forecast` — Forecast expected path and terminal distribution from a fitted Janiform model.
 * `presets` — Inspect bundled and user-registered presets.
 * `validate` — Validate fitted models against empirical behavior.
 * `dev` — Janiform workflows for developers.
@@ -349,6 +351,8 @@ By default, Janiform writes a run directory under .janiform/runs/ with the fitte
     Resume from the seasonality stage.
   - `hawkes`:
     Resume from the Hawkes activity stage.
+  - `observation-models`:
+    Resume from the observation-model stage.
   - `return-components`:
     Resume from the return-component stage.
   - `long-variance`:
@@ -770,6 +774,8 @@ This advanced command is useful when a separate process prepares calibration inp
     Resume from the seasonality stage.
   - `hawkes`:
     Resume from the Hawkes activity stage.
+  - `observation-models`:
+    Resume from the observation-model stage.
   - `return-components`:
     Resume from the return-component stage.
   - `long-variance`:
@@ -992,6 +998,8 @@ This command runs a prepared calibration input file. Disk runs write the fitted 
     Resume from the seasonality stage.
   - `hawkes`:
     Resume from the Hawkes activity stage.
+  - `observation-models`:
+    Resume from the observation-model stage.
   - `return-components`:
     Resume from the return-component stage.
   - `long-variance`:
@@ -1389,9 +1397,6 @@ This command reads a saved Janiform model and an observed option snapshot, then 
 * `--valuation-count <COUNT>` — Number of surface valuation times to retain.
 * `--use-all-valuation-times` — Use every retained quote timestamp for single-expiry surface pricing.
 * `--cpu-count <COUNT>` — CPU count for native pricing.
-* `--physical-distribution-diagnostics` — Compute model-P terminal distribution diagnostics for observed option nodes.
-* `--physical-distribution-path-count <COUNT>` — Physical distribution diagnostic path count.
-* `--physical-distribution-seed <SEED>` — Physical distribution diagnostic root seed.
 * `--output-path <PATH>` — Primary output path.
 
    When omitted, Janiform chooses a default output path for the command.
@@ -1503,6 +1508,68 @@ Use this when another tool has already prepared the interval-level simulation in
 * `--price-column <COLUMN>` — Output price column name.
 
   Default value: `price`
+
+
+
+## `janiform forecast`
+
+Forecast expected path and terminal distribution from a fitted Janiform model.
+
+The forecast command uses the saved affine model directly. It does not accept tick data and does not run Monte Carlo. It writes a forecast bundle containing forecast.json, expected_path, and terminal_distribution tables.
+
+**Usage:** `janiform forecast [OPTIONS]`
+
+###### **Options:**
+
+* `--model-path <PATH>` — Saved Janiform model path.
+
+   Most commands read the model.jf file written by janiform fit.
+* `--output-path <PATH>` — Primary output path.
+
+   When omitted, Janiform chooses a default output path for the command.
+* `--start-date-utc <UTC>` — Forecast start timestamp. Defaults to current UTC time.
+* `--initial-price <PRICE>` — Initial observed price. Defaults to the model-only forecast price when no state is supplied.
+* `--state-path <PATH>` — Current-state JSON artifact used as the forecast boundary condition.
+* `--interval <INTERVAL>` — Forecast interval duration such as 1min, 15min, 1h, or 1D.
+
+  Default value: `1h`
+* `--horizon-interval-count <COUNT>` — Number of forecast intervals.
+* `--end-date-utc <UTC>` — Forecast end timestamp. Janiform resolves to the smallest interval count covering it.
+* `--measure <MEASURE>`
+
+  Default value: `physical`
+
+  Possible values:
+  - `physical`:
+    Use fitted physical dynamics.
+  - `risk_neutral`:
+    Use risk-neutral martingale dynamics.
+
+* `--risk-free-rate <RATE>` — Risk-free rate used only for risk-neutral forecasts.
+
+  Default value: `0`
+* `--dividend-yield <RATE>` — Dividend yield used only for risk-neutral forecasts.
+
+  Default value: `0`
+* `--table-format <TABLE_FORMAT>`
+
+  Default value: `parquet`
+
+  Possible values:
+  - `parquet`:
+    Write Apache Parquet tables.
+  - `csv`:
+    Write CSV tables.
+  - `json`:
+    Write row-array JSON tables.
+
+* `--distribution-node-count <N>` — Terminal distribution node count.
+
+  Default value: `513`
+* `--distribution-log-return-lower <X>` — Explicit terminal log-return support lower bound.
+* `--distribution-log-return-upper <X>` — Explicit terminal log-return support upper bound.
+* `--cpu-count <COUNT>` — CPU count for parallel forecast work. Use 0 for all available CPUs.
+* `--treat-forecast-warnings-as-errors` — Fail before writing artifacts when forecast warnings are emitted.
 
 
 

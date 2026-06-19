@@ -22,7 +22,10 @@ from .._runtime.payloads import (
     long_variance_parameters_for_model,
     mean_reversion_fitted_parameters_for_model,
 )
-from .._runtime.option_pricing.support import price_observed_log_return_from_spot
+from .._runtime.option_pricing.support import (
+    model_reference_price,
+    price_observed_log_return_from_spot,
+)
 from .contracts import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
@@ -70,6 +73,7 @@ def estimate_current_state_for_model(
         hawkes_kernel_parameters_for_model(model).to_payload(),
         long_variance_parameters_for_model(model).to_payload(),
         mean_reversion_fitted_parameters_for_model(model).to_payload(),
+        model_reference_price(model),
         datetime_to_utc_nanos(state_time_utc),
         observed_log_return,
         observed_timestamps_utc,

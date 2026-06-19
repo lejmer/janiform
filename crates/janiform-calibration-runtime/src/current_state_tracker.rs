@@ -3,13 +3,15 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
-use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::current_state::{
-    CurrentStateEstimationError, CurrentStateEstimationOutput,
-    long_variance_stationary_mean_reversion_level,
-    mean_reversion_boundary_state_from_observed_price, zero_hawkes_excitation_state,
+    CurrentStateEstimationError, CurrentStateEstimationOutput, MeanReversionBoundaryReplayState,
+    advance_mean_reversion_boundary_replay_from_observed_price,
+    long_variance_stationary_mean_reversion_level, zero_hawkes_excitation_state,
 };
 
 /// Rust-native input for advancing a fitted-model current-state tracker.
@@ -51,13 +53,13 @@ pub fn update_current_state_tracker(
     let tracker_state =
         replay_tracker_update(&input, previous_snapshot, stationary_long_variance_level)?;
 
-    let observed_price = input
+    let observed_price = tracker_state
         .observed_price
-        .or(tracker_state.observed_price)
         .ok_or(CurrentStateEstimationError::MissingObservedPrice)?;
-
-    let mean_reversion_boundary_state =
-        mean_reversion_boundary_state_from_observed_price(input.reference_price, observed_price)?;
+    
+    let mean_reversion_boundary_state = tracker_state
+        .mean_reversion_boundary_state
+        .ok_or(CurrentStateEstimationError::MissingObservedPrice)?;
 
     Ok(CurrentStateTrackerSnapshot {
         state_time_utc_nanos: input.state_time_utc_nanos,
@@ -70,10 +72,11 @@ pub fn update_current_state_tracker(
     })
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct ReplayedTrackerState {
     hawkes_excitation_state: HawkesExcitationState,
     long_variance_state: LongVarianceState,
+    mean_reversion_boundary_state: Option<MeanReversionBoundaryState>,
     observed_price: Option<f64>,
 }
 
@@ -135,6 +138,13 @@ fn replay_tracker_update(
         .map(|snapshot| snapshot.state.long_variance_state)
         .unwrap_or_else(LongVarianceState::unit);
 
+    let mut mean_reversion_replay_state =
+        previous_snapshot.map(|snapshot| MeanReversionBoundaryReplayState {
+            timestamp_utc_nanos: snapshot.state_time_utc_nanos,
+            // Copy the small boundary state out of the durable snapshot so replay can own it.
+            boundary_state: snapshot.state.mean_reversion_boundary_state.clone(),
+        });
+
     let mut previous_timestamp_utc_nanos = tracker_start_timestamp(
         previous_snapshot,
         input.state_time_utc_nanos,
@@ -142,12 +152,15 @@ fn replay_tracker_update(
     );
 
     let mut observed_price = previous_snapshot.map(|snapshot| snapshot.observed_price);
+    
+    let reference_log_price = input.reference_price.ln();
 
-    for ((&timestamp_utc_nanos, &trade_price), &trade_side) in input
+    for (observation_index, ((&timestamp_utc_nanos, &trade_price), &trade_side)) in input
         .observation_timestamp_utc_nanos
         .iter()
         .zip(input.observation_trade_prices.iter())
         .zip(input.observation_trade_sides.iter())
+        .enumerate()
     {
         let delta_hours =
             duration_nanos_to_hours(timestamp_utc_nanos - previous_timestamp_utc_nanos);
@@ -169,9 +182,37 @@ fn replay_tracker_update(
                 |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
             )?;
 
+        mean_reversion_replay_state =
+            Some(advance_mean_reversion_boundary_replay_from_observed_price(
+                mean_reversion_replay_state,
+                &input.mean_reversion_fitted_parameters,
+                reference_log_price,
+                timestamp_utc_nanos,
+                trade_price,
+                observation_index,
+            )?);
+
         previous_timestamp_utc_nanos = timestamp_utc_nanos;
         observed_price = Some(trade_price);
     }
+
+    let observed_price = input.observed_price.or(observed_price);
+    
+    let mean_reversion_boundary_state = match observed_price {
+        Some(observed_price) => {
+            let replay_state = advance_mean_reversion_boundary_replay_from_observed_price(
+                mean_reversion_replay_state,
+                &input.mean_reversion_fitted_parameters,
+                reference_log_price,
+                input.state_time_utc_nanos,
+                observed_price,
+                0,
+            )?;
+
+            Some(replay_state.boundary_state)
+        }
+        None => None,
+    };
 
     let trailing_delta_hours =
         duration_nanos_to_hours(input.state_time_utc_nanos - previous_timestamp_utc_nanos);
@@ -188,6 +229,7 @@ fn replay_tracker_update(
             .map_err(
                 |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
             )?,
+        mean_reversion_boundary_state,
         observed_price,
     })
 }
@@ -369,11 +411,32 @@ mod tests {
 
         assert_eq!(first_snapshot.state, batch_output[0].state);
         assert_eq!(second_snapshot.state, batch_output[1].state);
+        assert_ne!(
+            second_snapshot
+                .state
+                .mean_reversion_boundary_state
+                .pressure_state,
+            0.0
+        );
+        assert_ne!(
+            second_snapshot
+                .state
+                .mean_reversion_boundary_state
+                .deviation,
+            0.0
+        );
     }
 
     #[test]
     fn tracker_update_advances_without_new_observations() {
-        let input = batch_input_fixture(vec![NANOS_PER_HOUR]);
+        let mut input = batch_input_fixture(vec![NANOS_PER_HOUR, 2 * NANOS_PER_HOUR]);
+        input.observation_timestamp_utc_nanos.truncate(3);
+        input.observation_trade_prices.truncate(3);
+        input.observation_trade_sides.truncate(3);
+
+        let batch_output = estimate_current_states_from_observed_data(input.clone())
+            .expect("batch current-state estimation should succeed");
+
         let first_snapshot = update_current_state_tracker(CurrentStateTrackerUpdateInput {
             kernel_parameters: input.kernel_parameters,
             long_variance_parameters: input.long_variance_parameters,
@@ -410,6 +473,28 @@ mod tests {
         assert!(
             advanced_snapshot.state.hawkes_excitation_state.y_plus_plus
                 < first_snapshot.state.hawkes_excitation_state.y_plus_plus
+        );
+        assert_eq!(advanced_snapshot.state, batch_output[1].state);
+        assert_ne!(
+            first_snapshot
+                .state
+                .mean_reversion_boundary_state
+                .pressure_state,
+            0.0
+        );
+        assert_ne!(
+            advanced_snapshot
+                .state
+                .mean_reversion_boundary_state
+                .pressure_state,
+            0.0
+        );
+        assert_ne!(
+            advanced_snapshot
+                .state
+                .mean_reversion_boundary_state
+                .deviation,
+            0.0
         );
     }
 }

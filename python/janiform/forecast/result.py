@@ -4,11 +4,11 @@ import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Final, Optional
 
 from .._native_api import native_module
 
-DEFAULT_FORECAST_DISTRIBUTION_NODE_COUNT = 257
+DEFAULT_FORECAST_DISTRIBUTION_NODE_COUNT: Final[int] = 513
 
 
 class ForecastMeasure(StrEnum):

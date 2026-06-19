@@ -12,7 +12,14 @@ use janiform_calibration_runtime::{
     run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
 };
 use janiform_foundations::cancellation::CancellationToken;
+use janiform_foundations::randomness::{
+    SplitMix64SimulationRandomnessStream, sample_standard_normal_draw,
+};
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+    evolve_mean_reversion_boundary_state_with_endogenous_pressure,
+};
 use std::path::Path;
 use support::shared::{
     build_hawkes_stage_success_payload, build_return_components_stage_success_payload,
@@ -22,6 +29,11 @@ use support::shared::{
 };
 
 const TEST_PREDICTIVE_EVIDENCE_ALPHA: f64 = 0.05;
+const SYNTHETIC_ZERO_KAPPA_PRESSURE_OBSERVATION_COUNT: usize = 128;
+const SYNTHETIC_ZERO_KAPPA_PRESSURE_SHOCK_RETURN: f64 = 0.006;
+const SYNTHETIC_RANDOM_WALK_OBSERVATION_COUNT: usize = 192;
+const SYNTHETIC_RANDOM_WALK_SEED: u64 = 73_291;
+const SYNTHETIC_RANDOM_WALK_LOG_RETURN_SCALE: f64 = 0.00025;
 
 fn run_staged_calibration_with_checkpointing(
     run_contract: &CalibrationRunContract,
@@ -118,18 +130,102 @@ fn synthetic_predictive_mean_reverting_observations() -> Vec<MeanReversionStageO
     synthetic_regular_grid_observations(levels, 24)
 }
 
+fn synthetic_observed_pressure_replay_observations() -> Vec<MeanReversionStageObservation> {
+    let fitted_parameters =
+        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 24.0, 0.35, 0.80)
+            .expect("observed-pressure replay fixture parameters should be valid");
+
+    synthetic_observed_pressure_replay_observations_for_parameters(fitted_parameters)
+}
+
+fn synthetic_zero_kappa_pressure_replay_observations() -> Vec<MeanReversionStageObservation> {
+    let fitted_parameters =
+        MeanReversionFittedParameters::endogenous_core_pressure_level(0.0, 24.0, 0.35, 0.80)
+            .expect("zero-kappa observed-pressure replay fixture parameters should be valid");
+    let mut boundary_state = MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        .expect("zero-kappa observed-pressure replay fixture state should be valid");
+    let mut levels = Vec::new();
+
+    levels.push(boundary_state.observed_log_price);
+
+    for transition_position in 0..SYNTHETIC_ZERO_KAPPA_PRESSURE_OBSERVATION_COUNT {
+        let core_total_return = if transition_position == 0 {
+            SYNTHETIC_ZERO_KAPPA_PRESSURE_SHOCK_RETURN
+        } else {
+            zero_kappa_reference_interval_pressure_forecast_return(
+                &boundary_state,
+                &fitted_parameters,
+            )
+        };
+
+        boundary_state = evolve_mean_reversion_boundary_state_with_endogenous_pressure(
+            boundary_state,
+            &fitted_parameters,
+            24.0,
+            core_total_return,
+            core_total_return,
+        )
+        .expect("zero-kappa observed-pressure replay fixture should evolve");
+
+        levels.push(boundary_state.observed_log_price);
+    }
+
+    synthetic_regular_grid_observations(levels, 24)
+}
+
+fn zero_kappa_reference_interval_pressure_forecast_return(
+    boundary_state: &MeanReversionBoundaryState,
+    fitted_parameters: &MeanReversionFittedParameters,
+) -> f64 {
+    fitted_parameters.anchor_model.pressure_level_gain
+        * (fitted_parameters
+            .anchor_model
+            .pressure_persistence_per_reference_interval
+            - 1.0)
+        * boundary_state.pressure_state
+}
+
+fn synthetic_observed_pressure_replay_observations_for_parameters(
+    fitted_parameters: MeanReversionFittedParameters,
+) -> Vec<MeanReversionStageObservation> {
+    let mut boundary_state = MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        .expect("observed-pressure replay fixture state should be valid");
+    let mut levels = Vec::new();
+
+    levels.push(boundary_state.observed_log_price);
+
+    for transition_position in 0..128 {
+        let core_total_return = match transition_position % 4 {
+            0 => 0.006,
+            2 => -0.006,
+            _ => 0.0,
+        };
+
+        boundary_state = evolve_mean_reversion_boundary_state_with_endogenous_pressure(
+            boundary_state,
+            &fitted_parameters,
+            24.0,
+            core_total_return,
+            core_total_return,
+        )
+        .expect("observed-pressure replay fixture should evolve");
+
+        levels.push(boundary_state.observed_log_price);
+    }
+
+    synthetic_regular_grid_observations(levels, 24)
+}
+
 fn synthetic_random_walk_observations() -> Vec<MeanReversionStageObservation> {
     let mut levels = Vec::new();
     let mut level = 0.0_f64;
+    let mut randomness_stream =
+        SplitMix64SimulationRandomnessStream::from_seed(SYNTHETIC_RANDOM_WALK_SEED);
 
-    for observation_index in 0..96 {
+    for _ in 0..SYNTHETIC_RANDOM_WALK_OBSERVATION_COUNT {
         levels.push(level);
-
-        if observation_index % 2 == 0 {
-            level += 0.0006;
-        } else {
-            level -= 0.0004;
-        }
+        level += SYNTHETIC_RANDOM_WALK_LOG_RETURN_SCALE
+            * sample_standard_normal_draw(&mut randomness_stream);
     }
 
     synthetic_regular_grid_observations(levels, 24)
@@ -274,7 +370,119 @@ fn mean_reversion_stage_reports_endogenous_anchor_fit_from_synthetic_levels() {
 }
 
 #[test]
-fn mean_reversion_stage_selects_positive_kappa_when_predictive_evidence_passes() {
+fn mean_reversion_stage_selects_observed_pressure_replay_when_retained_prices_support_pressure() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-observed-pressure-replay",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_stage_input(synthetic_observed_pressure_replay_observations()),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("observed-pressure replay sample should emit a fitted payload");
+
+    assert_eq!(
+        payload.diagnostics.selected_candidate_family,
+        "causal_observed_core_pressure_level_mean_reversion"
+    );
+    assert!(payload.fitted_parameters.kappa > 0.0);
+
+    let observed_pressure_candidate = payload
+        .diagnostics
+        .evaluated_candidates
+        .iter()
+        .find(|candidate| {
+            candidate.candidate_family == "causal_observed_core_pressure_level_mean_reversion"
+        })
+        .expect("observed-pressure replay candidate should be evaluated");
+
+    assert!(
+        observed_pressure_candidate
+            .predictive_evidence
+            .as_ref()
+            .is_some_and(|evidence| evidence.gate_status == "predictive_evidence_passed.v1")
+    );
+    assert_ne!(
+        observed_pressure_candidate
+            .series_summaries
+            .pressure_state_path
+            .constant_value,
+        Some(0.0)
+    );
+    assert!(
+        observed_pressure_candidate
+            .stage_decision_reason
+            .contains("causal_observed_core_return_pressure_driver_replay.v1")
+    );
+
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family == "random_walk_null")
+    );
+}
+
+#[test]
+fn mean_reversion_stage_records_predictive_evidence_for_zero_kappa_observed_pressure_replay() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-zero-kappa-observed-pressure-replay",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_stage_input(synthetic_zero_kappa_pressure_replay_observations()),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("zero-kappa observed-pressure replay sample should emit a fitted payload");
+
+    let observed_pressure_candidate = payload
+        .diagnostics
+        .evaluated_candidates
+        .iter()
+        .find(|candidate| {
+            candidate.candidate_family == "causal_observed_core_pressure_level_mean_reversion"
+        })
+        .expect("observed-pressure replay candidate should be evaluated");
+
+    assert_eq!(observed_pressure_candidate.kappa, 0.0);
+    assert!(observed_pressure_candidate.anchor_model.pressure_level_gain > 0.0);
+    assert!(
+        observed_pressure_candidate
+            .anchor_model
+            .pressure_persistence_per_reference_interval
+            < 1.0
+    );
+    assert!(observed_pressure_candidate.predictive_evidence.is_some());
+    assert!(
+        observed_pressure_candidate
+            .stage_decision_reason
+            .contains("observed_pressure_replay_pressure_driver_supported.v1")
+    );
+}
+
+#[test]
+fn mean_reversion_stage_selects_predictive_candidate_when_evidence_passes() {
     let run_contract = build_run_contract_with_mode_and_resume(
         "run-mean-reversion-positive-predictive-evidence",
         CalibrationExecutionMode::Memory,
@@ -295,10 +503,19 @@ fn mean_reversion_stage_selects_positive_kappa_when_predictive_evidence_passes()
         .fitted_stage_payload
         .expect("predictive mean-reversion sample should emit a fitted payload");
 
-    assert!(payload.fitted_parameters.kappa > 0.0);
     assert_eq!(
         payload.diagnostics.model_selection_policy,
         "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1"
+    );
+    assert_ne!(
+        payload.diagnostics.selected_candidate_family,
+        "random_walk_null"
+    );
+    assert!(
+        payload
+            .diagnostics
+            .stage_decision_reason
+            .contains("positive_predictive_evidence_gate_passed.v1")
     );
     assert!(
         payload
@@ -435,10 +652,13 @@ fn mean_reversion_stage_selects_predictive_grid_across_automatic_candidates() {
         .fitted_stage_payload
         .expect("multi-grid sample should emit a fitted payload");
 
-    assert!(payload.fitted_parameters.kappa > 0.0);
     assert_eq!(
         payload.diagnostics.calibration_grid.calibration_grid_kind,
         "synthetic_daily_session_grid.v1"
+    );
+    assert_ne!(
+        payload.diagnostics.selected_candidate_family,
+        "random_walk_null"
     );
     assert_eq!(payload.diagnostics.evaluated_grids.len(), 2);
 }
@@ -591,7 +811,7 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
         .fitted_stage_payload
         .expect("slow anchor profile fit should emit a fitted payload");
 
-    assert_eq!(payload.diagnostics.evaluated_candidates.len(), 4);
+    assert_eq!(payload.diagnostics.evaluated_candidates.len(), 5);
     assert!(
         payload
             .diagnostics
@@ -599,6 +819,14 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
             .iter()
             .any(|candidate| candidate.candidate_family
                 == "endogenous_core_pressure_level_mean_reversion")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family
+                == "causal_observed_core_pressure_level_mean_reversion")
     );
 
     let no_mean_reversion_candidate = payload

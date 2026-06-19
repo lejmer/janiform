@@ -53,7 +53,7 @@ pub struct AffineForecastTerminalLawInput<'a> {
     pub cpu_count: Option<usize>,
 }
 
-/// Input for expected log-return projection at one forecast prefix.
+/// Input for expected return and arithmetic price-moment projection at one forecast prefix.
 pub struct AffineForecastExpectedLogReturnInput<'a> {
     /// Validated pricing-engine request carrying the model, boundary state, and carry inputs.
     pub pricing_request: &'a VanillaOptionPricingRequest,
@@ -78,6 +78,8 @@ pub struct AffineForecastTerminalLaw {
     pub observed_log_price: f64,
     /// Expected terminal log return under the requested measure.
     pub expected_log_return: f64,
+    /// Natural log of the arithmetic expected terminal price ratio under the requested measure.
+    pub log_expected_price_ratio: f64,
     /// Lower terminal log-return grid support.
     pub terminal_log_return_lower_bound: f64,
     /// Upper terminal log-return grid support.
@@ -92,13 +94,15 @@ pub struct AffineForecastTerminalLaw {
     pub characteristic_function_values: Vec<ComplexScalar>,
 }
 
-/// Expected log-return projection for one forecast prefix.
+/// Expected return and arithmetic price-moment projection for one forecast prefix.
 #[derive(Debug, Clone, Copy)]
 pub struct AffineForecastExpectedLogReturn {
     /// Prefix maturity in Janiform intraday hours.
     pub maturity_interval: f64,
     /// Expected log return from the forecast start.
     pub expected_log_return: f64,
+    /// Natural log of the arithmetic expected price ratio from the forecast start.
+    pub log_expected_price_ratio: f64,
 }
 
 /// Solve the terminal affine law for an explicit terminal log-return support.
@@ -112,6 +116,24 @@ pub fn solve_affine_forecast_terminal_law(
         .boundary_input
         .observed_boundary_state
         .observed_log_price;
+
+    let projection = solve_terminal_affine_expected_log_return(
+        TerminalAffineExpectedLogReturnInput {
+            pricing_request: input.pricing_request,
+            maturity_count: input.maturity_count,
+            maturity_interval: input.maturity_interval,
+            interval_deltas: input.interval_deltas,
+            interval_factor_grids: input.interval_factor_grids,
+            driver_parameters,
+            measure_policy: input.measure.terminal_affine_policy(),
+            theta_warm_start_key: forecast_theta_warm_start_key(
+                input.pricing_request,
+                input.maturity_count,
+            ),
+        },
+        None,
+        &mut None,
+    )?;
 
     let pricing_thread_pool = build_pricing_thread_pool(input.cpu_count);
 
@@ -146,6 +168,7 @@ pub fn solve_affine_forecast_terminal_law(
         maturity_interval: solved_law.maturity_interval,
         observed_log_price: solved_law.observed_log_price,
         expected_log_return: solved_law.expected_log_return,
+        log_expected_price_ratio: projection.log_expected_price_ratio,
         terminal_log_return_lower_bound: input.terminal_log_return_lower_bound,
         terminal_log_return_upper_bound: input.terminal_log_return_upper_bound,
         terminal_log_price_lower_bound: solved_law.terminal_anchor_value
@@ -157,7 +180,7 @@ pub fn solve_affine_forecast_terminal_law(
     })
 }
 
-/// Project the expected log return for one affine forecast prefix.
+/// Project the expected log return and arithmetic expected price ratio for one forecast prefix.
 pub fn solve_affine_forecast_expected_log_return(
     input: AffineForecastExpectedLogReturnInput<'_>,
 ) -> Result<AffineForecastExpectedLogReturn, VanillaOptionPricingRunError> {
@@ -184,6 +207,7 @@ pub fn solve_affine_forecast_expected_log_return(
     Ok(AffineForecastExpectedLogReturn {
         maturity_interval: projection.maturity_interval,
         expected_log_return: projection.expected_log_return,
+        log_expected_price_ratio: projection.log_expected_price_ratio,
     })
 }
 

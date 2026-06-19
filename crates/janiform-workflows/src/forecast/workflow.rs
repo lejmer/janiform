@@ -409,6 +409,11 @@ fn build_output(
         quantiles: distribution.quantiles,
         scalar_summary: ForecastScalarSummary {
             initial_price: runtime.initial_price,
+            expected_terminal_log_return: expected_terminal.expected_log_return,
+            expected_terminal_log_price: expected_terminal.expected_log_price,
+            geometric_mean_terminal_price_ratio: expected_terminal.geometric_mean_price_ratio,
+            geometric_mean_terminal_price: expected_terminal.geometric_mean_price,
+            log_expected_terminal_price_ratio: expected_terminal.log_expected_price_ratio,
             expected_terminal_price_ratio: expected_terminal.expected_price_ratio,
             expected_terminal_price: expected_terminal.expected_price,
             start_timestamp_utc: request.start_date_utc,

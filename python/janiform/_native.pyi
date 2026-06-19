@@ -763,6 +763,7 @@ def estimate_current_state_from_observed_data(
     kernel_parameters: object,
     long_variance_parameters: object,
     mean_reversion_fitted_parameters: object,
+    reference_price: float,
     state_time_utc_nanos: int,
     observed_log_return: float,
     observation_timestamps_utc: object,

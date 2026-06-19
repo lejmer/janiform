@@ -127,6 +127,9 @@ pub(crate) fn clean_option_pricing_input(
             state_time_utc_nanos: option_pricing_input
                 .current_state_estimation_input
                 .state_time_utc_nanos,
+            reference_price: option_pricing_input
+                .current_state_estimation_input
+                .reference_price,
             observed_spot: option_pricing_input
                 .current_state_estimation_input
                 .observed_spot,
@@ -744,6 +747,7 @@ mod tests {
             option_valuation_spot: 100.0,
             current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: 0,
+                reference_price: 1.0,
                 observed_spot: 100.0,
                 observed_log_return: 100.0_f64.ln(),
                 observation_timestamp_utc_nanos: vec![0],

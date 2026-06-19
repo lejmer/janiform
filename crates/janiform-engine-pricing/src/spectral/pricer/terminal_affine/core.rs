@@ -25,6 +25,10 @@ use super::diagnostics::{
 use super::mean_reversion::{
     TerminalAffineMeanReversionPath, build_terminal_affine_mean_reversion_path,
 };
+use super::moments::{
+    expected_log_return_from_theta_solution, log_expected_price_ratio_from_theta_solution,
+    terminal_affine_first_log_moment,
+};
 use crate::progress::PricingProgressEvent;
 
 #[derive(Debug, Clone, Copy)]
@@ -42,7 +46,7 @@ pub(crate) enum TerminalAffineMeasurePolicy {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TerminalAffineThetaSolution {
     pub(super) theta: f64,
-    denominator: TerminalAffineCumulantEvaluation,
+    pub(super) denominator: TerminalAffineCumulantEvaluation,
     pub(super) target_log_moment_exponent: f64,
     pub(super) observed_log_moment_exponent: f64,
     pub(super) martingale_residual: f64,
@@ -105,6 +109,7 @@ pub(crate) struct TerminalAffineExpectedLogReturnInput<'a> {
 pub(crate) struct TerminalAffineExpectedLogReturn {
     pub(crate) maturity_interval: f64,
     pub(crate) expected_log_return: f64,
+    pub(crate) log_expected_price_ratio: f64,
 }
 
 pub(crate) fn solve_terminal_affine_maturity_law(
@@ -273,6 +278,10 @@ pub(crate) fn solve_terminal_affine_expected_log_return(
     Ok(TerminalAffineExpectedLogReturn {
         maturity_interval: solve_input.maturity_interval,
         expected_log_return: expected_log_return_from_theta_solution(&context, theta_solution)?,
+        log_expected_price_ratio: log_expected_price_ratio_from_theta_solution(
+            &context,
+            theta_solution,
+        )?,
     })
 }
 
@@ -481,12 +490,7 @@ fn evaluate_terminal_affine_martingale_residual(
         )
         .map_err(|source| terminal_affine_residual_error(theta, source))?;
 
-    let log_moment = numerator.exponent.subtract(denominator.exponent).real;
-
-    let log_moment = context
-        .mean_reversion_path
-        .terminal_deterministic_log_return
-        + log_moment;
+    let log_moment = terminal_affine_first_log_moment(context, numerator, denominator);
 
     if !log_moment.is_finite() {
         return Err(AnchoredLocalTiltSolveError::NonFiniteTransformInput {
@@ -666,24 +670,6 @@ fn solve_terminal_affine_frequency_output(
         characteristic_value,
         sensitivity,
     })
-}
-
-fn expected_log_return_from_theta_solution(
-    context: &TerminalAffineMaturityContext<'_>,
-    theta_solution: TerminalAffineThetaSolution,
-) -> Result<f64, VanillaOptionPricingRunError> {
-    let expected_log_return = context
-        .mean_reversion_path
-        .terminal_deterministic_log_return
-        + theta_solution.denominator.argument_derivative.real;
-
-    if !expected_log_return.is_finite() {
-        return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: "terminal affine expected log return is non-finite".to_string(),
-        });
-    }
-
-    Ok(expected_log_return)
 }
 
 fn terminal_affine_frequency_sensitivity(
