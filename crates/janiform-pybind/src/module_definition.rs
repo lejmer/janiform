@@ -11,6 +11,7 @@ create_exception!(_native, CalendarMissingExchangeError, PyException);
 create_exception!(_native, CalendarRegistryLoadError, PyException);
 create_exception!(_native, CalendarTimestampParseError, PyValueError);
 create_exception!(_native, PricingExecutionError, PyException);
+create_exception!(_native, ForecastExecutionError, PyException);
 create_exception!(_native, CalibrationExecutionError, PyException);
 create_exception!(_native, CalibrationValidationError, PyValueError);
 create_exception!(_native, SimulationExecutionError, PyException);
@@ -53,6 +54,11 @@ pub(crate) fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add(
         "PricingExecutionError",
         module.py().get_type::<PricingExecutionError>(),
+    )?;
+
+    module.add(
+        "ForecastExecutionError",
+        module.py().get_type::<ForecastExecutionError>(),
     )?;
 
     module.add(

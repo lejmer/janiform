@@ -81,6 +81,11 @@ impl ProgressRenderState {
     fn push_phase_and_progress_lines(&self, lines: &mut Vec<String>) {
         if let Some(phase) = &self.snapshot.phase {
             lines.push(String::new());
+
+            if !self.snapshot.stages.is_empty() {
+                lines.push(String::new());
+            }
+
             lines.push(format!("  {}", self.labeled_value("Phase:", phase)));
         }
 

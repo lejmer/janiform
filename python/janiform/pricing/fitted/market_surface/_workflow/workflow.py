@@ -15,7 +15,6 @@ from ...internal.native_observed import (
     run_native_observed_options_pricing,
 )
 from ...market_surface.result import JaniformObservedOptionSurfacePricingResult
-from ...physical_distribution import ObservedOptionsPhysicalDistributionDiagnosticsRequest
 
 if TYPE_CHECKING:
     from .....model import JaniformModel
@@ -37,9 +36,6 @@ def price_option_surface_for_model(
     cpu_count: Optional[int] = None,
     price_coordinate_policy: PriceCoordinatePolicy | str = PriceCoordinatePolicy.AUTO,
     option_forward_parity_warning_threshold: Optional[float] = None,
-    physical_distribution_diagnostics: (
-        bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
-    ) = False,
     output_path: Optional[str | Path] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -58,7 +54,6 @@ def price_option_surface_for_model(
         cpu_count=cpu_count,
         price_coordinate_policy=price_coordinate_policy,
         option_forward_parity_warning_threshold=option_forward_parity_warning_threshold,
-        physical_distribution_diagnostics=physical_distribution_diagnostics,
         output_path=output_path,
         silent=silent,
         progress_mode=progress_mode,

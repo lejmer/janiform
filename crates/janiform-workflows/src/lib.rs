@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 pub mod error;
 pub mod fit;
+pub mod forecast;
 pub mod pricing;
 pub mod seasonality;
 pub mod simulation;

@@ -11,8 +11,8 @@ use crate::progress::bounded_progress_measure;
 
 use super::super::labels::observed_options_pricing_progress_scope_label;
 use super::types::{
-    LOAD_OBSERVED_DATA_STAGE, PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
-    PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE, WRITE_ARTIFACTS_STAGE,
+    LOAD_OBSERVED_DATA_STAGE, PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE,
+    WRITE_ARTIFACTS_STAGE,
 };
 
 pub(super) struct ObservedWorkItemUpdate {
@@ -67,7 +67,6 @@ pub(super) fn start_observed_pricing_progress(
     progress_adapter: &mut Option<&mut ProgressAdapter>,
     run_id: &str,
     output_path: Option<&std::path::Path>,
-    include_physical_distribution_diagnostics: bool,
 ) -> Result<(), WorkflowError> {
     let Some(progress_adapter) = progress_adapter.as_deref_mut() else {
         return Ok(());
@@ -78,7 +77,7 @@ pub(super) fn start_observed_pricing_progress(
         scope: observed_options_pricing_progress_scope_label().to_string(),
         input_count: 1,
         output_path: output_path.map(janiform_terminal_ui::format_path),
-        stage_sequence: observed_pricing_stage_sequence(include_physical_distribution_diagnostics),
+        stage_sequence: observed_pricing_stage_sequence(),
         completed_stage_count: 0,
     });
 
@@ -112,26 +111,17 @@ pub(super) fn start_observed_pricing_stage(
     Ok(started_at)
 }
 
-pub(super) fn observed_pricing_stage_count(
-    include_physical_distribution_diagnostics: bool,
-) -> usize {
-    observed_pricing_stage_sequence(include_physical_distribution_diagnostics).len()
+pub(super) fn observed_pricing_stage_count() -> usize {
+    observed_pricing_stage_sequence().len()
 }
 
-fn observed_pricing_stage_sequence(include_physical_distribution_diagnostics: bool) -> Vec<String> {
-    let mut stages = vec![
+fn observed_pricing_stage_sequence() -> Vec<String> {
+    vec![
         LOAD_OBSERVED_DATA_STAGE.to_string(),
         PREPARE_VALUATION_STATES_STAGE.to_string(),
         PRICE_VALUATION_SURFACE_STAGE.to_string(),
-    ];
-
-    if include_physical_distribution_diagnostics {
-        stages.push(PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE.to_string());
-    }
-
-    stages.push(WRITE_ARTIFACTS_STAGE.to_string());
-
-    stages
+        WRITE_ARTIFACTS_STAGE.to_string(),
+    ]
 }
 
 pub(super) fn complete_observed_pricing_stage(

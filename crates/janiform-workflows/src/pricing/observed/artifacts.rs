@@ -15,14 +15,10 @@ use super::super::labels::{
     observed_options_pricing_scope_label, observed_options_pricing_scope_token,
     observed_options_pricing_workflow_label,
 };
-use super::physical_distribution::ObservedOptionsPhysicalDistributionDiagnosticsOutput;
 use super::types::{
     ObservedOptionsPricingNode, ObservedOptionsPricingOutput, ObservedOptionsPricingRequest,
     ObservedOptionsPricingScope, ObservedOptionsSnapshotResult,
 };
-
-const PHYSICAL_DISTRIBUTION_NODES_FILE_NAME: &str = "physical_distribution_nodes.json";
-const PHYSICAL_DISTRIBUTION_REPORT_FILE_NAME: &str = "physical_distribution_report.json";
 
 pub(super) fn write_observed_artifacts_if_requested(
     input: ObservedArtifactWriteInput<'_>,
@@ -36,7 +32,6 @@ pub(super) fn write_observed_artifacts_if_requested(
         snapshot_results,
         price_coordinate_resolution,
         warnings,
-        physical_distribution,
         execution_duration,
     } = input;
 
@@ -44,19 +39,7 @@ pub(super) fn write_observed_artifacts_if_requested(
         return Ok(None);
     };
 
-    let mut paths = pricing_artifact_paths(output_path);
-    if physical_distribution.is_some() {
-        paths.physical_distribution_nodes_path = Some(
-            paths
-                .run_directory
-                .join(PHYSICAL_DISTRIBUTION_NODES_FILE_NAME),
-        );
-        paths.physical_distribution_report_path = Some(
-            paths
-                .run_directory
-                .join(PHYSICAL_DISTRIBUTION_REPORT_FILE_NAME),
-        );
-    }
+    let paths = pricing_artifact_paths(output_path);
 
     let primary_payload = json!({
         "schema_version": "janiform.observed_options_pricing_result.v1",
@@ -67,7 +50,6 @@ pub(super) fn write_observed_artifacts_if_requested(
         "snapshot_results": snapshot_results,
         "price_coordinate_resolution": price_coordinate_resolution,
         "warnings": warnings,
-        "physical_distribution": physical_distribution,
         "artifact_paths": null,
         "execution_duration_seconds": execution_duration.as_secs_f64(),
     });
@@ -77,28 +59,6 @@ pub(super) fn write_observed_artifacts_if_requested(
         &primary_payload,
         ArtifactWriteKind::Pricing,
     )?;
-
-    if let Some(physical_distribution) = physical_distribution {
-        if let Some(path) = paths.physical_distribution_nodes_path.as_ref() {
-            write_pretty_json_file(
-                path,
-                &json!({
-                    "schema_version": physical_distribution.schema_version,
-                    "request": physical_distribution.request,
-                    "nodes": &physical_distribution.nodes,
-                }),
-                ArtifactWriteKind::Pricing,
-            )?;
-        }
-
-        if let Some(path) = paths.physical_distribution_report_path.as_ref() {
-            write_pretty_json_file(
-                path,
-                &physical_distribution.report,
-                ArtifactWriteKind::Pricing,
-            )?;
-        }
-    }
 
     write_pretty_json_file(
         &paths.report_path,
@@ -110,9 +70,6 @@ pub(super) fn write_observed_artifacts_if_requested(
             "node_count": snapshot_results.iter().map(|result| result.nodes.len()).sum::<usize>(),
             "price_coordinate_resolution": price_coordinate_resolution,
             "warnings": warnings,
-            "physical_distribution_nodes_path": &paths.physical_distribution_nodes_path,
-            "physical_distribution_report_path": &paths.physical_distribution_report_path,
-            "physical_distribution": physical_distribution.map(|diagnostics| &diagnostics.report),
             "execution_duration_seconds": execution_duration.as_secs_f64(),
         }),
         ArtifactWriteKind::Pricing,
@@ -127,8 +84,6 @@ pub(super) fn write_observed_artifacts_if_requested(
             "run_directory": paths.run_directory,
             "primary_output_path": paths.primary_output_path,
             "report_path": paths.report_path,
-            "physical_distribution_nodes_path": &paths.physical_distribution_nodes_path,
-            "physical_distribution_report_path": &paths.physical_distribution_report_path,
         }),
         ArtifactWriteKind::Pricing,
     )?;
@@ -145,8 +100,6 @@ pub(super) struct ObservedArtifactWriteInput<'a> {
     pub(super) snapshot_results: &'a [ObservedOptionsSnapshotResult],
     pub(super) price_coordinate_resolution: Option<&'a ResolvedPriceCoordinateSet>,
     pub(super) warnings: &'a [String],
-    pub(super) physical_distribution:
-        Option<&'a ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
     pub(super) execution_duration: Duration,
 }
 

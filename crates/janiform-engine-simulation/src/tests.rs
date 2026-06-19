@@ -3250,8 +3250,7 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
             }
             SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
-            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
-            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
         }
@@ -3398,8 +3397,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
-            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
-            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
                 Vec::new()
             }
         };
@@ -3469,8 +3467,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
-            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath
-            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath => {
+            | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
                 vec![]
             }
         };

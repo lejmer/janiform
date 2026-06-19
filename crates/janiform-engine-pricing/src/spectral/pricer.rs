@@ -38,3 +38,9 @@ pub use execution::run_vanilla_option_grid_batch_pricing_with_observer_and_theta
 pub(super) use janiform_foundations::complex_math::{
     ComplexScalar, complex_exponential, complex_multiply,
 };
+pub(crate) use terminal_affine::{
+    TerminalAffineExpectedLogReturnInput, TerminalAffineExplicitLogPriceDomain,
+    TerminalAffineMaturitySolveInput, TerminalAffineMeasurePolicy,
+    TerminalAffineSpectralDomainInput, solve_terminal_affine_expected_log_return,
+    solve_terminal_affine_maturity_law,
+};

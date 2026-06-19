@@ -14,14 +14,14 @@ use janiform_terminal_ui::ProgressAdapter;
 
 use crate::error::WorkflowError;
 use crate::model::{
-    build_interval_factor_grid, fitted_model_context, model_reference_price, validation_error,
+    build_interval_factor_grid, build_risk_neutral_vanilla_option_model_parameters,
+    fitted_model_context, model_reference_price, validation_error,
 };
 use crate::progress::bounded_progress_measure;
 
 use super::super::maturity::{
     finalize_maturity_resolution, runtime_schedule_interval_factor_grid_coverage,
 };
-use super::super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::super::validation::pricing_validation_error;
 use super::progress::{
     ObservedWorkItemUpdate, emit_observed_stage_progress, emit_single_snapshot_pricing_progress,
@@ -200,7 +200,7 @@ fn build_grid_batch_execution_input(
         ));
     }
 
-    let model_parameters = build_vanilla_option_pricing_model_parameters(&context)?;
+    let model_parameters = build_risk_neutral_vanilla_option_model_parameters(&context)?;
 
     let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &maturity_resolution.pricing_interval_schedule,

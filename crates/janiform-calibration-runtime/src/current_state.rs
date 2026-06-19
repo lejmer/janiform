@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::numeric::NonNegativeNumberValidationError;
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters,
@@ -14,7 +15,7 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
     MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Rust-native input for fitted-model current-state estimation.
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +44,7 @@ pub struct CurrentStateEstimationBatchInput {
 }
 
 /// Rust-native output for fitted-model current-state estimation.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct CurrentStateEstimationOutput {
     pub hawkes_excitation_state: HawkesExcitationState,
     pub long_variance_state: LongVarianceState,
@@ -86,15 +87,28 @@ pub enum CurrentStateEstimationError {
         state_time_utc_nanos: i64,
         first_observation_timestamp_utc_nanos: i64,
     },
+    StateTimeBeforePreviousState {
+        previous_state_time_utc_nanos: i64,
+        state_time_utc_nanos: i64,
+    },
     InvalidObservedLogReturn {
         value: f64,
     },
     InvalidReferencePrice {
         value: f64,
     },
+    MissingObservedPrice,
+    InvalidPreviousObservedPrice {
+        value: f64,
+    },
     InvalidObservationTradePrice {
         observation_index: usize,
         value: f64,
+    },
+    ObservationBeforePreviousStateTime {
+        observation_index: usize,
+        previous_state_time_utc_nanos: i64,
+        timestamp_utc_nanos: i64,
     },
     ObservationTimestampOutOfOrder {
         observation_index: usize,
@@ -109,8 +123,14 @@ pub enum CurrentStateEstimationError {
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
+    InvalidHawkesExcitationState {
+        source: NonNegativeNumberValidationError,
+    },
     InvalidLongVarianceParameters {
         source: LongVarianceParametersError,
+    },
+    InvalidLongVarianceState {
+        source: LongVarianceStateError,
     },
     InvalidLongVarianceStationaryIntensityMultipliers,
     InvalidLongVarianceStationaryLevel {
@@ -166,6 +186,13 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "batch current-state estimation requires state_times[{state_index}]={state_time_utc_nanos} to retain at least one observation, but the first observation is {first_observation_timestamp_utc_nanos}"
             ),
+            Self::StateTimeBeforePreviousState {
+                previous_state_time_utc_nanos,
+                state_time_utc_nanos,
+            } => write!(
+                formatter,
+                "current-state tracker update requires state_time_utc_nanos={state_time_utc_nanos} to be greater than or equal to the previous state time {previous_state_time_utc_nanos}"
+            ),
             Self::InvalidObservedLogReturn { value } => write!(
                 formatter,
                 "current-state estimation requires a finite observed_log_return, found {value}"
@@ -174,12 +201,28 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "batch current-state estimation requires a finite, strictly positive reference_price, found {value}"
             ),
+            Self::MissingObservedPrice => write!(
+                formatter,
+                "current-state tracker update requires an observed price from observed_price, a new trade, or a previous snapshot"
+            ),
+            Self::InvalidPreviousObservedPrice { value } => write!(
+                formatter,
+                "current-state tracker update requires previous observed_price to be finite and strictly positive, found {value}"
+            ),
             Self::InvalidObservationTradePrice {
                 observation_index,
                 value,
             } => write!(
                 formatter,
                 "current-state estimation requires observations[{observation_index}].trade_price to be finite and strictly positive, found {value}"
+            ),
+            Self::ObservationBeforePreviousStateTime {
+                observation_index,
+                previous_state_time_utc_nanos,
+                timestamp_utc_nanos,
+            } => write!(
+                formatter,
+                "current-state tracker update requires observations[{observation_index}]={timestamp_utc_nanos} to be no earlier than previous state time {previous_state_time_utc_nanos}"
             ),
             Self::ObservationTimestampOutOfOrder {
                 observation_index,
@@ -201,9 +244,17 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "current-state estimation received invalid mean-reversion fitted parameters: {source}"
             ),
+            Self::InvalidHawkesExcitationState { source } => write!(
+                formatter,
+                "current-state tracker update received invalid Hawkes excitation state: {source}"
+            ),
             Self::InvalidLongVarianceParameters { source } => write!(
                 formatter,
                 "current-state estimation received invalid long-variance parameters: {source}"
+            ),
+            Self::InvalidLongVarianceState { source } => write!(
+                formatter,
+                "current-state tracker update received invalid long-variance state: {source}"
             ),
             Self::InvalidLongVarianceStationaryIntensityMultipliers => write!(
                 formatter,
@@ -233,7 +284,9 @@ impl Error for CurrentStateEstimationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
+            Self::InvalidHawkesExcitationState { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidLongVarianceState { source } => Some(source),
             Self::InvalidLongVarianceStationaryLevel { source } => Some(source),
             Self::InvalidLongVarianceStateTransition { source } => Some(source),
             Self::InvalidLongVarianceBoundaryState { source } => Some(source),
@@ -243,9 +296,13 @@ impl Error for CurrentStateEstimationError {
             | Self::ObservationColumnLengthMismatch { .. }
             | Self::StateTimeOutOfOrder { .. }
             | Self::StateTimeBeforeFirstObservation { .. }
+            | Self::StateTimeBeforePreviousState { .. }
             | Self::InvalidObservedLogReturn { .. }
             | Self::InvalidReferencePrice { .. }
+            | Self::MissingObservedPrice
+            | Self::InvalidPreviousObservedPrice { .. }
             | Self::InvalidObservationTradePrice { .. }
+            | Self::ObservationBeforePreviousStateTime { .. }
             | Self::ObservationTimestampOutOfOrder { .. }
             | Self::ObservationAfterStateTime { .. }
             | Self::InvalidLongVarianceStationaryIntensityMultipliers => None,
@@ -311,13 +368,8 @@ pub fn estimate_current_state_from_observed_data(
         &input.observation_trade_sides,
     )?;
 
-    let mean_reversion_boundary_state = MeanReversionBoundaryState::try_new(
-        input.observed_log_return,
-        input.observed_log_return,
-        0.0,
-        0.0,
-    )
-    .map_err(|source| CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source })?;
+    let mean_reversion_boundary_state =
+        mean_reversion_boundary_state_from_observed_log_return(input.observed_log_return)?;
 
     Ok(CurrentStateEstimationOutput {
         hawkes_excitation_state,
@@ -409,12 +461,7 @@ pub fn estimate_current_states_from_observed_data_with_observer(
         input.state_times_utc_nanos.len(),
     );
 
-    let mut current_state = HawkesExcitationState {
-        y_plus_plus: 0.0,
-        y_plus_minus: 0.0,
-        y_minus_plus: 0.0,
-        y_minus_minus: 0.0,
-    };
+    let mut current_state = zero_hawkes_excitation_state();
 
     let mut current_long_variance_state = LongVarianceState::unit();
 
@@ -502,10 +549,7 @@ pub fn estimate_current_states_from_observed_data_with_observer(
             )?;
 
         let mean_reversion_boundary_state =
-            MeanReversionBoundaryState::try_new(observed_log_return, observed_log_return, 0.0, 0.0)
-                .map_err(|source| {
-                    CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source }
-                })?;
+            mean_reversion_boundary_state_from_observed_log_return(observed_log_return)?;
 
         state_items.push(CurrentStateEstimationBatchItem {
             state_time_utc_nanos,
@@ -607,18 +651,50 @@ fn emit_batch_progress(
     }
 }
 
+pub(crate) fn zero_hawkes_excitation_state() -> HawkesExcitationState {
+    HawkesExcitationState {
+        y_plus_plus: 0.0,
+        y_plus_minus: 0.0,
+        y_minus_plus: 0.0,
+        y_minus_minus: 0.0,
+    }
+}
+
+pub(crate) fn mean_reversion_boundary_state_from_observed_price(
+    reference_price: f64,
+    observed_price: f64,
+) -> Result<MeanReversionBoundaryState, CurrentStateEstimationError> {
+    if !observed_price.is_finite() || observed_price <= 0.0 {
+        return Err(CurrentStateEstimationError::InvalidObservationTradePrice {
+            observation_index: 0,
+            value: observed_price,
+        });
+    }
+
+    let observed_log_return = observed_price.ln() - reference_price.ln();
+    if !observed_log_return.is_finite() {
+        return Err(CurrentStateEstimationError::InvalidObservedLogReturn {
+            value: observed_log_return,
+        });
+    }
+
+    mean_reversion_boundary_state_from_observed_log_return(observed_log_return)
+}
+
+fn mean_reversion_boundary_state_from_observed_log_return(
+    observed_log_return: f64,
+) -> Result<MeanReversionBoundaryState, CurrentStateEstimationError> {
+    MeanReversionBoundaryState::try_new(observed_log_return, observed_log_return, 0.0, 0.0)
+        .map_err(|source| CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source })
+}
+
 fn replay_hawkes_state(
     kernel_parameters: HawkesKernelParameters,
     state_time_utc_nanos: i64,
     observation_timestamp_utc_nanos: &[i64],
     observation_trade_sides: &[HawkesEventSide],
 ) -> HawkesExcitationState {
-    let mut current_state = HawkesExcitationState {
-        y_plus_plus: 0.0,
-        y_plus_minus: 0.0,
-        y_minus_plus: 0.0,
-        y_minus_minus: 0.0,
-    };
+    let mut current_state = zero_hawkes_excitation_state();
 
     let mut previous_timestamp_utc_nanos = observation_timestamp_utc_nanos[0];
 
@@ -690,7 +766,7 @@ fn replay_long_variance_state(
         )
 }
 
-fn long_variance_stationary_mean_reversion_level(
+pub(crate) fn long_variance_stationary_mean_reversion_level(
     kernel_parameters: HawkesKernelParameters,
     long_variance_parameters: LongVarianceParameters,
 ) -> Result<f64, CurrentStateEstimationError> {
@@ -711,20 +787,12 @@ fn long_variance_stationary_mean_reversion_level(
 
 #[cfg(test)]
 mod tests {
-    use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
-    use janiform_model_kernels::long_variance::LongVarianceParameters;
-    use janiform_model_kernels::mean_reversion::{
-        MeanReversionAnchorModel, MeanReversionFittedParameters,
-    };
-
     use super::{
-        CurrentStateEstimationBatchInput, CurrentStateEstimationError, CurrentStateEstimationInput,
+        CurrentStateEstimationError, CurrentStateEstimationInput,
         estimate_current_state_from_observed_data, estimate_current_states_from_observed_data,
         estimate_current_states_from_observed_data_with_observer,
     };
-    use crate::current_state::HawkesEventSide;
-
-    const NANOS_PER_HOUR: i64 = 3_600_000_000_000;
+    use crate::current_state_test_support::{NANOS_PER_HOUR, batch_input_fixture};
 
     #[test]
     fn batch_current_state_matches_repeated_single_state_estimation() {
@@ -818,50 +886,5 @@ mod tests {
             estimate_current_states_from_observed_data(input),
             Err(CurrentStateEstimationError::StateTimeOutOfOrder { state_index: 1, .. })
         ));
-    }
-
-    fn batch_input_fixture(state_times_utc_nanos: Vec<i64>) -> CurrentStateEstimationBatchInput {
-        CurrentStateEstimationBatchInput {
-            kernel_parameters: HawkesKernelParameters::try_new(
-                0.5,
-                std::f64::consts::LN_2,
-                HawkesKernelLoadings {
-                    plus_plus: 0.30,
-                    plus_minus: 0.10,
-                    minus_plus: 0.20,
-                    minus_minus: 0.40,
-                },
-                HawkesKernelLoadings {
-                    plus_plus: 0.05,
-                    plus_minus: 0.02,
-                    minus_plus: 0.03,
-                    minus_minus: 0.04,
-                },
-            )
-            .expect("test kernel parameters should validate"),
-            long_variance_parameters: LongVarianceParameters::neutral(),
-            mean_reversion_fitted_parameters: MeanReversionFittedParameters::try_new(
-                0.25,
-                MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
-            )
-            .expect("test mean-reversion parameters should validate"),
-            reference_price: 100.0,
-            state_times_utc_nanos,
-            observation_timestamp_utc_nanos: vec![
-                0,
-                NANOS_PER_HOUR,
-                NANOS_PER_HOUR,
-                2 * NANOS_PER_HOUR,
-                3 * NANOS_PER_HOUR,
-            ],
-            observation_trade_prices: vec![100.0, 100.25, 100.5, 101.0, 100.75],
-            observation_trade_sides: vec![
-                HawkesEventSide::Buy,
-                HawkesEventSide::Sell,
-                HawkesEventSide::Buy,
-                HawkesEventSide::Sell,
-                HawkesEventSide::Buy,
-            ],
-        }
     }
 }

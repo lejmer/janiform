@@ -9,6 +9,7 @@ use crate::error::WorkflowError;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ArtifactWriteKind {
     Fit,
+    Forecast,
     Pricing,
     Simulation,
     Validation,
@@ -18,6 +19,7 @@ impl ArtifactWriteKind {
     fn write_error(self, path: PathBuf, source: std::io::Error) -> WorkflowError {
         match self {
             Self::Fit => WorkflowError::FitArtifactWrite { path, source },
+            Self::Forecast => WorkflowError::ForecastArtifactWrite { path, source },
             Self::Pricing => WorkflowError::PricingArtifactWrite { path, source },
             Self::Simulation => WorkflowError::SimulationArtifactWrite { path, source },
             Self::Validation => WorkflowError::ValidationArtifactWrite { path, source },

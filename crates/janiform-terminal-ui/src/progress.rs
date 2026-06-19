@@ -170,6 +170,8 @@ impl ProgressAdapter {
                     self.clear_work_item_details();
                 }
 
+                self.update_stage_status_from_phase(phase.as_str(), measure);
+
                 self.snapshot.phase = Some(phase.clone());
                 self.snapshot.measure = Some(measure);
                 self.snapshot.latest_signal = latest_signal.clone();
@@ -231,6 +233,8 @@ impl ProgressAdapter {
                 self.snapshot.stage_number = None;
                 self.snapshot.stage_count = None;
 
+                self.complete_pending_stages();
+
                 self.active_stage_started_at = None;
 
                 self.progress_bar.reset();
@@ -253,6 +257,7 @@ impl ProgressAdapter {
         }
 
         self.sync_render_state();
+
         self.dirty = true;
     }
 
@@ -268,8 +273,8 @@ impl ProgressAdapter {
         }
 
         let measure = self.snapshot.measure.unwrap_or(ProgressMeasure::Unbounded);
-
         let message = self.progress_message();
+
         match measure {
             ProgressMeasure::Bounded {
                 completed_units,
@@ -332,6 +337,15 @@ impl ProgressAdapter {
         Term::stderr().write_line("")?;
         Term::stderr().write_line(&format!("  {message}"))?;
         Term::stderr().write_line("")
+    }
+
+    /// Finish the live progress section with a failure snapshot left on screen.
+    pub fn fail_and_keep(&mut self, reason: impl Into<String>) -> io::Result<()> {
+        self.observe(ProgressEvent::RunFailed {
+            reason: reason.into(),
+        });
+
+        self.finish_and_keep()
     }
 
     fn current_render_state(&self) -> ProgressRenderState {
@@ -405,6 +419,55 @@ impl ProgressAdapter {
             stage.status = status;
             if elapsed.is_some() {
                 stage.elapsed = elapsed;
+            }
+        }
+    }
+
+    fn update_stage_status_from_phase(&mut self, phase: &str, measure: ProgressMeasure) {
+        let Some(stage_index) = self
+            .snapshot
+            .stages
+            .iter()
+            .position(|stage| stage.name == phase)
+        else {
+            return;
+        };
+
+        self.snapshot.active_stage = Some(phase.to_string());
+        self.snapshot.stage_number = Some(stage_index + 1);
+        self.snapshot.stage_count = Some(self.snapshot.stages.len());
+
+        if self.active_stage_started_at.is_none() || self.snapshot.phase.as_deref() != Some(phase) {
+            self.active_stage_started_at = Some(Instant::now());
+        }
+
+        for completed_stage in self.snapshot.stages.iter_mut().take(stage_index) {
+            if completed_stage.status == ProgressStageStatus::Pending {
+                completed_stage.status = ProgressStageStatus::Completed;
+            }
+        }
+
+        let status = match measure {
+            ProgressMeasure::Bounded {
+                completed_units,
+                total_units,
+            } if completed_units >= total_units => ProgressStageStatus::Completed,
+            ProgressMeasure::Percent { percent } if percent >= 100 => {
+                ProgressStageStatus::Completed
+            }
+            _ => ProgressStageStatus::Running,
+        };
+
+        self.update_stage_status(stage_index + 1, status, None);
+    }
+
+    fn complete_pending_stages(&mut self) {
+        for stage in &mut self.snapshot.stages {
+            if matches!(
+                stage.status,
+                ProgressStageStatus::Pending | ProgressStageStatus::Running
+            ) {
+                stage.status = ProgressStageStatus::Completed;
             }
         }
     }

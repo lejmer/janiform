@@ -80,6 +80,23 @@ fn excitation_state_from_target_components_preserves_component_mapping() {
 }
 
 #[test]
+fn excitation_state_validate_rejects_negative_component() {
+    let state = HawkesExcitationState {
+        y_plus_plus: 1.0,
+        y_plus_minus: -1.0,
+        y_minus_plus: 3.0,
+        y_minus_minus: 4.0,
+    };
+
+    let error = state
+        .validate()
+        .expect_err("negative excitation component must fail validation");
+
+    assert_eq!(error.field, "y_plus_minus");
+    assert_eq!(error.value, -1.0);
+}
+
+#[test]
 fn excitation_state_from_target_sums_uses_canonical_first_moment_components() {
     let state = HawkesExcitationState::from_target_sums(3.0, 7.0);
 

@@ -99,6 +99,15 @@ pub enum WorkflowError {
         message: String,
     },
 
+    /// Forecast workflow input validation failed.
+    #[error("{field}: {message}")]
+    ForecastValidationFailed {
+        /// Field that failed validation.
+        field: &'static str,
+        /// User-readable validation message.
+        message: String,
+    },
+
     /// Simulation artifact writing failed.
     #[error("failed to write simulation artifact `{}`", path.display())]
     SimulationArtifactWrite {
@@ -107,6 +116,45 @@ pub enum WorkflowError {
         /// Source IO error.
         #[source]
         source: io::Error,
+    },
+
+    /// Forecast artifact writing failed.
+    #[error("failed to write forecast artifact `{}`", path.display())]
+    ForecastArtifactWrite {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source IO error.
+        #[source]
+        source: io::Error,
+    },
+
+    /// Forecast artifact reading failed.
+    #[error("failed to read forecast artifact `{}`", path.display())]
+    ForecastArtifactRead {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source IO error.
+        #[source]
+        source: io::Error,
+    },
+
+    /// Forecast artifact parsing failed.
+    #[error("failed to parse forecast artifact `{}`", path.display())]
+    ForecastArtifactParse {
+        /// Artifact path.
+        path: PathBuf,
+        /// Source JSON error.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// Forecast artifact payload was malformed.
+    #[error("forecast artifact `{}` was malformed: {message}", path.display())]
+    ForecastArtifactMalformed {
+        /// Artifact path.
+        path: PathBuf,
+        /// User-readable validation message.
+        message: String,
     },
 
     /// Pricing artifact writing failed.

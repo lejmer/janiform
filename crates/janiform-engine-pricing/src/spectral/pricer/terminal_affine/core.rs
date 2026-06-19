@@ -33,6 +33,12 @@ struct TerminalAffineFrequencyOutput {
     sensitivity: Option<NodePriceSharedPlusShiftComplexSensitivity>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum TerminalAffineMeasurePolicy {
+    Physical,
+    RiskNeutralMartingale,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TerminalAffineThetaSolution {
     pub(super) theta: f64,
@@ -49,30 +55,59 @@ pub(super) struct TerminalAffineMaturityContext<'a> {
     pub(super) pricing_request: &'a VanillaOptionPricingRequest,
     pub(super) maturity_count: usize,
     pub(super) maturity_interval: f64,
-    pub(super) spectral_domain: SpectralDomain,
     pub(super) mean_reversion_path: TerminalAffineMeanReversionPath,
     pub(super) interval_deltas: &'a [f64],
     pub(super) interval_factor_grids: &'a [VanillaOptionPricingIntervalFactors],
     pub(super) driver_parameters: NigBuySellDriverParameters,
 }
 
-pub(in crate::spectral::pricer) struct TerminalAffineMaturitySolveInput<'a> {
-    pub(in crate::spectral::pricer) pricing_request: &'a VanillaOptionPricingRequest,
-    pub(in crate::spectral::pricer) maturity_count: usize,
-    pub(in crate::spectral::pricer) maturity_interval: f64,
-    pub(in crate::spectral::pricer) strikes: &'a [f64],
-    pub(in crate::spectral::pricer) payoff_types: &'a [VanillaOptionPayoffType],
-    pub(in crate::spectral::pricer) collocation_node_count_override: Option<usize>,
-    pub(in crate::spectral::pricer) interval_deltas: &'a [f64],
-    pub(in crate::spectral::pricer) interval_factor_grids:
-        &'a [VanillaOptionPricingIntervalFactors],
-    pub(in crate::spectral::pricer) driver_parameters: NigBuySellDriverParameters,
-    pub(in crate::spectral::pricer) include_node_price_sensitivities: bool,
-    pub(in crate::spectral::pricer) pricing_thread_pool: Option<&'a rayon::ThreadPool>,
-    pub(in crate::spectral::pricer) theta_warm_start_key: SpectralThetaWarmStartKey,
+pub(crate) struct TerminalAffineExplicitLogPriceDomain {
+    pub(crate) lower_bound: f64,
+    pub(crate) upper_bound: f64,
+    pub(crate) node_count: usize,
 }
 
-pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
+pub(crate) enum TerminalAffineSpectralDomainInput<'a> {
+    PayoffAnchored {
+        strikes: &'a [f64],
+        payoff_types: &'a [VanillaOptionPayoffType],
+        collocation_node_count_override: Option<usize>,
+    },
+    ExplicitLogPrice(TerminalAffineExplicitLogPriceDomain),
+}
+
+pub(crate) struct TerminalAffineMaturitySolveInput<'a> {
+    pub(crate) pricing_request: &'a VanillaOptionPricingRequest,
+    pub(crate) maturity_count: usize,
+    pub(crate) maturity_interval: f64,
+    pub(crate) spectral_domain_input: TerminalAffineSpectralDomainInput<'a>,
+    pub(crate) interval_deltas: &'a [f64],
+    pub(crate) interval_factor_grids: &'a [VanillaOptionPricingIntervalFactors],
+    pub(crate) driver_parameters: NigBuySellDriverParameters,
+    pub(crate) measure_policy: TerminalAffineMeasurePolicy,
+    pub(crate) include_node_price_sensitivities: bool,
+    pub(crate) pricing_thread_pool: Option<&'a rayon::ThreadPool>,
+    pub(crate) theta_warm_start_key: SpectralThetaWarmStartKey,
+}
+
+pub(crate) struct TerminalAffineExpectedLogReturnInput<'a> {
+    pub(crate) pricing_request: &'a VanillaOptionPricingRequest,
+    pub(crate) maturity_count: usize,
+    pub(crate) maturity_interval: f64,
+    pub(crate) interval_deltas: &'a [f64],
+    pub(crate) interval_factor_grids: &'a [VanillaOptionPricingIntervalFactors],
+    pub(crate) driver_parameters: NigBuySellDriverParameters,
+    pub(crate) measure_policy: TerminalAffineMeasurePolicy,
+    pub(crate) theta_warm_start_key: SpectralThetaWarmStartKey,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TerminalAffineExpectedLogReturn {
+    pub(crate) maturity_interval: f64,
+    pub(crate) expected_log_return: f64,
+}
+
+pub(crate) fn solve_terminal_affine_maturity_law(
     solve_input: TerminalAffineMaturitySolveInput<'_>,
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
     progress_observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
@@ -91,20 +126,16 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
         solve_input.driver_parameters,
     )?;
 
-    let spectral_domain = build_spectral_domain_from_anchor_span(
+    let spectral_domain = resolve_terminal_affine_spectral_domain(
         solve_input.pricing_request,
-        mean_reversion_path.terminal_anchor_value,
-        mean_reversion_path.anchor_span,
-        solve_input.strikes,
-        solve_input.payoff_types,
-        solve_input.collocation_node_count_override,
+        &mean_reversion_path,
+        solve_input.spectral_domain_input,
     )?;
 
     let context = TerminalAffineMaturityContext {
         pricing_request: solve_input.pricing_request,
         maturity_count: solve_input.maturity_count,
         maturity_interval: solve_input.maturity_interval,
-        spectral_domain,
         mean_reversion_path,
         interval_deltas: solve_input.interval_deltas,
         interval_factor_grids: solve_input.interval_factor_grids,
@@ -115,17 +146,26 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
         .as_ref()
         .and_then(|state| state.theta_hint(solve_input.theta_warm_start_key));
 
-    let theta_solution =
-        solve_terminal_affine_martingale_theta(&context, preferred_theta, progress_observer)?;
+    let theta_solution = solve_terminal_affine_measure_theta(
+        &context,
+        solve_input.measure_policy,
+        preferred_theta,
+        progress_observer,
+    )?;
+
+    let expected_log_return = expected_log_return_from_theta_solution(&context, theta_solution)?;
 
     let frequency_outputs = solve_terminal_affine_frequency_outputs(
         &context,
+        spectral_domain,
         theta_solution,
         solve_input.include_node_price_sensitivities,
         solve_input.pricing_thread_pool,
     )?;
 
-    if let Some(theta_warm_start_state) = theta_warm_start_state {
+    if solve_input.measure_policy == TerminalAffineMeasurePolicy::RiskNeutralMartingale
+        && let Some(theta_warm_start_state) = theta_warm_start_state
+    {
         theta_warm_start_state.record_theta_solution(
             solve_input.theta_warm_start_key,
             theta_solution.theta,
@@ -157,15 +197,18 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
             .boundary_input
             .observed_boundary_state
             .observed_log_price,
+        expected_log_return,
         characteristic_function_values: frequency_outputs
             .into_iter()
             .map(|output| output.characteristic_value)
             .collect(),
         characteristic_function_sensitivities,
-        terminal_affine_measure_change: Some(build_terminal_affine_measure_change_diagnostics(
-            &context,
-            theta_solution,
-        )?),
+        terminal_affine_measure_change: match solve_input.measure_policy {
+            TerminalAffineMeasurePolicy::Physical => None,
+            TerminalAffineMeasurePolicy::RiskNeutralMartingale => Some(
+                build_terminal_affine_measure_change_diagnostics(&context, theta_solution)?,
+            ),
+        },
         interval_summaries: build_terminal_affine_interval_summaries(
             solve_input.pricing_request,
             solve_input.interval_deltas,
@@ -174,6 +217,91 @@ pub(in crate::spectral::pricer) fn solve_terminal_affine_maturity_law(
             &context.mean_reversion_path,
         ),
     })
+}
+
+pub(crate) fn solve_terminal_affine_expected_log_return(
+    solve_input: TerminalAffineExpectedLogReturnInput<'_>,
+    theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
+    progress_observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+) -> Result<TerminalAffineExpectedLogReturn, VanillaOptionPricingRunError> {
+    validate_terminal_affine_inputs(
+        solve_input.maturity_count,
+        solve_input.interval_deltas,
+        solve_input.interval_factor_grids,
+    )?;
+
+    let mean_reversion_path = build_terminal_affine_mean_reversion_path(
+        solve_input.pricing_request,
+        solve_input.maturity_count,
+        solve_input.interval_deltas,
+        solve_input.interval_factor_grids,
+        solve_input.driver_parameters,
+    )?;
+
+    let context = TerminalAffineMaturityContext {
+        pricing_request: solve_input.pricing_request,
+        maturity_count: solve_input.maturity_count,
+        maturity_interval: solve_input.maturity_interval,
+        mean_reversion_path,
+        interval_deltas: solve_input.interval_deltas,
+        interval_factor_grids: solve_input.interval_factor_grids,
+        driver_parameters: solve_input.driver_parameters,
+    };
+
+    let preferred_theta = theta_warm_start_state
+        .as_ref()
+        .and_then(|state| state.theta_hint(solve_input.theta_warm_start_key));
+
+    let theta_solution = solve_terminal_affine_measure_theta(
+        &context,
+        solve_input.measure_policy,
+        preferred_theta,
+        progress_observer,
+    )?;
+
+    if solve_input.measure_policy == TerminalAffineMeasurePolicy::RiskNeutralMartingale
+        && let Some(theta_warm_start_state) = theta_warm_start_state
+    {
+        theta_warm_start_state.record_theta_solution(
+            solve_input.theta_warm_start_key,
+            theta_solution.theta,
+            theta_solution.buy_activity_premium_theta_derivative,
+            theta_solution.sell_activity_premium_theta_derivative,
+        );
+    }
+
+    Ok(TerminalAffineExpectedLogReturn {
+        maturity_interval: solve_input.maturity_interval,
+        expected_log_return: expected_log_return_from_theta_solution(&context, theta_solution)?,
+    })
+}
+
+fn resolve_terminal_affine_spectral_domain(
+    pricing_request: &VanillaOptionPricingRequest,
+    mean_reversion_path: &TerminalAffineMeanReversionPath,
+    spectral_domain_input: TerminalAffineSpectralDomainInput<'_>,
+) -> Result<SpectralDomain, VanillaOptionPricingRunError> {
+    match spectral_domain_input {
+        TerminalAffineSpectralDomainInput::PayoffAnchored {
+            strikes,
+            payoff_types,
+            collocation_node_count_override,
+        } => build_spectral_domain_from_anchor_span(
+            pricing_request,
+            mean_reversion_path.terminal_anchor_value,
+            mean_reversion_path.anchor_span,
+            strikes,
+            payoff_types,
+            collocation_node_count_override,
+        ),
+        TerminalAffineSpectralDomainInput::ExplicitLogPrice(domain) => {
+            SpectralDomain::try_new_explicit(
+                domain.lower_bound - mean_reversion_path.terminal_anchor_value,
+                domain.upper_bound - mean_reversion_path.terminal_anchor_value,
+                domain.node_count,
+            )
+        }
+    }
 }
 
 fn validate_terminal_affine_inputs(
@@ -283,6 +411,43 @@ fn solve_terminal_affine_martingale_theta(
         buy_activity_premium_theta_derivative: -buy_residual_derivative / residual_theta_derivative,
         sell_activity_premium_theta_derivative: -sell_residual_derivative
             / residual_theta_derivative,
+    })
+}
+
+fn solve_terminal_affine_measure_theta(
+    context: &TerminalAffineMaturityContext<'_>,
+    measure_policy: TerminalAffineMeasurePolicy,
+    preferred_theta: Option<f64>,
+    progress_observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+) -> Result<TerminalAffineThetaSolution, VanillaOptionPricingRunError> {
+    match measure_policy {
+        TerminalAffineMeasurePolicy::Physical => solve_terminal_affine_physical_theta(context),
+        TerminalAffineMeasurePolicy::RiskNeutralMartingale => {
+            solve_terminal_affine_martingale_theta(context, preferred_theta, progress_observer)
+        }
+    }
+}
+
+fn solve_terminal_affine_physical_theta(
+    context: &TerminalAffineMaturityContext<'_>,
+) -> Result<TerminalAffineThetaSolution, VanillaOptionPricingRunError> {
+    let theta = 0.0;
+
+    let mut cache = TerminalAffineCumulantCache::default();
+
+    let denominator = cache
+        .evaluate(context, TerminalAffineCumulantArgument::from_theta(theta))
+        .map_err(|source| terminal_affine_measure_change_failure(context, source.to_string()))?;
+
+    Ok(TerminalAffineThetaSolution {
+        theta,
+        denominator,
+        target_log_moment_exponent: 0.0,
+        observed_log_moment_exponent: 0.0,
+        martingale_residual: 0.0,
+        martingale_tolerance: terminal_affine_martingale_root_tolerance(),
+        buy_activity_premium_theta_derivative: 0.0,
+        sell_activity_premium_theta_derivative: 0.0,
     })
 }
 
@@ -417,17 +582,19 @@ fn terminal_affine_residual_error(
 
 fn solve_terminal_affine_frequency_outputs(
     context: &TerminalAffineMaturityContext<'_>,
+    spectral_domain: SpectralDomain,
     theta_solution: TerminalAffineThetaSolution,
     include_node_price_sensitivities: bool,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
 ) -> Result<Vec<TerminalAffineFrequencyOutput>, VanillaOptionPricingRunError> {
     if let Some(pricing_thread_pool) = pricing_thread_pool {
         return install_pricing_parallelism(Some(pricing_thread_pool), || {
-            (0..context.spectral_domain.node_count)
+            (0..spectral_domain.node_count)
                 .into_par_iter()
                 .map(|frequency_index| {
                     solve_terminal_affine_frequency_output(
                         context,
+                        spectral_domain,
                         theta_solution,
                         include_node_price_sensitivities,
                         frequency_index,
@@ -437,10 +604,11 @@ fn solve_terminal_affine_frequency_outputs(
         });
     }
 
-    (0..context.spectral_domain.node_count)
+    (0..spectral_domain.node_count)
         .map(|frequency_index| {
             solve_terminal_affine_frequency_output(
                 context,
+                spectral_domain,
                 theta_solution,
                 include_node_price_sensitivities,
                 frequency_index,
@@ -451,11 +619,12 @@ fn solve_terminal_affine_frequency_outputs(
 
 fn solve_terminal_affine_frequency_output(
     context: &TerminalAffineMaturityContext<'_>,
+    spectral_domain: SpectralDomain,
     theta_solution: TerminalAffineThetaSolution,
     include_node_price_sensitivities: bool,
     frequency_index: usize,
 ) -> Result<TerminalAffineFrequencyOutput, VanillaOptionPricingRunError> {
-    let frequency = context.spectral_domain.basis_frequency(frequency_index);
+    let frequency = spectral_domain.basis_frequency(frequency_index);
 
     let mut cache = TerminalAffineCumulantCache::default();
 
@@ -497,6 +666,24 @@ fn solve_terminal_affine_frequency_output(
         characteristic_value,
         sensitivity,
     })
+}
+
+fn expected_log_return_from_theta_solution(
+    context: &TerminalAffineMaturityContext<'_>,
+    theta_solution: TerminalAffineThetaSolution,
+) -> Result<f64, VanillaOptionPricingRunError> {
+    let expected_log_return = context
+        .mean_reversion_path
+        .terminal_deterministic_log_return
+        + theta_solution.denominator.argument_derivative.real;
+
+    if !expected_log_return.is_finite() {
+        return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "terminal affine expected log return is non-finite".to_string(),
+        });
+    }
+
+    Ok(expected_log_return)
 }
 
 fn terminal_affine_frequency_sensitivity(
@@ -543,7 +730,10 @@ mod tests {
     use janiform_foundations::numeric::square_root_machine_epsilon;
     use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
 
-    use super::{TerminalAffineMaturitySolveInput, solve_terminal_affine_maturity_law};
+    use super::{
+        TerminalAffineMaturitySolveInput, TerminalAffineMeasurePolicy,
+        TerminalAffineSpectralDomainInput, solve_terminal_affine_maturity_law,
+    };
     use crate::tests::support::build_valid_vanilla_option_request;
     use crate::{
         VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
@@ -612,12 +802,15 @@ mod tests {
                 pricing_request: &pricing_request,
                 maturity_count: 1,
                 maturity_interval: 1.0,
-                strikes: pricing_request.market_inputs.strikes.as_slice(),
-                payoff_types: &payoff_types,
-                collocation_node_count_override: Some(257),
+                spectral_domain_input: TerminalAffineSpectralDomainInput::PayoffAnchored {
+                    strikes: pricing_request.market_inputs.strikes.as_slice(),
+                    payoff_types: &payoff_types,
+                    collocation_node_count_override: Some(257),
+                },
                 interval_deltas: &interval_deltas,
                 interval_factor_grids: &interval_factor_grids,
                 driver_parameters,
+                measure_policy: TerminalAffineMeasurePolicy::RiskNeutralMartingale,
                 include_node_price_sensitivities: false,
                 pricing_thread_pool: None,
                 theta_warm_start_key: super::SpectralThetaWarmStartKey::new(

@@ -1,6 +1,9 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::numeric::{
+    NonNegativeNumberValidationError, validate_non_negative_number,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{HawkesKernelLoadings, HawkesKernelParameters};
@@ -191,6 +194,20 @@ pub struct HawkesExcitationState {
 }
 
 impl HawkesExcitationState {
+    /// Validate that every excitation component is finite and non-negative.
+    pub fn validate(self) -> Result<(), NonNegativeNumberValidationError> {
+        for (field, value) in [
+            ("y_plus_plus", self.y_plus_plus),
+            ("y_plus_minus", self.y_plus_minus),
+            ("y_minus_plus", self.y_minus_plus),
+            ("y_minus_minus", self.y_minus_minus),
+        ] {
+            validate_non_negative_number(value, field)?;
+        }
+
+        Ok(())
+    }
+
     /// Build a state from explicit target/source component groups.
     ///
     /// This helper reduces accidental reordering versus positional 4-value inputs.

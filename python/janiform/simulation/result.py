@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -174,11 +174,6 @@ def coarse_simulation_rows(
         )
 
     return rows
-
-
-def runtime_datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
-    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
-    return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
 
 
 def normalize_interval_label(interval: str | timedelta) -> str:

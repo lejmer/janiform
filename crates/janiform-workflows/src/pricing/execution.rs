@@ -11,7 +11,10 @@ use janiform_foundations::cancellation::CancellationToken;
 use janiform_terminal_ui::{ProgressEvent, ProgressMeasure, TerminalSummaryPolicy};
 
 use crate::error::WorkflowError;
-use crate::model::{build_interval_factor_grid, fitted_model_context, model_reference_price};
+use crate::model::{
+    build_interval_factor_grid, build_risk_neutral_vanilla_option_model_parameters,
+    fitted_model_context, model_reference_price,
+};
 
 use super::artifacts::{pricing_artifact_paths, write_pricing_artifacts};
 use super::labels::fitted_model_single_option_pricing_progress_scope_label;
@@ -19,7 +22,6 @@ use super::maturity::{
     finalize_single_maturity_resolution, resolve_single_maturity,
     runtime_schedule_interval_factor_grid_coverage,
 };
-use super::model_parameters::build_vanilla_option_pricing_model_parameters;
 use super::output::FittedModelSingleOptionPricingOutput;
 use super::output::{pricing_completion_summary, pricing_start_summary};
 use super::progress::{
@@ -309,7 +311,7 @@ fn prepare_pricing_input(
     )
     .map_err(|source| pricing_validation_error("boundary_input", source.to_string()))?;
 
-    let model_parameters = build_vanilla_option_pricing_model_parameters(context)?;
+    let model_parameters = build_risk_neutral_vanilla_option_model_parameters(context)?;
 
     let interval_factor_grids = materialize_schedule_interval_factor_grids(
         &maturity_resolution.pricing_interval_schedule,

@@ -3,6 +3,7 @@ mod calibration;
 mod cli;
 mod events;
 mod fit;
+mod forecast;
 mod foundation;
 mod interval_factor_grid;
 mod pricing;
@@ -17,6 +18,7 @@ pub(crate) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     calibration::register_functions(module)?;
     cli::register_functions(module)?;
     fit::register_functions(module)?;
+    forecast::register_functions(module)?;
     foundation::register_functions(module)?;
     interval_factor_grid::register_functions(module)?;
     pricing::register_functions(module)?;

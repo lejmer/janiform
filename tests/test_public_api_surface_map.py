@@ -32,6 +32,7 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit.state",
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
+        "janiform.forecast",
         "janiform.interval_factor_grids",
         "janiform.interval_factor_grids.contracts",
         "janiform.mean_reversion",
@@ -598,6 +599,7 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     pricing_fitted_market_surface_module = import_module("janiform.pricing.fitted.market_surface")
     pricing_fitted_summaries_module = import_module("janiform.pricing.fitted.summaries")
     pricing_fitted_surface_module = import_module("janiform.pricing.fitted.surface")
+    forecast_module = import_module("janiform.forecast")
     simulation_result_module = import_module("janiform.simulation.result")
 
     assert set(calibration_fit_estimator_module.__all__) == {"JaniformEstimator"}
@@ -611,14 +613,15 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformObservedOptionSnapshotPricingResult",
         "JaniformObservedOptionSurfaceNode",
         "JaniformObservedOptionSurfacePricingResult",
-        "ObservedOptionsPhysicalDistributionDiagnosticsNode",
-        "ObservedOptionsPhysicalDistributionDiagnosticsOutput",
-        "ObservedOptionsPhysicalDistributionDiagnosticsReport",
-        "ObservedOptionsPhysicalDistributionDiagnosticsRequest",
         "JaniformVanillaOptionMaturityIntervalSummary",
         "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
         "JaniformVanillaOptionSurfacePricingResult",
+    }
+    assert set(forecast_module.__all__) == {
+        "ForecastMeasure",
+        "ForecastTableFormat",
+        "JaniformForecast",
     }
     assert set(pricing_fitted_grids_module.__all__) == {
         "JaniformVanillaOptionGrid",
@@ -648,6 +651,8 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_state_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
+        "CurrentStateTrackerSnapshot",
+        "JaniformStateTracker",
     }
     assert "JaniformSimulationResult" in simulation_result_module.__all__
 

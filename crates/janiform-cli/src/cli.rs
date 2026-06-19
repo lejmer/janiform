@@ -3,6 +3,7 @@ use clap::Subcommand;
 
 use crate::commands::dev::DevCommand;
 use crate::commands::fit::FitCommand;
+use crate::commands::forecast::ForecastCommand;
 use crate::commands::inspection::InspectCommand;
 use crate::commands::presets::PresetsCommand;
 use crate::commands::pricing::PriceCommand;
@@ -64,6 +65,11 @@ pub(crate) enum RootCommand {
 
     #[command(about = "Simulate paths from a fitted Janiform model.")]
     Simulate(Box<SimulateCommand>),
+
+    #[command(
+        about = "Forecast expected path and terminal distribution from a fitted Janiform model."
+    )]
+    Forecast(Box<ForecastCommand>),
 
     #[command(about = "Inspect bundled and user-registered presets.")]
     Presets(Box<PresetsCommand>),

@@ -41,6 +41,7 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.pricing.fitted.market_surface",
     "janiform.pricing.fitted.summaries",
     "janiform.pricing.fitted.surface",
+    "janiform.forecast",
     "janiform.sufficient_statistics",
     "janiform.sufficient_statistics.contracts",
     "janiform.calibration",

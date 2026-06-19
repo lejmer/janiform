@@ -2,6 +2,7 @@ mod context;
 mod factors;
 mod inputs;
 mod mean_reversion;
+mod pricing_parameters;
 
 pub use context::ModelStateObservationData;
 
@@ -15,3 +16,7 @@ pub(crate) use inputs::{
     build_sufficient_statistics_interval_factor_grids, build_sufficient_statistics_model_inputs,
 };
 pub(crate) use mean_reversion::materialize_mean_reversion_runtime_inputs;
+pub(crate) use pricing_parameters::{
+    build_physical_vanilla_option_model_parameters,
+    build_risk_neutral_vanilla_option_model_parameters,
+};

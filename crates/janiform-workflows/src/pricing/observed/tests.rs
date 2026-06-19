@@ -6,21 +6,13 @@ use janiform::calibration::market_data::{
     MarketDataNormalizedOptionSurfaceRecord, MarketDataTranslationTickRecord,
 };
 use janiform::model::hawkes::HawkesEventSide;
-use janiform::pricing::{
-    PricingProgressEvent, VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffType,
-};
+use janiform::pricing::{PricingProgressEvent, VanillaOptionPayoffType};
 use janiform_engine_pricing::VanillaOptionPricingStatus;
 use janiform_foundations::time::NANOS_PER_HOUR;
 use serde_json::json;
 
 use super::artifacts::{ObservedArtifactWriteInput, write_observed_artifacts_if_requested};
 use super::data::prepare_selected_expiry_snapshot_specs_by_valuation_times;
-use super::physical_distribution::{
-    ObservedOptionsPhysicalDistributionDiagnosticsNode,
-    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
-    ObservedOptionsPhysicalDistributionDiagnosticsReport,
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
-};
 use super::pricing_spot::resolve_snapshot_pricing_spots;
 use super::state::observed_tick_state_columns;
 use super::surface_progress::{SurfaceTaskProgressPlan, SurfaceWorkerState, surface_worker_labels};
@@ -287,7 +279,6 @@ fn observed_primary_artifact_matches_native_result_shape() {
         snapshot_results: &[snapshot_result],
         price_coordinate_resolution: None,
         warnings: &[],
-        physical_distribution: None,
         execution_duration: Duration::from_secs(2),
     })
     .expect("observed artifact should be writable")
@@ -318,85 +309,6 @@ fn observed_primary_artifact_matches_native_result_shape() {
     );
     assert_eq!(primary_payload["artifact_paths"], json!(null));
     assert_eq!(primary_payload["execution_duration_seconds"], json!(2.0));
-}
-
-#[test]
-fn observed_artifacts_write_physical_distribution_sidecars_when_present() {
-    let valuation_time_utc = DateTime::<Utc>::from_timestamp_nanos(1_000_000_000);
-
-    let output_directory = std::env::temp_dir().join(format!(
-        "janiform-observed-physical-distribution-artifact-test-{}",
-        std::process::id()
-    ));
-
-    let output_path = output_directory.join("observed_pricing.json");
-
-    let node = observed_pricing_node(valuation_time_utc);
-
-    let snapshot_result = ObservedOptionsSnapshotResult {
-        valuation_time_utc,
-        spot: 100.0,
-        nodes: vec![node.clone()],
-    };
-
-    let diagnostics = physical_distribution_output(valuation_time_utc);
-
-    let paths = write_observed_artifacts_if_requested(ObservedArtifactWriteInput {
-        output_path: Some(&output_path),
-        run_id: "observed-options-test",
-        scope: ObservedOptionsPricingScope::Surface,
-        valuation_time_utc,
-        nodes: &[node],
-        snapshot_results: &[snapshot_result],
-        price_coordinate_resolution: None,
-        warnings: &[],
-        physical_distribution: Some(&diagnostics),
-        execution_duration: Duration::from_secs(2),
-    })
-    .expect("observed artifact should be writable")
-    .expect("artifact paths should be returned");
-
-    let physical_nodes_path = paths
-        .physical_distribution_nodes_path
-        .as_ref()
-        .expect("physical node path should be present");
-
-    let physical_report_path = paths
-        .physical_distribution_report_path
-        .as_ref()
-        .expect("physical report path should be present");
-
-    let primary_payload: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(&paths.primary_output_path)
-            .expect("primary observed artifact should be readable"),
-    )
-    .expect("primary observed artifact should be valid JSON");
-
-    let physical_nodes_payload: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(physical_nodes_path)
-            .expect("physical distribution nodes artifact should be readable"),
-    )
-    .expect("physical distribution nodes artifact should be valid JSON");
-
-    let physical_report_payload: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(physical_report_path)
-            .expect("physical distribution report artifact should be readable"),
-    )
-    .expect("physical distribution report artifact should be valid JSON");
-
-    fs::remove_dir_all(&output_directory).expect("test artifact directory should be removable");
-
-    assert_eq!(
-        primary_payload["physical_distribution"]["nodes"]
-            .as_array()
-            .map(Vec::len),
-        Some(1)
-    );
-    assert_eq!(
-        physical_nodes_payload["nodes"].as_array().map(Vec::len),
-        Some(1)
-    );
-    assert_eq!(physical_report_payload["node_count"], json!(1));
 }
 
 fn snapshot_node(
@@ -460,53 +372,6 @@ fn observed_pricing_node(valuation_time_utc: DateTime<Utc>) -> ObservedOptionsPr
         forward_price: Some(100.0),
         discount_factor: Some(1.0),
         boundary_state_norm: Some(0.0),
-    }
-}
-
-fn physical_distribution_output(
-    valuation_time_utc: DateTime<Utc>,
-) -> ObservedOptionsPhysicalDistributionDiagnosticsOutput {
-    ObservedOptionsPhysicalDistributionDiagnosticsOutput {
-        schema_version: "janiform.observed_options_physical_distribution_diagnostics.v1",
-        request: ObservedOptionsPhysicalDistributionDiagnosticsRequest {
-            path_count: 4,
-            seed: 0,
-        },
-        report: ObservedOptionsPhysicalDistributionDiagnosticsReport {
-            schema_version: "janiform.observed_options_physical_distribution_report.v1",
-            valuation_count: 1,
-            node_count: 1,
-            path_count_per_valuation: 4,
-            path_partition_count: 1,
-            worker_count: 1,
-            maximum_horizon_interval_count: 1,
-        },
-        nodes: vec![ObservedOptionsPhysicalDistributionDiagnosticsNode {
-            valuation_time_utc,
-            quote_timestamp_utc: valuation_time_utc,
-            expiry_timestamp_utc: DateTime::<Utc>::from_timestamp_nanos(3_600_000_000_000),
-            strike: 100.0,
-            option_type: VanillaOptionPayoffType::Call,
-            risk_free_rate: 0.0,
-            dividend_yield: 0.0,
-            maturity_interval: 1.0,
-            q_forward_price: 100.0,
-            p_simulated_forward_price: 100.2,
-            model_q_implied_volatility: Some(0.2),
-            observed_q_implied_volatility: Some(0.21),
-            observed_q_implied_volatility_inversion_status: Some(
-                VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
-            ),
-            sample_count: 4,
-            physical_forward_normalized_price: 0.01,
-            physical_forward_normalized_implied_volatility: Some(0.18),
-            physical_forward_normalized_implied_volatility_inversion_status:
-                VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
-            market_forward_physical_price: 1.2,
-            market_forward_physical_implied_volatility: Some(0.19),
-            market_forward_physical_implied_volatility_inversion_status:
-                VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
-        }],
     }
 }
 

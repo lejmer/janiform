@@ -19,7 +19,8 @@ use super::domain::build_maturity_summary;
 use super::maturity_law::SolvedMaturityLaw;
 use super::strike::{StrikeRowPricingInput, price_strike_row};
 use super::terminal_affine::{
-    TerminalAffineMaturitySolveInput, solve_terminal_affine_maturity_law,
+    TerminalAffineMaturitySolveInput, TerminalAffineMeasurePolicy,
+    TerminalAffineSpectralDomainInput, solve_terminal_affine_maturity_law,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -439,11 +440,13 @@ fn solve_terminal_affine_maturity_laws(
                 pricing_request: solve_input.base_request,
                 maturity_count,
                 maturity_interval,
-                strikes: solve_input.strikes,
-                payoff_types: solve_input.payoff_types,
-                collocation_node_count_override: solve_input
-                    .execution_input
-                    .spectral_collocation_node_count_override,
+                spectral_domain_input: TerminalAffineSpectralDomainInput::PayoffAnchored {
+                    strikes: solve_input.strikes,
+                    payoff_types: solve_input.payoff_types,
+                    collocation_node_count_override: solve_input
+                        .execution_input
+                        .spectral_collocation_node_count_override,
+                },
                 interval_deltas: solve_input
                     .execution_input
                     .runtime_interval_schedule
@@ -451,6 +454,7 @@ fn solve_terminal_affine_maturity_laws(
                     .as_slice(),
                 interval_factor_grids: solve_input.execution_input.interval_factor_grids.as_slice(),
                 driver_parameters: solve_input.driver_parameters,
+                measure_policy: TerminalAffineMeasurePolicy::RiskNeutralMartingale,
                 include_node_price_sensitivities: solve_input
                     .execution_input
                     .optional_output_selection
@@ -746,6 +750,7 @@ mod tests {
             deviation_upper_bound: spectral_domain.deviation_upper_bound,
             node_count: spectral_domain.node_count,
             observed_log_price,
+            expected_log_return: 0.0,
             characteristic_function_values,
             characteristic_function_sensitivities: None,
             terminal_affine_measure_change: None,

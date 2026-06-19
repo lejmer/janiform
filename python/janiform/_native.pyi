@@ -27,6 +27,9 @@ class CalibrationValidationError(ValueError): ...
 class SimulationExecutionError(Exception): ...
 
 
+class ForecastExecutionError(Exception): ...
+
+
 class SeasonalityInputValidationError(ValueError): ...
 
 
@@ -758,9 +761,24 @@ def evaluate_return_components_candidate(
 
 def estimate_current_state_from_observed_data(
     kernel_parameters: object,
+    long_variance_parameters: object,
     mean_reversion_fitted_parameters: object,
     state_time_utc_nanos: int,
     observed_log_return: float,
+    observation_timestamps_utc: object,
+    observation_trade_prices: object,
+    observation_trade_sides: object,
+) -> object: ...
+
+
+def update_current_state_tracker(
+    kernel_parameters: object,
+    long_variance_parameters: object,
+    mean_reversion_fitted_parameters: object,
+    reference_price: float,
+    previous_snapshot: Optional[object],
+    state_time_utc_nanos: int,
+    observed_price: Optional[float],
     observation_timestamps_utc: object,
     observation_trade_prices: object,
     observation_trade_sides: object,
@@ -910,6 +928,23 @@ def run_simulation_from_model_artifact(
     event_callback: Optional[object] = None,
     progress_mode: str = "none",
 ) -> object: ...
+
+
+def run_forecast_from_model_artifact(
+    request: object,
+    event_callback: Optional[object] = None,
+    progress_mode: str = "none",
+) -> object: ...
+
+
+def save_forecast_bundle_from_payload(
+    forecast_payload: object,
+    path: str,
+    table_format: str = "parquet",
+) -> object: ...
+
+
+def load_forecast_bundle_manifest_py(path: str) -> object: ...
 
 
 def run_seeded_tick_event_simulation(

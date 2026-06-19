@@ -22,16 +22,10 @@ use crate::error::WorkflowError;
 
 use super::super::artifacts::PricingArtifactPaths;
 use super::super::labels::observed_options_pricing_workflow_label;
-use super::physical_distribution::{
-    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
-};
-
 pub(super) const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
 pub(super) const LOAD_OBSERVED_DATA_STAGE: &str = "Load observed data";
 pub(super) const PREPARE_VALUATION_STATES_STAGE: &str = "Prepare valuation states";
 pub(super) const PRICE_VALUATION_SURFACE_STAGE: &str = "Price valuation surface";
-pub(super) const PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE: &str = "Diagnose physical distribution";
 pub(super) const WRITE_ARTIFACTS_STAGE: &str = "Write artifacts";
 pub(super) const SURFACE_TASK_FINALIZATION_UNIT: usize = 1;
 
@@ -112,10 +106,6 @@ pub struct ObservedOptionsPricingRequest {
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     /// Optional spectral collocation node count override.
     pub spectral_collocation_node_count_override: Option<usize>,
-    /// Optional model-P terminal distribution diagnostics for observed option nodes.
-    #[serde(default)]
-    pub physical_distribution_diagnostics:
-        Option<ObservedOptionsPhysicalDistributionDiagnosticsRequest>,
     /// Primary output path.
     pub output_path: Option<PathBuf>,
 }
@@ -134,8 +124,6 @@ pub struct ObservedOptionsPricingOutput {
     pub price_coordinate_resolution: Option<ResolvedPriceCoordinateSet>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub physical_distribution: Option<ObservedOptionsPhysicalDistributionDiagnosticsOutput>,
     pub artifact_paths: Option<PricingArtifactPaths>,
     pub execution_duration_seconds: f64,
 }
@@ -155,13 +143,10 @@ impl ObservedOptionsPricingOutput {
             "primary_output_path": self.artifact_paths.as_ref().map(|paths| &paths.primary_output_path),
             "report_path": self.artifact_paths.as_ref().map(|paths| &paths.report_path),
             "manifest_path": self.artifact_paths.as_ref().map(|paths| &paths.manifest_path),
-            "physical_distribution_nodes_path": self.artifact_paths.as_ref().and_then(|paths| paths.physical_distribution_nodes_path.as_ref()),
-            "physical_distribution_report_path": self.artifact_paths.as_ref().and_then(|paths| paths.physical_distribution_report_path.as_ref()),
             "run_directory": self.artifact_paths.as_ref().map(|paths| &paths.run_directory),
             "priced_node_count": self.nodes.iter().filter(|node| node.model_price.is_some()).count(),
             "failed_node_count": self.nodes.iter().filter(|node| node.model_price.is_none()).count(),
             "warnings": &self.warnings,
-            "physical_distribution_node_count": self.physical_distribution.as_ref().map(|diagnostics| diagnostics.nodes.len()),
             "execution_duration_seconds": self.execution_duration_seconds,
             "response": response,
         }))

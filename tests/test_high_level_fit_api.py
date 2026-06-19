@@ -94,12 +94,6 @@ from janiform.pricing.fitted import (
     JaniformVanillaOptionMaturitySummary,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
-)
-from janiform.pricing.fitted.physical_distribution import (
-    DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
-    DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
-    physical_distribution_diagnostics_request_payload,
 )
 from janiform.seasonality import SessionFilter
 from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
@@ -676,21 +670,6 @@ def _observed_pricing_native_payload(
             for snapshot_valuation_time_utc, nodes, spot in snapshot_specs
         ],
         "artifacts": None,
-    }
-
-
-def test_physical_distribution_diagnostics_request_payload_supports_shorthand_and_typed_request(
-) -> None:
-    assert physical_distribution_diagnostics_request_payload(False) is None
-    assert physical_distribution_diagnostics_request_payload(True) == {
-        "path_count": DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
-        "seed": DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
-    }
-    assert physical_distribution_diagnostics_request_payload(
-        ObservedOptionsPhysicalDistributionDiagnosticsRequest(path_count=7, seed=11)
-    ) == {
-        "path_count": 7,
-        "seed": 11,
     }
 
 
