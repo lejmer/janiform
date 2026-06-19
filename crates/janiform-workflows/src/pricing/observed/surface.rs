@@ -42,9 +42,7 @@ pub(super) fn price_prepared_surface_snapshots_parallel(
     }
 
     let worker_count = resolved_cpu_count(request.cpu_count).min(task_count.max(1));
-
-    let stage_count =
-        observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+    let stage_count = observed_pricing_stage_count();
 
     let pricing_stage_started_at = start_observed_pricing_stage(
         progress_adapter,

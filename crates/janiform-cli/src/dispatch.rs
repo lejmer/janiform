@@ -10,6 +10,7 @@ use crate::commands::fit::execution::run_fit_staged_run_command;
 use crate::commands::fit::planning::run_fit_inspect;
 use crate::commands::fit::planning::run_fit_plan;
 use crate::commands::fit::planning::run_fit_staged_plan;
+use crate::commands::forecast::run_forecast_command;
 use crate::commands::inspection::InspectSubcommand;
 use crate::commands::inspection::run_inspect_model;
 use crate::commands::inspection::run_inspect_run;
@@ -69,6 +70,7 @@ pub(crate) fn dispatch(
                 ),
             }
         }
+        RootCommand::Forecast(command) => run_forecast_command(context, *command),
         RootCommand::Presets(command) => match command.command {
             PresetsSubcommand::List(command) => run_presets_list(context, command),
             PresetsSubcommand::Show(command) => run_presets_show(context, command),

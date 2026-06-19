@@ -13,9 +13,7 @@ from ....contracts.base import (
     require_positive_finite_scalar,
     require_timezone_aware_datetime,
 )
-from ....long_variance import LongVarianceState
-from ....mean_reversion import MeanReversionBoundaryState
-from ....simulation import HawkesExcitationState, SeededTickEventSide
+from ....simulation import SeededTickEventSide
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationTickDataColumnMapping
 from .._runtime.payloads import (
@@ -24,7 +22,10 @@ from .._runtime.payloads import (
     long_variance_parameters_for_model,
     mean_reversion_fitted_parameters_for_model,
 )
-from .._runtime.option_pricing.support import price_observed_log_return_from_spot
+from .._runtime.option_pricing.support import (
+    model_reference_price,
+    price_observed_log_return_from_spot,
+)
 from .contracts import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
@@ -42,10 +43,12 @@ def estimate_current_state_for_model(
         field_path="state_time_utc",
         error_factory=calibration_error,
     )
+
     column_mapping = current_state_tick_data_column_mapping_for_model(
         model,
         request=request,
     )
+
     (
         observed_timestamps_utc,
         observed_trade_prices,
@@ -54,11 +57,13 @@ def estimate_current_state_for_model(
         request.observed_tick_data,
         column_mapping=column_mapping,
     )
+
     observed_price = (
         request.observed_price
         if request.observed_price is not None
         else observed_trade_prices[-1]
     )
+
     observed_log_return = price_observed_log_return_from_spot(
         model,
         spot=observed_price,
@@ -68,6 +73,7 @@ def estimate_current_state_for_model(
         hawkes_kernel_parameters_for_model(model).to_payload(),
         long_variance_parameters_for_model(model).to_payload(),
         mean_reversion_fitted_parameters_for_model(model).to_payload(),
+        model_reference_price(model),
         datetime_to_utc_nanos(state_time_utc),
         observed_log_return,
         observed_timestamps_utc,
@@ -75,38 +81,27 @@ def estimate_current_state_for_model(
         observed_trade_sides,
     )
 
-    return CurrentStateEstimationResult(
-        hawkes_excitation_state=HawkesExcitationState.from_mapping(
-            dict(native_payload["hawkes_excitation_state"]),
-            field_path="hawkes_excitation_state",
-        ),
-        long_variance_state=LongVarianceState.from_mapping(
-            dict(native_payload["long_variance_state"]),
-            field_path="long_variance_state",
-            error_factory=calibration_error,
-        ),
-        mean_reversion_boundary_state=MeanReversionBoundaryState.from_mapping(
-            dict(native_payload["mean_reversion_boundary_state"]),
-            field_path="mean_reversion_boundary_state",
-        ),
-    )
+    return CurrentStateEstimationResult.from_mapping(native_payload)
 
 
 def _extract_observed_tick_data_columns(
     observed_tick_data: pandas.DataFrame | Mapping[str, Sequence[Any]],
     *,
     column_mapping: CalibrationTickDataColumnMapping,
+    allow_empty: bool = False,
 ) -> tuple[tuple[str, ...], tuple[float, ...], tuple[str, ...]]:
     raw_timestamp_values = _extract_tick_data_column(
         observed_tick_data,
         column_name=column_mapping.timestamp_column,
         field_path="observed_tick_data",
     )
+
     raw_trade_price_values = _extract_tick_data_column(
         observed_tick_data,
         column_name=column_mapping.price_column,
         field_path="observed_tick_data",
     )
+
     raw_trade_side_values = _extract_tick_data_column(
         observed_tick_data,
         column_name=column_mapping.trade_sign_column,
@@ -118,6 +113,7 @@ def _extract_observed_tick_data_columns(
             "tick_data_column_mapping.price_column",
             "is required for current-state estimation",
         )
+
     if column_mapping.trade_sign_column is None:
         raise calibration_error(
             "tick_data_column_mapping.trade_sign_column",
@@ -125,11 +121,12 @@ def _extract_observed_tick_data_columns(
         )
 
     observation_count = len(raw_timestamp_values)
-    if observation_count == 0:
+    if observation_count == 0 and not allow_empty:
         raise calibration_error(
             "observed_tick_data",
             "must contain at least one observation",
         )
+
     if len(raw_trade_price_values) != observation_count:
         raise calibration_error(
             f"observed_tick_data.{column_mapping.price_column}",
@@ -138,6 +135,7 @@ def _extract_observed_tick_data_columns(
                 f"observed_tick_data.{column_mapping.timestamp_column}"
             ),
         )
+
     if len(raw_trade_side_values) != observation_count:
         raise calibration_error(
             f"observed_tick_data.{column_mapping.trade_sign_column}",

@@ -7,8 +7,9 @@ use janiform::calibration::artifacts::{
     CalibrationResumeSettings, ReturnComponentsStageFittedParameters,
 };
 use janiform::calibration::current_state::{
-    CurrentStateEstimationInput,
+    CurrentStateEstimationInput, CurrentStateTrackerSnapshot, CurrentStateTrackerUpdateInput,
     estimate_current_state_from_observed_data as estimate_current_state_from_observed_data_core,
+    update_current_state_tracker as update_current_state_tracker_core,
 };
 use janiform::calibration::market_data::{
     MarketDataFitInputInferenceRequest, MarketDataInputFileReference, MarketDataLoadingOutput,
@@ -995,37 +996,137 @@ fn estimate_current_state_from_observed_data(
     kernel_parameters: &Bound<'_, PyAny>,
     long_variance_parameters: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    reference_price: f64,
     state_time_utc_nanos: i64,
     observed_log_return: f64,
     observation_timestamps_utc: &Bound<'_, PyAny>,
     observation_trade_prices: &Bound<'_, PyAny>,
     observation_trade_sides: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let parsed_kernel_parameters: HawkesKernelParameters =
-        serde_json::from_value(py_any_to_json_value(kernel_parameters)?).map_err(|source| {
-            CalibrationExecutionError::new_err(format!(
-                "failed to deserialize current-state kernel parameters: {source}"
-            ))
-        })?;
+    let input = CurrentStateEstimationInput {
+        kernel_parameters: parse_current_state_kernel_parameters(kernel_parameters)?,
+        long_variance_parameters: parse_current_state_long_variance_parameters(
+            long_variance_parameters,
+        )?,
+        mean_reversion_fitted_parameters: parse_current_state_mean_reversion_parameters(
+            mean_reversion_fitted_parameters,
+        )?,
+        reference_price,
+        state_time_utc_nanos,
+        observed_log_return,
+        observation_timestamp_utc_nanos: parse_current_state_timestamp_nanos(
+            observation_timestamps_utc,
+        )?,
+        observation_trade_prices: parse_current_state_trade_prices(observation_trade_prices)?,
+        observation_trade_sides: parse_current_state_trade_sides(observation_trade_sides)?,
+    };
 
-    let parsed_mean_reversion_fitted_parameters: MeanReversionFittedParameters =
-        serde_json::from_value(py_any_to_json_value(mean_reversion_fitted_parameters)?).map_err(
-            |source| {
-                CalibrationExecutionError::new_err(format!(
-                    "failed to deserialize current-state mean-reversion fitted parameters: {source}"
-                ))
-            },
-        )?;
+    let estimation_output = py
+        .detach(|| estimate_current_state_from_observed_data_core(input))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
-    let parsed_long_variance_parameters: LongVarianceParameters = serde_json::from_value(
-        py_any_to_json_value(long_variance_parameters)?,
-    )
-    .map_err(|source| {
+    current_state_value_to_py_object(py, &estimation_output, "current-state estimation output")
+}
+
+#[pyfunction]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "PyO3 boundary mirrors the public Python tracker update contract."
+)]
+fn update_current_state_tracker(
+    py: Python<'_>,
+    kernel_parameters: &Bound<'_, PyAny>,
+    long_variance_parameters: &Bound<'_, PyAny>,
+    mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    reference_price: f64,
+    previous_snapshot: Option<&Bound<'_, PyAny>>,
+    state_time_utc_nanos: i64,
+    observed_price: Option<f64>,
+    observation_timestamps_utc: &Bound<'_, PyAny>,
+    observation_trade_prices: &Bound<'_, PyAny>,
+    observation_trade_sides: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let input = CurrentStateTrackerUpdateInput {
+        kernel_parameters: parse_current_state_kernel_parameters(kernel_parameters)?,
+        long_variance_parameters: parse_current_state_long_variance_parameters(
+            long_variance_parameters,
+        )?,
+        mean_reversion_fitted_parameters: parse_current_state_mean_reversion_parameters(
+            mean_reversion_fitted_parameters,
+        )?,
+        reference_price,
+        previous_snapshot: parse_current_state_tracker_snapshot(previous_snapshot)?,
+        state_time_utc_nanos,
+        observed_price,
+        observation_timestamp_utc_nanos: parse_current_state_timestamp_nanos(
+            observation_timestamps_utc,
+        )?,
+        observation_trade_prices: parse_current_state_trade_prices(observation_trade_prices)?,
+        observation_trade_sides: parse_current_state_trade_sides(observation_trade_sides)?,
+    };
+
+    let tracker_snapshot = py
+        .detach(|| update_current_state_tracker_core(input))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    current_state_value_to_py_object(py, &tracker_snapshot, "current-state tracker snapshot")
+}
+
+fn parse_current_state_kernel_parameters(
+    kernel_parameters: &Bound<'_, PyAny>,
+) -> PyResult<HawkesKernelParameters> {
+    serde_json::from_value(py_any_to_json_value(kernel_parameters)?).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to deserialize current-state kernel parameters: {source}"
+        ))
+    })
+}
+
+fn parse_current_state_long_variance_parameters(
+    long_variance_parameters: &Bound<'_, PyAny>,
+) -> PyResult<LongVarianceParameters> {
+    serde_json::from_value(py_any_to_json_value(long_variance_parameters)?).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
             "failed to deserialize current-state long-variance parameters: {source}"
         ))
-    })?;
+    })
+}
 
+fn parse_current_state_mean_reversion_parameters(
+    mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionFittedParameters> {
+    serde_json::from_value(py_any_to_json_value(mean_reversion_fitted_parameters)?).map_err(
+        |source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize current-state mean-reversion fitted parameters: {source}"
+            ))
+        },
+    )
+}
+
+fn parse_current_state_tracker_snapshot(
+    previous_snapshot: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<CurrentStateTrackerSnapshot>> {
+    let Some(previous_snapshot) = previous_snapshot else {
+        return Ok(None);
+    };
+
+    if previous_snapshot.is_none() {
+        return Ok(None);
+    }
+
+    serde_json::from_value(py_any_to_json_value(previous_snapshot)?)
+        .map(Some)
+        .map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize current-state tracker snapshot: {source}"
+            ))
+        })
+}
+
+fn parse_current_state_timestamp_nanos(
+    observation_timestamps_utc: &Bound<'_, PyAny>,
+) -> PyResult<Vec<i64>> {
     let parsed_observation_timestamps_utc: Vec<String> =
         observation_timestamps_utc.extract().map_err(|_| {
             CalibrationExecutionError::new_err(
@@ -1033,21 +1134,7 @@ fn estimate_current_state_from_observed_data(
             )
         })?;
 
-    let parsed_observation_trade_prices: Vec<f64> =
-        observation_trade_prices.extract().map_err(|_| {
-            CalibrationExecutionError::new_err(
-                "current-state observation_trade_prices must be an iterable of float values",
-            )
-        })?;
-
-    let parsed_observation_trade_sides: Vec<String> =
-        observation_trade_sides.extract().map_err(|_| {
-            CalibrationExecutionError::new_err(
-                "current-state observation_trade_sides must be an iterable of trade-side strings",
-            )
-        })?;
-
-    let parsed_observation_timestamp_utc_nanos = parsed_observation_timestamps_utc
+    parsed_observation_timestamps_utc
         .iter()
         .enumerate()
         .map(|(observation_index, raw_timestamp_utc)| {
@@ -1065,9 +1152,30 @@ fn estimate_current_state_from_observed_data(
                     ))
                 })
         })
-        .collect::<PyResult<Vec<_>>>()?;
+        .collect::<PyResult<Vec<_>>>()
+}
 
-    let parsed_observation_trade_sides = parsed_observation_trade_sides
+fn parse_current_state_trade_prices(
+    observation_trade_prices: &Bound<'_, PyAny>,
+) -> PyResult<Vec<f64>> {
+    observation_trade_prices.extract().map_err(|_| {
+        CalibrationExecutionError::new_err(
+            "current-state observation_trade_prices must be an iterable of float values",
+        )
+    })
+}
+
+fn parse_current_state_trade_sides(
+    observation_trade_sides: &Bound<'_, PyAny>,
+) -> PyResult<Vec<HawkesEventSide>> {
+    let parsed_observation_trade_sides: Vec<String> =
+        observation_trade_sides.extract().map_err(|_| {
+            CalibrationExecutionError::new_err(
+                "current-state observation_trade_sides must be an iterable of trade-side strings",
+            )
+        })?;
+
+    parsed_observation_trade_sides
         .iter()
         .map(|raw_trade_side: &String| {
             HawkesEventSide::try_from(raw_trade_side.as_str()).map_err(|source| {
@@ -1076,28 +1184,22 @@ fn estimate_current_state_from_observed_data(
                 ))
             })
         })
-        .collect::<PyResult<Vec<_>>>()?;
+        .collect::<PyResult<Vec<_>>>()
+}
 
-    let estimation_output =
-        estimate_current_state_from_observed_data_core(CurrentStateEstimationInput {
-            kernel_parameters: parsed_kernel_parameters,
-            long_variance_parameters: parsed_long_variance_parameters,
-            mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
-            state_time_utc_nanos,
-            observed_log_return,
-            observation_timestamp_utc_nanos: parsed_observation_timestamp_utc_nanos,
-            observation_trade_prices: parsed_observation_trade_prices,
-            observation_trade_sides: parsed_observation_trade_sides,
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
-
-    let serialized_output = serde_json::to_value(&estimation_output).map_err(|source| {
-        CalibrationExecutionError::new_err(format!(
-            "failed to serialize current-state estimation output: {source}"
-        ))
+fn current_state_value_to_py_object<T>(
+    py: Python<'_>,
+    value: &T,
+    value_label: &str,
+) -> PyResult<Py<PyAny>>
+where
+    T: serde::Serialize,
+{
+    let serialized_value = serde_json::to_value(value).map_err(|source| {
+        CalibrationExecutionError::new_err(format!("failed to serialize {value_label}: {source}"))
     })?;
 
-    json_value_to_py_object(py, &serialized_output)
+    json_value_to_py_object(py, &serialized_value)
 }
 
 #[pyfunction]
@@ -1424,6 +1526,8 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         estimate_current_state_from_observed_data,
         module
     )?)?;
+
+    module.add_function(wrap_pyfunction!(update_current_state_tracker, module)?)?;
 
     module.add_function(wrap_pyfunction!(
         materialize_runtime_structural_seasonality,

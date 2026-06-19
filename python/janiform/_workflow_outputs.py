@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import math
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Optional, Protocol, cast
 
@@ -11,6 +11,7 @@ import pyarrow
 from pyarrow import parquet
 
 from ._native_api import native_module
+from ._timestamps import utc_nanos_to_datetime
 from .calendar import CalendarRegistry, MarketState
 
 if TYPE_CHECKING:
@@ -325,7 +326,7 @@ def _convert_timestamp_for_output(
     timezone_name: str,
     output_path: Path,
 ) -> datetime | str:
-    timestamp_utc = _datetime_from_utc_nanos(timestamp_utc_nanos)
+    timestamp_utc = utc_nanos_to_datetime(timestamp_utc_nanos)
     normalized_timestamp = timestamp_utc.astimezone(_zoneinfo(timezone_name))
     if output_path.suffix.lower() == ".csv":
         return normalized_timestamp.isoformat().replace("+00:00", "Z")
@@ -345,15 +346,10 @@ def _coarse_interval_is_open(
     return (
         calendar_registry.resolve_market_state(
             cast(str, exchange_code),
-            _datetime_from_utc_nanos(interval_start_utc_nanos),
+            utc_nanos_to_datetime(interval_start_utc_nanos),
         )
         == MarketState.OPEN
     )
-
-
-def _datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
-    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
-    return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
 
 
 def _zoneinfo(timezone_name: str):

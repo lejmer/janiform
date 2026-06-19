@@ -235,6 +235,7 @@ pub(crate) fn estimate_current_state_from_observation_data(
             .return_components_fitted_parameters
             .mean_reversion_fitted_parameters
             .clone(),
+        reference_price,
         state_time_utc_nanos,
         observed_log_return,
         // Intentional copies because current-state estimation owns observation

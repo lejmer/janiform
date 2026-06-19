@@ -1,5 +1,18 @@
 use nalgebra::{DMatrix, DVector, Matrix2, SMatrix, SVector, Vector2};
 
+use crate::numeric::clamp_to_unit_interval;
+
+/// Coefficients and algebraic rank for a one- or two-column least-squares fit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RankAwareLeastSquaresSolution {
+    /// Coefficient for the first design column.
+    pub first_coefficient: f64,
+    /// Coefficient for the second design column, or zero for one-column fits.
+    pub second_coefficient: f64,
+    /// Algebraic rank identified from exact zero and dependence checks.
+    pub rank: usize,
+}
+
 /// Computes a damped least-squares step for a residual linearization.
 ///
 /// Given residual vector `r` and sensitivity matrix `J`, this solves
@@ -227,6 +240,200 @@ pub fn weighted_ridge_least_squares_from_normal_equations(
         .then(|| solution.iter().copied().collect())
 }
 
+/// Solve a rank-aware one-column ordinary least-squares fit.
+pub fn rank_aware_one_column_least_squares(
+    column: &[f64],
+    response: &[f64],
+) -> Option<RankAwareLeastSquaresSolution> {
+    if !rank_aware_one_column_input_is_valid(column, response) {
+        return None;
+    }
+
+    let self_inner_product = column.iter().map(|value| value * value).sum::<f64>();
+    if self_inner_product == 0.0 {
+        return Some(RankAwareLeastSquaresSolution {
+            first_coefficient: 0.0,
+            second_coefficient: 0.0,
+            rank: 0,
+        });
+    }
+
+    let response_inner_product = column
+        .iter()
+        .zip(response.iter())
+        .map(|(column_value, response_value)| column_value * response_value)
+        .sum::<f64>();
+
+    Some(RankAwareLeastSquaresSolution {
+        first_coefficient: response_inner_product / self_inner_product,
+        second_coefficient: 0.0,
+        rank: 1,
+    })
+}
+
+/// Solve a rank-aware one-column least-squares gain constrained to `[0, 1]`.
+pub fn rank_aware_unit_interval_gain_least_squares(
+    column: &[f64],
+    response: &[f64],
+) -> Option<RankAwareLeastSquaresSolution> {
+    let unconstrained_solution = rank_aware_one_column_least_squares(column, response)?;
+
+    Some(RankAwareLeastSquaresSolution {
+        first_coefficient: clamp_to_unit_interval(unconstrained_solution.first_coefficient),
+        second_coefficient: unconstrained_solution.second_coefficient,
+        rank: unconstrained_solution.rank,
+    })
+}
+
+/// Solve a rank-aware two-column ordinary least-squares fit.
+pub fn rank_aware_two_column_least_squares(
+    first_column: &[f64],
+    second_column: &[f64],
+    response: &[f64],
+) -> Option<RankAwareLeastSquaresSolution> {
+    if !rank_aware_two_column_input_is_valid(first_column, second_column, response) {
+        return None;
+    }
+
+    let first_self_inner_product = first_column.iter().map(|value| value * value).sum::<f64>();
+    let second_self_inner_product = second_column.iter().map(|value| value * value).sum::<f64>();
+
+    let cross_inner_product = first_column
+        .iter()
+        .zip(second_column.iter())
+        .map(|(first_value, second_value)| first_value * second_value)
+        .sum::<f64>();
+
+    let first_response_inner_product = first_column
+        .iter()
+        .zip(response.iter())
+        .map(|(first_value, response_value)| first_value * response_value)
+        .sum::<f64>();
+
+    let second_response_inner_product = second_column
+        .iter()
+        .zip(response.iter())
+        .map(|(second_value, response_value)| second_value * response_value)
+        .sum::<f64>();
+
+    let first_column_is_zero = first_self_inner_product == 0.0;
+    let second_column_is_zero = second_self_inner_product == 0.0;
+
+    if first_column_is_zero && second_column_is_zero {
+        return Some(RankAwareLeastSquaresSolution {
+            first_coefficient: 0.0,
+            second_coefficient: 0.0,
+            rank: 0,
+        });
+    }
+
+    if first_column_is_zero {
+        return Some(RankAwareLeastSquaresSolution {
+            first_coefficient: 0.0,
+            second_coefficient: second_response_inner_product / second_self_inner_product,
+            rank: 1,
+        });
+    }
+
+    if second_column_is_zero {
+        return Some(RankAwareLeastSquaresSolution {
+            first_coefficient: first_response_inner_product / first_self_inner_product,
+            second_coefficient: 0.0,
+            rank: 1,
+        });
+    }
+
+    let normal_matrix = Matrix2::new(
+        first_self_inner_product,
+        cross_inner_product,
+        cross_inner_product,
+        second_self_inner_product,
+    );
+
+    let response_vector = Vector2::new(first_response_inner_product, second_response_inner_product);
+    if let Some(coefficients) = normal_matrix.lu().solve(&response_vector) {
+        return Some(RankAwareLeastSquaresSolution {
+            first_coefficient: coefficients.x,
+            second_coefficient: coefficients.y,
+            rank: 2,
+        });
+    }
+
+    let dependence_ratio = cross_inner_product / first_self_inner_product;
+    let effective_coefficient = first_response_inner_product / first_self_inner_product;
+    let normalization = 1.0 + dependence_ratio * dependence_ratio;
+
+    Some(RankAwareLeastSquaresSolution {
+        first_coefficient: effective_coefficient / normalization,
+        second_coefficient: effective_coefficient * dependence_ratio / normalization,
+        rank: 1,
+    })
+}
+
+/// Solve a rank-aware two-column fit with the second coefficient constrained to `[0, 1]`.
+pub fn rank_aware_two_column_unit_interval_second_coefficient_least_squares(
+    first_column: &[f64],
+    second_column: &[f64],
+    response: &[f64],
+) -> Option<RankAwareLeastSquaresSolution> {
+    let unconstrained_solution =
+        rank_aware_two_column_least_squares(first_column, second_column, response)?;
+    if (0.0..=1.0).contains(&unconstrained_solution.second_coefficient) {
+        return Some(unconstrained_solution);
+    }
+
+    let lower_boundary_solution = rank_aware_two_column_least_squares_at_fixed_second_coefficient(
+        first_column,
+        second_column,
+        response,
+        0.0,
+    )?;
+
+    let upper_boundary_solution = rank_aware_two_column_least_squares_at_fixed_second_coefficient(
+        first_column,
+        second_column,
+        response,
+        1.0,
+    )?;
+
+    Some(
+        if squared_residual_norm_for_two_column_fit(
+            first_column,
+            second_column,
+            response,
+            lower_boundary_solution.first_coefficient,
+            lower_boundary_solution.second_coefficient,
+        ) <= squared_residual_norm_for_two_column_fit(
+            first_column,
+            second_column,
+            response,
+            upper_boundary_solution.first_coefficient,
+            upper_boundary_solution.second_coefficient,
+        ) {
+            lower_boundary_solution
+        } else {
+            upper_boundary_solution
+        },
+    )
+}
+
+fn rank_aware_one_column_input_is_valid(column: &[f64], response: &[f64]) -> bool {
+    !column.is_empty()
+        && column.len() == response.len()
+        && column.iter().all(|value| value.is_finite())
+        && response.iter().all(|value| value.is_finite())
+}
+
+fn rank_aware_two_column_input_is_valid(
+    first_column: &[f64],
+    second_column: &[f64],
+    response: &[f64],
+) -> bool {
+    rank_aware_one_column_input_is_valid(first_column, response)
+        && second_column.len() == response.len()
+        && second_column.iter().all(|value| value.is_finite())
+}
+
 fn mean_matrix_diagonal(matrix: &DMatrix<f64>) -> f64 {
     let diagonal_sum = (0..matrix.nrows())
         .map(|position| matrix[(position, position)])
@@ -271,11 +478,58 @@ fn squared_residual_norm_2(rows: &[[f64; 2]], response: &[f64], coefficients: &[
         .sum()
 }
 
+fn rank_aware_two_column_least_squares_at_fixed_second_coefficient(
+    first_column: &[f64],
+    second_column: &[f64],
+    response: &[f64],
+    second_coefficient: f64,
+) -> Option<RankAwareLeastSquaresSolution> {
+    let adjusted_response = response
+        .iter()
+        .zip(second_column.iter())
+        .map(|(response_value, second_value)| response_value - second_coefficient * second_value)
+        .collect::<Vec<_>>();
+
+    let first_solution =
+        rank_aware_one_column_least_squares(first_column, adjusted_response.as_slice())?;
+
+    Some(RankAwareLeastSquaresSolution {
+        first_coefficient: first_solution.first_coefficient,
+        second_coefficient,
+        rank: first_solution.rank,
+    })
+}
+
+fn squared_residual_norm_for_two_column_fit(
+    first_column: &[f64],
+    second_column: &[f64],
+    response: &[f64],
+    first_coefficient: f64,
+    second_coefficient: f64,
+) -> f64 {
+    response
+        .iter()
+        .zip(first_column.iter())
+        .zip(second_column.iter())
+        .map(|((response_value, first_value), second_value)| {
+            let residual = response_value
+                - first_coefficient * first_value
+                - second_coefficient * second_value;
+
+            residual * residual
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         mean_diagonal_damped_least_squares_step, mean_diagonal_damped_least_squares_step_4,
-        non_negative_least_squares_2, weighted_ridge_least_squares_from_normal_equations,
+        non_negative_least_squares_2, rank_aware_one_column_least_squares,
+        rank_aware_two_column_least_squares,
+        rank_aware_two_column_unit_interval_second_coefficient_least_squares,
+        rank_aware_unit_interval_gain_least_squares, squared_residual_norm_for_two_column_fit,
+        weighted_ridge_least_squares_from_normal_equations,
     };
 
     #[test]
@@ -313,6 +567,7 @@ mod tests {
             [1.0, 1.0, 0.0, 0.5],
             [0.0, -0.5, 1.0, 1.0],
         ];
+
         let residual_vector = vec![2.0, -1.0, 0.5, 1.25];
 
         let step = mean_diagonal_damped_least_squares_step_4(
@@ -383,6 +638,78 @@ mod tests {
 
         assert_eq!(coefficients[0], 2.5);
         assert_eq!(coefficients[1], 0.0);
+    }
+
+    #[test]
+    fn rank_aware_one_column_reports_zero_support() {
+        let solution = rank_aware_one_column_least_squares(&[0.0, 0.0], &[1.0, 2.0])
+            .expect("valid zero-support fit should solve");
+
+        assert_eq!(solution.rank, 0);
+        assert_eq!(solution.first_coefficient, 0.0);
+    }
+
+    #[test]
+    fn rank_aware_unit_interval_gain_clamps_to_contract_bounds() {
+        let solution = rank_aware_unit_interval_gain_least_squares(&[1.0, 1.0], &[2.0, 2.0])
+            .expect("valid unit-interval gain fit should solve");
+
+        assert_eq!(solution.rank, 1);
+        assert_eq!(solution.first_coefficient, 1.0);
+    }
+
+    #[test]
+    fn rank_aware_two_column_reports_dependent_columns() {
+        let first_column = [1.0, 2.0, 3.0];
+        let second_column = [2.0, 4.0, 6.0];
+        let response = [3.0, 6.0, 9.0];
+
+        let solution = rank_aware_two_column_least_squares(
+            first_column.as_slice(),
+            second_column.as_slice(),
+            response.as_slice(),
+        )
+        .expect("valid dependent two-column fit should solve");
+
+        assert_eq!(solution.rank, 1);
+        assert!(
+            squared_residual_norm_for_two_column_fit(
+                first_column.as_slice(),
+                second_column.as_slice(),
+                response.as_slice(),
+                solution.first_coefficient,
+                solution.second_coefficient,
+            ) <= f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn rank_aware_two_column_second_coefficient_uses_unit_boundary() {
+        let first_column = [0.0, 0.0];
+        let second_column = [1.0, 1.0];
+        let response = [2.0, 2.0];
+
+        let solution = rank_aware_two_column_unit_interval_second_coefficient_least_squares(
+            first_column.as_slice(),
+            second_column.as_slice(),
+            response.as_slice(),
+        )
+        .expect("valid bounded two-column fit should solve");
+
+        assert_eq!(solution.rank, 0);
+        assert_eq!(solution.second_coefficient, 1.0);
+    }
+
+    #[test]
+    fn rank_aware_least_squares_rejects_unaligned_inputs() {
+        assert_eq!(
+            rank_aware_one_column_least_squares(&[1.0], &[1.0, 2.0]),
+            None
+        );
+        assert_eq!(
+            rank_aware_two_column_least_squares(&[1.0], &[1.0], &[1.0, 2.0]),
+            None
+        );
     }
 
     fn squared_residual_norm<Row>(

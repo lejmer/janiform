@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from ._workflow_outputs import SimulationArtifactSink
-from ._workflow_progress import WorkflowProgressMode
+from ._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
+from .calibration.fit.state import CurrentStateEstimationResult
 from .contracts.base import require_non_empty_string
+from .forecast import ForecastMeasure, ForecastTableFormat, JaniformForecast
+from .forecast.result import DEFAULT_FORECAST_DISTRIBUTION_NODE_COUNT
 from .mean_reversion import MeanReversionBoundaryState
 from .pricing import (
     PricingIntervalSchedulePolicy,
@@ -26,14 +29,17 @@ from .pricing.fitted import (
     JaniformVanillaOptionGridBatchPricingResult,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
 )
 from .pricing.fitted.market_snapshot.inputs import TabularFrameInput
 from .simulation import JaniformSimulationResult
 from .simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 
 if TYPE_CHECKING:
-    from .calibration.fit.state import CurrentStateEstimationRequest, CurrentStateEstimationResult
+    from .calibration.fit.state import (
+        CurrentStateEstimationRequest,
+        CurrentStateTrackerSnapshot,
+        JaniformStateTracker,
+    )
     from .calibration.market_data.contracts import (
         CalibrationMarketDataWorkflowScope,
         CalibrationOptionSurfaceColumnMapping,
@@ -42,7 +48,6 @@ if TYPE_CHECKING:
     from .calibration.sessions.contracts import MarketDataSessionResolution
 
 _DEFAULT_SIMULATION_SEED = 0
-
 
 @dataclass(frozen=True, slots=True)
 class JaniformModel:
@@ -103,6 +108,92 @@ class JaniformModel:
             )
 
         return Path(raw_path)
+
+    def forecast(
+        self,
+        *,
+        start_date_utc: Optional[datetime] = None,
+        initial_price: Optional[float] = None,
+        state: Optional[CurrentStateEstimationResult] = None,
+        interval: Optional[str | timedelta] = None,
+        horizon_interval_count: Optional[int] = None,
+        end_date_utc: Optional[datetime] = None,
+        measure: ForecastMeasure | str = ForecastMeasure.PHYSICAL,
+        risk_free_rate: float = 0.0,
+        dividend_yield: float = 0.0,
+        output_path: Optional[str | Path] = None,
+        table_format: ForecastTableFormat | str = ForecastTableFormat.PARQUET,
+        distribution_node_count: int = DEFAULT_FORECAST_DISTRIBUTION_NODE_COUNT,
+        distribution_log_return_lower: Optional[float] = None,
+        distribution_log_return_upper: Optional[float] = None,
+        cpu_count: Optional[int] = None,
+        treat_forecast_warnings_as_errors: bool = False,
+        progress_callback: Optional[Callable[[Mapping[str, Any]], None]] = None,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformForecast:
+        from ._native_api import native_module
+        from ._native_progress import native_terminal_progress_mode
+        from ._workflow_outputs import generate_workflow_run_id
+        from .interval_factor_grids.workflow import _parse_interval_duration_nanos
+
+        if state is not None and not isinstance(state, CurrentStateEstimationResult):
+            raise ValueError("state must be a CurrentStateEstimationResult when provided")
+
+        if state is not None and initial_price is not None:
+            raise ValueError("initial_price must be omitted when state is provided")
+
+        resolved_start_date_utc = (
+            datetime.now(UTC) if start_date_utc is None else start_date_utc
+        )
+
+        effective_interval = "1h" if interval is None else interval
+
+        request_payload = {
+            "metadata": {
+                "run_id": generate_workflow_run_id(f"{self.run_id}_forecast"),
+                "model_path": None,
+                "output_path": None if output_path is None else str(Path(output_path)),
+            },
+            "model_payload": self._native_model_payload(),
+            "start_date_utc": resolved_start_date_utc.isoformat(),
+            "initial_price": initial_price,
+            "state": None if state is None else state.to_payload(),
+            "interval_duration_nanos": _parse_interval_duration_nanos(
+                effective_interval,
+                field_name="interval",
+            ),
+            "horizon_interval_count": horizon_interval_count,
+            "end_date_utc": None if end_date_utc is None else end_date_utc.isoformat(),
+            "measure": ForecastMeasure(measure).value,
+            "risk_free_rate": risk_free_rate,
+            "dividend_yield": dividend_yield,
+            "table_format": ForecastTableFormat(table_format).value,
+            "distribution_node_count": distribution_node_count,
+            "distribution_log_return_lower": distribution_log_return_lower,
+            "distribution_log_return_upper": distribution_log_return_upper,
+            "cpu_count": cpu_count,
+            "treat_forecast_warnings_as_errors": treat_forecast_warnings_as_errors,
+        }
+
+        raw_output = native_module().run_forecast_from_model_artifact(
+            request_payload,
+            progress_callback,
+            progress_mode=(
+                "none"
+                if progress_callback is not None
+                else native_terminal_progress_mode(
+                    resolve_workflow_progress_mode(
+                        progress_mode,
+                        default_mode=WorkflowProgressMode.TERMINAL,
+                    )
+                )
+            ),
+        )
+
+        if not isinstance(raw_output, dict):
+            raise ValueError("native forecast returned an invalid payload")
+
+        return JaniformForecast.from_native_payload(raw_output)
 
     def simulate(
         self,
@@ -284,9 +375,6 @@ class JaniformModel:
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
         cpu_count: Optional[int] = None,
-        physical_distribution_diagnostics: (
-            bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
-        ) = False,
         output_path: Optional[str | Path] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -303,7 +391,6 @@ class JaniformModel:
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             cpu_count=cpu_count,
-            physical_distribution_diagnostics=physical_distribution_diagnostics,
             output_path=output_path,
             silent=silent,
             progress_mode=progress_mode,
@@ -322,9 +409,6 @@ class JaniformModel:
         valuation_count: Optional[int] = None,
         use_all_valuation_times: bool = False,
         cpu_count: Optional[int] = None,
-        physical_distribution_diagnostics: (
-            bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
-        ) = False,
         output_path: Optional[str | Path] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -343,7 +427,6 @@ class JaniformModel:
             valuation_count=valuation_count,
             use_all_valuation_times=use_all_valuation_times,
             cpu_count=cpu_count,
-            physical_distribution_diagnostics=physical_distribution_diagnostics,
             output_path=output_path,
             silent=silent,
             progress_mode=progress_mode,
@@ -361,6 +444,20 @@ class JaniformModel:
             self,
             state_time_utc=state_time_utc,
             request=request,
+        )
+
+    def state_tracker(
+        self,
+        *,
+        tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = None,
+        initial_snapshot: Optional[CurrentStateTrackerSnapshot] = None,
+    ) -> JaniformStateTracker:
+        from .calibration.fit.state import JaniformStateTracker
+
+        return JaniformStateTracker(
+            self,
+            tick_data_column_mapping=tick_data_column_mapping,
+            initial_snapshot=initial_snapshot,
         )
 
     @staticmethod
@@ -437,6 +534,7 @@ class JaniformModel:
 
         if not isinstance(raw_parameters, dict):
             raise calibration_error("parameters", "must be an object")
+
         if not isinstance(raw_metadata, dict):
             raise calibration_error("metadata", "must be an object")
 
@@ -447,6 +545,7 @@ class JaniformModel:
 
         if not isinstance(raw_resolved_configuration, dict):
             raise calibration_error("resolved_configuration", "must be an object")
+
         if not isinstance(raw_session_resolution, dict):
             raise calibration_error("session_resolution", "must be an object")
 

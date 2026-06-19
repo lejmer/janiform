@@ -1941,7 +1941,6 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
-            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => {
                 Vec::new()
@@ -2009,7 +2008,6 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
-            | SimulationRandomnessSubstreamDomain::ObservedOptionsPhysicalDistributionPath
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
             | SimulationRandomnessSubstreamDomain::StylizedFactsValidationSimulationPath => vec![],
         };

@@ -94,12 +94,6 @@ from janiform.pricing.fitted import (
     JaniformVanillaOptionMaturitySummary,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
-)
-from janiform.pricing.fitted.physical_distribution import (
-    DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
-    DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
-    physical_distribution_diagnostics_request_payload,
 )
 from janiform.seasonality import SessionFilter
 from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
@@ -676,21 +670,6 @@ def _observed_pricing_native_payload(
             for snapshot_valuation_time_utc, nodes, spot in snapshot_specs
         ],
         "artifacts": None,
-    }
-
-
-def test_physical_distribution_diagnostics_request_payload_supports_shorthand_and_typed_request(
-) -> None:
-    assert physical_distribution_diagnostics_request_payload(False) is None
-    assert physical_distribution_diagnostics_request_payload(True) == {
-        "path_count": DEFAULT_PHYSICAL_DISTRIBUTION_PATH_COUNT,
-        "seed": DEFAULT_PHYSICAL_DISTRIBUTION_SEED,
-    }
-    assert physical_distribution_diagnostics_request_payload(
-        ObservedOptionsPhysicalDistributionDiagnosticsRequest(path_count=7, seed=11)
-    ) == {
-        "path_count": 7,
-        "seed": 11,
     }
 
 
@@ -3136,18 +3115,19 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         ),
     )
     assert len(captured_native_arguments) == 1
-    assert captured_native_arguments[0][3] == datetime_to_utc_nanos(
+    assert captured_native_arguments[0][3] == 100.0
+    assert captured_native_arguments[0][4] == datetime_to_utc_nanos(
         datetime(2026, 2, 2, 15, tzinfo=UTC)
     )
-    assert captured_native_arguments[0][4] == pytest.approx(
+    assert captured_native_arguments[0][5] == pytest.approx(
         fit_pricing_support_module.price_observed_log_return_from_spot(model, spot=100.0)
     )
-    assert captured_native_arguments[0][5] == (
+    assert captured_native_arguments[0][6] == (
         datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
         datetime(2026, 2, 2, 14, tzinfo=UTC).isoformat(),
     )
-    assert captured_native_arguments[0][6] == (100.0, 100.5)
-    assert captured_native_arguments[0][7] == (
+    assert captured_native_arguments[0][7] == (100.0, 100.5)
+    assert captured_native_arguments[0][8] == (
         "buy",
         "sell",
     )

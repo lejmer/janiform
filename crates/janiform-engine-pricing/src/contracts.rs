@@ -701,11 +701,6 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
             );
         }
 
-        validate_observed_anchor_alignment(
-            &self.mean_reversion_fitted_parameters,
-            self.observed_boundary_state.clone(),
-        )?;
-
         Ok(())
     }
 
@@ -2498,12 +2493,6 @@ fn validate_hawkes_boundary_state_component(
     Ok(())
 }
 
-fn validate_observed_anchor_alignment(
-    _mean_reversion_fitted_parameters: &MeanReversionFittedParameters,
-    _observed_boundary_state: MeanReversionBoundaryState,
-) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
-    Ok(())
-}
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VanillaOptionPricingMarketInputsPayload {

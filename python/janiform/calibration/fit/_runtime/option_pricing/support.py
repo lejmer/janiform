@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from math import log
 from typing import TYPE_CHECKING, Any, Mapping, cast
 
-from ....._timestamps import datetime_to_utc_nanos
+from ....._timestamps import datetime_to_utc_nanos, utc_nanos_to_datetime
 from .....contracts.base import require_positive_finite_scalar
 from .....interval_factor_grids import (
     IntervalNewsIntensityProviderMaterializedSource,
@@ -116,8 +116,8 @@ def runtime_schedule_interval_factor_grid_coverage(
     ) * interval_duration_nanos
 
     return (
-        _runtime_datetime_from_utc_nanos(coverage_start_utc_nanos),
-        _runtime_datetime_from_utc_nanos(coverage_end_utc_nanos),
+        utc_nanos_to_datetime(coverage_start_utc_nanos),
+        utc_nanos_to_datetime(coverage_end_utc_nanos),
     )
 
 
@@ -144,11 +144,3 @@ def interval_factor_grid_interval_count(
         )
 
     return int(interval_count)
-
-
-def _runtime_datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
-    whole_seconds, remainder_nanos = divmod(timestamp_utc_nanos, 1_000_000_000)
-
-    return datetime.fromtimestamp(whole_seconds, tz=UTC).replace(
-        microsecond=remainder_nanos // 1_000
-    )

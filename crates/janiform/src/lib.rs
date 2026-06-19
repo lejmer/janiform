@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod calibration;
+pub mod forecast;
 pub mod foundation;
 pub mod governance;
 pub mod model;

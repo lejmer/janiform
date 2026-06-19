@@ -366,6 +366,7 @@ pub struct CalibrationMeanReversionStageExecutionInput {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationJointRefinementCurrentStateEstimationInput {
     pub state_time_utc_nanos: i64,
+    pub reference_price: f64,
     pub observed_spot: f64,
     pub observed_log_return: f64,
     pub observation_timestamp_utc_nanos: Vec<i64>,
@@ -1224,6 +1225,7 @@ impl CalibrationJointRefinementCurrentStateEstimationInput {
         Ok(
             super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: self.state_time_utc_nanos,
+                reference_price: self.reference_price,
                 observed_spot: self.observed_spot,
                 observed_log_return: self.observed_log_return,
                 observation_timestamp_utc_nanos: self.observation_timestamp_utc_nanos,
@@ -1711,6 +1713,7 @@ mod tests {
                 current_state_estimation_input:
                     CalibrationJointRefinementCurrentStateEstimationInput {
                         state_time_utc_nanos: 1_770_042_600_000_000_000,
+                        reference_price: 1.0,
                         observed_spot: 100.0,
                         observed_log_return: 100.0_f64.ln(),
                         observation_timestamp_utc_nanos: vec![

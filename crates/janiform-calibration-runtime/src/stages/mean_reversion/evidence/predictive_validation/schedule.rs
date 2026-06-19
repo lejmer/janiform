@@ -1,7 +1,29 @@
+use crate::stages::mean_reversion::{
+    FLAT_ANCHOR_MEAN_REVERSION_CANDIDATE_FAMILY, FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY,
+    OBSERVED_PRESSURE_REPLAY_CANDIDATE_FAMILY,
+    mean_reversion_flat_anchor_required_source_observation_count,
+    mean_reversion_full_model_required_source_observation_count,
+};
+
 pub(super) struct PredictiveValidationWindow {
     pub(super) training_observation_count: usize,
     pub(super) start_transition_index: usize,
     pub(super) end_transition_index_exclusive: usize,
+}
+
+pub(super) fn minimum_training_observation_count(candidate_family: &str) -> usize {
+    match candidate_family {
+        FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY => {
+            mean_reversion_full_model_required_source_observation_count()
+        }
+        FLAT_ANCHOR_MEAN_REVERSION_CANDIDATE_FAMILY => {
+            mean_reversion_flat_anchor_required_source_observation_count()
+        }
+        OBSERVED_PRESSURE_REPLAY_CANDIDATE_FAMILY => {
+            mean_reversion_full_model_required_source_observation_count()
+        }
+        _ => 2,
+    }
 }
 
 pub(super) fn rolling_origin_refit_training_observation_counts(
@@ -41,6 +63,7 @@ pub(super) fn predictive_validation_window(
     observation_count: usize,
 ) -> Option<PredictiveValidationWindow> {
     let start_transition_index = training_observation_count.saturating_sub(1);
+
     let end_transition_index_exclusive = refit_training_observation_counts
         .get(refit_position.saturating_add(1))
         .copied()

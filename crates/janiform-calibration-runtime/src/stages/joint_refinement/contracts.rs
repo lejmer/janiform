@@ -32,6 +32,7 @@ pub struct JointRefinementStageSeasonalityFactorsInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageCurrentStateEstimationInput {
     pub state_time_utc_nanos: i64,
+    pub reference_price: f64,
     pub observed_spot: f64,
     pub observed_log_return: f64,
     pub observation_timestamp_utc_nanos: Vec<i64>,

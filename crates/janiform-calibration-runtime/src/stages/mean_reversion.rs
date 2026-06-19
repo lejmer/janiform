@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
@@ -19,7 +20,12 @@ use janiform_calibration_artifacts::{
     MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
     MeanReversionStagePredictiveEvidenceDiagnostics, MeanReversionStageSeriesSummary,
 };
-use janiform_foundations::numeric::{GOLDEN_RATIO, clamp_to_unit_interval, coverage_ratio};
+use janiform_foundations::linear_algebra::{
+    RankAwareLeastSquaresSolution, rank_aware_one_column_least_squares,
+    rank_aware_two_column_unit_interval_second_coefficient_least_squares,
+    rank_aware_unit_interval_gain_least_squares,
+};
+use janiform_foundations::numeric::{GOLDEN_RATIO, coverage_ratio};
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_market_time::interval_factor_grids::{
     IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
@@ -30,7 +36,6 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionFittedParameters,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
-use nalgebra::{Matrix2, Vector2};
 
 use crate::adapters::load_interval_factor_grid_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
@@ -47,6 +52,7 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 mod evidence;
 mod evidence_statistics;
+mod observed_pressure_replay;
 mod progress;
 
 pub use progress::{MeanReversionStageProgressPhase, MeanReversionStageProgressUpdate};
@@ -54,16 +60,21 @@ pub use progress::{MeanReversionStageProgressPhase, MeanReversionStageProgressUp
 const FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT: usize = 2;
 const PRESSURE_GAIN_REGRESSION_COLUMN_COUNT: usize = 1;
 const FLAT_ANCHOR_MEAN_REVERSION_IDENTIFIABLE_PARAMETER_COUNT: usize = 2;
+const OBSERVED_PRESSURE_REPLAY_IDENTIFIABLE_PARAMETER_COUNT: usize = 3;
 const FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY: &str =
     "endogenous_core_pressure_level_mean_reversion";
 const PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_CANDIDATE_FAMILY: &str =
     "endogenous_core_pressure_level_no_mean_reversion";
+const OBSERVED_PRESSURE_REPLAY_CANDIDATE_FAMILY: &str =
+    "causal_observed_core_pressure_level_mean_reversion";
 const FLAT_ANCHOR_MEAN_REVERSION_CANDIDATE_FAMILY: &str = "flat_anchor_mean_reversion";
 const RANDOM_WALK_NULL_CANDIDATE_FAMILY: &str = "random_walk_null";
 const FULL_PRESSURE_TO_LEVEL_REASON: &str =
     "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1";
 const PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_REASON: &str =
     "endogenous_core_pressure_level_profiled_over_pressure_persistence_phi_reference_fixed_one.v1";
+const OBSERVED_PRESSURE_REPLAY_REASON: &str =
+    "causal_observed_core_pressure_level_profiled_with_training_replay.v1";
 const FLAT_ANCHOR_MEAN_REVERSION_REASON: &str =
     "flat_anchor_mean_reversion_profiled_over_phi_reference_zero_pressure_gain.v1";
 const RANDOM_WALK_NULL_REASON: &str = "random_walk_null_baseline.v1";
@@ -639,6 +650,7 @@ fn evaluate_mean_reversion_grid_candidate(
 struct MeanReversionCandidateFamilySupport {
     full_pressure_to_level: bool,
     pressure_to_level_without_mean_reversion: bool,
+    observed_pressure_replay: bool,
     flat_anchor_mean_reversion: bool,
     random_walk_null: bool,
 }
@@ -662,6 +674,10 @@ fn mean_reversion_candidate_family_support(
                 grid_candidate,
                 mean_reversion_pressure_gain_required_source_observation_count(),
             ),
+        observed_pressure_replay: mean_reversion_sample_supports_required_source_observations(
+            grid_candidate,
+            mean_reversion_full_model_required_source_observation_count(),
+        ),
         flat_anchor_mean_reversion: mean_reversion_sample_supports_required_source_observations(
             grid_candidate,
             mean_reversion_flat_anchor_required_source_observation_count(),
@@ -697,13 +713,6 @@ fn mean_reversion_sample_supports_required_source_observations(
 struct EndogenousMeanReversionCalibrationContext {
     core_expected_increments: Vec<f64>,
     interval_deltas: Vec<f64>,
-}
-
-#[derive(Debug, Clone)]
-struct MeanReversionLeastSquaresSolution {
-    first_coefficient: f64,
-    second_coefficient: f64,
-    rank: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -838,6 +847,23 @@ fn estimate_endogenous_mean_reversion_grid_candidate(
         }
     }
 
+    if candidate_family_support.observed_pressure_replay {
+        let observed_pressure_interval_deltas = observed_pressure_replay_interval_deltas(
+            calibration_context.as_ref(),
+            calibration_grid.calibration_grid_interval_hours,
+            observation_levels.len(),
+        );
+
+        evaluated_candidates.push(
+            observed_pressure_replay::profile_causal_observed_pressure_replay_candidate(
+                observation_levels,
+                calibration_grid.calibration_grid_interval_hours,
+                observed_pressure_interval_deltas.as_ref(),
+                solver_settings,
+            )?,
+        );
+    }
+
     if candidate_family_support.flat_anchor_mean_reversion {
         evaluated_candidates.push(profile_flat_anchor_mean_reversion_candidate(
             observation_levels,
@@ -858,6 +884,20 @@ fn estimate_endogenous_mean_reversion_grid_candidate(
         evaluated_candidates,
         stage_decision_reason: "mean_reversion_grid_candidate_evaluated.v1".to_string(),
     })
+}
+
+fn observed_pressure_replay_interval_deltas<'a>(
+    calibration_context: Option<&'a EndogenousMeanReversionCalibrationContext>,
+    calibration_grid_interval_hours: f64,
+    observation_count: usize,
+) -> Cow<'a, [f64]> {
+    match calibration_context {
+        Some(context) => Cow::Borrowed(context.interval_deltas.as_slice()),
+        None => Cow::Owned(vec![
+            calibration_grid_interval_hours;
+            observation_count.saturating_sub(1)
+        ]),
+    }
 }
 
 fn build_endogenous_mean_reversion_calibration_context(
@@ -1152,7 +1192,7 @@ fn evaluate_full_pressure_to_level_candidate(
         transition_terms.intercept_column.as_slice(),
         transition_terms.pressure_column.as_slice(),
         transition_terms.response.as_slice(),
-    );
+    )?;
 
     let anchor_origin_level = if phi_reference == 1.0 {
         None
@@ -1226,7 +1266,7 @@ fn evaluate_pressure_to_level_without_mean_reversion_candidate(
         .collect::<Vec<_>>();
 
     let least_squares_solution =
-        solve_unit_interval_gain_least_squares(pressure_column.as_slice(), response.as_slice());
+        solve_unit_interval_gain_least_squares(pressure_column.as_slice(), response.as_slice())?;
 
     assemble_candidate_evaluation(
         observation_levels,
@@ -1260,14 +1300,14 @@ fn profile_flat_anchor_mean_reversion_candidate(
         observation_levels,
         calibration_grid_interval_hours,
         1.0,
-    );
+    )?;
 
     profile_candidate_over_unit_interval(solver_settings, phi_boundary_candidate, |phi_reference| {
-        Ok(evaluate_flat_anchor_mean_reversion_candidate(
+        evaluate_flat_anchor_mean_reversion_candidate(
             observation_levels,
             calibration_grid_interval_hours,
             phi_reference,
-        ))
+        )
     })
 }
 
@@ -1275,7 +1315,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
     observation_levels: &[f64],
     calibration_grid_interval_hours: f64,
     phi_reference: f64,
-) -> MeanReversionStageCandidateEvaluation {
+) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
     let response = observation_levels
         .iter()
         .zip(observation_levels.iter().skip(1))
@@ -1287,7 +1327,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
     let intercept_column = vec![1.0 - phi_reference; observation_levels.len().saturating_sub(1)];
 
     let least_squares_solution =
-        solve_one_column_least_squares(intercept_column.as_slice(), response.as_slice());
+        solve_one_column_least_squares(intercept_column.as_slice(), response.as_slice())?;
 
     let anchor_origin_level = if phi_reference == 1.0 {
         None
@@ -1317,7 +1357,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
     let quasi_log_likelihood =
         gaussian_quasi_log_likelihood(residuals.len(), residual_sum_of_squares);
 
-    MeanReversionStageCandidateEvaluation {
+    Ok(MeanReversionStageCandidateEvaluation {
         candidate_family: FLAT_ANCHOR_MEAN_REVERSION_CANDIDATE_FAMILY,
         anchor_model: MeanReversionAnchorModel::endogenous_core_pressure_level(
             calibration_grid_interval_hours,
@@ -1342,7 +1382,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
             None,
             Some(phi_reference),
         ),
-    }
+    })
 }
 
 fn evaluate_random_walk_null_candidate(
@@ -1825,205 +1865,41 @@ fn derive_observation_interval_duration_nanos(
     )
 }
 
-fn solve_two_column_least_squares(
-    first_column: &[f64],
-    second_column: &[f64],
-    response: &[f64],
-) -> MeanReversionLeastSquaresSolution {
-    let first_self_inner_product = first_column.iter().map(|value| value * value).sum::<f64>();
-    let second_self_inner_product = second_column.iter().map(|value| value * value).sum::<f64>();
-
-    let cross_inner_product = first_column
-        .iter()
-        .zip(second_column.iter())
-        .map(|(first_value, second_value)| first_value * second_value)
-        .sum::<f64>();
-
-    let first_response_inner_product = first_column
-        .iter()
-        .zip(response.iter())
-        .map(|(first_value, response_value)| first_value * response_value)
-        .sum::<f64>();
-
-    let second_response_inner_product = second_column
-        .iter()
-        .zip(response.iter())
-        .map(|(second_value, response_value)| second_value * response_value)
-        .sum::<f64>();
-
-    let first_column_is_zero = first_self_inner_product == 0.0;
-    let second_column_is_zero = second_self_inner_product == 0.0;
-
-    if first_column_is_zero && second_column_is_zero {
-        return MeanReversionLeastSquaresSolution {
-            first_coefficient: 0.0,
-            second_coefficient: 0.0,
-            rank: 0,
-        };
-    }
-
-    if first_column_is_zero {
-        return MeanReversionLeastSquaresSolution {
-            first_coefficient: 0.0,
-            second_coefficient: second_response_inner_product / second_self_inner_product,
-            rank: 1,
-        };
-    }
-
-    if second_column_is_zero {
-        return MeanReversionLeastSquaresSolution {
-            first_coefficient: first_response_inner_product / first_self_inner_product,
-            second_coefficient: 0.0,
-            rank: 1,
-        };
-    }
-
-    let normal_matrix = Matrix2::new(
-        first_self_inner_product,
-        cross_inner_product,
-        cross_inner_product,
-        second_self_inner_product,
-    );
-    let response_vector = Vector2::new(first_response_inner_product, second_response_inner_product);
-    if let Some(coefficients) = normal_matrix.lu().solve(&response_vector) {
-        return MeanReversionLeastSquaresSolution {
-            first_coefficient: coefficients.x,
-            second_coefficient: coefficients.y,
-            rank: 2,
-        };
-    }
-
-    let dependence_ratio = cross_inner_product / first_self_inner_product;
-    let effective_coefficient = first_response_inner_product / first_self_inner_product;
-    let normalization = 1.0 + dependence_ratio * dependence_ratio;
-
-    MeanReversionLeastSquaresSolution {
-        first_coefficient: effective_coefficient / normalization,
-        second_coefficient: effective_coefficient * dependence_ratio / normalization,
-        rank: 1,
-    }
-}
-
 fn solve_full_pressure_to_level_least_squares(
     intercept_column: &[f64],
     pressure_column: &[f64],
     response: &[f64],
-) -> MeanReversionLeastSquaresSolution {
-    let unconstrained_solution =
-        solve_two_column_least_squares(intercept_column, pressure_column, response);
-    if (0.0..=1.0).contains(&unconstrained_solution.second_coefficient) {
-        return unconstrained_solution;
-    }
-
-    let lower_boundary_solution = solve_full_pressure_to_level_least_squares_at_fixed_gain(
+) -> Result<RankAwareLeastSquaresSolution, MeanReversionStageExecutionFailure> {
+    rank_aware_two_column_unit_interval_second_coefficient_least_squares(
         intercept_column,
         pressure_column,
         response,
-        0.0,
-    );
-    let upper_boundary_solution = solve_full_pressure_to_level_least_squares_at_fixed_gain(
-        intercept_column,
-        pressure_column,
-        response,
-        1.0,
-    );
-
-    if residual_sum_of_squares_for_two_column_fit(
-        intercept_column,
-        pressure_column,
-        response,
-        lower_boundary_solution.first_coefficient,
-        lower_boundary_solution.second_coefficient,
-    ) <= residual_sum_of_squares_for_two_column_fit(
-        intercept_column,
-        pressure_column,
-        response,
-        upper_boundary_solution.first_coefficient,
-        upper_boundary_solution.second_coefficient,
-    ) {
-        lower_boundary_solution
-    } else {
-        upper_boundary_solution
-    }
-}
-
-fn solve_full_pressure_to_level_least_squares_at_fixed_gain(
-    intercept_column: &[f64],
-    pressure_column: &[f64],
-    response: &[f64],
-    pressure_level_gain: f64,
-) -> MeanReversionLeastSquaresSolution {
-    let adjusted_response =
-        remove_scaled_column_contribution(response, pressure_column, pressure_level_gain);
-
-    let intercept_solution =
-        solve_one_column_least_squares(intercept_column, adjusted_response.as_slice());
-
-    MeanReversionLeastSquaresSolution {
-        first_coefficient: intercept_solution.first_coefficient,
-        second_coefficient: pressure_level_gain,
-        rank: intercept_solution.rank,
-    }
+    )
+    .ok_or_else(|| least_squares_failure("full pressure-to-level"))
 }
 
 fn solve_one_column_least_squares(
     column: &[f64],
     response: &[f64],
-) -> MeanReversionLeastSquaresSolution {
-    let self_inner_product = column.iter().map(|value| value * value).sum::<f64>();
-    if self_inner_product == 0.0 {
-        return MeanReversionLeastSquaresSolution {
-            first_coefficient: 0.0,
-            second_coefficient: 0.0,
-            rank: 0,
-        };
-    }
-
-    let response_inner_product = column
-        .iter()
-        .zip(response.iter())
-        .map(|(column_value, response_value)| column_value * response_value)
-        .sum::<f64>();
-
-    MeanReversionLeastSquaresSolution {
-        first_coefficient: response_inner_product / self_inner_product,
-        second_coefficient: 0.0,
-        rank: 1,
-    }
+) -> Result<RankAwareLeastSquaresSolution, MeanReversionStageExecutionFailure> {
+    rank_aware_one_column_least_squares(column, response)
+        .ok_or_else(|| least_squares_failure("one-column"))
 }
 
 fn solve_unit_interval_gain_least_squares(
     column: &[f64],
     response: &[f64],
-) -> MeanReversionLeastSquaresSolution {
-    let unconstrained_solution = solve_one_column_least_squares(column, response);
-
-    MeanReversionLeastSquaresSolution {
-        first_coefficient: clamp_to_unit_interval(unconstrained_solution.first_coefficient),
-        second_coefficient: unconstrained_solution.second_coefficient,
-        rank: unconstrained_solution.rank,
-    }
+) -> Result<RankAwareLeastSquaresSolution, MeanReversionStageExecutionFailure> {
+    rank_aware_unit_interval_gain_least_squares(column, response)
+        .ok_or_else(|| least_squares_failure("unit-interval gain"))
 }
 
-fn residual_sum_of_squares_for_two_column_fit(
-    first_column: &[f64],
-    second_column: &[f64],
-    response: &[f64],
-    first_coefficient: f64,
-    second_coefficient: f64,
-) -> f64 {
-    response
-        .iter()
-        .zip(first_column.iter())
-        .zip(second_column.iter())
-        .map(|((response_value, first_value), second_value)| {
-            let residual = response_value
-                - first_coefficient * first_value
-                - second_coefficient * second_value;
-
-            residual * residual
-        })
-        .sum()
+fn least_squares_failure(fit_label: &str) -> MeanReversionStageExecutionFailure {
+    MeanReversionStageExecutionFailure::EndogenousAnchorMaterializationFailed {
+        error_message: format!(
+            "mean-reversion {fit_label} least-squares requires non-empty aligned finite inputs"
+        ),
+    }
 }
 
 fn kappa_from_phi_reference(phi_reference: f64, calibration_grid_interval_hours: f64) -> f64 {

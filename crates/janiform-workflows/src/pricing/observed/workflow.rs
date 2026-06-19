@@ -28,7 +28,6 @@ use super::data::{
     selected_expiry_history,
 };
 use super::loading::{LoadedObservedOptionsPricingInputs, load_observed_pricing_inputs};
-use super::physical_distribution::compute_physical_distribution_diagnostics_if_requested;
 use super::pricing::price_prepared_snapshot_with_terminal_progress;
 use super::progress::{
     ObservedWorkItemUpdate, complete_observed_pricing_stage, emit_observed_stage_progress,
@@ -38,8 +37,7 @@ use super::state::prepare_observed_snapshots;
 use super::surface::price_prepared_surface_snapshots_parallel;
 use super::types::{
     ObservedOptionsPricingOutput, ObservedOptionsPricingRequest, ObservedOptionsPricingScope,
-    ObservedOptionsSnapshotResult, PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
-    PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE, PreparedObservedSnapshot,
+    ObservedOptionsSnapshotResult, PREPARE_VALUATION_STATES_STAGE, PRICE_VALUATION_SURFACE_STAGE,
     PreparedSnapshotGroup, WRITE_ARTIFACTS_STAGE,
 };
 
@@ -98,16 +96,12 @@ pub fn run_observed_options_pricing_with_observer(
         observed_options_start_summary(&run_id, &request),
     )?;
 
-    let include_physical_distribution_diagnostics =
-        request.physical_distribution_diagnostics.is_some();
-
-    let stage_count = observed_pricing_stage_count(include_physical_distribution_diagnostics);
+    let stage_count = observed_pricing_stage_count();
 
     start_observed_pricing_progress(
         &mut observer.progress_adapter,
         &run_id,
         request.output_path.as_deref(),
-        include_physical_distribution_diagnostics,
     )?;
 
     if let Err(source) = cancellation_token.check_cancelled() {
@@ -174,47 +168,6 @@ pub fn run_observed_options_pricing_with_observer(
         Err(error) => return Err(error),
     };
 
-    let physical_distribution = if include_physical_distribution_diagnostics {
-        let physical_stage_started_at = start_observed_pricing_stage(
-            &mut observer.progress_adapter,
-            4,
-            stage_count,
-            PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
-        )?;
-
-        let physical_distribution = compute_physical_distribution_diagnostics_if_requested(
-            &request,
-            pricing_execution.prepared_snapshots.as_slice(),
-            pricing_execution.snapshot_results.as_slice(),
-            cancellation_token.shared_handle(),
-            &mut observer.progress_adapter,
-        );
-
-        let physical_distribution = match physical_distribution {
-            Ok(physical_distribution) => physical_distribution,
-            Err(WorkflowError::Cancelled { source }) => {
-                cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
-                return Err(WorkflowError::Cancelled { source });
-            }
-            Err(error) => return Err(error),
-        };
-
-        complete_observed_pricing_stage(
-            &mut observer.progress_adapter,
-            PHYSICAL_DISTRIBUTION_DIAGNOSTICS_STAGE,
-            physical_stage_started_at,
-        )?;
-
-        physical_distribution
-    } else {
-        None
-    };
-
-    if let Err(source) = cancellation_token.check_cancelled() {
-        cancel_pricing_progress(observer.progress_adapter.as_deref_mut())?;
-        return Err(WorkflowError::Cancelled { source });
-    }
-
     let execution_duration = started_at.elapsed();
 
     let mut nodes = Vec::new();
@@ -223,15 +176,9 @@ pub fn run_observed_options_pricing_with_observer(
         nodes.extend(snapshot_result.nodes.iter().cloned());
     }
 
-    let write_stage_number = if include_physical_distribution_diagnostics {
-        5
-    } else {
-        4
-    };
-
     let write_stage_started_at = start_observed_pricing_stage(
         &mut observer.progress_adapter,
-        write_stage_number,
+        4,
         stage_count,
         WRITE_ARTIFACTS_STAGE,
     )?;
@@ -261,7 +208,6 @@ pub fn run_observed_options_pricing_with_observer(
         snapshot_results: &pricing_execution.snapshot_results,
         price_coordinate_resolution: price_coordinate_resolution.as_ref(),
         warnings: warnings.as_slice(),
-        physical_distribution: physical_distribution.as_ref(),
         execution_duration,
     })?;
 
@@ -296,7 +242,6 @@ pub fn run_observed_options_pricing_with_observer(
         snapshot_results: pricing_execution.snapshot_results,
         price_coordinate_resolution,
         warnings,
-        physical_distribution,
         artifact_paths,
         execution_duration_seconds: execution_duration.as_secs_f64(),
     };
@@ -342,12 +287,6 @@ fn validate_request(request: &ObservedOptionsPricingRequest) -> Result<(), Workf
         .map_err(|source| {
             pricing_validation_error("option_forward_parity_warning_policy", source.to_string())
         })?;
-
-    if let Some(physical_distribution_diagnostics) =
-        request.physical_distribution_diagnostics.as_ref()
-    {
-        physical_distribution_diagnostics.validate()?;
-    }
 
     Ok(())
 }
@@ -404,8 +343,7 @@ fn price_surface_groups(
         request.use_all_valuation_times,
     );
 
-    let stage_count =
-        observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+    let stage_count = observed_pricing_stage_count();
 
     let prepare_stage_started_at = start_observed_pricing_stage(
         progress_adapter,
@@ -437,14 +375,6 @@ fn price_surface_groups(
         prepare_stage_started_at,
     )?;
 
-    let retained_prepared_snapshots = if request.physical_distribution_diagnostics.is_some() {
-        // Intentional copy because Q pricing consumes prepared snapshots while
-        // the optional P diagnostic reuses the same valuation states afterward.
-        prepared_snapshots.clone()
-    } else {
-        Vec::new()
-    };
-
     let snapshot_results = price_prepared_surface_snapshots_parallel(
         request,
         prepared_snapshots,
@@ -452,10 +382,7 @@ fn price_surface_groups(
         progress_adapter,
     )?;
 
-    Ok(ObservedOptionsPricingExecutionResult {
-        prepared_snapshots: retained_prepared_snapshots,
-        snapshot_results,
-    })
+    Ok(ObservedOptionsPricingExecutionResult { snapshot_results })
 }
 
 fn price_snapshot_groups(
@@ -466,9 +393,7 @@ fn price_snapshot_groups(
     cancellation_token.check_cancelled()?;
 
     let request = input.request;
-
-    let stage_count =
-        observed_pricing_stage_count(request.physical_distribution_diagnostics.is_some());
+    let stage_count = observed_pricing_stage_count();
 
     let prepare_stage_started_at = start_observed_pricing_stage(
         progress_adapter,
@@ -494,14 +419,6 @@ fn price_snapshot_groups(
         PREPARE_VALUATION_STATES_STAGE,
         prepare_stage_started_at,
     )?;
-
-    let retained_prepared_snapshots = if request.physical_distribution_diagnostics.is_some() {
-        // Intentional copy because Q pricing consumes prepared snapshots while
-        // the optional P diagnostic reuses the same valuation state afterward.
-        prepared_snapshots.clone()
-    } else {
-        Vec::new()
-    };
 
     let pricing_stage_started_at = start_observed_pricing_stage(
         progress_adapter,
@@ -530,12 +447,10 @@ fn price_snapshot_groups(
     )?;
 
     Ok(ObservedOptionsPricingExecutionResult {
-        prepared_snapshots: retained_prepared_snapshots,
         snapshot_results: vec![result],
     })
 }
 
 struct ObservedOptionsPricingExecutionResult {
-    prepared_snapshots: Vec<PreparedObservedSnapshot>,
     snapshot_results: Vec<ObservedOptionsSnapshotResult>,
 }

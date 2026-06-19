@@ -41,11 +41,6 @@ from .price_coordinates import resolve_price_coordinate_from_native_mapping
 from ..market_snapshot.inputs import TabularFrameInput
 from ..market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
 from ..market_surface.result import JaniformObservedOptionSurfacePricingResult
-from ..physical_distribution import (
-    ObservedOptionsPhysicalDistributionDiagnosticsRequest,
-    ObservedOptionsPhysicalDistributionDiagnosticsOutput,
-    physical_distribution_diagnostics_request_payload,
-)
 
 if TYPE_CHECKING:
     from ....model import JaniformModel
@@ -72,9 +67,6 @@ def run_native_observed_options_pricing(
     cpu_count: Optional[int],
     price_coordinate_policy: PriceCoordinatePolicy | str,
     option_forward_parity_warning_threshold: Optional[float],
-    physical_distribution_diagnostics: (
-        bool | ObservedOptionsPhysicalDistributionDiagnosticsRequest
-    ),
     output_path: Optional[str | Path],
     silent: bool,
     progress_mode: WorkflowProgressMode | str,
@@ -164,11 +156,6 @@ def run_native_observed_options_pricing(
                 "include_calibration_hooks": False,
             },
             "pricing_interval_schedule_policy": {"policy": "auto_activity_compressed"},
-            "physical_distribution_diagnostics": (
-                physical_distribution_diagnostics_request_payload(
-                    physical_distribution_diagnostics
-                )
-            ),
             "output_path": None if output_path is None else str(output_path),
             "progress_mode": _native_pricing_terminal_progress_mode(
                 silent=silent,
@@ -223,13 +210,6 @@ def observed_snapshot_result_from_native_payload(
         field_path="observed_options_pricing_result.snapshot_results[0]",
     )
 
-    physical_distribution = (
-        ObservedOptionsPhysicalDistributionDiagnosticsOutput.from_native_mapping(
-            raw_result.get("physical_distribution"),
-            field_path="observed_options_pricing_result.physical_distribution",
-        )
-    )
-
     price_coordinate_resolution = (
         resolve_price_coordinate_from_native_mapping(
             raw_result["price_coordinate_resolution"],
@@ -241,7 +221,6 @@ def observed_snapshot_result_from_native_payload(
 
     return replace(
         snapshot_result,
-        physical_distribution=physical_distribution,
         price_coordinate_resolution=price_coordinate_resolution,
         warnings=tuple(str(warning) for warning in raw_result.get("warnings", [])),
     )

@@ -5,6 +5,9 @@
 mod adapters;
 mod checkpointing;
 mod current_state;
+#[cfg(test)]
+mod current_state_test_support;
+mod current_state_tracker;
 mod diagnostics;
 mod execution_bridge;
 mod market_data;
@@ -33,6 +36,9 @@ pub use current_state::{
     CurrentStateEstimationInput, CurrentStateEstimationOutput,
     estimate_current_state_from_observed_data, estimate_current_states_from_observed_data,
     estimate_current_states_from_observed_data_with_observer,
+};
+pub use current_state_tracker::{
+    CurrentStateTrackerSnapshot, CurrentStateTrackerUpdateInput, update_current_state_tracker,
 };
 pub use diagnostics::types::{CalibrationDiagnosticsRequest, CalibrationExtendedDiagnosticKind};
 pub use execution_bridge::{

@@ -1,6 +1,6 @@
 use janiform_calibration_runtime::{
-    CurrentStateEstimationError, CurrentStateEstimationInput,
-    estimate_current_state_from_observed_data,
+    CurrentStateEstimationError, CurrentStateEstimationInput, CurrentStateTrackerUpdateInput,
+    estimate_current_state_from_observed_data, update_current_state_tracker,
 };
 use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
@@ -10,7 +10,7 @@ use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVariance
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 
 #[test]
-fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_observed_log_return() {
+fn current_state_estimation_replays_hawkes_state_and_mean_reversion_boundary() {
     let kernel_parameters = HawkesKernelParameters::try_new(
         0.8,
         1.6,
@@ -42,6 +42,7 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
             kernel_parameters,
             long_variance_parameters,
             mean_reversion_fitted_parameters,
+            reference_price: 100.0,
             state_time_utc_nanos,
             observed_log_return: 0.05,
             observation_timestamp_utc_nanos: vec![13 * NANOS_PER_HOUR, 14 * NANOS_PER_HOUR],
@@ -95,20 +96,20 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
             .observed_log_price,
         0.05
     );
-    assert_eq!(
-        estimation_output.mean_reversion_boundary_state.anchor_value,
-        0.05
-    );
-    assert_eq!(
+    assert_ne!(
         estimation_output
             .mean_reversion_boundary_state
             .pressure_state,
         0.0
     );
-    assert_eq!(
+    assert_ne!(
         estimation_output.mean_reversion_boundary_state.deviation,
         0.0
     );
+    estimation_output
+        .mean_reversion_boundary_state
+        .validate()
+        .expect("replayed mean-reversion boundary state should validate");
 }
 
 #[test]
@@ -139,6 +140,7 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
         kernel_parameters,
         long_variance_parameters: LongVarianceParameters::neutral(),
         mean_reversion_fitted_parameters,
+        reference_price: 100.0,
         state_time_utc_nanos: 14 * NANOS_PER_HOUR,
         observed_log_return: 0.05,
         observation_timestamp_utc_nanos: vec![15 * NANOS_PER_HOUR],
@@ -154,5 +156,129 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
             observation_index: 0,
             timestamp_utc_nanos: 15 * NANOS_PER_HOUR,
         }
+    );
+}
+
+#[test]
+fn current_state_estimation_uses_reference_price_when_observed_price_override_differs_from_last_trade()
+ {
+    let kernel_parameters = HawkesKernelParameters::try_new(
+        0.8,
+        1.6,
+        HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.1,
+            minus_plus: 0.1,
+            minus_minus: 0.25,
+        },
+        HawkesKernelLoadings {
+            plus_plus: 0.08,
+            plus_minus: 0.04,
+            minus_plus: 0.05,
+            minus_minus: 0.1,
+        },
+    )
+    .expect("test kernel parameters should be valid");
+
+    let mean_reversion_fitted_parameters =
+        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
+            .expect("test mean-reversion fitted parameters should be valid");
+
+    let long_variance_parameters = LongVarianceParameters::neutral();
+    let state_time_utc_nanos = 15 * NANOS_PER_HOUR;
+    let reference_price: f64 = 100.0;
+    let observed_price_override: f64 = 102.0;
+    let observed_log_return = observed_price_override.ln() - reference_price.ln();
+    let observation_timestamp_utc_nanos = vec![13 * NANOS_PER_HOUR, 14 * NANOS_PER_HOUR];
+    let observation_trade_prices = vec![100.0, 101.0];
+    let observation_trade_sides = vec![HawkesEventSide::Buy, HawkesEventSide::Sell];
+
+    let estimation_output =
+        estimate_current_state_from_observed_data(CurrentStateEstimationInput {
+            kernel_parameters,
+            long_variance_parameters,
+            mean_reversion_fitted_parameters: mean_reversion_fitted_parameters.clone(),
+            reference_price,
+            state_time_utc_nanos,
+            observed_log_return,
+            observation_timestamp_utc_nanos: observation_timestamp_utc_nanos.clone(),
+            observation_trade_prices: observation_trade_prices.clone(),
+            observation_trade_sides: observation_trade_sides.clone(),
+        })
+        .expect("current-state estimation should succeed");
+
+    let tracker_snapshot = update_current_state_tracker(CurrentStateTrackerUpdateInput {
+        kernel_parameters,
+        long_variance_parameters,
+        mean_reversion_fitted_parameters,
+        reference_price,
+        previous_snapshot: None,
+        state_time_utc_nanos,
+        observed_price: Some(observed_price_override),
+        observation_timestamp_utc_nanos,
+        observation_trade_prices,
+        observation_trade_sides,
+    })
+    .expect("tracker update should succeed");
+
+    assert_eq!(estimation_output, tracker_snapshot.state);
+    assert_eq!(
+        estimation_output
+            .mean_reversion_boundary_state
+            .observed_log_price,
+        observed_log_return
+    );
+    assert_ne!(
+        estimation_output
+            .mean_reversion_boundary_state
+            .pressure_state,
+        0.0
+    );
+    assert_ne!(
+        estimation_output.mean_reversion_boundary_state.deviation,
+        0.0
+    );
+}
+
+#[test]
+fn current_state_estimation_rejects_invalid_reference_price() {
+    let kernel_parameters = HawkesKernelParameters::try_new(
+        0.8,
+        1.6,
+        HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.1,
+            minus_plus: 0.1,
+            minus_minus: 0.25,
+        },
+        HawkesKernelLoadings {
+            plus_plus: 0.08,
+            plus_minus: 0.04,
+            minus_plus: 0.05,
+            minus_minus: 0.1,
+        },
+    )
+    .expect("test kernel parameters should be valid");
+
+    let mean_reversion_fitted_parameters =
+        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
+            .expect("test mean-reversion fitted parameters should be valid");
+
+    let error = estimate_current_state_from_observed_data(CurrentStateEstimationInput {
+        kernel_parameters,
+        long_variance_parameters: LongVarianceParameters::neutral(),
+        mean_reversion_fitted_parameters,
+        reference_price: 0.0,
+        state_time_utc_nanos: 14 * NANOS_PER_HOUR,
+        observed_log_return: 0.05,
+        observation_timestamp_utc_nanos: vec![14 * NANOS_PER_HOUR],
+        observation_trade_prices: vec![100.0],
+        observation_trade_sides: vec![HawkesEventSide::Buy],
+    })
+    .expect_err("nonpositive reference price must fail");
+
+    assert_eq!(
+        error,
+        CurrentStateEstimationError::InvalidReferencePrice { value: 0.0 }
     );
 }

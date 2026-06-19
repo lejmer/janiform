@@ -17,8 +17,7 @@ pub(super) const PREDICTIVE_EVIDENCE_MODEL_SELECTION_POLICY: &str =
 const PREDICTIVE_EVIDENCE_REFIT_SCHEDULE_POLICY: &str =
     "dyadic_expanding_window_rolling_origin_refit_schedule.v1";
 const PREDICTIVE_EVIDENCE_WITH_BIC_FALLBACK_POLICY: &str = "rolling_origin_predictive_sign_test_with_gaussian_quasi_likelihood_bic_thin_sample_fallback.v1";
-const POSITIVE_PREDICTIVE_EVIDENCE_REASON: &str =
-    "positive_kappa_predictive_evidence_gate_passed.v1";
+const POSITIVE_PREDICTIVE_EVIDENCE_REASON: &str = "positive_predictive_evidence_gate_passed.v1";
 const NO_POSITIVE_PREDICTIVE_EVIDENCE_REASON: &str =
     "random_walk_null_selected_no_positive_predictive_evidence.v1";
 const PREDICTIVE_EVIDENCE_THIN_SAMPLE_BIC_FALLBACK_REASON: &str =
@@ -57,7 +56,7 @@ pub(super) fn select_mean_reversion_candidate(
     apply_holm_adjusted_p_values(evidence_records.as_mut_slice());
     finalize_predictive_gate_statuses(evidence_records.as_mut_slice(), predictive_evidence_alpha);
 
-    let positive_candidate_was_tested = !evidence_records.is_empty();
+    let predictive_candidate_was_tested = !evidence_records.is_empty();
 
     let predictive_evidence_is_supported = evidence_records
         .iter()
@@ -69,7 +68,7 @@ pub(super) fn select_mean_reversion_candidate(
         return Ok(Some(selection));
     }
 
-    if positive_candidate_was_tested && !predictive_evidence_is_supported {
+    if predictive_candidate_was_tested && !predictive_evidence_is_supported {
         return Ok(select_best_bic_fallback_candidate(grid_evaluations));
     }
 

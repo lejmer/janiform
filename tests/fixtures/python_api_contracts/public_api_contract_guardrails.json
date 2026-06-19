@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "7a03fff6b7fcf03693de80f2d937f891a54209ac67420afd5b8cd501c368955c",
+  "approved_snapshot_sha256": "95f94ba61e85233dde0cc5c11f6ac89521d5dadf9ebf34ffecad6a506b17c34c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1745,6 +1745,29 @@
       "updated_surfaces": [
         "janiform.calibration.staged",
         "janiform.calibration.market_data"
+      ]
+    },
+    {
+      "approved_on": "2026-06-18",
+      "summary": "Add fitted-model forecast results and remove observed-options physical-distribution diagnostics.",
+      "rationale": "Model-based forecasting is now exposed as a first-class Python result surface with persisted forecast bundles, while the old observed-options physical-distribution diagnostic is removed because it was a pricing diagnostic rather than a forecast workflow.",
+      "snapshot_sha256": "bef51b8e89fdcdcbc817bbe47329085768fa0adf802a8d6eb25dc15b9e0e97f4",
+      "updated_surfaces": [
+        "janiform.forecast",
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "summary": "Add state-conditioned fitted-model forecasts and tracker snapshots.",
+      "rationale": "Forecasts now accept the fitted-model current-state contract and expose a state tracker so users can update Hawkes, long-variance, and mean-reversion state from signed ticks before computing conditional terminal distributions, while the no-state forecast keeps a model-only default boundary.",
+      "snapshot_sha256": "95f94ba61e85233dde0cc5c11f6ac89521d5dadf9ebf34ffecad6a506b17c34c",
+      "updated_surfaces": [
+        "janiform.calibration.fit.state",
+        "janiform.model"
       ]
     }
   ],

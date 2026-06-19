@@ -10,14 +10,44 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct SpectralDomain {
-    pub(super) deviation_lower_bound: f64,
-    pub(super) deviation_upper_bound: f64,
-    pub(super) node_count: usize,
+pub(crate) struct SpectralDomain {
+    pub(crate) deviation_lower_bound: f64,
+    pub(crate) deviation_upper_bound: f64,
+    pub(crate) node_count: usize,
 }
 
 impl SpectralDomain {
-    pub(super) fn width(self) -> f64 {
+    pub(crate) fn try_new_explicit(
+        deviation_lower_bound: f64,
+        deviation_upper_bound: f64,
+        node_count: usize,
+    ) -> Result<Self, VanillaOptionPricingRunError> {
+        if !deviation_lower_bound.is_finite()
+            || !deviation_upper_bound.is_finite()
+            || deviation_upper_bound <= deviation_lower_bound
+        {
+            return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: "explicit COS domain requires finite increasing log-price bounds"
+                    .to_string(),
+            });
+        }
+
+        if node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT {
+            return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: format!(
+                    "explicit COS domain requires at least {MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT} collocation nodes"
+                ),
+            });
+        }
+
+        Ok(Self {
+            deviation_lower_bound,
+            deviation_upper_bound,
+            node_count,
+        })
+    }
+
+    pub(crate) fn width(self) -> f64 {
         self.deviation_upper_bound - self.deviation_lower_bound
     }
 
@@ -32,7 +62,7 @@ impl SpectralDomain {
             .collect()
     }
 
-    pub(super) fn basis_frequency(self, basis_index: usize) -> f64 {
+    pub(crate) fn basis_frequency(self, basis_index: usize) -> f64 {
         basis_index as f64 * std::f64::consts::PI / self.width()
     }
 }

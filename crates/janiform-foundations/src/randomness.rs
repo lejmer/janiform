@@ -29,7 +29,6 @@ pub enum SimulationRandomnessSubstreamDomain {
     CoarseTradingTimeReturn = 11,
     CoarseStatisticsSampling = 12,
     StylizedFactsValidationSimulationPath = 13,
-    ObservedOptionsPhysicalDistributionPath = 14,
     LongVarianceDiffusion = 15,
     TimestampBatchingObservation = 16,
 }

@@ -1323,6 +1323,7 @@ fn joint_option_current_state_estimation_input(
 
     Ok(CalibrationJointRefinementCurrentStateEstimationInput {
         state_time_utc_nanos: valuation_time_utc_nanos,
+        reference_price,
         observed_spot,
         observed_log_return,
         observation_timestamp_utc_nanos,

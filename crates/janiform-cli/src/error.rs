@@ -437,6 +437,13 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                 argument_name: field,
                 message,
             },
+            janiform_workflows::error::WorkflowError::ForecastValidationFailed {
+                field,
+                message,
+            } => Self::InvalidCommandArgument {
+                argument_name: field,
+                message,
+            },
             janiform_workflows::error::WorkflowError::FitArtifactWrite { path, source } => {
                 Self::FitArtifactWrite { path, source }
             }
@@ -447,6 +454,35 @@ impl From<janiform_workflows::error::WorkflowError> for CliError {
                     source,
                 }
             }
+            janiform_workflows::error::WorkflowError::ForecastArtifactWrite { path, source } => {
+                Self::ArtifactWrite {
+                    artifact_name: "forecast artifact",
+                    path,
+                    source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::ForecastArtifactRead { path, source } => {
+                Self::ArtifactRead {
+                    artifact_name: "forecast",
+                    path,
+                    source,
+                }
+            }
+            janiform_workflows::error::WorkflowError::ForecastArtifactParse { path, source } => {
+                Self::ArtifactParse {
+                    artifact_name: "forecast",
+                    path,
+                    source: Box::new(source),
+                }
+            }
+            janiform_workflows::error::WorkflowError::ForecastArtifactMalformed {
+                path,
+                message,
+            } => Self::ArtifactMalformed {
+                artifact_name: "forecast",
+                path,
+                message,
+            },
             janiform_workflows::error::WorkflowError::PricingArtifactWrite { path, source } => {
                 Self::ArtifactWrite {
                     artifact_name: "pricing artifact",

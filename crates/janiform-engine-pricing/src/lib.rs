@@ -4,6 +4,7 @@ mod black_scholes;
 mod characteristic;
 mod constants;
 mod contracts;
+mod forecast;
 mod grids;
 mod implied_volatility;
 mod interval_schedule;
@@ -72,6 +73,11 @@ pub use contracts::{
     VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError,
     VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingRunResultError,
     VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
+};
+pub use forecast::{
+    AffineForecastExpectedLogReturn, AffineForecastExpectedLogReturnInput, AffineForecastMeasure,
+    AffineForecastTerminalLaw, AffineForecastTerminalLawInput,
+    solve_affine_forecast_expected_log_return, solve_affine_forecast_terminal_law,
 };
 pub use grids::{
     SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,

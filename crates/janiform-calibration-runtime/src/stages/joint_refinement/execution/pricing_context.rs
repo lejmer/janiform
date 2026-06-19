@@ -331,6 +331,9 @@ fn estimate_option_pricing_current_state(
             .long_variance_parameters,
         // Intentional clone so pricing-context preparation does not consume the shared stage payload.
         mean_reversion_fitted_parameters: mean_reversion_payload.fitted_parameters.clone(),
+        reference_price: option_pricing_input
+            .current_state_estimation_input
+            .reference_price,
         state_time_utc_nanos: option_pricing_input
             .current_state_estimation_input
             .state_time_utc_nanos,
@@ -2012,6 +2015,7 @@ mod tests {
             option_valuation_spot: 100.0,
             current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
                 state_time_utc_nanos: valuation_time_utc_nanos,
+                reference_price: 1.0,
                 observed_spot: 100.0,
                 observed_log_return: 100.0_f64.ln(),
                 observation_timestamp_utc_nanos: vec![valuation_time_utc_nanos],
@@ -2637,6 +2641,7 @@ mod tests {
     #[derive(Debug, Deserialize)]
     struct CurrentStateEstimationInputFixture {
         state_time_utc_nanos: i64,
+        reference_price: f64,
         observed_spot: f64,
         observed_log_return: f64,
         observation_timestamp_utc_nanos: Vec<i64>,
@@ -2830,6 +2835,9 @@ mod tests {
                 state_time_utc_nanos: option_pricing_fixture
                     .current_state_estimation_input
                     .state_time_utc_nanos,
+                reference_price: option_pricing_fixture
+                    .current_state_estimation_input
+                    .reference_price,
                 observed_spot: option_pricing_fixture
                     .current_state_estimation_input
                     .observed_spot,
