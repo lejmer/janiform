@@ -189,23 +189,26 @@ fn fit_ordered_side_prediction_model(
         let effective_sample_count = side_evidence_sample_count(observations);
 
         let Some(split_support) = split_largest_residual_state(observations, &current_fit)? else {
-            let current_score = penalized_side_prediction_score(&current_fit, effective_sample_count);
-            current_fit.selection_diagnostics.push(
-                market_pressure_selection_diagnostic(SelectionDiagnosticInput {
-                    evidence_source: "side_balance",
-                    decision: "skipped",
-                    reason: "no_split_candidate",
-                    current_state_count: current_fit.support_levels.len(),
-                    candidate_state_count: current_fit.support_levels.len(),
-                    effective_sample_count,
-                    current_log_likelihood: Some(current_fit.log_likelihood),
-                    candidate_log_likelihood: None,
-                    current_penalized_score: Some(current_score),
-                    candidate_penalized_score: None,
-                    current_support_levels: current_fit.support_levels.clone(),
-                    candidate_support_levels: current_fit.support_levels.clone(),
-                }),
-            );
+            let current_score =
+                penalized_side_prediction_score(&current_fit, effective_sample_count);
+            current_fit
+                .selection_diagnostics
+                .push(market_pressure_selection_diagnostic(
+                    SelectionDiagnosticInput {
+                        evidence_source: "side_balance",
+                        decision: "skipped",
+                        reason: "no_split_candidate",
+                        current_state_count: current_fit.support_levels.len(),
+                        candidate_state_count: current_fit.support_levels.len(),
+                        effective_sample_count,
+                        current_log_likelihood: Some(current_fit.log_likelihood),
+                        candidate_log_likelihood: None,
+                        current_penalized_score: Some(current_score),
+                        candidate_penalized_score: None,
+                        current_support_levels: current_fit.support_levels.clone(),
+                        candidate_support_levels: current_fit.support_levels.clone(),
+                    },
+                ));
 
             return Ok(current_fit);
         };
@@ -222,25 +225,27 @@ fn fit_ordered_side_prediction_model(
             progress_observer,
         )?
         else {
-            current_fit.selection_diagnostics.push(
-                market_pressure_selection_diagnostic(SelectionDiagnosticInput {
-                    evidence_source: "side_balance",
-                    decision: "rejected",
-                    reason: "split_fit_failed",
-                    current_state_count: current_fit.support_levels.len(),
-                    candidate_state_count: candidate_support_levels.len(),
-                    effective_sample_count,
-                    current_log_likelihood: Some(current_fit.log_likelihood),
-                    candidate_log_likelihood: None,
-                    current_penalized_score: Some(penalized_side_prediction_score(
-                        &current_fit,
+            current_fit
+                .selection_diagnostics
+                .push(market_pressure_selection_diagnostic(
+                    SelectionDiagnosticInput {
+                        evidence_source: "side_balance",
+                        decision: "rejected",
+                        reason: "split_fit_failed",
+                        current_state_count: current_fit.support_levels.len(),
+                        candidate_state_count: candidate_support_levels.len(),
                         effective_sample_count,
-                    )),
-                    candidate_penalized_score: None,
-                    current_support_levels: current_fit.support_levels.clone(),
-                    candidate_support_levels,
-                }),
-            );
+                        current_log_likelihood: Some(current_fit.log_likelihood),
+                        candidate_log_likelihood: None,
+                        current_penalized_score: Some(penalized_side_prediction_score(
+                            &current_fit,
+                            effective_sample_count,
+                        )),
+                        candidate_penalized_score: None,
+                        current_support_levels: current_fit.support_levels.clone(),
+                        candidate_support_levels,
+                    },
+                ));
 
             return Ok(current_fit);
         };
@@ -255,25 +260,24 @@ fn fit_ordered_side_prediction_model(
         let current_score = penalized_side_prediction_score(&current_fit, effective_sample_count);
         let split_score = penalized_side_prediction_score(&split_fit, effective_sample_count);
         let accepted = split_score > current_score;
-        let selection_diagnostic =
-            market_pressure_selection_diagnostic(SelectionDiagnosticInput {
-                evidence_source: "side_balance",
-                decision: if accepted { "accepted" } else { "rejected" },
-                reason: if accepted {
-                    "penalized_score_improved"
-                } else {
-                    "penalized_score_not_improved"
-                },
-                current_state_count: current_fit.support_levels.len(),
-                candidate_state_count: split_fit.support_levels.len(),
-                effective_sample_count,
-                current_log_likelihood: Some(current_fit.log_likelihood),
-                candidate_log_likelihood: Some(split_fit.log_likelihood),
-                current_penalized_score: Some(current_score),
-                candidate_penalized_score: Some(split_score),
-                current_support_levels: current_fit.support_levels.clone(),
-                candidate_support_levels: split_fit.support_levels.clone(),
-            });
+        let selection_diagnostic = market_pressure_selection_diagnostic(SelectionDiagnosticInput {
+            evidence_source: "side_balance",
+            decision: if accepted { "accepted" } else { "rejected" },
+            reason: if accepted {
+                "penalized_score_improved"
+            } else {
+                "penalized_score_not_improved"
+            },
+            current_state_count: current_fit.support_levels.len(),
+            candidate_state_count: split_fit.support_levels.len(),
+            effective_sample_count,
+            current_log_likelihood: Some(current_fit.log_likelihood),
+            candidate_log_likelihood: Some(split_fit.log_likelihood),
+            current_penalized_score: Some(current_score),
+            candidate_penalized_score: Some(split_score),
+            current_support_levels: current_fit.support_levels.clone(),
+            candidate_support_levels: split_fit.support_levels.clone(),
+        });
 
         if !accepted {
             current_fit.selection_diagnostics.push(selection_diagnostic);

@@ -329,7 +329,7 @@ pub(crate) fn market_pressure_parameters_from_runtime_state(
         transition_rates,
         anchor_drift_per_signed_balance,
     )
-        .map_err(|source| MarketPressureFitError::InvalidParameters { source })
+    .map_err(|source| MarketPressureFitError::InvalidParameters { source })
 }
 
 pub(crate) fn emit_market_pressure_fit_progress(
@@ -838,18 +838,9 @@ mod tests {
         assert_eq!(parameters.side_imbalance_levels.len(), 2);
         assert!(parameters.side_imbalance_levels[0] < 0.0);
         assert!(parameters.side_imbalance_levels[1] > 0.0);
+        assert_eq!(parameters.transition_rates.upward_transition_rates.len(), 1);
         assert_eq!(
-            parameters
-                .transition_rates
-                .upward_transition_rates
-                .len(),
-            1
-        );
-        assert_eq!(
-            parameters
-                .transition_rates
-                .downward_transition_rates
-                .len(),
+            parameters.transition_rates.downward_transition_rates.len(),
             1
         );
     }
@@ -964,18 +955,9 @@ mod tests {
         .expect("coarse transition evidence is valid");
 
         assert_eq!(parameters.side_imbalance_levels, vec![-0.25, 0.25]);
+        assert_eq!(parameters.transition_rates.upward_transition_rates.len(), 1);
         assert_eq!(
-            parameters
-                .transition_rates
-                .upward_transition_rates
-                .len(),
-            1
-        );
-        assert_eq!(
-            parameters
-                .transition_rates
-                .downward_transition_rates
-                .len(),
+            parameters.transition_rates.downward_transition_rates.len(),
             1
         );
         assert!(
@@ -1009,18 +991,9 @@ mod tests {
         .expect("balanced coarse transition evidence is valid");
 
         assert_eq!(parameters.side_imbalance_levels, vec![-0.5, 0.5]);
+        assert_eq!(parameters.transition_rates.upward_transition_rates.len(), 1);
         assert_eq!(
-            parameters
-                .transition_rates
-                .upward_transition_rates
-                .len(),
-            1
-        );
-        assert_eq!(
-            parameters
-                .transition_rates
-                .downward_transition_rates
-                .len(),
+            parameters.transition_rates.downward_transition_rates.len(),
             1
         );
     }

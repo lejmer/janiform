@@ -29,10 +29,7 @@ where
     let mut integrated_side_imbalance = 0.0;
 
     while remaining_delta > 0.0 {
-        let exit_rate = state_exit_rate(
-            &input.parameters.transition_rates,
-            state_position,
-        );
+        let exit_rate = state_exit_rate(&input.parameters.transition_rates, state_position);
         if exit_rate == 0.0 {
             integrated_side_imbalance +=
                 input.parameters.side_imbalance_levels[state_position] * remaining_delta;

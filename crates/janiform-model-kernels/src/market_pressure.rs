@@ -5,12 +5,11 @@ mod interval;
 mod sampling;
 mod transform;
 
-pub use contracts::{
-    MarketPressureParameters, MarketPressureState, MarketPressureTransitionRates,
-};
+pub use contracts::{MarketPressureParameters, MarketPressureState, MarketPressureTransitionRates};
 pub use errors::{
-    MarketPressureCtmcTransitionError, MarketPressureParametersValidationError, MarketPressureStateEvolutionError,
-    MarketPressureStateValidationError, MarketPressureTransitionRatesValidationError,
+    MarketPressureCtmcTransitionError, MarketPressureParametersValidationError,
+    MarketPressureStateEvolutionError, MarketPressureStateValidationError,
+    MarketPressureTransitionRatesValidationError,
 };
 pub use evolution::{
     buy_probability_from_side_imbalance, condition_market_pressure_state_on_event_side,

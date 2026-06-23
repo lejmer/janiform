@@ -103,11 +103,7 @@ pub fn market_pressure_transform_values_and_derivative(
 
         let diagonal_derivative = input
             .return_loading_derivative
-            .scale(
-                input
-                    .parameters
-                    .anchor_drift_per_signed_balance,
-            )
+            .scale(input.parameters.anchor_drift_per_signed_balance)
             .subtract(ComplexScalar::new(
                 input.pressure_signed_imbalance_exposure_risk_price_derivative,
                 0.0,
@@ -362,18 +358,15 @@ fn build_backward_tilted_generator(
         let mut exit_rate = 0.0;
 
         if state_position + 1 < state_count {
-            let upward_rate = parameters
-                .transition_rates
-                .upward_transition_rates[state_position];
+            let upward_rate = parameters.transition_rates.upward_transition_rates[state_position];
 
             generator[(state_position, state_position + 1)] = Complex::new(upward_rate, 0.0);
             exit_rate += upward_rate;
         }
 
         if state_position > 0 {
-            let downward_rate = parameters
-                .transition_rates
-                .downward_transition_rates[state_position - 1];
+            let downward_rate =
+                parameters.transition_rates.downward_transition_rates[state_position - 1];
 
             generator[(state_position, state_position - 1)] = Complex::new(downward_rate, 0.0);
             exit_rate += downward_rate;

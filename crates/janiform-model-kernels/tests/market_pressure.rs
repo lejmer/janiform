@@ -1,8 +1,8 @@
 use janiform_model_kernels::market_pressure::{
     MarketPressureIntervalTransitionInput, MarketPressureParameters, MarketPressureState,
-    MarketPressureStateValidationError, MarketPressureTransitionRates, buy_probability_from_side_imbalance,
-    condition_market_pressure_state_on_event_side, market_pressure_interval_transition_moments,
-    signed_balance_exposure_scale_from_side_exposures,
+    MarketPressureStateValidationError, MarketPressureTransitionRates,
+    buy_probability_from_side_imbalance, condition_market_pressure_state_on_event_side,
+    market_pressure_interval_transition_moments, signed_balance_exposure_scale_from_side_exposures,
 };
 
 #[test]
@@ -10,10 +10,7 @@ fn market_pressure_parameters_validate_side_balance_contract() {
     let parameters = test_market_pressure_parameters(0.25);
 
     assert_eq!(parameters.side_imbalance_levels, vec![-0.5, 0.0, 0.5]);
-    assert_eq!(
-        parameters.anchor_drift_per_signed_balance,
-        0.25
-    );
+    assert_eq!(parameters.anchor_drift_per_signed_balance, 0.25);
     assert!(
         MarketPressureParameters::try_new(
             Vec::new(),
@@ -149,7 +146,7 @@ fn test_market_pressure_parameters(anchor_loading: f64) -> MarketPressureParamet
         MarketPressureTransitionRates::new(vec![0.25, 0.5], vec![0.75, 1.0]),
         anchor_loading,
     )
-        .expect("market-pressure parameters should validate")
+    .expect("market-pressure parameters should validate")
 }
 
 fn assert_weight_vector_close(observed: &[f64], expected: &[f64]) {

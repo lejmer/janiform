@@ -179,9 +179,9 @@ impl MarketPressureParameters {
 
         self.transition_rates
             .validate_for_state_count(state_count)
-            .map_err(|source| MarketPressureParametersValidationError::InvalidTransitionRates {
-                source,
-            })?;
+            .map_err(
+                |source| MarketPressureParametersValidationError::InvalidTransitionRates { source },
+            )?;
 
         validate_finite_number(
             self.anchor_drift_per_signed_balance,
