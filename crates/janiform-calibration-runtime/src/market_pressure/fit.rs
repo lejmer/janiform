@@ -246,31 +246,6 @@ pub(crate) fn fit_market_pressure_from_nig_configuration(
     })
 }
 
-#[cfg(test)]
-fn fit_market_pressure_parameters_from_observations(
-    observations: &[MarketPressureSideBalanceObservation],
-    coarse_return_observations: &[MarketPressureCoarseReturnObservation],
-    coarse_return_law: Option<MarketPressureCoarseReturnLaw>,
-    coarse_return_pressure_evidence_available: bool,
-    open_event_rate_per_hour: f64,
-    solver_settings: &CalibrationOptimizerSettings,
-    progress_observer: &mut Option<MarketPressureFitProgressObserver<'_>>,
-) -> Result<MarketPressureParameters, MarketPressureFitError> {
-    fit_market_pressure_from_observations(
-        MarketPressureObservationFitInput {
-            observations,
-            coarse_return_observations,
-            coarse_return_record_count: coarse_return_observations.len(),
-            coarse_return_law,
-            coarse_return_pressure_evidence_available,
-            open_event_rate_per_hour,
-            solver_settings,
-        },
-        progress_observer,
-    )
-    .map(|output| output.parameters)
-}
-
 fn fit_market_pressure_from_observations(
     input: MarketPressureObservationFitInput<'_>,
     progress_observer: &mut Option<MarketPressureFitProgressObserver<'_>>,
@@ -800,9 +775,10 @@ mod tests {
 
     use super::{
         MarketPressureCoarseReturnLaw, MarketPressureCoarseReturnObservation,
-        MarketPressureFitError, MarketPressureFitInput, MarketPressureFitProgress,
+        MarketPressureFitError, MarketPressureFitInput, MarketPressureFitOutput,
+        MarketPressureFitProgress, MarketPressureObservationFitInput,
         MarketPressureSideBalanceObservation, fit_market_pressure,
-        fit_market_pressure_parameters_from_observations, market_pressure_side_balance_observation,
+        fit_market_pressure_from_observations, market_pressure_side_balance_observation,
     };
     use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
     use crate::market_pressure::{
@@ -825,6 +801,28 @@ mod tests {
             MarketPressureTransitionRates::single_state()
         );
         assert_eq!(parameters.anchor_drift_per_signed_balance, 0.0);
+    }
+
+    #[test]
+    fn single_state_fit_reports_side_balance_and_coarse_return_selection_diagnostics() {
+        let observations = alternating_side_observations(100);
+
+        let output =
+            fit_market_pressure_output_from_test_observations(&observations, &[], None, 1.0)
+                .expect("alternating side observations are valid");
+
+        assert!(output.selection_diagnostics.iter().any(|diagnostic| {
+            diagnostic.evidence_source == "side_balance"
+                && diagnostic.decision == "skipped"
+                && diagnostic.reason == "no_split_candidate"
+                && diagnostic.current_state_count == 1
+                && diagnostic.candidate_state_count == 1
+        }));
+        assert!(output.selection_diagnostics.iter().any(|diagnostic| {
+            diagnostic.evidence_source == "coarse_return"
+                && diagnostic.decision == "skipped"
+                && diagnostic.reason == "missing_coarse_return_law"
+        }));
     }
 
     #[test]
@@ -946,13 +944,15 @@ mod tests {
         let observations = vec![test_observation(0, 0.25, 0.0)];
         let coarse_return_observations = coarse_return_block_observations();
 
-        let parameters = fit_market_pressure_parameters_from_test_observations(
+        let output = fit_market_pressure_output_from_test_observations(
             &observations,
             coarse_return_observations.as_slice(),
             test_coarse_return_law(coarse_return_observations.len()),
             1.0,
         )
         .expect("coarse transition evidence is valid");
+
+        let parameters = &output.parameters;
 
         assert_eq!(parameters.side_imbalance_levels, vec![-0.25, 0.25]);
         assert_eq!(parameters.transition_rates.upward_transition_rates.len(), 1);
@@ -975,6 +975,16 @@ mod tests {
                 .all(|transition_rate| transition_rate.is_finite() && *transition_rate > 0.0)
         );
         assert!(parameters.anchor_drift_per_signed_balance > 0.0);
+        assert!(output.selection_diagnostics.iter().any(|diagnostic| {
+            diagnostic.evidence_source == "coarse_return"
+                && diagnostic.decision == "accepted"
+                && diagnostic.reason == "penalized_score_improved"
+                && diagnostic.current_state_count == 1
+                && diagnostic.candidate_state_count == 2
+                && diagnostic
+                    .score_improvement
+                    .is_some_and(|improvement| improvement > 0.0)
+        }));
     }
 
     #[test]
@@ -1232,17 +1242,35 @@ mod tests {
         coarse_return_law: Option<MarketPressureCoarseReturnLaw>,
         open_event_rate_per_hour: f64,
     ) -> Result<MarketPressureParameters, MarketPressureFitError> {
+        fit_market_pressure_output_from_test_observations(
+            observations,
+            coarse_return_observations,
+            coarse_return_law,
+            open_event_rate_per_hour,
+        )
+        .map(|output| output.parameters)
+    }
+
+    fn fit_market_pressure_output_from_test_observations(
+        observations: &[MarketPressureSideBalanceObservation],
+        coarse_return_observations: &[MarketPressureCoarseReturnObservation],
+        coarse_return_law: Option<MarketPressureCoarseReturnLaw>,
+        open_event_rate_per_hour: f64,
+    ) -> Result<MarketPressureFitOutput, MarketPressureFitError> {
         let mut progress_observer = None;
         let coarse_return_pressure_evidence_available =
             coarse_return_law.is_some() && !coarse_return_observations.is_empty();
 
-        fit_market_pressure_parameters_from_observations(
-            observations,
-            coarse_return_observations,
-            coarse_return_law,
-            coarse_return_pressure_evidence_available,
-            open_event_rate_per_hour,
-            &test_solver_settings(),
+        fit_market_pressure_from_observations(
+            MarketPressureObservationFitInput {
+                observations,
+                coarse_return_observations,
+                coarse_return_record_count: coarse_return_observations.len(),
+                coarse_return_law,
+                coarse_return_pressure_evidence_available,
+                open_event_rate_per_hour,
+                solver_settings: &test_solver_settings(),
+            },
             &mut progress_observer,
         )
     }
