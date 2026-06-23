@@ -33,7 +33,7 @@ enum RestartProbePoolJob {
 }
 
 enum RestartProbePoolResult {
-    Search(RestartProbeResult),
+    Search(Box<RestartProbeResult>),
     Finalization(Box<RestartProbeFinalizationResult>),
 }
 
@@ -316,9 +316,9 @@ fn run_restart_probe_pool_job(
     solver_settings: &CalibrationOptimizerSettings,
 ) -> RestartProbePoolResult {
     match pool_job {
-        RestartProbePoolJob::Search(probe_job) => RestartProbePoolResult::Search(
+        RestartProbePoolJob::Search(probe_job) => RestartProbePoolResult::Search(Box::new(
             run_restart_probe_job(probe_job, context, solver_settings),
-        ),
+        )),
         RestartProbePoolJob::Finalization(finalization_job) => {
             RestartProbePoolResult::Finalization(Box::new(run_restart_probe_finalization_job(
                 *finalization_job,
@@ -342,7 +342,7 @@ fn record_restart_probe_pool_result(
         RestartProbePoolResult::Search(search_result) => {
             record_restart_probe_search_result(
                 pool_state,
-                search_result,
+                *search_result,
                 solver_settings,
                 search_pool_budget,
                 total_progress_units,
@@ -506,10 +506,15 @@ mod tests {
             initial_objective: Some(10.0),
             accepted_objective: Some(10.0),
             best_objective: Some(10.0),
+            initial_repair_loss: Some(10.0),
+            accepted_repair_loss: Some(10.0),
+            best_repair_loss: Some(10.0),
             round_best_vector: None,
             round_best_objective: None,
+            round_best_repair_loss: None,
             round_best_residuals: None,
             round_best_predicted_residual_objective: None,
+            round_best_predicted_repair_loss: None,
             accepted_residuals: None,
             evaluated_records: Vec::new(),
             scheduled_parameter_bits: Vec::new(),
@@ -539,10 +544,15 @@ mod tests {
             initial_objective: Some(10.0),
             accepted_objective: Some(10.0),
             best_objective: Some(10.0),
+            initial_repair_loss: Some(10.0),
+            accepted_repair_loss: Some(10.0),
+            best_repair_loss: Some(10.0),
             round_best_vector: None,
             round_best_objective: None,
+            round_best_repair_loss: None,
             round_best_residuals: None,
             round_best_predicted_residual_objective: None,
+            round_best_predicted_repair_loss: None,
             accepted_residuals: None,
             evaluated_records: Vec::new(),
             scheduled_parameter_bits: Vec::new(),
@@ -623,6 +633,7 @@ mod tests {
     #[test]
     fn completed_restart_schedules_distinct_finalization_candidate_vectors() {
         let mut state = completed_search_state("finished");
+
         state.seed_vector = vec![0.0];
         state.accepted_vector = vec![1.0];
         state.best_vector = vec![2.0];
@@ -635,6 +646,7 @@ mod tests {
             test_pool_state(states.as_mut_slice(), &mut evaluation_timing_diagnostics);
 
         let mut scheduled_candidate_positions = Vec::new();
+
         while let Some(finalization_job) =
             next_restart_probe_finalization_job(&mut pool_state, 12, None)
         {

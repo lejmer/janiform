@@ -5,8 +5,8 @@ use super::super::parameter_space::{
     denormalize_parameter_vector, movable_parameter_positions, normalized_parameter_vector,
     parameter_step_is_zero,
 };
-use super::RestartProbeState;
 use super::trust_region::TrustRegionCandidate;
+use super::{RestartProbePrediction, RestartProbeState};
 
 #[derive(Debug, Clone)]
 struct TrustRegionModelProbeDirection {
@@ -34,6 +34,7 @@ pub(super) fn trust_region_model_probe_vectors(
     );
 
     let mut candidates = Vec::with_capacity(directions.len());
+
     for direction in directions {
         push_model_probe_candidate(
             &mut candidates,
@@ -62,6 +63,7 @@ fn trust_region_model_probe_directions(
     }
 
     let mut directions = Vec::new();
+
     for group in mechanism_probe_groups(active_parameter_layout) {
         push_group_probe_directions(
             &mut directions,
@@ -231,8 +233,10 @@ fn push_group_probe_directions(
     }
 
     let normalized_component = (active_positions.len() as f64).sqrt().recip();
+
     for (sign_label, sign) in [("positive", 1.0), ("negative", -1.0)] {
         let mut direction = vec![0.0; parameter_count];
+
         for parameter_position in &active_positions {
             direction[*parameter_position] = sign * normalized_component;
         }
@@ -286,7 +290,7 @@ fn push_model_probe_candidate(
     candidates.push(TrustRegionCandidate {
         parameter_vector,
         label: direction.label,
-        predicted_residual_objective: None,
+        prediction: RestartProbePrediction::default(),
     });
 }
 
@@ -294,7 +298,7 @@ fn push_model_probe_candidate(
 mod tests {
     use crate::stages::joint_refinement::execution::JointRefinementActiveParameterLayout;
 
-    use super::super::RestartProbeState;
+    use super::super::restart_probe_state_for_test;
     use super::trust_region_model_probe_vectors;
 
     fn test_active_parameter_layout() -> JointRefinementActiveParameterLayout {
@@ -327,9 +331,11 @@ mod tests {
 
     #[test]
     fn model_probe_vectors_use_mechanism_groups() {
-        let state = restart_probe_state(vec![0.5; 19], 0.25);
+        let state = restart_probe_state_for_test(vec![0.5; 19], 0.25);
+
         let lower_bounds = vec![0.0; 19];
         let upper_bounds = vec![1.0; 19];
+
         let candidates = trust_region_model_probe_vectors(
             &state,
             lower_bounds.as_slice(),
@@ -345,41 +351,5 @@ mod tests {
         assert!(labels.contains(&"model_probe.nig_tail_scale.positive"));
         assert!(labels.contains(&"model_probe.nig_skew_balance.negative"));
         assert!(labels.contains(&"model_probe.all_mechanisms.positive"));
-    }
-
-    fn restart_probe_state(
-        accepted_vector: Vec<f64>,
-        trust_region_radius: f64,
-    ) -> RestartProbeState {
-        RestartProbeState {
-            restart_id: "restart_0".to_string(),
-            seed_vector: accepted_vector.clone(),
-            accepted_vector: accepted_vector.clone(),
-            best_vector: accepted_vector,
-            initial_objective: Some(8.0),
-            accepted_objective: Some(8.0),
-            best_objective: Some(8.0),
-            round_best_vector: None,
-            round_best_objective: None,
-            round_best_residuals: None,
-            round_best_predicted_residual_objective: None,
-            accepted_residuals: None,
-            evaluated_records: Vec::new(),
-            scheduled_parameter_bits: Vec::new(),
-            model_probe_vectors: Vec::new(),
-            next_model_probe_position: 0,
-            model_probes_prepared: false,
-            trust_region_proposal_vectors: Vec::new(),
-            next_trust_region_proposal_position: 0,
-            trust_region_proposals_prepared: false,
-            trust_region_radius,
-            completed_search_rounds: 1,
-            evaluation_count: 3,
-            max_evaluation_count: 16,
-            in_flight_count: 0,
-            stop_reason: "trust_region_refined".to_string(),
-            completed: false,
-            exact_likelihood_evaluator_counts: None,
-        }
     }
 }

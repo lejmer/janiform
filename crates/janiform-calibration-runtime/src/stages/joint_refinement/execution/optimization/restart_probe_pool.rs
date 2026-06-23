@@ -18,6 +18,7 @@ use super::workflow::{
 use model_probe::trust_region_model_probe_vectors;
 use progress::emit_batched_restart_pool_finished;
 use racing::racing_restart_positions;
+use repair::restart_repair_loss;
 use scheduler::{RestartProbeWorkerPoolInput, run_restart_probe_worker_pool};
 use trust_region::{
     refined_trust_region_radius, residual_squared_objective, trust_region_candidate_vectors,
@@ -28,6 +29,7 @@ mod finalization;
 mod model_probe;
 mod progress;
 mod racing;
+mod repair;
 mod scheduler;
 mod trust_region;
 
@@ -46,10 +48,15 @@ struct RestartProbeState {
     initial_objective: Option<f64>,
     accepted_objective: Option<f64>,
     best_objective: Option<f64>,
+    initial_repair_loss: Option<f64>,
+    accepted_repair_loss: Option<f64>,
+    best_repair_loss: Option<f64>,
     round_best_vector: Option<Vec<f64>>,
     round_best_objective: Option<f64>,
+    round_best_repair_loss: Option<f64>,
     round_best_residuals: Option<Vec<RestartObjectiveResidual>>,
     round_best_predicted_residual_objective: Option<f64>,
+    round_best_predicted_repair_loss: Option<f64>,
     accepted_residuals: Option<Vec<RestartObjectiveResidual>>,
     evaluated_records: Vec<RestartProbeRecord>,
     scheduled_parameter_bits: Vec<Vec<u64>>,
@@ -75,6 +82,12 @@ struct RestartProbeRecord {
     residuals: Vec<RestartObjectiveResidual>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct RestartProbePrediction {
+    pub(super) residual_objective: Option<f64>,
+    pub(super) repair_loss: Option<f64>,
+}
+
 #[derive(Debug, Clone)]
 struct RestartProbeJob {
     restart_position: usize,
@@ -83,7 +96,7 @@ struct RestartProbeJob {
     candidate_evaluation_count: usize,
     search_direction_position: Option<usize>,
     search_direction_label: String,
-    predicted_residual_objective: Option<f64>,
+    prediction: RestartProbePrediction,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +107,7 @@ struct RestartProbeResult {
     candidate_evaluation_count: usize,
     search_direction_position: Option<usize>,
     search_direction_label: String,
-    predicted_residual_objective: Option<f64>,
+    prediction: RestartProbePrediction,
     elapsed_millis: u64,
     evaluation: Option<RestartObjectiveEvaluation>,
 }
@@ -162,10 +175,15 @@ fn build_restart_probe_states(
                 initial_objective: None,
                 accepted_objective: None,
                 best_objective: None,
+                initial_repair_loss: None,
+                accepted_repair_loss: None,
+                best_repair_loss: None,
                 round_best_vector: None,
                 round_best_objective: None,
+                round_best_repair_loss: None,
                 round_best_residuals: None,
                 round_best_predicted_residual_objective: None,
+                round_best_predicted_repair_loss: None,
                 accepted_residuals: None,
                 evaluated_records: Vec::new(),
                 scheduled_parameter_bits: Vec::new(),
@@ -230,7 +248,7 @@ fn run_restart_probe_job(
         candidate_evaluation_count: probe_job.candidate_evaluation_count,
         search_direction_position: probe_job.search_direction_position,
         search_direction_label: probe_job.search_direction_label,
-        predicted_residual_objective: probe_job.predicted_residual_objective,
+        prediction: probe_job.prediction,
         elapsed_millis: evaluation_elapsed_millis,
         evaluation,
     }
@@ -266,8 +284,10 @@ fn next_restart_probe_job_racing(
             }
 
             let state_completed_search_rounds = states[restart_position].completed_search_rounds;
+
             let state_next_model_probe_position =
                 states[restart_position].next_model_probe_position;
+
             let state_next_trust_region_proposal_position =
                 states[restart_position].next_trust_region_proposal_position;
 
@@ -279,6 +299,7 @@ fn next_restart_probe_job_racing(
             );
 
             let state = &states[restart_position];
+
             if state.completed
                 || state.in_flight_count > 0
                 || (state.completed_search_rounds == state_completed_search_rounds
@@ -324,18 +345,16 @@ fn next_restart_probe_job(
             RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
             None,
             "initial".to_string(),
-            None,
+            RestartProbePrediction::default(),
         );
     }
 
-    if let Some(probe_job) =
-        schedule_next_trust_region_proposal_job(state, restart_position, context)
-    {
-        return Some(probe_job);
+    if !restart_probe_model_probe_phase_completed(state) {
+        return schedule_next_model_probe_job(state, restart_position, context);
     }
 
-    if let Some(probe_job) = schedule_next_model_probe_job(state, restart_position, context) {
-        return Some(probe_job);
+    if !restart_probe_can_prepare_trust_region_proposals(state) {
+        return None;
     }
 
     schedule_next_trust_region_proposal_job(state, restart_position, context)
@@ -353,6 +372,7 @@ fn schedule_next_trust_region_proposal_job(
             context.lower_bounds.as_slice(),
             context.upper_bounds.as_slice(),
         );
+
         state.trust_region_proposals_prepared = true;
         state.next_trust_region_proposal_position = 0;
     }
@@ -363,6 +383,7 @@ fn schedule_next_trust_region_proposal_job(
         .cloned()
     {
         let proposal_position = state.next_trust_region_proposal_position;
+
         state.next_trust_region_proposal_position =
             state.next_trust_region_proposal_position.saturating_add(1);
 
@@ -373,7 +394,7 @@ fn schedule_next_trust_region_proposal_job(
             RESTART_PROBE_SCHEDULE_CATEGORY_TRUST_REGION_PROPOSAL,
             Some(proposal_position),
             format!("trust_region.{}", candidate.label),
-            candidate.predicted_residual_objective,
+            candidate.prediction,
         ) else {
             continue;
         };
@@ -396,6 +417,7 @@ fn schedule_next_model_probe_job(
             context.upper_bounds.as_slice(),
             &context.active_parameter_layout,
         );
+
         state.model_probes_prepared = true;
         state.next_model_probe_position = 0;
     }
@@ -406,6 +428,7 @@ fn schedule_next_model_probe_job(
         .cloned()
     {
         let model_probe_position = state.next_model_probe_position;
+
         state.next_model_probe_position = state.next_model_probe_position.saturating_add(1);
 
         let Some(probe_job) = schedule_restart_probe_job(
@@ -415,7 +438,7 @@ fn schedule_next_model_probe_job(
             RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE,
             Some(model_probe_position),
             candidate.label,
-            candidate.predicted_residual_objective,
+            candidate.prediction,
         ) else {
             continue;
         };
@@ -433,7 +456,7 @@ fn schedule_restart_probe_job(
     schedule_category: &'static str,
     search_direction_position: Option<usize>,
     search_direction_label: String,
-    predicted_residual_objective: Option<f64>,
+    prediction: RestartProbePrediction,
 ) -> Option<RestartProbeJob> {
     if restart_parameter_vector_was_scheduled(state, parameter_vector.as_slice()) {
         return None;
@@ -447,6 +470,7 @@ fn schedule_restart_probe_job(
     state
         .scheduled_parameter_bits
         .push(ordered_parameter_bits(parameter_vector.as_slice()));
+
     state.in_flight_count = state.in_flight_count.saturating_add(1);
 
     Some(RestartProbeJob {
@@ -456,7 +480,7 @@ fn schedule_restart_probe_job(
         candidate_evaluation_count,
         search_direction_position,
         search_direction_label,
-        predicted_residual_objective,
+        prediction,
     })
 }
 
@@ -474,6 +498,15 @@ fn restart_parameter_vector_was_scheduled(
 
 fn restart_probe_state_has_remaining_budget(state: &RestartProbeState) -> bool {
     state.evaluation_count.saturating_add(state.in_flight_count) < state.max_evaluation_count
+}
+
+fn restart_probe_model_probe_phase_completed(state: &RestartProbeState) -> bool {
+    state.model_probes_prepared
+        && state.next_model_probe_position >= state.model_probe_vectors.len()
+}
+
+fn restart_probe_can_prepare_trust_region_proposals(state: &RestartProbeState) -> bool {
+    state.trust_region_proposals_prepared || state.in_flight_count == 0
 }
 
 fn refresh_restart_probe_state(
@@ -496,6 +529,7 @@ fn refresh_restart_probe_state(
     ) {
         state.completed = true;
         state.stop_reason = "tolerance".to_string();
+
         return;
     }
 
@@ -503,16 +537,7 @@ fn refresh_restart_probe_state(
         return;
     }
 
-    let round_improved = match (state.round_best_objective, state.accepted_objective) {
-        (Some(round_best), Some(accepted)) => objective_improves(
-            round_best,
-            accepted,
-            solver_settings.absolute_tolerance,
-            solver_settings.relative_tolerance,
-        ),
-        (Some(_), None) => true,
-        _ => false,
-    };
+    let round_improved = restart_probe_round_improved(state, solver_settings);
 
     if round_improved {
         update_trust_region_radius_after_round_improvement(state, lower_bounds, upper_bounds);
@@ -522,6 +547,8 @@ fn refresh_restart_probe_state(
         }
 
         state.accepted_objective = state.round_best_objective;
+        state.accepted_repair_loss = state.round_best_repair_loss;
+
         if let Some(round_best_residuals) = state.round_best_residuals.take() {
             state.accepted_residuals = Some(round_best_residuals);
         }
@@ -543,8 +570,10 @@ fn refresh_restart_probe_state(
     }
 
     state.round_best_objective = None;
+    state.round_best_repair_loss = None;
     state.round_best_residuals = None;
     state.round_best_predicted_residual_objective = None;
+    state.round_best_predicted_repair_loss = None;
     state.model_probe_vectors.clear();
     state.next_model_probe_position = 0;
     state.model_probes_prepared = false;
@@ -573,6 +602,34 @@ fn restart_probe_round_has_pending_candidates(state: &RestartProbeState) -> bool
         || state.next_trust_region_proposal_position < state.trust_region_proposal_vectors.len()
 }
 
+fn restart_probe_round_improved(
+    state: &RestartProbeState,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> bool {
+    if let (Some(round_best_repair), Some(accepted_repair)) =
+        (state.round_best_repair_loss, state.accepted_repair_loss)
+        && objective_improves(
+            round_best_repair,
+            accepted_repair,
+            solver_settings.absolute_tolerance,
+            solver_settings.relative_tolerance,
+        )
+    {
+        return true;
+    }
+
+    match (state.round_best_objective, state.accepted_objective) {
+        (Some(round_best), Some(accepted)) => objective_improves(
+            round_best,
+            accepted,
+            solver_settings.absolute_tolerance,
+            solver_settings.relative_tolerance,
+        ),
+        (Some(_), None) => true,
+        _ => false,
+    }
+}
+
 fn update_trust_region_radius_after_round_improvement(
     state: &mut RestartProbeState,
     lower_bounds: &[f64],
@@ -581,9 +638,30 @@ fn update_trust_region_radius_after_round_improvement(
     let Some(accepted_residuals) = state.accepted_residuals.as_ref() else {
         return;
     };
+
     let Some(round_best_residuals) = state.round_best_residuals.as_ref() else {
         return;
     };
+
+    if let (Some(accepted_repair_loss), Some(round_best_repair_loss), Some(predicted_repair_loss)) = (
+        state.accepted_repair_loss,
+        state.round_best_repair_loss,
+        state.round_best_predicted_repair_loss,
+    ) {
+        if let Some(updated_radius) = trust_region_radius_after_prediction(
+            state.trust_region_radius,
+            accepted_repair_loss,
+            predicted_repair_loss,
+            round_best_repair_loss,
+            lower_bounds,
+            upper_bounds,
+        ) {
+            state.trust_region_radius = updated_radius;
+        }
+
+        return;
+    }
+
     let Some(predicted_residual_objective) = state.round_best_predicted_residual_objective else {
         return;
     };
@@ -628,6 +706,8 @@ fn record_restart_probe_result(
         ..
     } = evaluation;
 
+    let repair_loss = restart_repair_loss(residuals.as_slice());
+
     state.exact_likelihood_evaluator_counts = exact_likelihood_evaluator_counts;
 
     // Probe history, round winner, and all-time best state keep independent
@@ -640,6 +720,10 @@ fn record_restart_probe_result(
     if result.schedule_category == RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL {
         state.initial_objective = Some(objective);
         state.accepted_objective = Some(objective);
+        state.best_objective = Some(objective);
+        state.initial_repair_loss = repair_loss;
+        state.accepted_repair_loss = repair_loss;
+        state.best_repair_loss = repair_loss;
         state.accepted_residuals = Some(residuals);
     } else {
         if result.schedule_category == RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE {
@@ -648,18 +732,28 @@ fn record_restart_probe_result(
 
         // Round winner storage is independent from all-time best storage because this
         // same evaluated candidate may need to update both roles below.
-        let round_improved = objective_improves_incumbent(
-            objective,
-            state.round_best_objective.or(state.accepted_objective),
-            solver_settings,
-        ) && objective.is_finite();
+        let round_improved =
+            candidate_improves_round_search(objective, repair_loss, state, solver_settings)
+                && objective.is_finite();
 
         if round_improved {
             state.round_best_objective = Some(objective);
+            state.round_best_repair_loss = repair_loss;
             state.round_best_vector = Some(result.parameter_vector.clone());
             state.round_best_residuals = Some(residuals);
-            state.round_best_predicted_residual_objective = result.predicted_residual_objective;
+            state.round_best_predicted_residual_objective = result.prediction.residual_objective;
+            state.round_best_predicted_repair_loss = result.prediction.repair_loss;
         }
+    }
+
+    if repair_loss.is_some_and(|candidate_repair_loss| {
+        candidate_improves_loss(
+            candidate_repair_loss,
+            state.best_repair_loss,
+            solver_settings,
+        )
+    }) {
+        state.best_repair_loss = repair_loss;
     }
 
     if objective.is_finite()
@@ -675,6 +769,57 @@ fn record_restart_probe_result(
     if state.evaluation_count >= state.max_evaluation_count {
         state.completed = true;
         state.stop_reason = RESTART_STOP_REASON_POOL_BUDGET.to_string();
+    }
+}
+
+fn candidate_improves_round_search(
+    candidate_objective: f64,
+    candidate_repair_loss: Option<f64>,
+    state: &RestartProbeState,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> bool {
+    if let Some(candidate_repair_loss) = candidate_repair_loss {
+        if state.round_best_repair_loss.is_some() {
+            return candidate_improves_loss(
+                candidate_repair_loss,
+                state.round_best_repair_loss,
+                solver_settings,
+            );
+        }
+
+        if candidate_improves_loss(
+            candidate_repair_loss,
+            state.accepted_repair_loss,
+            solver_settings,
+        ) {
+            return true;
+        }
+    }
+
+    if state.round_best_repair_loss.is_some() {
+        return false;
+    }
+
+    objective_improves_incumbent(
+        candidate_objective,
+        state.round_best_objective.or(state.accepted_objective),
+        solver_settings,
+    )
+}
+
+fn candidate_improves_loss(
+    candidate_loss: f64,
+    incumbent_loss: Option<f64>,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> bool {
+    match incumbent_loss {
+        Some(incumbent) => objective_improves(
+            candidate_loss,
+            incumbent,
+            solver_settings.absolute_tolerance,
+            solver_settings.relative_tolerance,
+        ),
+        None => candidate_loss.is_finite(),
     }
 }
 
@@ -725,14 +870,57 @@ fn mark_unscheduled_restart_probe_states_completed(states: &mut [RestartProbeSta
 }
 
 #[cfg(test)]
+fn restart_probe_state_for_test(
+    accepted_vector: Vec<f64>,
+    trust_region_radius: f64,
+) -> RestartProbeState {
+    RestartProbeState {
+        restart_id: "restart_0".to_string(),
+        seed_vector: accepted_vector.clone(),
+        accepted_vector: accepted_vector.clone(),
+        best_vector: accepted_vector,
+        initial_objective: Some(8.0),
+        accepted_objective: Some(8.0),
+        best_objective: Some(8.0),
+        initial_repair_loss: Some(8.0),
+        accepted_repair_loss: Some(8.0),
+        best_repair_loss: Some(8.0),
+        round_best_vector: None,
+        round_best_objective: None,
+        round_best_repair_loss: None,
+        round_best_residuals: None,
+        round_best_predicted_residual_objective: None,
+        round_best_predicted_repair_loss: None,
+        accepted_residuals: None,
+        evaluated_records: Vec::new(),
+        scheduled_parameter_bits: Vec::new(),
+        model_probe_vectors: Vec::new(),
+        next_model_probe_position: 0,
+        model_probes_prepared: false,
+        trust_region_proposal_vectors: Vec::new(),
+        next_trust_region_proposal_position: 0,
+        trust_region_proposals_prepared: false,
+        trust_region_radius,
+        completed_search_rounds: 1,
+        evaluation_count: 3,
+        max_evaluation_count: 16,
+        in_flight_count: 0,
+        stop_reason: "trust_region_refined".to_string(),
+        completed: false,
+        exact_likelihood_evaluator_counts: None,
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
     use super::{
         RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL, RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE,
         RESTART_PROBE_SCHEDULE_CATEGORY_TRUST_REGION_PROPOSAL, RestartObjectiveEvaluation,
-        RestartProbeResult, RestartProbeState, record_restart_probe_result,
-        refresh_restart_probe_state, schedule_restart_probe_job,
+        RestartObjectiveResidual, RestartProbePrediction, RestartProbeResult, RestartProbeState,
+        record_restart_probe_result, refresh_restart_probe_state,
+        restart_probe_can_prepare_trust_region_proposals, schedule_restart_probe_job,
     };
 
     fn test_solver_settings() -> CalibrationOptimizerSettings {
@@ -749,10 +937,15 @@ mod tests {
             initial_objective: Some(10.0),
             accepted_objective: Some(10.0),
             best_objective: Some(10.0),
+            initial_repair_loss: Some(10.0),
+            accepted_repair_loss: Some(10.0),
+            best_repair_loss: Some(10.0),
             round_best_vector: None,
             round_best_objective: None,
+            round_best_repair_loss: None,
             round_best_residuals: None,
             round_best_predicted_residual_objective: None,
+            round_best_predicted_repair_loss: None,
             accepted_residuals: None,
             evaluated_records: Vec::new(),
             scheduled_parameter_bits: Vec::new(),
@@ -774,6 +967,10 @@ mod tests {
     }
 
     fn model_probe_result(objective: f64) -> RestartProbeResult {
+        model_probe_result_with_repair_loss(objective, objective)
+    }
+
+    fn model_probe_result_with_repair_loss(objective: f64, repair_loss: f64) -> RestartProbeResult {
         RestartProbeResult {
             restart_position: 0,
             parameter_vector: vec![1.0],
@@ -781,14 +978,18 @@ mod tests {
             candidate_evaluation_count: 2,
             search_direction_position: Some(0),
             search_direction_label: "model_probe.all_movable.positive".to_string(),
-            predicted_residual_objective: None,
+            prediction: RestartProbePrediction::default(),
             elapsed_millis: 1,
             evaluation: Some(RestartObjectiveEvaluation {
                 objective,
                 admissibility_blocker_count: 0,
                 max_standardized_residual: Some(0.0),
                 exact_likelihood_evaluator_counts: None,
-                residuals: Vec::new(),
+                residuals: vec![RestartObjectiveResidual {
+                    family_id: "test".to_string(),
+                    residual_id: "test.residual".to_string(),
+                    objective_residual: repair_loss.sqrt(),
+                }],
             }),
         }
     }
@@ -801,14 +1002,21 @@ mod tests {
             candidate_evaluation_count: 2,
             search_direction_position: Some(1),
             search_direction_label: "trust_region.gauss_newton".to_string(),
-            predicted_residual_objective: Some(8.0),
+            prediction: RestartProbePrediction {
+                residual_objective: Some(8.0),
+                repair_loss: Some(8.0),
+            },
             elapsed_millis: 1,
             evaluation: Some(RestartObjectiveEvaluation {
                 objective,
                 admissibility_blocker_count: 0,
                 max_standardized_residual: Some(0.0),
                 exact_likelihood_evaluator_counts: None,
-                residuals: Vec::new(),
+                residuals: vec![RestartObjectiveResidual {
+                    family_id: "test".to_string(),
+                    residual_id: "test.residual".to_string(),
+                    objective_residual: objective.sqrt(),
+                }],
             }),
         }
     }
@@ -820,7 +1028,9 @@ mod tests {
         let mut state = running_search_state();
 
         record_restart_probe_result(&mut state, model_probe_result(9.95), &solver_settings);
+
         state.trust_region_proposals_prepared = true;
+
         refresh_restart_probe_state(&mut state, &[0.0], &[1.0], &solver_settings);
 
         assert_eq!(state.accepted_vector, vec![0.0]);
@@ -838,7 +1048,9 @@ mod tests {
         let mut state = running_search_state();
 
         record_restart_probe_result(&mut state, model_probe_result(9.8), &solver_settings);
+
         state.trust_region_proposals_prepared = true;
+
         refresh_restart_probe_state(&mut state, &[0.0], &[1.0], &solver_settings);
 
         assert_eq!(state.accepted_vector, vec![1.0]);
@@ -847,6 +1059,30 @@ mod tests {
         assert_eq!(state.best_objective, Some(9.8));
         assert_eq!(state.round_best_objective, None);
         assert_eq!(state.stop_reason, "trust_region_improved");
+    }
+
+    #[test]
+    fn repair_improving_candidate_can_become_search_incumbent_without_global_best() {
+        let solver_settings = test_solver_settings();
+
+        let mut state = running_search_state();
+
+        record_restart_probe_result(
+            &mut state,
+            model_probe_result_with_repair_loss(10.05, 9.0),
+            &solver_settings,
+        );
+
+        state.trust_region_proposals_prepared = true;
+
+        refresh_restart_probe_state(&mut state, &[0.0], &[1.0], &solver_settings);
+
+        assert_eq!(state.accepted_vector, vec![1.0]);
+        assert_eq!(state.accepted_objective, Some(10.05));
+        assert_eq!(state.accepted_repair_loss, Some(9.0));
+        assert_eq!(state.best_vector, vec![0.0]);
+        assert_eq!(state.best_objective, Some(10.0));
+        assert_eq!(state.best_repair_loss, Some(9.0));
     }
 
     #[test]
@@ -877,6 +1113,7 @@ mod tests {
     #[test]
     fn duplicate_probe_vectors_are_not_scheduled_again() {
         let mut state = running_search_state();
+
         state.in_flight_count = 0;
         state.evaluation_count = 0;
         state.scheduled_parameter_bits = vec![vec![0.0f64.to_bits()]];
@@ -888,7 +1125,7 @@ mod tests {
             RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
             None,
             "initial".to_string(),
-            None,
+            RestartProbePrediction::default(),
         );
 
         assert!(probe_job.is_none());
@@ -897,8 +1134,23 @@ mod tests {
     }
 
     #[test]
+    fn trust_region_preparation_waits_for_model_probe_results() {
+        let mut state = running_search_state();
+
+        state.trust_region_proposals_prepared = false;
+        state.in_flight_count = 1;
+
+        assert!(!restart_probe_can_prepare_trust_region_proposals(&state));
+
+        state.in_flight_count = 0;
+
+        assert!(restart_probe_can_prepare_trust_region_proposals(&state));
+    }
+
+    #[test]
     fn first_probe_schedules_initial_vector_once() {
         let mut state = running_search_state();
+
         state.in_flight_count = 0;
         state.evaluation_count = 0;
 
@@ -909,7 +1161,7 @@ mod tests {
             RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
             None,
             "initial".to_string(),
-            None,
+            RestartProbePrediction::default(),
         )
         .expect("first probe should schedule the initial vector");
 

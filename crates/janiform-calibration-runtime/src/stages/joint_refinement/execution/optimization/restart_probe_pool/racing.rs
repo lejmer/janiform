@@ -68,7 +68,9 @@ fn racing_positions_after_initial_evidence(
             }
 
             let best_objective = restart_state_best_objective(state)?;
+            let best_repair_loss = restart_state_best_repair_loss(state);
             let racing_weight = racing_weights.get(state_position).copied().flatten()?;
+
             let scheduled_state_after_initial = state
                 .evaluation_count
                 .saturating_add(state.in_flight_count)
@@ -85,6 +87,7 @@ fn racing_positions_after_initial_evidence(
                 state_position,
                 budget_debt,
                 best_objective,
+                best_repair_loss,
                 round_robin_distance: round_robin_distance(
                     states.len(),
                     round_robin_start_position,
@@ -107,6 +110,7 @@ struct RacingCandidate {
     state_position: usize,
     budget_debt: f64,
     best_objective: f64,
+    best_repair_loss: Option<f64>,
     round_robin_distance: usize,
 }
 
@@ -117,6 +121,12 @@ fn compare_racing_candidates(
     right_candidate
         .budget_debt
         .total_cmp(&left_candidate.budget_debt)
+        .then_with(|| {
+            compare_optional_loss(
+                left_candidate.best_repair_loss,
+                right_candidate.best_repair_loss,
+            )
+        })
         .then_with(|| {
             left_candidate
                 .best_objective
@@ -143,17 +153,47 @@ fn racing_weights_by_state_position(states: &[RestartProbeState]) -> Vec<Option<
         .iter()
         .copied()
         .fold(f64::INFINITY, f64::min);
+
     let worst_objective = finite_best_objectives
         .iter()
         .copied()
         .fold(f64::NEG_INFINITY, f64::max);
+
     let objective_range = worst_objective - best_objective;
 
     let finite_improvements = states
         .iter()
         .filter_map(restart_state_nonnegative_improvement)
         .collect::<Vec<_>>();
+
     let maximum_improvement = finite_improvements.iter().copied().fold(0.0_f64, f64::max);
+
+    let finite_repair_losses = states
+        .iter()
+        .filter_map(restart_state_best_repair_loss)
+        .collect::<Vec<_>>();
+
+    let best_repair_loss = finite_repair_losses
+        .iter()
+        .copied()
+        .fold(f64::INFINITY, f64::min);
+
+    let worst_repair_loss = finite_repair_losses
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let repair_loss_range = worst_repair_loss - best_repair_loss;
+
+    let finite_repair_improvements = states
+        .iter()
+        .filter_map(restart_state_nonnegative_repair_improvement)
+        .collect::<Vec<_>>();
+
+    let maximum_repair_improvement = finite_repair_improvements
+        .iter()
+        .copied()
+        .fold(0.0_f64, f64::max);
 
     states
         .iter()
@@ -175,7 +215,32 @@ fn racing_weights_by_state_position(states: &[RestartProbeState]) -> Vec<Option<
                     }
                 })?;
 
-            Some(best_loss_score.max(improvement_score))
+            let repair_loss_score = restart_state_best_repair_loss(state)
+                .map(|repair_loss| {
+                    if repair_loss_range > 0.0 {
+                        (worst_repair_loss - repair_loss) / repair_loss_range
+                    } else {
+                        1.0
+                    }
+                })
+                .unwrap_or(0.0);
+
+            let repair_improvement_score = restart_state_nonnegative_repair_improvement(state)
+                .map(|repair_improvement| {
+                    if maximum_repair_improvement > 0.0 {
+                        repair_improvement / maximum_repair_improvement
+                    } else {
+                        0.0
+                    }
+                })
+                .unwrap_or(0.0);
+
+            Some(
+                best_loss_score
+                    .max(improvement_score)
+                    .max(repair_loss_score)
+                    .max(repair_improvement_score),
+            )
         })
         .collect()
 }
@@ -209,6 +274,35 @@ fn restart_state_nonnegative_improvement(state: &RestartProbeState) -> Option<f6
         .then_some((initial_objective - best_objective).max(0.0))
 }
 
+fn restart_state_best_repair_loss(state: &RestartProbeState) -> Option<f64> {
+    [
+        state.best_repair_loss,
+        state.round_best_repair_loss,
+        state.accepted_repair_loss,
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|repair_loss| repair_loss.is_finite())
+    .min_by(|left, right| left.total_cmp(right))
+}
+
+fn restart_state_nonnegative_repair_improvement(state: &RestartProbeState) -> Option<f64> {
+    let initial_repair_loss = state.initial_repair_loss?;
+    let best_repair_loss = restart_state_best_repair_loss(state)?;
+
+    (initial_repair_loss.is_finite() && best_repair_loss.is_finite())
+        .then_some((initial_repair_loss - best_repair_loss).max(0.0))
+}
+
+fn compare_optional_loss(left_loss: Option<f64>, right_loss: Option<f64>) -> std::cmp::Ordering {
+    match (left_loss, right_loss) {
+        (Some(left_loss), Some(right_loss)) => left_loss.total_cmp(&right_loss),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
 fn round_robin_positions(state_count: usize, start_position: usize) -> Vec<usize> {
     (0..state_count)
         .map(|offset| (start_position + offset) % state_count)
@@ -237,10 +331,15 @@ mod tests {
             initial_objective,
             accepted_objective: initial_objective,
             best_objective: initial_objective,
+            initial_repair_loss: initial_objective,
+            accepted_repair_loss: initial_objective,
+            best_repair_loss: initial_objective,
             round_best_vector: None,
             round_best_objective: None,
+            round_best_repair_loss: None,
             round_best_residuals: None,
             round_best_predicted_residual_objective: None,
+            round_best_predicted_repair_loss: None,
             accepted_residuals: None,
             evaluated_records: Vec::new(),
             scheduled_parameter_bits: Vec::new(),
@@ -288,13 +387,40 @@ mod tests {
     #[test]
     fn racing_accounts_for_early_improvement() {
         let mut improving = restart_state("improving", Some(10.0));
+
         improving.best_objective = Some(4.0);
+        improving.initial_repair_loss = None;
+        improving.accepted_repair_loss = None;
+        improving.best_repair_loss = None;
         improving.evaluation_count = 4;
 
         let mut lower_initial = restart_state("lower_initial", Some(5.0));
+
+        lower_initial.initial_repair_loss = None;
+        lower_initial.accepted_repair_loss = None;
+        lower_initial.best_repair_loss = None;
         lower_initial.evaluation_count = 4;
 
         let states = vec![lower_initial, improving];
+
+        assert_eq!(
+            racing_restart_positions(states.as_slice(), 0, 1),
+            vec![1, 0]
+        );
+    }
+
+    #[test]
+    fn racing_accounts_for_repair_improvement() {
+        let mut repairing = restart_state("repairing", Some(10.0));
+
+        repairing.best_repair_loss = Some(2.0);
+        repairing.evaluation_count = 4;
+
+        let mut lower_global_loss = restart_state("lower_global_loss", Some(5.0));
+
+        lower_global_loss.evaluation_count = 4;
+
+        let states = vec![lower_global_loss, repairing];
 
         assert_eq!(
             racing_restart_positions(states.as_slice(), 0, 1),

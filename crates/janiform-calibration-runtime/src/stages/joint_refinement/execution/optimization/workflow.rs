@@ -84,6 +84,7 @@ struct RestartCandidateProgress<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct RestartObjectiveResidual {
+    pub(super) family_id: String,
     pub(super) residual_id: String,
     pub(super) objective_residual: f64,
 }
@@ -174,6 +175,7 @@ fn optimize_restart_seeds_sequential(
     let total_units = restart_seeds.len();
 
     let mut progress_state = RestartProgressState::default();
+
     let progress_counters = RestartProgressCounters::default();
 
     let mut ordered_outcomes = Vec::with_capacity(total_units);
@@ -282,6 +284,7 @@ pub(crate) fn joint_refinement_budget_schedule(
     let calibration_effort = calibration_effort.unwrap_or(STANDARD_CALIBRATION_EFFORT);
 
     let restart_count = restart_count.max(1);
+
     let outer_cycle_count = base_outer_cycle_count
         .saturating_mul(base_outer_cycle_count)
         .checked_div(restart_count)
@@ -315,9 +318,11 @@ pub(crate) fn joint_refinement_restart_full_vector_direct_search_settings(
     upper_bounds: &[f64],
 ) -> AdaptiveDirectSearchSettings {
     let active_parameter_count = movable_parameter_count(lower_bounds, upper_bounds);
+
     let interpolation_direction_count = active_parameter_count
         .saturating_mul(2)
         .saturating_add(usize::from(active_parameter_count > 1).saturating_mul(2));
+
     let complete_search_round_candidate_count = interpolation_direction_count
         .saturating_add(JOINT_REFINEMENT_RESTART_TRUST_REGION_PROPOSAL_COUNT)
         .max(1);
@@ -792,6 +797,7 @@ pub(crate) fn precheck_seed_summary_workload(
         .summary_simulation_scheduler
         .estimate_seed_summary_workload(fitted_parameters, context.local_simulation_seed)
         .map_err(|source| format!("seed_summary_workload_estimate_failed error={source:?}"))?;
+
     if summary_simulation_event_capacity_is_infeasible(
         workload_estimate.estimated_event_capacity,
         context.observed_data.observed_hourly_tick_counts.as_slice(),
@@ -878,6 +884,7 @@ fn optimize_restart_cycle(
     restart_progress.record_evaluation(outer_cycle, Some(&initial_objective));
 
     let mut pending_initial_objective = Some(initial_objective);
+
     let mut evaluate_full_vector = |parameter_vector: &[f64]| -> Option<f64> {
         if joint_refinement_has_fatal_execution_failure(context) {
             return None;
@@ -1093,6 +1100,7 @@ fn restart_objective_residuals(
                     objective_residual
                         .is_finite()
                         .then(|| RestartObjectiveResidual {
+                            family_id: family.family_id.clone(),
                             residual_id: coordinate_ids
                                 .get(coordinate_position)
                                 .map(|coordinate_id| (*coordinate_id).to_string())
@@ -1429,9 +1437,7 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
     } = input;
 
     let completed_units = progress_state.completed_units;
-
     let (best_restart_id, best_global_loss) = progress_counters.completed_best_snapshot();
-
     let final_display_objective = restart_outcome.final_evaluation.breakdown.global_loss;
 
     emit_joint_refinement_progress(
@@ -1487,6 +1493,7 @@ impl RestartProgressCounters {
     fn record_completed_progress_state(&self, progress_state: &RestartProgressState) {
         self.valid_completed_units
             .store(progress_state.valid_completed_units, Ordering::Relaxed);
+
         self.cumulative_local_evaluation_count.store(
             progress_state.cumulative_local_evaluation_count,
             Ordering::Relaxed,
@@ -1695,18 +1702,22 @@ mod tests {
             restart_objective_residuals(&breakdown),
             vec![
                 super::RestartObjectiveResidual {
+                    family_id: "return_shape".to_string(),
                     residual_id: "return_shape.q01".to_string(),
                     objective_residual: 3.0 / 2.0_f64.sqrt(),
                 },
                 super::RestartObjectiveResidual {
+                    family_id: "return_shape".to_string(),
                     residual_id: "return_shape.q99".to_string(),
                     objective_residual: 0.0,
                 },
                 super::RestartObjectiveResidual {
+                    family_id: "activity_shape".to_string(),
                     residual_id: "activity_shape.hour_00".to_string(),
                     objective_residual: 0.0,
                 },
                 super::RestartObjectiveResidual {
+                    family_id: "activity_shape".to_string(),
                     residual_id: "activity_shape.hour_12".to_string(),
                     objective_residual: 2.0 / 2.0_f64.sqrt(),
                 },
@@ -1758,10 +1769,12 @@ mod tests {
         };
 
         let initial_halton_objective = restart_objective_for_test(10.0);
+
         halton_progress.record_evaluation(1, Some(&initial_halton_objective));
         progress_receiver.recv().unwrap();
 
         let improved_halton_objective = restart_objective_for_test(4.0);
+
         halton_progress.record_evaluation(1, Some(&improved_halton_objective));
 
         let progress_update = progress_receiver.recv().unwrap();
@@ -1776,9 +1789,11 @@ mod tests {
     fn running_restart_progress_preserves_completed_candidate_totals() {
         let (progress_sender, progress_receiver) = mpsc::channel();
         let progress_counters = RestartProgressCounters::default();
+
         progress_counters
             .completed_units
             .store(2, Ordering::Relaxed);
+
         progress_counters.record_completed_progress_state(&RestartProgressState {
             completed_units: 2,
             cumulative_local_evaluation_count: 41,
@@ -1799,6 +1814,7 @@ mod tests {
         };
 
         let restart_objective = restart_objective_for_test(3.0);
+
         restart_progress.record_evaluation(1, Some(&restart_objective));
 
         let progress_update = progress_receiver.recv().unwrap();
@@ -1834,6 +1850,7 @@ mod tests {
 
         let four_dimensional_lower_bounds = vec![-1.0, -1.0, -1.0, -1.0];
         let four_dimensional_upper_bounds = vec![1.0, 1.0, 1.0, 1.0];
+
         let four_dimensional_settings = joint_refinement_restart_full_vector_direct_search_settings(
             &solver_settings,
             four_dimensional_lower_bounds.as_slice(),
@@ -1842,6 +1859,7 @@ mod tests {
 
         let one_movable_dimension_lower_bounds = vec![-1.0, 0.0, 0.0];
         let one_movable_dimension_upper_bounds = vec![1.0, 0.0, 0.0];
+
         let one_dimensional_settings = joint_refinement_restart_full_vector_direct_search_settings(
             &solver_settings,
             one_movable_dimension_lower_bounds.as_slice(),

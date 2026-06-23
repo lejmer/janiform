@@ -10,13 +10,16 @@ use super::super::parameter_space::{
     denormalize_parameter_vector, normalized_parameter_step, normalized_parameter_vector,
     parameter_step_is_zero,
 };
-use super::{RestartObjectiveResidual, RestartProbeRecord, RestartProbeState};
+use super::repair::restart_repair_score_from_components;
+use super::{
+    RestartObjectiveResidual, RestartProbePrediction, RestartProbeRecord, RestartProbeState,
+};
 
 #[derive(Debug, Clone)]
 pub(super) struct TrustRegionCandidate {
     pub(super) parameter_vector: Vec<f64>,
     pub(super) label: String,
-    pub(super) predicted_residual_objective: Option<f64>,
+    pub(super) prediction: RestartProbePrediction,
 }
 
 pub(super) fn trust_region_candidate_vectors(
@@ -74,6 +77,7 @@ pub(super) fn trust_region_candidate_vectors(
         model.sensitivity_rows.as_slice(),
         model.residual_rhs.as_slice(),
     );
+
     if let Some(gauss_newton_step) = gauss_newton_step.as_ref() {
         push_trust_region_candidate(
             &mut candidates,
@@ -133,6 +137,7 @@ const TRUST_REGION_LEVENBERG_MARQUARDT_DAMPING_MEAN_DIAGONAL_MULTIPLIER: f64 = 1
 
 #[derive(Debug)]
 struct FittedResidualTrustRegionModel {
+    residual_family_ids: Vec<String>,
     sensitivity_rows: Vec<Vec<f64>>,
     residual_rhs: Vec<f64>,
     accepted_residual_values: Vec<f64>,
@@ -143,7 +148,7 @@ struct FittedResidualTrustRegionModel {
 #[derive(Debug)]
 struct UsableResidualProbeRecord<'a> {
     normalized_step: Vec<f64>,
-    residual_by_id: BTreeMap<&'a str, f64>,
+    residual_by_key: BTreeMap<(&'a str, &'a str), f64>,
 }
 
 struct TrustRegionCandidateProjection<'a> {
@@ -156,20 +161,24 @@ struct TrustRegionCandidateProjection<'a> {
 }
 
 impl FittedResidualTrustRegionModel {
-    fn predicted_residual_objective(&self, normalized_step: &[f64]) -> Option<f64> {
+    fn predicted_residual_values(&self, normalized_step: &[f64]) -> Option<Vec<f64>> {
         if normalized_step.len() != self.sensitivity_rows.first()?.len() {
             return None;
         }
 
-        let predicted_residual_sum = self
-            .accepted_residual_values
+        self.accepted_residual_values
             .iter()
             .zip(self.sensitivity_rows.iter())
             .map(|(accepted_residual, sensitivity_row)| {
                 dot_product(sensitivity_row.as_slice(), normalized_step)
                     .map(|predicted_delta| accepted_residual + predicted_delta)
             })
-            .collect::<Option<Vec<_>>>()?
+            .collect()
+    }
+
+    fn predicted_residual_objective(&self, normalized_step: &[f64]) -> Option<f64> {
+        let predicted_residual_sum = self
+            .predicted_residual_values(normalized_step)?
             .into_iter()
             .map(|predicted_residual| predicted_residual * predicted_residual)
             .sum::<f64>();
@@ -178,16 +187,28 @@ impl FittedResidualTrustRegionModel {
             .is_finite()
             .then_some(predicted_residual_sum)
     }
+
+    fn predicted_repair_loss(&self, normalized_step: &[f64]) -> Option<f64> {
+        let predicted_residual_values = self.predicted_residual_values(normalized_step)?;
+
+        restart_repair_score_from_components(
+            self.residual_family_ids
+                .iter()
+                .map(String::as_str)
+                .zip(predicted_residual_values),
+        )
+        .map(|score| score.loss())
+    }
 }
 
 fn fitted_residual_trust_region_model(
     accepted_residuals: &[RestartObjectiveResidual],
     usable_records: Vec<UsableResidualProbeRecord<'_>>,
 ) -> Option<FittedResidualTrustRegionModel> {
-    let accepted_residual_by_id = residual_map(accepted_residuals);
+    let accepted_residual_by_key = residual_map(accepted_residuals);
 
-    let residual_ids = common_residual_ids(accepted_residuals, usable_records.as_slice());
-    if residual_ids.is_empty() {
+    let common_residuals = common_residuals(accepted_residuals, usable_records.as_slice());
+    if common_residuals.is_empty() {
         return None;
     }
 
@@ -196,22 +217,24 @@ fn fitted_residual_trust_region_model(
 
     for record in usable_records {
         design_rows.push(record.normalized_step);
-        residual_maps.push(record.residual_by_id);
+        residual_maps.push(record.residual_by_key);
     }
 
-    let mut sensitivity_rows = Vec::with_capacity(residual_ids.len());
-    let mut residual_rhs = Vec::with_capacity(residual_ids.len());
-    let mut accepted_residual_values = Vec::with_capacity(residual_ids.len());
+    let mut residual_family_ids = Vec::with_capacity(common_residuals.len());
+    let mut sensitivity_rows = Vec::with_capacity(common_residuals.len());
+    let mut residual_rhs = Vec::with_capacity(common_residuals.len());
+    let mut accepted_residual_values = Vec::with_capacity(common_residuals.len());
 
     let mut prediction_error_sum = 0.0;
     let mut observed_delta_sum = 0.0;
 
-    for residual_id in residual_ids {
-        let accepted_residual = *accepted_residual_by_id.get(residual_id)?;
+    for residual in common_residuals {
+        let residual_key = residual_key(residual);
+        let accepted_residual = *accepted_residual_by_key.get(&residual_key)?;
 
         let observed_deltas = residual_maps
             .iter()
-            .map(|residual_by_id| residual_by_id.get(residual_id).copied())
+            .map(|residual_by_key| residual_by_key.get(&residual_key).copied())
             .map(|residual| residual.map(|value| value - accepted_residual))
             .collect::<Option<Vec<_>>>()?;
 
@@ -228,6 +251,7 @@ fn fitted_residual_trust_region_model(
             observed_delta_sum += observed_delta * observed_delta;
         }
 
+        residual_family_ids.push(residual.family_id.clone());
         sensitivity_rows.push(sensitivity_row);
         residual_rhs.push(-accepted_residual);
         accepted_residual_values.push(accepted_residual);
@@ -238,6 +262,7 @@ fn fitted_residual_trust_region_model(
     }
 
     Some(FittedResidualTrustRegionModel {
+        residual_family_ids,
         sensitivity_rows,
         residual_rhs,
         accepted_residual_values,
@@ -265,35 +290,38 @@ fn usable_residual_probe_records<'a>(
             (!parameter_step_is_zero(normalized_step.as_slice())).then_some(
                 UsableResidualProbeRecord {
                     normalized_step,
-                    residual_by_id: residual_map(record.residuals.as_slice()),
+                    residual_by_key: residual_map(record.residuals.as_slice()),
                 },
             )
         })
         .collect()
 }
 
-fn common_residual_ids<'a>(
+fn common_residuals<'a>(
     accepted_residuals: &'a [RestartObjectiveResidual],
     records: &[UsableResidualProbeRecord<'_>],
-) -> Vec<&'a str> {
+) -> Vec<&'a RestartObjectiveResidual> {
     accepted_residuals
         .iter()
         .filter(|residual| {
-            records.iter().all(|record| {
-                record
-                    .residual_by_id
-                    .contains_key(residual.residual_id.as_str())
-            })
+            let residual_key = residual_key(residual);
+
+            records
+                .iter()
+                .all(|record| record.residual_by_key.contains_key(&residual_key))
         })
-        .map(|residual| residual.residual_id.as_str())
         .collect()
 }
 
-fn residual_map(residuals: &[RestartObjectiveResidual]) -> BTreeMap<&str, f64> {
+fn residual_map(residuals: &[RestartObjectiveResidual]) -> BTreeMap<(&str, &str), f64> {
     residuals
         .iter()
-        .map(|residual| (residual.residual_id.as_str(), residual.objective_residual))
+        .map(|residual| (residual_key(residual), residual.objective_residual))
         .collect()
+}
+
+fn residual_key(residual: &RestartObjectiveResidual) -> (&str, &str) {
+    (residual.family_id.as_str(), residual.residual_id.as_str())
 }
 
 pub(super) fn residual_squared_objective(residuals: &[RestartObjectiveResidual]) -> f64 {
@@ -352,28 +380,49 @@ fn push_trust_region_candidate(
     let predicted_residual_objective = projection
         .model
         .predicted_residual_objective(projected_step.as_slice());
+    let predicted_repair_loss = projection
+        .model
+        .predicted_repair_loss(projected_step.as_slice());
 
     candidates.push(TrustRegionCandidate {
         parameter_vector,
         label: label.to_string(),
-        predicted_residual_objective,
+        prediction: RestartProbePrediction {
+            residual_objective: predicted_residual_objective,
+            repair_loss: predicted_repair_loss,
+        },
     });
 }
 
 fn rank_trust_region_candidates(candidates: &mut [TrustRegionCandidate]) {
     candidates.sort_by(|left_candidate, right_candidate| {
         match (
-            left_candidate.predicted_residual_objective,
-            right_candidate.predicted_residual_objective,
+            left_candidate.prediction.repair_loss,
+            right_candidate.prediction.repair_loss,
         ) {
             (Some(left_objective), Some(right_objective)) => {
                 left_objective.total_cmp(&right_objective)
             }
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => left_candidate.label.cmp(&right_candidate.label),
+            (None, None) => compare_predicted_residual_objective(left_candidate, right_candidate),
         }
     });
+}
+
+fn compare_predicted_residual_objective(
+    left_candidate: &TrustRegionCandidate,
+    right_candidate: &TrustRegionCandidate,
+) -> std::cmp::Ordering {
+    match (
+        left_candidate.prediction.residual_objective,
+        right_candidate.prediction.residual_objective,
+    ) {
+        (Some(left_objective), Some(right_objective)) => left_objective.total_cmp(&right_objective),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => left_candidate.label.cmp(&right_candidate.label),
+    }
 }
 
 fn trust_region_reliability_scale(
@@ -438,6 +487,7 @@ pub(super) fn trust_region_radius_after_prediction(
     }
 
     let maximum_radius = maximum_normalized_trust_region_radius(lower_bounds, upper_bounds)?;
+
     Some((current_radius * prediction_accuracy_scale).min(maximum_radius))
 }
 
@@ -485,7 +535,9 @@ fn maximum_normalized_trust_region_radius(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{RestartObjectiveResidual, RestartProbeRecord, RestartProbeState};
+    use super::super::{
+        RestartObjectiveResidual, RestartProbeRecord, restart_probe_state_for_test,
+    };
     use super::{trust_region_candidate_vectors, trust_region_reliability_scale};
 
     #[test]
@@ -496,13 +548,16 @@ mod tests {
 
     #[test]
     fn trust_region_candidates_use_existing_model_records() {
-        let mut state = restart_probe_state(vec![0.5, 0.5], 0.25);
+        let mut state = restart_probe_state_for_test(vec![0.5, 0.5], 0.25);
+
         state.accepted_residuals = Some(vec![
             RestartObjectiveResidual {
+                family_id: "shape".to_string(),
                 residual_id: "a".to_string(),
                 objective_residual: 2.0,
             },
             RestartObjectiveResidual {
+                family_id: "shape".to_string(),
                 residual_id: "b".to_string(),
                 objective_residual: 2.0,
             },
@@ -513,10 +568,12 @@ mod tests {
                 parameter_vector: vec![0.75, 0.5],
                 residuals: vec![
                     RestartObjectiveResidual {
+                        family_id: "shape".to_string(),
                         residual_id: "a".to_string(),
                         objective_residual: 1.0,
                     },
                     RestartObjectiveResidual {
+                        family_id: "shape".to_string(),
                         residual_id: "b".to_string(),
                         objective_residual: 2.0,
                     },
@@ -526,10 +583,12 @@ mod tests {
                 parameter_vector: vec![0.5, 0.75],
                 residuals: vec![
                     RestartObjectiveResidual {
+                        family_id: "shape".to_string(),
                         residual_id: "a".to_string(),
                         objective_residual: 2.0,
                     },
                     RestartObjectiveResidual {
+                        family_id: "shape".to_string(),
                         residual_id: "b".to_string(),
                         objective_residual: 1.0,
                     },
@@ -545,41 +604,5 @@ mod tests {
         assert!(candidates[0].parameter_vector[1] > state.accepted_vector[1]);
         assert!(candidates[0].parameter_vector[0] <= 0.75);
         assert!(candidates[0].parameter_vector[1] <= 0.75);
-    }
-
-    fn restart_probe_state(
-        accepted_vector: Vec<f64>,
-        trust_region_radius: f64,
-    ) -> RestartProbeState {
-        RestartProbeState {
-            restart_id: "restart_0".to_string(),
-            seed_vector: accepted_vector.clone(),
-            accepted_vector: accepted_vector.clone(),
-            best_vector: accepted_vector,
-            initial_objective: Some(8.0),
-            accepted_objective: Some(8.0),
-            best_objective: Some(8.0),
-            round_best_vector: None,
-            round_best_objective: None,
-            round_best_residuals: None,
-            round_best_predicted_residual_objective: None,
-            accepted_residuals: None,
-            evaluated_records: Vec::new(),
-            scheduled_parameter_bits: Vec::new(),
-            model_probe_vectors: Vec::new(),
-            next_model_probe_position: 0,
-            model_probes_prepared: false,
-            trust_region_proposal_vectors: Vec::new(),
-            next_trust_region_proposal_position: 0,
-            trust_region_proposals_prepared: false,
-            trust_region_radius,
-            completed_search_rounds: 1,
-            evaluation_count: 3,
-            max_evaluation_count: 16,
-            in_flight_count: 0,
-            stop_reason: "trust_region_refined".to_string(),
-            completed: false,
-            exact_likelihood_evaluator_counts: None,
-        }
     }
 }

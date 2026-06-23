@@ -417,10 +417,15 @@ mod tests {
             initial_objective: Some(34.301131),
             accepted_objective: Some(34.301131),
             best_objective: Some(34.301131),
+            initial_repair_loss: Some(34.301131),
+            accepted_repair_loss: Some(34.301131),
+            best_repair_loss: Some(34.301131),
             round_best_vector: None,
             round_best_objective: None,
+            round_best_repair_loss: None,
             round_best_residuals: None,
             round_best_predicted_residual_objective: None,
+            round_best_predicted_repair_loss: None,
             accepted_residuals: None,
             evaluated_records: Vec::new(),
             scheduled_parameter_bits: Vec::new(),
@@ -454,7 +459,9 @@ mod tests {
     #[test]
     fn running_probe_progress_reports_best_seen_restart_loss() {
         let (progress_sender, progress_receiver) = mpsc::channel();
+
         let mut state = completed_search_state();
+
         state.completed = false;
         state.in_flight_count = 1;
         state.accepted_objective = Some(10.0);
@@ -494,7 +501,9 @@ mod tests {
     #[test]
     fn finalization_start_progress_preserves_visible_best_losses() {
         let (progress_sender, progress_receiver) = mpsc::channel();
+
         let mut state = completed_search_state();
+
         state.accepted_objective = Some(7.0);
         state.best_objective = Some(5.0);
 
@@ -528,7 +537,9 @@ mod tests {
     #[test]
     fn finalization_start_progress_keeps_search_best_until_final_loss_exists() {
         let (progress_sender, progress_receiver) = mpsc::channel();
+
         let mut state = completed_search_state();
+
         state.best_objective = None;
         state.round_best_objective = Some(5.0);
         state.accepted_objective = Some(7.0);
@@ -558,7 +569,9 @@ mod tests {
     #[test]
     fn finalization_progress_reports_final_loss_without_search_loss_overwrite() {
         let (progress_sender, progress_receiver) = mpsc::channel();
+
         let mut outcome = test_joint_restart_outcome("tick_moment_04", 3.0);
+
         outcome.local_evaluation.breakdown.global_loss = 5.0;
         outcome.final_evaluation.breakdown.global_loss = 4.0;
 
