@@ -105,13 +105,11 @@ fn reference_transform_input_payload() -> Value {
             },
             "market_pressure_parameters": {
                 "side_imbalance_levels": [0.0],
-                "physical_measure": {
-                    "transition_rates": {
-                        "upward_transition_rates": [],
-                        "downward_transition_rates": []
-                    },
-                    "anchor_drift_per_signed_balance": 0.0
-                }
+                "transition_rates": {
+                    "upward_transition_rates": [],
+                    "downward_transition_rates": []
+                },
+                "anchor_drift_per_signed_balance": 0.0
             }
         },
         "activity_loadings": {

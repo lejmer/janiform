@@ -5706,13 +5706,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [
@@ -6402,13 +6403,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [
@@ -7772,6 +7774,8 @@
           "field_names": [
             "mean_reversion_rate",
             "vol_of_vol",
+            "stationary_return_energy_rate_per_hour",
+            "return_energy_loading",
             "buy_event_loading",
             "sell_event_loading"
           ],
@@ -7780,7 +7784,7 @@
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'LongVarianceParameters'",
             "neutral": "() -> 'LongVarianceParameters'"
           },
-          "signature": "(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'"
+          "signature": "(mean_reversion_rate: 'float', vol_of_vol: 'float', stationary_return_energy_rate_per_hour: 'float', return_energy_loading: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'"
         },
         "LongVarianceState": {
           "field_names": [
@@ -7796,13 +7800,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [
@@ -8264,14 +8269,13 @@
             "observed_interval_return",
             "observed_log_price_end",
             "anchor_value_end",
-            "market_pressure_state_end",
             "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str', expected_interval_index: 'int') -> 'CoarseSimulationPathRecord'"
           },
-          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', market_pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
+          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "CoarseSimulationRunRequest": {
           "field_names": [
@@ -8540,6 +8544,8 @@
           "field_names": [
             "mean_reversion_rate",
             "vol_of_vol",
+            "stationary_return_energy_rate_per_hour",
+            "return_energy_loading",
             "buy_event_loading",
             "sell_event_loading"
           ],
@@ -8548,7 +8554,7 @@
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'LongVarianceParameters'",
             "neutral": "() -> 'LongVarianceParameters'"
           },
-          "signature": "(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'"
+          "signature": "(mean_reversion_rate: 'float', vol_of_vol: 'float', stationary_return_energy_rate_per_hour: 'float', return_energy_loading: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'"
         },
         "LongVarianceState": {
           "field_names": [
@@ -8564,13 +8570,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [
@@ -9000,13 +9007,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [
@@ -9761,13 +9769,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [
@@ -10061,13 +10070,14 @@
         "MarketPressureParameters": {
           "field_names": [
             "side_imbalance_levels",
-            "physical_measure"
+            "transition_rates",
+            "anchor_drift_per_signed_balance"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'"
         },
         "MarketPressureState": {
           "field_names": [

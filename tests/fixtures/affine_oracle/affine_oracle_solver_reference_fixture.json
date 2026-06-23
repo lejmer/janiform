@@ -61,13 +61,11 @@
             "side_imbalance_levels": [
               0.0
             ],
-            "physical_measure": {
-              "transition_rates": {
-                "upward_transition_rates": [],
-                "downward_transition_rates": []
-              },
-              "anchor_drift_per_signed_balance": 0.0
-            }
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
           }
         },
         "pressure_signed_imbalance_exposure_risk_price": 0.0,
@@ -217,13 +215,11 @@
             "side_imbalance_levels": [
               0.0
             ],
-            "physical_measure": {
-              "transition_rates": {
-                "upward_transition_rates": [],
-                "downward_transition_rates": []
-              },
-              "anchor_drift_per_signed_balance": 0.0
-            }
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
           }
         },
         "pressure_signed_imbalance_exposure_risk_price": 0.0,
@@ -293,7 +289,7 @@
       "expected_output": {
         "c_at_delta": {
           "real": -0.5402994151788634,
-          "imaginary": 0.06665232538258919
+          "imaginary": 0.0666523253825892
         },
         "d_at_delta": {
           "plus_plus": {
@@ -373,13 +369,11 @@
             "side_imbalance_levels": [
               0.0
             ],
-            "physical_measure": {
-              "transition_rates": {
-                "upward_transition_rates": [],
-                "downward_transition_rates": []
-              },
-              "anchor_drift_per_signed_balance": 0.0
-            }
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
           }
         },
         "pressure_signed_imbalance_exposure_risk_price": 0.0,

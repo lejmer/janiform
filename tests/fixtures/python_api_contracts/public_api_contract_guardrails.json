@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "5c46473f38ecfb48efcfc423d735c534bd34a3b22110a541720349d711d7fab4",
+  "approved_snapshot_sha256": "e8894eac31905211b5bab73addd3be401e415c50b0aa345073c83af2820f70c1",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1856,6 +1856,21 @@
         "janiform.calibration.fit",
         "janiform.calibration.market_data",
         "janiform.calibration.staged"
+      ]
+    },
+    {
+      "approved_on": "2026-06-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-pressure fitted dynamics expose one physical transition-rate set and one anchor drift coefficient, so the Python contract stores those fields directly on market-pressure parameters.",
+      "snapshot_sha256": "e8894eac31905211b5bab73addd3be401e415c50b0aa345073c83af2820f70c1",
+      "summary": "Flatten market-pressure parameter measure fields.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
       ]
     }
   ],

@@ -67,13 +67,11 @@ def build_neutral_long_variance_parameters_payload() -> dict[str, Any]:
 def build_no_anchor_impact_market_pressure_parameters_payload() -> dict[str, Any]:
     return {
         "side_imbalance_levels": [0.0],
-        "physical_measure": {
-            "transition_rates": {
-                "upward_transition_rates": [],
-                "downward_transition_rates": [],
-            },
-            "anchor_drift_per_signed_balance": 0.0,
+        "transition_rates": {
+            "upward_transition_rates": [],
+            "downward_transition_rates": [],
         },
+        "anchor_drift_per_signed_balance": 0.0,
     }
 
 

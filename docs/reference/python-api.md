@@ -1745,9 +1745,9 @@
 | [`HawkesKernelLoadings`](#python-api-symbol-janiform-simulation-hawkeskernelloadings) | contract_model | 4 fields |
 | [`HawkesKernelParameters`](#python-api-symbol-janiform-simulation-hawkeskernelparameters) | contract_model | 4 fields |
 | [`JaniformSimulationResult`](#python-api-symbol-janiform-simulation-janiformsimulationresult) | contract_model | 5 fields |
-| [`LongVarianceParameters`](#python-api-symbol-janiform-simulation-longvarianceparameters) | contract_model | 4 fields |
+| [`LongVarianceParameters`](#python-api-symbol-janiform-simulation-longvarianceparameters) | contract_model | 6 fields |
 | [`LongVarianceState`](#python-api-symbol-janiform-simulation-longvariancestate) | contract_model | 1 fields |
-| [`MarketPressureParameters`](#python-api-symbol-janiform-simulation-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-simulation-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-simulation-marketpressurestate) | contract_model | 1 fields |
 | [`MeanReversionBoundaryState`](#python-api-symbol-janiform-simulation-meanreversionboundarystate) | contract_model | 3 fields |
 | [`MeanReversionFittedParameters`](#python-api-symbol-janiform-simulation-meanreversionfittedparameters) | contract_model | 1 fields |
@@ -1852,8 +1852,8 @@
 ### `LongVarianceParameters`
 
 - Kind: `contract_model`
-- Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
-- Fields: `mean_reversion_rate`, `vol_of_vol`, `buy_event_loading`, `sell_event_loading`
+- Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', stationary_return_energy_rate_per_hour: 'float', return_energy_loading: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
+- Fields: `mean_reversion_rate`, `vol_of_vol`, `stationary_return_energy_rate_per_hour`, `return_energy_loading`, `buy_event_loading`, `sell_event_loading`
 
 | Method | Signature |
 |--------|-----------|
@@ -1876,8 +1876,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|
@@ -2089,7 +2089,7 @@
 | [`CoarseSimulationPathDiagnostics`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathdiagnostics) | contract_model | 19 fields |
 | [`CoarseSimulationPathOutputSchemaMetadata`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathoutputschemametadata) | contract_model | 9 fields |
 | [`CoarseSimulationPathProvenance`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathprovenance) | contract_model | 13 fields |
-| [`CoarseSimulationPathRecord`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathrecord) | contract_model | 12 fields |
+| [`CoarseSimulationPathRecord`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationpathrecord) | contract_model | 11 fields |
 | [`CoarseSimulationRunRequest`](#python-api-symbol-janiform-simulation-coarse-coarsesimulationrunrequest) | contract_model | 7 fields |
 | [`KnownNewsArrivalConfiguration`](#python-api-symbol-janiform-simulation-coarse-knownnewsarrivalconfiguration) | contract_model | 1 fields |
 | [`NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-coarse-news-process-configuration-schema-version) | constant | constant value |
@@ -2227,8 +2227,8 @@
 ### `CoarseSimulationPathRecord`
 
 - Kind: `contract_model`
-- Signature: `(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', market_pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'`
-- Fields: `schema_version`, `interval_index`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `sufficient_statistics`, `return_components`, `core_total_return`, `observed_interval_return`, `observed_log_price_end`, `anchor_value_end`, `market_pressure_state_end`, `deviation_from_anchor_end`
+- Signature: `(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', deviation_from_anchor_end: 'float') -> 'None'`
+- Fields: `schema_version`, `interval_index`, `interval_start_utc_nanos`, `interval_end_utc_nanos`, `sufficient_statistics`, `return_components`, `core_total_return`, `observed_interval_return`, `observed_log_price_end`, `anchor_value_end`, `deviation_from_anchor_end`
 
 | Method | Signature |
 |--------|-----------|
@@ -2417,9 +2417,9 @@
 | [`HawkesExcitationState`](#python-api-symbol-janiform-simulation-seeded-hawkesexcitationstate) | contract_model | 4 fields |
 | [`HawkesKernelLoadings`](#python-api-symbol-janiform-simulation-seeded-hawkeskernelloadings) | contract_model | 4 fields |
 | [`HawkesKernelParameters`](#python-api-symbol-janiform-simulation-seeded-hawkeskernelparameters) | contract_model | 4 fields |
-| [`LongVarianceParameters`](#python-api-symbol-janiform-simulation-seeded-longvarianceparameters) | contract_model | 4 fields |
+| [`LongVarianceParameters`](#python-api-symbol-janiform-simulation-seeded-longvarianceparameters) | contract_model | 6 fields |
 | [`LongVarianceState`](#python-api-symbol-janiform-simulation-seeded-longvariancestate) | contract_model | 1 fields |
-| [`MarketPressureParameters`](#python-api-symbol-janiform-simulation-seeded-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-simulation-seeded-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-simulation-seeded-marketpressurestate) | contract_model | 1 fields |
 | [`SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-boundary-transport-policy) | constant | constant value |
 | [`SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-simulation-seeded-seeded-tick-simulation-diagnostics-schema-version) | constant | constant value |
@@ -2487,8 +2487,8 @@
 ### `LongVarianceParameters`
 
 - Kind: `contract_model`
-- Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
-- Fields: `mean_reversion_rate`, `vol_of_vol`, `buy_event_loading`, `sell_event_loading`
+- Signature: `(mean_reversion_rate: 'float', vol_of_vol: 'float', stationary_return_energy_rate_per_hour: 'float', return_energy_loading: 'float', buy_event_loading: 'float', sell_event_loading: 'float') -> 'None'`
+- Fields: `mean_reversion_rate`, `vol_of_vol`, `stationary_return_energy_rate_per_hour`, `return_energy_loading`, `buy_event_loading`, `sell_event_loading`
 
 | Method | Signature |
 |--------|-----------|
@@ -2511,8 +2511,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|
@@ -2786,7 +2786,7 @@
 | [`HawkesExcitationState`](#python-api-symbol-janiform-simulation-shared-hawkesexcitationstate) | contract_model | 4 fields |
 | [`HawkesKernelLoadings`](#python-api-symbol-janiform-simulation-shared-hawkeskernelloadings) | contract_model | 4 fields |
 | [`HawkesKernelParameters`](#python-api-symbol-janiform-simulation-shared-hawkeskernelparameters) | contract_model | 4 fields |
-| [`MarketPressureParameters`](#python-api-symbol-janiform-simulation-shared-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-simulation-shared-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-simulation-shared-marketpressurestate) | contract_model | 1 fields |
 | [`MeanReversionBoundaryState`](#python-api-symbol-janiform-simulation-shared-meanreversionboundarystate) | contract_model | 3 fields |
 | [`MeanReversionFittedParameters`](#python-api-symbol-janiform-simulation-shared-meanreversionfittedparameters) | contract_model | 1 fields |
@@ -2833,8 +2833,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|
@@ -2927,7 +2927,7 @@
 | [`AutoExactSparsePricingIntervalSchedulePolicy`](#python-api-symbol-janiform-pricing-autoexactsparsepricingintervalschedulepolicy) | contract_model | 1 fields |
 | [`ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy`](#python-api-symbol-janiform-pricing-explicitintervalendtimestampsutcpricingintervalschedulepolicy) | contract_model | 2 fields |
 | [`GammaSeverityMarkConfiguration`](#python-api-symbol-janiform-pricing-gammaseveritymarkconfiguration) | contract_model | 1 fields |
-| [`MarketPressureParameters`](#python-api-symbol-janiform-pricing-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-pricing-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-pricing-marketpressurestate) | contract_model | 1 fields |
 | [`MeanReversionBoundaryState`](#python-api-symbol-janiform-pricing-meanreversionboundarystate) | contract_model | 3 fields |
 | [`MeanReversionFittedParameters`](#python-api-symbol-janiform-pricing-meanreversionfittedparameters) | contract_model | 1 fields |
@@ -3066,8 +3066,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|
@@ -3473,7 +3473,7 @@
 | [`AutoExactSparsePricingIntervalSchedulePolicy`](#python-api-symbol-janiform-pricing-contracts-autoexactsparsepricingintervalschedulepolicy) | contract_model | 1 fields |
 | [`ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy`](#python-api-symbol-janiform-pricing-contracts-explicitintervalendtimestampsutcpricingintervalschedulepolicy) | contract_model | 2 fields |
 | [`GammaSeverityMarkConfiguration`](#python-api-symbol-janiform-pricing-contracts-gammaseveritymarkconfiguration) | contract_model | 1 fields |
-| [`MarketPressureParameters`](#python-api-symbol-janiform-pricing-contracts-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-pricing-contracts-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-pricing-contracts-marketpressurestate) | contract_model | 1 fields |
 | [`MeanReversionBoundaryState`](#python-api-symbol-janiform-pricing-contracts-meanreversionboundarystate) | contract_model | 3 fields |
 | [`MeanReversionFittedParameters`](#python-api-symbol-janiform-pricing-contracts-meanreversionfittedparameters) | contract_model | 1 fields |
@@ -3608,8 +3608,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|
@@ -4343,7 +4343,7 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`MarketPressureParameters`](#python-api-symbol-janiform-sufficient-statistics-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-sufficient-statistics-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-sufficient-statistics-marketpressurestate) | contract_model | 1 fields |
 | [`SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY`](#python-api-symbol-janiform-sufficient-statistics-sufficient-statistics-interval-factor-policy) | constant | constant value |
 | [`SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-sufficient-statistics-path-diagnostics-schema-version) | constant | constant value |
@@ -4371,8 +4371,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|
@@ -4573,7 +4573,7 @@
 
 | Symbol | Kind | Summary |
 |--------|------|---------|
-| [`MarketPressureParameters`](#python-api-symbol-janiform-sufficient-statistics-contracts-marketpressureparameters) | contract_model | 2 fields |
+| [`MarketPressureParameters`](#python-api-symbol-janiform-sufficient-statistics-contracts-marketpressureparameters) | contract_model | 3 fields |
 | [`MarketPressureState`](#python-api-symbol-janiform-sufficient-statistics-contracts-marketpressurestate) | contract_model | 1 fields |
 | [`SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficient-statistics-interval-factor-policy) | constant | constant value |
 | [`SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION`](#python-api-symbol-janiform-sufficient-statistics-contracts-sufficient-statistics-path-diagnostics-schema-version) | constant | constant value |
@@ -4594,8 +4594,8 @@
 ### `MarketPressureParameters`
 
 - Kind: `contract_model`
-- Signature: `(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'`
-- Fields: `side_imbalance_levels`, `physical_measure`
+- Signature: `(side_imbalance_levels: 'list[float]', transition_rates: 'MarketPressureTransitionRates', anchor_drift_per_signed_balance: 'float') -> 'None'`
+- Fields: `side_imbalance_levels`, `transition_rates`, `anchor_drift_per_signed_balance`
 
 | Method | Signature |
 |--------|-----------|

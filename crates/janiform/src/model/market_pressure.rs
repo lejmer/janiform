@@ -1,7 +1,6 @@
 pub use janiform_model_kernels::market_pressure::{
     MarketPressureIntervalTransition, MarketPressureIntervalTransitionInput,
-    MarketPressureIntervalTransitionMoments, MarketPressureMeasureParameters,
-    MarketPressureMeasureParametersValidationError, MarketPressureParameters,
+    MarketPressureIntervalTransitionMoments, MarketPressureParameters,
     MarketPressureParametersValidationError, MarketPressureSampledIntervalTransition,
     MarketPressureState, MarketPressureStateEvolutionError, MarketPressureStateValidationError,
     MarketPressureTransitionRates, MarketPressureTransitionRatesValidationError,

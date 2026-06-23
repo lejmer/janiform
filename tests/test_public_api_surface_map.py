@@ -197,7 +197,6 @@ def test_mean_reversion_public_contract_submodule_is_supported_domain_import() -
 
 def test_market_pressure_public_symbols_live_in_market_pressure_module() -> None:
     expected_exports = {
-        "MarketPressureMeasureParameters",
         "MarketPressureParameters",
         "MarketPressureState",
         "MarketPressureTransitionRates",

@@ -1,7 +1,6 @@
 """Public market-pressure state contracts."""
 
 from .contracts import (
-    MarketPressureMeasureParameters,
     MarketPressureParameters,
     MarketPressureState,
     MarketPressureTransitionRates,
@@ -9,7 +8,6 @@ from .contracts import (
 
 
 __all__ = [
-    "MarketPressureMeasureParameters",
     "MarketPressureParameters",
     "MarketPressureState",
     "MarketPressureTransitionRates",
