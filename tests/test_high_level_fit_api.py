@@ -32,6 +32,7 @@ import janiform.simulation.result as simulation_result_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform._workflow_outputs import SimulationArtifactSink
 from janiform._workflow_progress import WorkflowProgressMode
+from janiform.market_pressure import MarketPressureState
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import JaniformEstimator, JaniformFitReport, JaniformFitResult
 from janiform.calibration.fit.state import (
@@ -69,11 +70,7 @@ from janiform.interval_factor_grids import (
     IntervalSeasonalityProviderExplicitSource,
 )
 from janiform.long_variance import LongVarianceState
-from janiform.mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-)
+from janiform.mean_reversion import MeanReversionBoundaryState, MeanReversionFittedParameters
 from janiform.model import JaniformModel
 from janiform.pricing import (
     AutoActivityCompressedPricingIntervalSchedulePolicy,
@@ -100,10 +97,11 @@ from janiform.simulation import JaniformSimulationResult, SeededTickEventSide
 from janiform.simulation.shared import HawkesExcitationState
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
-    build_disabled_timestamp_batching_observation_model_payload,
+    build_disabled_timestamp_batching_surface_payload,
     build_empty_mean_reversion_series_summaries_payload,
     build_endogenous_mean_reversion_fitted_parameters_payload,
-    build_nominal_tick_grid_observation_model_payload,
+    build_no_anchor_impact_market_pressure_parameters_payload,
+    build_nominal_price_discretization_surface_payload,
     build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
     build_structural_seasonality_parameters_payload,
@@ -363,7 +361,6 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparat
         market_profile="us_equity_cash",
         mean_reversion=CalibrationMeanReversionConfiguration(
             calibration_grid_interval_hours=36.0,
-            predictive_evidence_alpha=0.025,
         ),
     )
     prepared_workflow = estimator._prepare_fit_workflow(
@@ -382,7 +379,6 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparat
 
     assert request.mean_reversion is not None
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
-    assert request.mean_reversion.predictive_evidence_alpha == pytest.approx(0.025)
 
 
 def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_preparation(
@@ -1584,10 +1580,7 @@ def test_high_level_model_load_preserves_endogenous_mean_reversion_block(
         run_id="high-level-model-mean-reversion-roundtrip",
     )
 
-    mean_reversion_payload = MeanReversionFittedParameters(
-        kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-    ).to_payload()
+    mean_reversion_payload = MeanReversionFittedParameters(kappa=0.25).to_payload()
 
     update_model_mean_reversion_payload(model, mean_reversion_payload)
 
@@ -2203,7 +2196,6 @@ def test_high_level_model_simulate_sends_mean_reversion_boundary_override_to_nat
     explicit_boundary_state = MeanReversionBoundaryState(
         observed_log_price=0.2,
         anchor_value=0.2,
-        pressure_state=0.15,
         deviation=0.0,
     )
     continuation_data = CurrentStateEstimationRequest(
@@ -2290,10 +2282,7 @@ def test_high_level_model_artifact_simulation_sends_mean_reversion_payload_to_na
         run_id="high-level-model-mean-reversion-runtime-inputs",
     )
 
-    mean_reversion_payload = MeanReversionFittedParameters(
-        kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-    ).to_payload()
+    mean_reversion_payload = MeanReversionFittedParameters(kappa=0.25).to_payload()
 
     update_model_mean_reversion_payload(model, mean_reversion_payload)
 
@@ -2392,7 +2381,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
                         "mid_price": 1.01,
                         "observed_log_price": 0.01,
                         "anchor_value": 0.005,
-                        "pressure_state": 0.002,
+                        "market_pressure_state": 0.002,
                         "deviation_from_anchor": 0.005,
                     }
                 ]
@@ -2434,7 +2423,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         "mid_price",
         "observed_log_price",
         "anchor_value",
-        "pressure_state",
+        "market_pressure_state",
         "deviation_from_anchor",
     ]
     assert pandas_frame.iloc[0]["mid_price"] == pytest.approx(1.01)
@@ -2479,7 +2468,7 @@ def test_simulation_output_preferences_default_without_input_inference(
         "side",
         "observed_log_price",
         "anchor_value",
-        "pressure_state",
+        "market_pressure_state",
         "deviation_from_anchor",
     )
     assert workflow_outputs_module.simulation_output_columns(preferences, include_side=False) == (
@@ -2487,7 +2476,7 @@ def test_simulation_output_preferences_default_without_input_inference(
         "price",
         "observed_log_price",
         "anchor_value",
-        "pressure_state",
+        "market_pressure_state",
         "deviation_from_anchor",
     )
     assert workflow_outputs_module.simulation_output_side_column(preferences) == "side"
@@ -2580,7 +2569,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 19, 0, tzinfo=UTC)),
                 observed_log_price_end=0.01,
                 anchor_value_end=0.005,
-                pressure_state_end=0.002,
+                market_pressure_state_end=0.002,
                 deviation_from_anchor_end=0.005,
             ),
             SimpleNamespace(
@@ -2588,7 +2577,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 0, tzinfo=UTC)),
                 observed_log_price_end=999.0,
                 anchor_value_end=999.0,
-                pressure_state_end=999.0,
+                market_pressure_state_end=999.0,
                 deviation_from_anchor_end=999.0,
             ),
             SimpleNamespace(
@@ -2596,7 +2585,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 15, tzinfo=UTC)),
                 observed_log_price_end=0.05,
                 anchor_value_end=0.03,
-                pressure_state_end=0.01,
+                market_pressure_state_end=0.01,
                 deviation_from_anchor_end=0.02,
             ),
         )
@@ -2622,7 +2611,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
         ]
     )
     assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.005, 0.03])
-    assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.002, 0.01])
+    assert [row["market_pressure_state"] for row in sink.rows] == pytest.approx([0.002, 0.01])
     assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.005, 0.02])
     assert all("side" not in row for row in sink.rows)
 
@@ -2658,7 +2647,7 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
                 observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                 observed_log_price=0.10,
                 anchor_value=0.04,
-                pressure_state=0.01,
+                market_pressure_state=0.01,
                 deviation_from_anchor=0.06,
                 side=SeededTickEventSide.BUY,
             ),
@@ -2666,7 +2655,7 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
                 observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
                 observed_log_price=0.12,
                 anchor_value=0.05,
-                pressure_state=0.02,
+                market_pressure_state=0.02,
                 deviation_from_anchor=0.07,
                 side=None,
             ),
@@ -2695,7 +2684,7 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
         None,
     ]
     assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.04, 0.05])
-    assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.01, 0.02])
+    assert [row["market_pressure_state"] for row in sink.rows] == pytest.approx([0.01, 0.02])
     assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.06, 0.07])
 
 
@@ -2730,7 +2719,7 @@ def test_persist_seeded_tick_simulation_defaults_side_column_without_trade_sign(
                 observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                 observed_log_price=0.10,
                 anchor_value=0.04,
-                pressure_state=0.01,
+                market_pressure_state=0.01,
                 deviation_from_anchor=0.06,
                 side=SeededTickEventSide.SELL,
             ),
@@ -2751,7 +2740,7 @@ def test_persist_seeded_tick_simulation_defaults_side_column_without_trade_sign(
     assert [row["side"] for row in sink.rows] == [SeededTickEventSide.SELL.value]
     assert [row["observed_log_price"] for row in sink.rows] == pytest.approx([0.10])
     assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.04])
-    assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.01])
+    assert [row["market_pressure_state"] for row in sink.rows] == pytest.approx([0.01])
     assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.06])
 
 
@@ -2799,7 +2788,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         "trade_sign",
         "observed_log_price",
         "anchor_value",
-        "pressure_state",
+        "market_pressure_state",
         "deviation_from_anchor",
     ]
     assert pandas_frame.empty
@@ -2831,7 +2820,7 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
                         "trade_sign": "buy",
                         "observed_log_price": 0.01,
                         "anchor_value": 0.0,
-                        "pressure_state": 0.0,
+                        "market_pressure_state": 0.0,
                         "deviation_from_anchor": 0.01,
                     }
                 ]
@@ -2878,7 +2867,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
                     observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                     observed_log_price=0.10,
                     anchor_value=0.04,
-                    pressure_state=0.01,
+                    market_pressure_state=0.01,
                     deviation_from_anchor=0.06,
                     side=SeededTickEventSide.BUY,
                 ),
@@ -2886,7 +2875,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
                     observed_timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
                     observed_log_price=0.12,
                     anchor_value=0.05,
-                    pressure_state=0.02,
+                    market_pressure_state=0.02,
                     deviation_from_anchor=0.07,
                     side=None,
                 ),
@@ -2920,7 +2909,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
     )
     assert pandas_frame.iloc[0]["trade_sign"] == "buy"
     assert pandas.isna(pandas_frame.iloc[1]["trade_sign"])
-    assert pandas_frame.iloc[0]["pressure_state"] == pytest.approx(0.01)
+    assert pandas_frame.iloc[0]["market_pressure_state"] == pytest.approx(0.01)
     assert pandas_frame.iloc[1]["anchor_value"] == pytest.approx(0.05)
     assert numpy_array.shape == (2, 7)
     assert list(numpy_array[:, 2]) == ["buy", None]
@@ -2931,7 +2920,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
             "trade_sign": "buy",
             "observed_log_price": pytest.approx(0.10),
             "anchor_value": pytest.approx(0.04),
-            "pressure_state": pytest.approx(0.01),
+            "market_pressure_state": pytest.approx(0.01),
             "deviation_from_anchor": pytest.approx(0.06),
         },
         {
@@ -2940,7 +2929,7 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
             "trade_sign": None,
             "observed_log_price": pytest.approx(0.12),
             "anchor_value": pytest.approx(0.05),
-            "pressure_state": pytest.approx(0.02),
+            "market_pressure_state": pytest.approx(0.02),
             "deviation_from_anchor": pytest.approx(0.07),
         },
     ]
@@ -3086,8 +3075,10 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
                     "mean_reversion_boundary_state": {
                         "observed_log_price": 0.0,
                         "anchor_value": 0.0,
-                        "pressure_state": 0.0,
                         "deviation": 0.0,
+                    },
+                    "market_pressure_state": {
+                        "state_weights": [1.0],
                     },
                 }
             )
@@ -3110,24 +3101,27 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         mean_reversion_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
-            pressure_state=0.0,
             deviation=0.0,
         ),
+        market_pressure_state=MarketPressureState(state_weights=[1.0]),
     )
     assert len(captured_native_arguments) == 1
-    assert captured_native_arguments[0][3] == 100.0
-    assert captured_native_arguments[0][4] == datetime_to_utc_nanos(
+    assert captured_native_arguments[0][3] == (
+        build_no_anchor_impact_market_pressure_parameters_payload()
+    )
+    assert captured_native_arguments[0][4] == 100.0
+    assert captured_native_arguments[0][5] == datetime_to_utc_nanos(
         datetime(2026, 2, 2, 15, tzinfo=UTC)
     )
-    assert captured_native_arguments[0][5] == pytest.approx(
+    assert captured_native_arguments[0][6] == pytest.approx(
         fit_pricing_support_module.price_observed_log_return_from_spot(model, spot=100.0)
     )
-    assert captured_native_arguments[0][6] == (
+    assert captured_native_arguments[0][7] == (
         datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
         datetime(2026, 2, 2, 14, tzinfo=UTC).isoformat(),
     )
-    assert captured_native_arguments[0][7] == (100.0, 100.5)
-    assert captured_native_arguments[0][8] == (
+    assert captured_native_arguments[0][8] == (100.0, 100.5)
+    assert captured_native_arguments[0][9] == (
         "buy",
         "sell",
     )
@@ -3993,6 +3987,7 @@ def test_runtime_pricing_factors_use_pricing_kernel_when_requested(
         "pricing_kernel_parameters": {
             "buy_activity_premium": 1.2,
             "sell_activity_premium": 0.8,
+            "pressure_signed_imbalance_exposure_risk_price": 0.15,
         },
     }
 
@@ -4020,8 +4015,16 @@ def test_runtime_pricing_factors_use_pricing_kernel_when_requested(
         "lambda_bar"
     ]
     assert physical_runtime_factors.pricing_kernel_parameters.buy_activity_premium == 1.0
+    assert (
+        physical_runtime_factors.pricing_kernel_parameters.pressure_signed_imbalance_exposure_risk_price
+        == 0.0
+    )
     assert pricing_runtime_factors.pricing_kernel_parameters.buy_activity_premium == 1.2
     assert pricing_runtime_factors.pricing_kernel_parameters.sell_activity_premium == 0.8
+    assert (
+        pricing_runtime_factors.pricing_kernel_parameters.pressure_signed_imbalance_exposure_risk_price
+        == 0.15
+    )
 
 
 def test_runtime_pricing_factors_reject_incomplete_pricing_block(
@@ -4542,7 +4545,6 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
         selected_stage_kinds=(
             CalibrationStage.SEASONALITY,
             CalibrationStage.HAWKES,
-            CalibrationStage.OBSERVATION_MODELS,
             CalibrationStage.RETURN_COMPONENTS,
             CalibrationStage.LONG_VARIANCE,
             CalibrationStage.NEWS_SHOCKS,
@@ -5252,11 +5254,14 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "long_variance_parameters": (
                             build_neutral_long_variance_parameters_payload()
                         ),
-                        "tick_grid_observation_model": (
-                            build_nominal_tick_grid_observation_model_payload()
+                        "market_pressure_parameters": (
+                            build_no_anchor_impact_market_pressure_parameters_payload()
                         ),
-                        "timestamp_batching_observation_model": (
-                            build_disabled_timestamp_batching_observation_model_payload()
+                        "price_discretization_surface": (
+                            build_nominal_price_discretization_surface_payload()
+                        ),
+                        "timestamp_batching_surface": (
+                            build_disabled_timestamp_batching_surface_payload()
                         ),
                         "mean_reversion_fitted_parameters": (
                             build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
@@ -5283,29 +5288,19 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "retained_observation_count": 0,
                             "coverage_ratio": 0.0,
                         },
-                        "anchor_parameter_estimates": {
-                            "reference_interval_hours": 24.0,
-                            "pressure_persistence_per_reference_interval": 0.0,
-                            "pressure_level_gain": 0.0,
-                        },
                         "anchor_origin_level": None,
                         "phi_reference": 1.0,
                         "kappa": 0.0,
                         "residual_sum_of_squares": 0.0,
                         "quasi_log_likelihood": None,
                         "information_criterion_bic": None,
-                        "model_selection_policy": "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1",
+                        "model_selection_policy": "gaussian_quasi_likelihood_bic_mean_reversion_model_selection.v1",
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
                         "least_squares_rank": 0,
                         "evaluated_candidates": [
                             {
                                 "candidate_family": "random_walk_null",
-                                "anchor_model": {
-                                    "reference_interval_hours": 24.0,
-                                    "pressure_persistence_per_reference_interval": 0.0,
-                                    "pressure_level_gain": 0.0,
-                                },
                                 "anchor_origin_level": None,
                                 "phi_reference": 1.0,
                                 "kappa": 0.0,
@@ -5319,7 +5314,6 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "series_summaries": (
                                     build_empty_mean_reversion_series_summaries_payload()
                                 ),
-                                "predictive_evidence": None,
                                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                             }
                         ],
@@ -5335,11 +5329,6 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "evaluated_candidates": [
                                     {
                                         "candidate_family": "random_walk_null",
-                                        "anchor_model": {
-                                            "reference_interval_hours": 24.0,
-                                            "pressure_persistence_per_reference_interval": 0.0,
-                                            "pressure_level_gain": 0.0,
-                                        },
                                         "anchor_origin_level": None,
                                         "phi_reference": 1.0,
                                         "kappa": 0.0,
@@ -5353,7 +5342,6 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                         "series_summaries": (
                                             build_empty_mean_reversion_series_summaries_payload()
                                         ),
-                                        "predictive_evidence": None,
                                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                                     }
                                 ],
@@ -5465,11 +5453,14 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "long_variance_parameters": (
                                 build_neutral_long_variance_parameters_payload()
                             ),
-                            "tick_grid_observation_model": (
-                                build_nominal_tick_grid_observation_model_payload()
+                            "market_pressure_parameters": (
+                                build_no_anchor_impact_market_pressure_parameters_payload()
                             ),
-                            "timestamp_batching_observation_model": (
-                                build_disabled_timestamp_batching_observation_model_payload()
+                            "price_discretization_surface": (
+                                build_nominal_price_discretization_surface_payload()
+                            ),
+                            "timestamp_batching_surface": (
+                                build_disabled_timestamp_batching_surface_payload()
                             ),
                             "mean_reversion_fitted_parameters": (
                                 build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
@@ -5564,11 +5555,14 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         "long_variance_parameters": (
                             build_neutral_long_variance_parameters_payload()
                         ),
-                        "tick_grid_observation_model": (
-                            build_nominal_tick_grid_observation_model_payload()
+                        "market_pressure_parameters": (
+                            build_no_anchor_impact_market_pressure_parameters_payload()
                         ),
-                        "timestamp_batching_observation_model": (
-                            build_disabled_timestamp_batching_observation_model_payload()
+                        "price_discretization_surface": (
+                            build_nominal_price_discretization_surface_payload()
+                        ),
+                        "timestamp_batching_surface": (
+                            build_disabled_timestamp_batching_surface_payload()
                         ),
                         "mean_reversion_fitted_parameters": (
                             build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()

@@ -9,7 +9,7 @@ use janiform_market_time::calendar::{
 
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
-use super::state::JointRefinementContext;
+use super::state::{JointRefinementContext, JointRefinementRestartOutcome};
 
 pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
     parameter_vector
@@ -102,6 +102,51 @@ pub(crate) fn joint_refinement_has_parallel_worker_capacity(
     context: &JointRefinementContext,
 ) -> bool {
     joint_refinement_parallel_worker_count(context) > 1
+}
+
+pub(crate) fn joint_restart_outcome_has_better_final_loss(
+    candidate_outcome: &JointRefinementRestartOutcome,
+    incumbent_outcome: &JointRefinementRestartOutcome,
+) -> bool {
+    let candidate_is_valid = candidate_outcome.final_evaluation.invalid_reason.is_none();
+    let incumbent_is_valid = incumbent_outcome.final_evaluation.invalid_reason.is_none();
+
+    match (candidate_is_valid, incumbent_is_valid) {
+        (true, false) => true,
+        (false, true) => false,
+        _ => {
+            candidate_outcome.final_evaluation.breakdown.global_loss
+                < incumbent_outcome.final_evaluation.breakdown.global_loss
+        }
+    }
+}
+
+pub(crate) fn best_joint_restart_outcome(
+    restart_outcomes: &[JointRefinementRestartOutcome],
+) -> Option<&JointRefinementRestartOutcome> {
+    restart_outcomes
+        .iter()
+        .reduce(|best_outcome, candidate_outcome| {
+            if joint_restart_outcome_has_better_final_loss(candidate_outcome, best_outcome) {
+                candidate_outcome
+            } else {
+                best_outcome
+            }
+        })
+}
+
+pub(crate) fn select_best_joint_restart_outcome(
+    restart_outcomes: Vec<JointRefinementRestartOutcome>,
+) -> Option<JointRefinementRestartOutcome> {
+    restart_outcomes
+        .into_iter()
+        .reduce(|best_outcome, candidate_outcome| {
+            if joint_restart_outcome_has_better_final_loss(&candidate_outcome, &best_outcome) {
+                candidate_outcome
+            } else {
+                best_outcome
+            }
+        })
 }
 
 pub(crate) fn build_exchange_calendar_registry_artifact(

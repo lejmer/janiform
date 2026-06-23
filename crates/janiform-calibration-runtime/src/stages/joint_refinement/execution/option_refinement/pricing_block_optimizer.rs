@@ -280,7 +280,8 @@ fn pricing_block_least_squares_proposals(
     let mut residual_vector = Vec::with_capacity(weighted_rows.len());
 
     for weighted_row in weighted_rows {
-        if weighted_row.gradient.len() != pricing_block_search_coordinate_count() {
+        if weighted_row.gradient.len() != pricing_block_search_coordinate_count(refinement_context)
+        {
             return Err(
                 "option pricing residual Jacobian dimension does not match pricing block"
                     .to_string(),
@@ -347,7 +348,7 @@ fn pricing_block_gradient_proposals(
         return Ok(Vec::new());
     };
 
-    if raw_gradient.len() != pricing_block_search_coordinate_count() {
+    if raw_gradient.len() != pricing_block_search_coordinate_count(refinement_context) {
         return Err("option pricing gradient dimension does not match pricing block".to_string());
     }
 

@@ -34,16 +34,19 @@ impl ExponentialAffineTransformHamiltonians {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExponentialAffineTransformOdeRhs {
     pub d_derivative: ExponentialAffineTransformDVector,
+    pub market_pressure_derivative: ComplexScalar,
     pub c_derivative: ComplexScalar,
 }
 
 impl ExponentialAffineTransformOdeRhs {
     pub const fn new(
         d_derivative: ExponentialAffineTransformDVector,
+        market_pressure_derivative: ComplexScalar,
         c_derivative: ComplexScalar,
     ) -> Self {
         Self {
             d_derivative,
+            market_pressure_derivative,
             c_derivative,
         }
     }
@@ -55,10 +58,11 @@ impl ExponentialAffineTransformOdeRhs {
 /// - `H_plus_*(D) = z_plus * exp(D · k_plus) - 1 - u_plus_*`
 /// - `H_minus_*(D) = z_minus * exp(D · k_minus) - 1 - u_minus_*`
 pub fn evaluate_exponential_affine_transform_hamiltonians(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
+    _market_pressure_loading: ComplexScalar,
 ) -> ExponentialAffineTransformHamiltonians {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
     let d_dot_k_plus = d_vector.dot_loadings(equation_specification.k_plus());
     let d_dot_k_minus = d_vector.dot_loadings(equation_specification.k_minus());
@@ -96,16 +100,19 @@ pub fn evaluate_exponential_affine_transform_hamiltonians(
 /// - `D_--' = -beta * D_-- + H_minus_endogenous`
 /// - `C' = seasonality_factor * lambda_bar * (H_plus_baseline + H_minus_baseline) + known_news + surprise_news`
 pub fn evaluate_exponential_affine_transform_ode_rhs(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
+    _market_pressure_loading: ComplexScalar,
 ) -> ExponentialAffineTransformOdeRhs {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
-    let hamiltonians =
-        evaluate_exponential_affine_transform_hamiltonians(transform_input, d_vector);
+    let hamiltonians = evaluate_exponential_affine_transform_hamiltonians(
+        transform_input,
+        d_vector,
+        _market_pressure_loading,
+    );
 
     let beta = equation_specification.hawkes_kernel_parameters.beta;
-
     let d_derivative = ExponentialAffineTransformDVector::new(
         d_vector
             .plus_plus
@@ -135,7 +142,13 @@ pub fn evaluate_exponential_affine_transform_ode_rhs(
 
     let news_term = evaluate_gamma_moment_news_term(transform_input, d_vector);
 
-    ExponentialAffineTransformOdeRhs::new(d_derivative, trading_term.plus(news_term))
+    let market_pressure_derivative = transform_input.market_pressure_return_loading;
+
+    ExponentialAffineTransformOdeRhs::new(
+        d_derivative,
+        market_pressure_derivative,
+        trading_term.plus(news_term),
+    )
 }
 fn evaluate_hamiltonian_component(
     u_component: ComplexScalar,
@@ -148,10 +161,10 @@ fn evaluate_hamiltonian_component(
 }
 
 fn evaluate_gamma_moment_news_term(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
 ) -> ComplexScalar {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
     evaluate_gamma_normal_news_transform(GammaNormalNewsTransformComponents {
         gamma_severity_mark_configuration: equation_specification.gamma_severity_mark_configuration,

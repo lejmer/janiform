@@ -14,6 +14,7 @@ use janiform_engine_sufficient_statistics::{
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::HawkesKernelParameters;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
 };
@@ -60,13 +61,14 @@ pub fn build_equation_specification(
         hawkes_kernel_parameters,
         gamma_mark_configuration,
         LongVarianceParameters::neutral(),
+        MarketPressureParameters::no_anchor_impact(),
     ))
 }
 
 pub fn build_oracle_transform_input(
     profile: &BenchmarkScenarioWorkloadProfile,
     benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     invocation_seed: u64,
 ) -> Result<ExponentialAffineTransformInput, OraclePricerSufficientStatisticsBenchmarkHarnessError>
 {
@@ -98,7 +100,8 @@ pub fn build_oracle_transform_input(
     })?;
 
     ExponentialAffineTransformInput::try_new(
-        equation_specification,
+        // Each transform input owns its equation specification for independent solver use.
+        equation_specification.clone(),
         ExponentialAffineTransformActivityLoadings::total_activity(
             ComplexScalar::new(
                 interpolate_range(solver_probes.u_probe_min, solver_probes.u_probe_max, noise),
@@ -126,6 +129,8 @@ pub fn build_oracle_transform_input(
             0.0,
         ),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         interpolate_range(
             solver_probes.seasonality_factor_min,
             solver_probes.seasonality_factor_max,
@@ -144,6 +149,7 @@ pub fn build_oracle_transform_input(
         },
         profile.interval_settings.interval_delta,
         profile.model_state.initial_excitation_state,
+        MarketPressureState::neutral(),
     )
     .map_err(|source| {
         OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidOracleTransformInput {
@@ -207,7 +213,7 @@ pub fn build_pricing_market_inputs(
 pub(crate) fn build_sufficient_statistics_transform_slices(
     profile: &BenchmarkScenarioWorkloadProfile,
     benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     solver_settings: ExponentialAffineTransformSolverSettings,
     component_seed: u64,
 ) -> Result<
@@ -266,6 +272,7 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
             news_intensity_input,
             profile.interval_settings.interval_delta,
             profile.model_state.initial_excitation_state,
+            MarketPressureState::neutral(),
         )
         .map_err(|source| {
             OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidRiskSliceContext {
@@ -276,7 +283,8 @@ pub(crate) fn build_sufficient_statistics_transform_slices(
         })?;
 
         let solved_slices = solve_sufficient_statistics_transform_slices_with_solver_settings(
-            equation_specification,
+            // The solver input owns the specification for each interval solve.
+            equation_specification.clone(),
             context,
             sampling_settings,
             Some(solver_settings),

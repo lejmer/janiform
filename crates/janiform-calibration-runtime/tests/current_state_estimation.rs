@@ -7,6 +7,9 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::{
+    MarketPressureMeasureParameters, MarketPressureParameters, MarketPressureTransitionRates,
+};
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 
 #[test]
@@ -29,10 +32,10 @@ fn current_state_estimation_replays_hawkes_state_and_mean_reversion_boundary() {
     )
     .expect("test kernel parameters should be valid");
 
-    let mean_reversion_fitted_parameters =
-        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.0, 0.0)
-            .expect("test mean-reversion fitted parameters should be valid");
-    let long_variance_parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.25, 0.50)
+    let mean_reversion_fitted_parameters = MeanReversionFittedParameters::try_new(0.25)
+        .expect("test mean-reversion fitted parameters should be valid");
+    let market_pressure_parameters = test_market_pressure_parameters();
+    let long_variance_parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.0, 0.0, 0.25, 0.50)
         .expect("test long-variance parameters should be valid");
 
     let state_time_utc_nanos = 15 * NANOS_PER_HOUR;
@@ -42,6 +45,7 @@ fn current_state_estimation_replays_hawkes_state_and_mean_reversion_boundary() {
             kernel_parameters,
             long_variance_parameters,
             mean_reversion_fitted_parameters,
+            market_pressure_parameters,
             reference_price: 100.0,
             state_time_utc_nanos,
             observed_log_return: 0.05,
@@ -96,11 +100,13 @@ fn current_state_estimation_replays_hawkes_state_and_mean_reversion_boundary() {
             .observed_log_price,
         0.05
     );
+    assert_eq!(
+        estimation_output.market_pressure_state.state_weights.len(),
+        2
+    );
     assert_ne!(
-        estimation_output
-            .mean_reversion_boundary_state
-            .pressure_state,
-        0.0
+        estimation_output.market_pressure_state.state_weights[0],
+        estimation_output.market_pressure_state.state_weights[1]
     );
     assert_ne!(
         estimation_output.mean_reversion_boundary_state.deviation,
@@ -132,14 +138,14 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
     )
     .expect("test kernel parameters should be valid");
 
-    let mean_reversion_fitted_parameters =
-        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.0, 0.0)
-            .expect("test mean-reversion fitted parameters should be valid");
+    let mean_reversion_fitted_parameters = MeanReversionFittedParameters::try_new(0.25)
+        .expect("test mean-reversion fitted parameters should be valid");
 
     let error = estimate_current_state_from_observed_data(CurrentStateEstimationInput {
         kernel_parameters,
         long_variance_parameters: LongVarianceParameters::neutral(),
         mean_reversion_fitted_parameters,
+        market_pressure_parameters: test_market_pressure_parameters(),
         reference_price: 100.0,
         state_time_utc_nanos: 14 * NANOS_PER_HOUR,
         observed_log_return: 0.05,
@@ -180,9 +186,9 @@ fn current_state_estimation_uses_reference_price_when_observed_price_override_di
     )
     .expect("test kernel parameters should be valid");
 
-    let mean_reversion_fitted_parameters =
-        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
-            .expect("test mean-reversion fitted parameters should be valid");
+    let mean_reversion_fitted_parameters = MeanReversionFittedParameters::try_new(0.25)
+        .expect("test mean-reversion fitted parameters should be valid");
+    let market_pressure_parameters = test_market_pressure_parameters();
 
     let long_variance_parameters = LongVarianceParameters::neutral();
     let state_time_utc_nanos = 15 * NANOS_PER_HOUR;
@@ -197,7 +203,8 @@ fn current_state_estimation_uses_reference_price_when_observed_price_override_di
         estimate_current_state_from_observed_data(CurrentStateEstimationInput {
             kernel_parameters,
             long_variance_parameters,
-            mean_reversion_fitted_parameters: mean_reversion_fitted_parameters.clone(),
+            mean_reversion_fitted_parameters,
+            market_pressure_parameters: market_pressure_parameters.clone(),
             reference_price,
             state_time_utc_nanos,
             observed_log_return,
@@ -211,6 +218,7 @@ fn current_state_estimation_uses_reference_price_when_observed_price_override_di
         kernel_parameters,
         long_variance_parameters,
         mean_reversion_fitted_parameters,
+        market_pressure_parameters,
         reference_price,
         previous_snapshot: None,
         state_time_utc_nanos,
@@ -228,11 +236,13 @@ fn current_state_estimation_uses_reference_price_when_observed_price_override_di
             .observed_log_price,
         observed_log_return
     );
+    assert_eq!(
+        estimation_output.market_pressure_state.state_weights.len(),
+        2
+    );
     assert_ne!(
-        estimation_output
-            .mean_reversion_boundary_state
-            .pressure_state,
-        0.0
+        estimation_output.market_pressure_state.state_weights[0],
+        estimation_output.market_pressure_state.state_weights[1]
     );
     assert_ne!(
         estimation_output.mean_reversion_boundary_state.deviation,
@@ -260,14 +270,14 @@ fn current_state_estimation_rejects_invalid_reference_price() {
     )
     .expect("test kernel parameters should be valid");
 
-    let mean_reversion_fitted_parameters =
-        MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
-            .expect("test mean-reversion fitted parameters should be valid");
+    let mean_reversion_fitted_parameters = MeanReversionFittedParameters::try_new(0.25)
+        .expect("test mean-reversion fitted parameters should be valid");
 
     let error = estimate_current_state_from_observed_data(CurrentStateEstimationInput {
         kernel_parameters,
         long_variance_parameters: LongVarianceParameters::neutral(),
         mean_reversion_fitted_parameters,
+        market_pressure_parameters: test_market_pressure_parameters(),
         reference_price: 0.0,
         state_time_utc_nanos: 14 * NANOS_PER_HOUR,
         observed_log_return: 0.05,
@@ -281,4 +291,14 @@ fn current_state_estimation_rejects_invalid_reference_price() {
         error,
         CurrentStateEstimationError::InvalidReferencePrice { value: 0.0 }
     );
+}
+
+fn test_market_pressure_parameters() -> MarketPressureParameters {
+    let measure_parameters = MarketPressureMeasureParameters::new(
+        MarketPressureTransitionRates::new(vec![0.25], vec![0.25]),
+        0.01,
+    );
+
+    MarketPressureParameters::try_new(vec![-0.5, 0.5], measure_parameters)
+        .expect("test market-pressure parameters should validate")
 }

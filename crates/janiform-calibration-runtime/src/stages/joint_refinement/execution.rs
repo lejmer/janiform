@@ -44,14 +44,12 @@ pub(crate) use inputs::{sampled_observed_tick_returns, tick_shape_sample_target_
 #[cfg(test)]
 pub(crate) use optimization::joint_refinement_restart_full_vector_direct_search_settings;
 pub(crate) use optimization::{
-    SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
     optimize_restart_seeds, precheck_seed_summary_workload,
-    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
 };
 pub(crate) use option_refinement::{
-    desired_joint_refinement_option_refinement_candidate_count,
-    pricing_block_search_coordinate_count, run_option_refinement,
+    OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT,
+    desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
 };
 #[cfg(test)]
 pub(crate) use pipeline::{
@@ -81,15 +79,17 @@ pub(crate) use selection::{
     select_restart_outcomes_with_lazy_coarse_consistency,
 };
 pub(crate) use shared::{
-    build_exchange_calendar_registry_artifact, build_halton_restart_id,
+    best_joint_restart_outcome, build_exchange_calendar_registry_artifact, build_halton_restart_id,
     deduplicate_restart_seed_candidates, elapsed_millis, halton_parameter_vector,
     joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
-    ordered_parameter_bits, planned_restart_work_item_labels, with_joint_refinement_thread_pool,
+    joint_restart_outcome_has_better_final_loss, ordered_parameter_bits,
+    planned_restart_work_item_labels, select_best_joint_restart_outcome,
+    with_joint_refinement_thread_pool,
 };
 pub(crate) use state::{
     JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT,
-    JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JointRefinementActiveParameterLayout,
-    JointRefinementAggregatedLikelihoodContextCacheKey,
+    JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JOINT_REFINEMENT_PRESSURE_RISK_PRICE_LOG_DENSITY_BOUND,
+    JointRefinementActiveParameterLayout, JointRefinementAggregatedLikelihoodContextCacheKey,
     JointRefinementAggregatedLikelihoodContexts, JointRefinementCandidateEvaluation,
     JointRefinementCoarseConsistencySummary, JointRefinementContext,
     JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation,
@@ -101,4 +101,4 @@ pub(crate) use state::{
     JointRefinementSeedSummaryCacheKey, JointRefinementStageRuntimeHandoff,
 };
 #[cfg(test)]
-pub(crate) use test_support::test_joint_fitted_parameters;
+pub(crate) use test_support::{test_joint_fitted_parameters, test_joint_restart_outcome};

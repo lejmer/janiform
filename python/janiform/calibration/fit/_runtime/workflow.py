@@ -276,10 +276,6 @@ def _fit_preparation_configuration_payload(
             preparation.joint_refinement_audit_option_pricing_enabled
         ),
         "diagnostics": preparation.diagnostics.to_payload(),
-        "stylized_fact_huber_cutoff": preparation.stylized_fact_huber_cutoff,
-        "stylized_fact_admissibility_z_threshold": (
-            preparation.stylized_fact_admissibility_z_threshold
-        ),
         "default_endogenous_mean_reversion_configuration": (
             preparation.default_endogenous_mean_reversion_configuration.to_payload()
         ),

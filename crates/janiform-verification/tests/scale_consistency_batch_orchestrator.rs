@@ -1,3 +1,5 @@
+mod support;
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
@@ -29,6 +31,7 @@ use janiform_verification::{
     ScaleConsistencyScenarioExecutionRequest, ScaleConsistencyScenarioExecutor,
     run_scale_consistency_batch_orchestrator,
 };
+use support::neutral_market_pressure_parameters;
 
 #[test]
 fn scale_consistency_batch_orchestrator_preserves_spec_order_and_collates_results() {
@@ -581,6 +584,7 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
         hawkes_kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(2.0).expect("gamma severity marks should validate"),
         LongVarianceParameters::neutral(),
+        neutral_market_pressure_parameters(),
     )
     .expect("equation specification should validate");
 
@@ -596,24 +600,20 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
             y_minus_plus: 0.03,
             y_minus_minus: 0.04,
         },
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-kappa endogenous mean reversion should construct"),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
-            0.0,
-            vec![0.0; 2],
             vec![0.0; 2],
             vec![1.0; 2],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-            0.0, 0.0, 0.0, 0.0,
-        )
-        .expect("disabled mean-reversion boundary state should construct"),
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     })
     .expect("model inputs should validate")
 }

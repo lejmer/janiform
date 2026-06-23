@@ -7,8 +7,7 @@ mod residual_jacobian;
 mod workflow;
 
 pub(crate) use workflow::{
-    OptionRefinedCandidate, SearchTierCandidate,
+    OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT, OptionRefinedCandidate, SearchTierCandidate,
     desired_joint_refinement_option_refinement_candidate_count,
-    option_pricing_block_evaluation_budget, pricing_block_search_coordinate_count,
-    run_option_refinement,
+    option_pricing_block_evaluation_budget, run_option_refinement,
 };

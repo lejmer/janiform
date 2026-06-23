@@ -130,7 +130,9 @@ impl ExponentialAffineTransformMethodComparisonSolverSettings {
         step_count: usize,
     ) -> Result<Self, ExponentialAffineTransformSolverSettingsError> {
         let settings = Self::new(integrator_method, step_count);
+
         settings.validate()?;
+
         Ok(settings)
     }
 
@@ -180,7 +182,9 @@ impl ExponentialAffineTransformMethodComparisonToleranceWindow {
             d_component_absolute_tolerance,
             transform_value_absolute_tolerance,
         );
+
         tolerance_window.validate()?;
+
         Ok(tolerance_window)
     }
 
@@ -191,10 +195,12 @@ impl ExponentialAffineTransformMethodComparisonToleranceWindow {
             "c_at_delta_absolute_tolerance",
             self.c_at_delta_absolute_tolerance,
         )?;
+
         validate_positive_finite_tolerance_value(
             "d_component_absolute_tolerance",
             self.d_component_absolute_tolerance,
         )?;
+
         validate_positive_finite_tolerance_value(
             "transform_value_absolute_tolerance",
             self.transform_value_absolute_tolerance,
@@ -250,7 +256,9 @@ impl ExponentialAffineTransformMethodComparisonIntervalToleranceBand {
         tolerance_window: ExponentialAffineTransformMethodComparisonToleranceWindow,
     ) -> Result<Self, ExponentialAffineTransformMethodComparisonToleranceBandError> {
         let tolerance_band = Self::new(interval_grid_label, delta_upper_bound, tolerance_window);
+
         tolerance_band.validate()?;
+
         Ok(tolerance_band)
     }
 
@@ -340,7 +348,9 @@ impl ExponentialAffineTransformMethodComparisonPolicyChangeLogEntry {
         rationale: String,
     ) -> Result<Self, ExponentialAffineTransformMethodComparisonPolicyChangeLogEntryError> {
         let change_log_entry = Self::new(policy_version, recorded_at_utc, rationale);
+
         change_log_entry.validate()?;
+
         Ok(change_log_entry)
     }
 
@@ -443,7 +453,9 @@ impl ExponentialAffineTransformMethodComparisonTolerancePolicy {
             interval_tolerance_bands,
             change_log,
         );
+
         tolerance_policy.validate()?;
+
         Ok(tolerance_policy)
     }
 
@@ -483,6 +495,7 @@ impl ExponentialAffineTransformMethodComparisonTolerancePolicy {
         }
 
         let mut observed_settings_identities = BTreeSet::new();
+
         for (alternative_position, alternative_settings) in
             self.alternative_solver_settings.iter().enumerate()
         {
@@ -504,6 +517,7 @@ impl ExponentialAffineTransformMethodComparisonTolerancePolicy {
 
             let settings_identity =
                 method_comparison_solver_settings_identity(*alternative_settings);
+
             if !observed_settings_identities.insert(settings_identity) {
                 return Err(
                     ExponentialAffineTransformMethodComparisonTolerancePolicyError::DuplicateAlternativeSolverSettings {
@@ -521,6 +535,7 @@ impl ExponentialAffineTransformMethodComparisonTolerancePolicy {
         }
 
         let mut previous_delta_upper_bound: Option<f64> = None;
+
         for (band_position, tolerance_band) in self.interval_tolerance_bands.iter().enumerate() {
             tolerance_band.validate().map_err(|source| {
                 ExponentialAffineTransformMethodComparisonTolerancePolicyError::InvalidIntervalToleranceBand {
@@ -863,6 +878,7 @@ pub fn compare_exponential_affine_transform_integration_methods(
     tolerance_policy.validate().map_err(|source| {
         ExponentialAffineTransformMethodComparisonError::InvalidTolerancePolicy { source }
     })?;
+
     let tolerance_band = tolerance_policy
         .select_tolerance_band_for_delta(transform_input.delta)
         .map_err(|source| {
@@ -872,24 +888,31 @@ pub fn compare_exponential_affine_transform_integration_methods(
     let baseline_solver_settings = tolerance_policy
         .baseline_solver_settings
         .to_solver_settings();
-    let baseline_result =
-        solve_exponential_affine_transform_with_settings(transform_input, baseline_solver_settings)
-            .map_err(|source| {
-                ExponentialAffineTransformMethodComparisonError::BaselineSolverExecutionFailed {
-                    source,
-                }
-            })?;
+
+    let input_delta = transform_input.delta;
+
+    let baseline_result = solve_exponential_affine_transform_with_settings(
+        // The baseline and alternative solvers each own their transform input.
+        transform_input.clone(),
+        baseline_solver_settings,
+    )
+    .map_err(|source| {
+        ExponentialAffineTransformMethodComparisonError::BaselineSolverExecutionFailed { source }
+    })?;
+
     let baseline_run_summary =
         method_comparison_run_summary(tolerance_policy.baseline_solver_settings, baseline_result);
 
     let mut alternative_runs = Vec::new();
+
     for (alternative_position, alternative_solver_settings) in tolerance_policy
         .alternative_solver_settings
         .iter()
         .enumerate()
     {
         let alternative_result = solve_exponential_affine_transform_with_settings(
-            transform_input,
+            // Each alternative solve owns the same input contract independently.
+            transform_input.clone(),
             alternative_solver_settings.to_solver_settings(),
         )
         .map_err(|source| {
@@ -922,7 +945,7 @@ pub fn compare_exponential_affine_transform_integration_methods(
             EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_INTERVAL_SELECTION_POLICY,
         reference_fixture_policy:
             EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_REFERENCE_FIXTURE_POLICY,
-        input_delta: transform_input.delta,
+        input_delta,
         tolerance_band,
         baseline_run: baseline_run_summary,
         alternative_runs,
@@ -989,16 +1012,20 @@ fn evaluate_method_comparison_alternative_run(
 ) -> ExponentialAffineTransformMethodComparisonAlternativeRunReport {
     let run_summary =
         method_comparison_run_summary(alternative_solver_settings, alternative_result);
+
     let status_matches_baseline = baseline_result.status == alternative_result.status;
+
     let mut failure_codes = Vec::new();
 
     if !status_matches_baseline {
         failure_codes.push(ExponentialAffineTransformMethodComparisonFailureCode::StatusMismatch);
     }
+
     if baseline_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
         failure_codes
             .push(ExponentialAffineTransformMethodComparisonFailureCode::BaselineNotCompleted);
     }
+
     if alternative_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
         failure_codes
             .push(ExponentialAffineTransformMethodComparisonFailureCode::AlternativeNotCompleted);
@@ -1045,21 +1072,25 @@ fn evaluate_method_comparison_alternative_run(
                 failure_codes.push(
                     ExponentialAffineTransformMethodComparisonFailureCode::BaselineOutputMissing,
                 );
+
                 None
             }
             (Some(_), None) => {
                 failure_codes.push(
                     ExponentialAffineTransformMethodComparisonFailureCode::AlternativeOutputMissing,
                 );
+
                 None
             }
             (None, None) => {
                 failure_codes.push(
                     ExponentialAffineTransformMethodComparisonFailureCode::BaselineOutputMissing,
                 );
+
                 failure_codes.push(
                     ExponentialAffineTransformMethodComparisonFailureCode::AlternativeOutputMissing,
                 );
+
                 None
             }
         }
@@ -1118,6 +1149,7 @@ fn complex_componentwise_absolute_difference(left: ComplexScalar, right: Complex
         .abs()
         .max((left.imaginary - right.imaginary).abs())
 }
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExponentialAffineTransformMethodComparisonTolerancePolicyPayload {
@@ -1138,6 +1170,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformMethodComparisonToleran
             ExponentialAffineTransformMethodComparisonTolerancePolicyPayload::deserialize(
                 deserializer,
             )?;
+
         Self::try_new(
             payload.schema_version,
             payload.policy_version,

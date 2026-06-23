@@ -1,4 +1,4 @@
-//! Pricing-side interval factor grid loading through the shared provider interface.
+//! Pricing engine contracts, transforms, and execution entrypoints.
 
 mod black_scholes;
 mod characteristic;
@@ -6,6 +6,7 @@ mod constants;
 mod contracts;
 mod forecast;
 mod grids;
+mod hawkes;
 mod implied_volatility;
 mod interval_schedule;
 mod maturity_inputs;
@@ -30,9 +31,7 @@ pub use characteristic::{
     compose_nig_trading_time_exponent, compose_nig_trading_time_exponent_with_edge_mode,
     compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
-    compose_total_return_characteristic_function_with_edge_mode, evolve_hawkes_state,
-    load_interval_factor_grid, project_hawkes_intensities_coarse_interval,
-    solve_anchored_local_pricing_tilt,
+    compose_total_return_characteristic_function_with_edge_mode, solve_anchored_local_pricing_tilt,
 };
 pub use constants::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, INTRADAY_PRICING_CONTINUOUS_RATE_TIME_SCALING_POLICY,
@@ -91,6 +90,7 @@ pub use grids::{
     run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
     run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
 };
+pub use hawkes::project_hawkes_intensities_coarse_interval;
 pub use implied_volatility::{
     VanillaOptionImpliedVolatilityInversionOutcome, VanillaOptionImpliedVolatilityInversionStatus,
     invert_vanilla_option_implied_volatility,
@@ -102,6 +102,8 @@ pub use interval_schedule::{
     materialize_schedule_interval_factor_grids,
     materialize_schedule_interval_factor_grids_with_cpu_count,
 };
+pub use janiform_market_time::interval_factor_grids::provide_interval_factor_grid as load_interval_factor_grid;
+pub use janiform_model_kernels::hawkes::evolve_hawkes_state;
 pub use maturity_inputs::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
     HighLevelPricingMaturityResolutionRequest, resolve_high_level_pricing_maturity_inputs,

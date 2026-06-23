@@ -16,7 +16,7 @@ from .contracts import (
 )
 from .ingestion import LoadedMarketDataSourceSummary
 from .request import MarketDataCalibrationRequest
-from .timestamp_observation import MarketDataTimestampBatchingObservationDiagnostic
+from .timestamp_batching_surface import MarketDataTimestampBatchingSurfaceDiagnostic
 from ..errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -46,7 +46,7 @@ class MarketDataTranslationDiagnostics:
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
     executed_calibration_steps: tuple[str, ...]
-    timestamp_batching_observation: MarketDataTimestampBatchingObservationDiagnostic
+    timestamp_batching_surface: MarketDataTimestampBatchingSurfaceDiagnostic
     tick_record_count: int
     coarse_data_record_count: int
     coarse_data_return_interval_count: int
@@ -445,10 +445,10 @@ def _market_data_translation_diagnostics_from_payload(
         workflow_scope=CalibrationMarketDataWorkflowScope(raw_payload["workflow_scope"]),
         selected_stages=tuple(CalibrationStage(stage) for stage in raw_payload["selected_stages"]),
         executed_calibration_steps=tuple(raw_payload["executed_calibration_steps"]),
-        timestamp_batching_observation=(
-            MarketDataTimestampBatchingObservationDiagnostic.from_mapping(
-                raw_payload["timestamp_batching_observation"],
-                field_path="diagnostics.timestamp_batching_observation",
+        timestamp_batching_surface=(
+            MarketDataTimestampBatchingSurfaceDiagnostic.from_mapping(
+                raw_payload["timestamp_batching_surface"],
+                field_path="diagnostics.timestamp_batching_surface",
             )
         ),
         tick_record_count=int(raw_payload["tick_record_count"]),

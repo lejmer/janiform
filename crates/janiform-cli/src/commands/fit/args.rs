@@ -80,13 +80,6 @@ By default, janiform fit writes a durable run directory for downstream CLI comma
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
 
     #[arg(
-        long = "mean-reversion-predictive-evidence-alpha",
-        value_name = "ALPHA",
-        help = "Advanced mean-reversion predictive evidence significance level."
-    )]
-    pub(crate) mean_reversion_predictive_evidence_alpha: Option<f64>,
-
-    #[arg(
         long,
         value_name = "COUNT",
         help = "Joint-refinement restart candidate budget."
@@ -116,20 +109,6 @@ Repeat this option to request more than one diagnostic. Diagnostics can add repo
         help = "Treat calibration warning outcomes as fit failures for automation."
     )]
     pub(crate) treat_calibration_warnings_as_errors: bool,
-
-    #[arg(
-        long,
-        value_name = "Z",
-        help = "Stylized-fact Huber cutoff for the calibration objective."
-    )]
-    pub(crate) stylized_fact_huber_cutoff: Option<f64>,
-
-    #[arg(
-        long,
-        value_name = "Z",
-        help = "Stylized-fact admissibility z-threshold for the calibration objective."
-    )]
-    pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
 
     #[arg(
         long,
@@ -258,13 +237,6 @@ pub(crate) struct FitPlanCommand {
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
 
     #[arg(
-        long = "mean-reversion-predictive-evidence-alpha",
-        value_name = "ALPHA",
-        help = "Advanced mean-reversion predictive evidence significance level."
-    )]
-    pub(crate) mean_reversion_predictive_evidence_alpha: Option<f64>,
-
-    #[arg(
         long,
         value_name = "COUNT",
         help = "Joint-refinement restart candidate budget."
@@ -291,20 +263,6 @@ pub(crate) struct FitPlanCommand {
         help = "Treat calibration warning outcomes as fit failures for automation."
     )]
     pub(crate) treat_calibration_warnings_as_errors: bool,
-
-    #[arg(
-        long,
-        value_name = "Z",
-        help = "Stylized-fact Huber cutoff for the calibration objective."
-    )]
-    pub(crate) stylized_fact_huber_cutoff: Option<f64>,
-
-    #[arg(
-        long,
-        value_name = "Z",
-        help = "Stylized-fact admissibility z-threshold for the calibration objective."
-    )]
-    pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
 
     #[arg(long, value_enum, help = "Select which calibration workflow to plan.")]
     pub(crate) workflow_scope: Option<WorkflowScope>,
@@ -381,13 +339,6 @@ pub(crate) struct FitStagedPlanCommand {
         help = "Mean-reversion calibration grid interval in hours."
     )]
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
-
-    #[arg(
-        long = "mean-reversion-predictive-evidence-alpha",
-        value_name = "ALPHA",
-        help = "Advanced mean-reversion predictive evidence significance level."
-    )]
-    pub(crate) mean_reversion_predictive_evidence_alpha: Option<f64>,
 
     #[arg(
         long,

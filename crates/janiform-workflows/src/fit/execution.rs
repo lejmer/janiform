@@ -557,9 +557,9 @@ mod tests {
             &mut progress_gate,
             &return_components_stage_progress_event(
                 ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+                0,
                 1,
-                1,
-                Some("proxy EM search points ready"),
+                Some("build proxy EM search points"),
                 None,
                 None,
             )
@@ -662,6 +662,7 @@ mod tests {
                 cumulative_local_evaluation_count: None,
                 current_global_loss: None,
                 current_restart_best_global_loss: None,
+                current_final_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
                 best_global_loss: None,
@@ -711,6 +712,7 @@ mod tests {
                 cumulative_local_evaluation_count: Some(0),
                 current_global_loss: None,
                 current_restart_best_global_loss: None,
+                current_final_global_loss: None,
                 current_candidate_assessment: None,
                 best_restart_id: None,
                 best_global_loss: None,

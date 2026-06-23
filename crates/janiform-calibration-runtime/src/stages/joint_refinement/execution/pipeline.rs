@@ -17,7 +17,12 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::time::NANOS_PER_HOUR;
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 
+use crate::market_pressure::{
+    MarketPressureFitProgress, MarketPressureNigFitInput, MarketPressureRuntimeState,
+    fit_market_pressure_from_nig_configuration, market_pressure_parameters_from_runtime_state,
+};
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::{HawkesStageFittedPayload, stationary_open_event_rate_per_hour};
 use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
@@ -30,6 +35,7 @@ use crate::stages::joint_refinement::contracts::{
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
 use crate::stages::parallelism::{build_stage_thread_pool, resolved_stage_cpu_count};
+use crate::stages::progress::progress_percent;
 use crate::stages::return_components::{
     ReturnComponentsStageFittedPayload,
     ReturnComponentsStageJointRefinementObservedSignalPreparation,
@@ -512,6 +518,23 @@ fn run_joint_refinement_pipeline_stage_internal(
             }
         };
 
+    if should_refit_market_pressure_after_restart_selection(pipeline_stage, run_spec, &stage_input)
+        && let Err(failure) = refit_market_pressure_after_restart_selection(
+            &stage_input,
+            &resolved_stage_payloads,
+            &mut restart_search_artifacts,
+            progress_sender.as_ref(),
+        )
+    {
+        return build_failure_report_with_runtime_profile(
+            run_spec,
+            &prepared_bootstrap.bootstrap_context,
+            stage_started_at,
+            pipeline_stage.calibration_stage(),
+            failure,
+        );
+    }
+
     if should_run_option_pricing_stage(pipeline_stage) {
         if let Err(failure) = run_option_refinement_if_enabled(
             &stage_input,
@@ -768,8 +791,7 @@ fn return_components_fitted_parameters_with_mean_reversion(
 ) -> ReturnComponentsStageFittedParameters {
     let mut fitted_parameters = return_components_payload.fitted_parameters.clone();
 
-    fitted_parameters.mean_reversion_fitted_parameters =
-        mean_reversion_payload.fitted_parameters.clone();
+    fitted_parameters.mean_reversion_fitted_parameters = mean_reversion_payload.fitted_parameters;
 
     fitted_parameters
 }
@@ -1045,7 +1067,6 @@ fn build_bootstrap_context(
         option_pricing_execution_failure: Arc::new(Mutex::new(None)),
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
-        objective_policy: run_spec.objective_policy,
         seasonality_clock_model,
         runtime_interval_seasonality_factors: runtime_materialization
             .runtime_interval_seasonality_factors,
@@ -1059,8 +1080,7 @@ fn build_bootstrap_context(
         baseline_return_components_fitted_parameters,
         baseline_mean_reversion_fitted_parameters: resolved_stage_payloads
             .mean_reversion_payload
-            .fitted_parameters
-            .clone(),
+            .fitted_parameters,
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
@@ -1071,6 +1091,7 @@ fn build_bootstrap_context(
         deterministic_evaluation_cache: Arc::new(Mutex::new(BTreeMap::new())),
         aggregated_likelihood_context_cache: Arc::new(Mutex::new(BTreeMap::new())),
         observed_return_shape_statistic_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        observed_return_shape_covariance_cache: Arc::new(Mutex::new(BTreeMap::new())),
         seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
         option_pricing_cache: Arc::new(Mutex::new(BTreeMap::new())),
         option_pricing_context,
@@ -1434,7 +1455,7 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
     };
 
     let warning = format!(
-        "joint refinement selected the best valid candidate, but it is not admissible: selected_restart={} valid_restart_count={} admissible_restart_count={} global_loss={} blocking_terms={}",
+        "joint refinement did not identify an admissible replacement for the baseline handoff: rejected_restart={} valid_restart_count={} admissible_restart_count={} rejected_global_loss={} blocking_terms={}",
         best_restart.restart_id,
         valid_restart_count,
         admissible_restart_count,
@@ -1645,6 +1666,152 @@ pub(super) fn count_valid_restart_outcomes(
         .count()
 }
 
+fn refit_market_pressure_after_restart_selection(
+    stage_input: &JointRefinementStageExecutionInput,
+    resolved_stage_payloads: &ResolvedStagePayloads<'_>,
+    restart_search_artifacts: &mut RestartSearchArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    let market_pressure_parameters = refit_joint_market_pressure_parameters(
+        stage_input,
+        resolved_stage_payloads,
+        restart_search_artifacts,
+        progress_sender,
+    )?;
+
+    apply_market_pressure_parameters_to_restart_outcome(
+        &mut restart_search_artifacts.best_restart,
+        &market_pressure_parameters,
+    );
+
+    let selected_restart_id = restart_search_artifacts.best_restart.restart_id.as_str();
+
+    for restart_outcome in &mut restart_search_artifacts.restart_outcomes {
+        if restart_outcome.restart_id == selected_restart_id {
+            apply_market_pressure_parameters_to_restart_outcome(
+                restart_outcome,
+                &market_pressure_parameters,
+            );
+        }
+    }
+
+    for restart_outcome in &mut restart_search_artifacts.option_refinement_candidate_frontier {
+        if restart_outcome.restart_id == selected_restart_id {
+            apply_market_pressure_parameters_to_restart_outcome(
+                restart_outcome,
+                &market_pressure_parameters,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn refit_joint_market_pressure_parameters(
+    stage_input: &JointRefinementStageExecutionInput,
+    resolved_stage_payloads: &ResolvedStagePayloads<'_>,
+    restart_search_artifacts: &RestartSearchArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> Result<MarketPressureParameters, JointRefinementStageExecutionFailure> {
+    if let Some(runtime_state) = resolved_stage_payloads
+        .return_components_payload
+        .market_pressure_runtime_state
+        .as_ref()
+        .filter(|runtime_state| {
+            market_pressure_runtime_state_covers_joint_input(
+                runtime_state,
+                stage_input.coarse_data_records.as_deref(),
+            )
+        })
+    {
+        emit_joint_refinement_subphase_progress(
+            progress_sender,
+            JointRefinementStageProgressPhase::MarketPressureRefit,
+            1,
+            1,
+            "apply fitted pressure state",
+        );
+
+        return market_pressure_parameters_from_runtime_state(runtime_state).map_err(|source| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: format!("market pressure restart refit failed: {source}"),
+            }
+        });
+    }
+
+    emit_joint_refinement_subphase_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::MarketPressureRefit,
+        0,
+        1,
+        "fit market pressure parameters",
+    );
+
+    let market_pressure_progress_sender = progress_sender.cloned();
+    let mut market_pressure_progress_observer = move |progress: MarketPressureFitProgress| {
+        emit_joint_refinement_subphase_progress(
+            market_pressure_progress_sender.as_ref(),
+            JointRefinementStageProgressPhase::MarketPressureRefit,
+            progress.completed_units,
+            progress.total_units,
+            progress.current_item_label,
+        );
+    };
+
+    fit_market_pressure_from_nig_configuration(MarketPressureNigFitInput {
+        observed_open_session_returns: stage_input
+            .candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+        coarse_data_records: stage_input.coarse_data_records.as_deref(),
+        nig_configuration: restart_search_artifacts
+            .best_restart
+            .final_evaluation
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        source_window_open_exposure_hours: resolved_stage_payloads
+            .return_components_payload
+            .source_window_open_exposure_hours,
+        solver_settings: &resolved_stage_payloads.stage_solver_settings,
+        progress_observer: Some(&mut market_pressure_progress_observer),
+    })
+    .map(|output| output.parameters)
+    .map_err(
+        |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message: format!("market pressure restart refit failed: {source}"),
+        },
+    )
+}
+
+fn market_pressure_runtime_state_covers_joint_input(
+    runtime_state: &MarketPressureRuntimeState,
+    coarse_data_records: Option<
+        &[crate::market_data::loading::MarketDataNormalizedCoarseDataRecord],
+    >,
+) -> bool {
+    runtime_state
+        .covers_coarse_return_record_count(coarse_data_records.map_or(0, |records| records.len()))
+}
+
+fn apply_market_pressure_parameters_to_restart_outcome(
+    restart_outcome: &mut JointRefinementRestartOutcome,
+    market_pressure_parameters: &janiform_model_kernels::market_pressure::MarketPressureParameters,
+) {
+    // Local and final evaluations own separate fitted-parameter snapshots.
+    restart_outcome
+        .local_evaluation
+        .fitted_parameters
+        .return_components_fitted_parameters
+        .market_pressure_parameters = market_pressure_parameters.clone();
+
+    restart_outcome
+        .final_evaluation
+        .fitted_parameters
+        .return_components_fitted_parameters
+        .market_pressure_parameters = market_pressure_parameters.clone();
+}
+
 pub(super) fn count_admissible_restart_outcomes(
     restart_outcomes: &[&JointRefinementRestartOutcome],
 ) -> usize {
@@ -1747,6 +1914,18 @@ fn should_run_option_pricing_stage(pipeline_stage: JointRefinementPipelineStage)
     match pipeline_stage {
         JointRefinementPipelineStage::OptionRefinement => true,
         JointRefinementPipelineStage::JointRefinement
+        | JointRefinementPipelineStage::Finalization => false,
+    }
+}
+
+fn should_refit_market_pressure_after_restart_selection(
+    pipeline_stage: JointRefinementPipelineStage,
+    _run_spec: &CalibrationRunSpec,
+    _stage_input: &JointRefinementStageExecutionInput,
+) -> bool {
+    match pipeline_stage {
+        JointRefinementPipelineStage::JointRefinement => true,
+        JointRefinementPipelineStage::OptionRefinement
         | JointRefinementPipelineStage::Finalization => false,
     }
 }
@@ -2038,17 +2217,23 @@ fn select_restart_outcome(
             selection_artifacts.selected_restart_outcomes.as_slice(),
         );
 
-    let best_restart = option_refinement_candidate_frontier
-        .first()
-        .cloned()
-        .unwrap_or_else(|| diagnostic_best_restart.clone());
-
     let warning = ensure_valid_selected_restart_outcome(
         &diagnostic_best_restart,
         valid_selectable_restart_outcome_refs.len(),
         count_admissible_restart_outcomes(valid_selectable_restart_outcome_refs.as_slice()),
         stage_input.treat_inadmissible_calibration_warning_as_error,
     )?;
+
+    let best_restart = if warning.is_some() {
+        baseline_evaluation_artifacts
+            .baseline_restart_outcome
+            .clone()
+    } else {
+        option_refinement_candidate_frontier
+            .first()
+            .cloned()
+            .unwrap_or_else(|| diagnostic_best_restart.clone())
+    };
 
     resume_store.record_restart_selection(PersistedRestartSelectionArtifacts {
         best_restart_id: best_restart.restart_id.clone(),
@@ -2080,13 +2265,6 @@ pub(crate) fn option_refinement_candidate_frontier_from_selected_outcomes(
     selected_restart_outcomes: &[&JointRefinementRestartOutcome],
 ) -> Vec<JointRefinementRestartOutcome> {
     let admissible_outcomes = filter_admissible_restart_outcomes(selected_restart_outcomes);
-    if admissible_outcomes.is_empty() {
-        return selected_restart_outcomes
-            .iter()
-            .map(|outcome| (*outcome).clone())
-            .collect();
-    }
-
     admissible_outcomes.into_iter().cloned().collect()
 }
 
@@ -2595,6 +2773,22 @@ fn emit_coarse_consistency_progress(
         total_units,
         current_item_label,
     );
+}
+
+fn emit_joint_refinement_subphase_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: JointRefinementStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
+    if let Some(progress_sender) = progress_sender {
+        let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+            aggregate_progress_percent: Some(progress_percent(completed_units, total_units)),
+            current_item_label: Some(current_item_label.to_string()),
+            ..JointRefinementStageProgressUpdate::new(progress_phase, completed_units, total_units)
+        });
+    }
 }
 
 fn emit_joint_refinement_progress(

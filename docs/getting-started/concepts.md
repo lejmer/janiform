@@ -114,7 +114,7 @@ Janiform is designed so the same fitted model can simulate fine tick-level behav
 
 A derivative is a financial contract whose value depends on an underlying market. An option is a common derivative. A call option benefits when the underlying price rises above a strike. A put option benefits when the underlying price falls below a strike.
 
-Derivatives are not just sensitive to the average future price, but to the distribution of future prices. Volatility, jumps, gaps, activity clustering, and directional pressure can all matter.
+Derivatives are not just sensitive to the average future price, but to the distribution of future prices. Volatility, jumps, gaps, activity clustering, and market pressure can all matter.
 
 ## Real-world and risk-neutral views
 

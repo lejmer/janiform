@@ -1,4 +1,6 @@
-use janiform::{calibration, foundation, governance, model, pricing, simulation, time, validation};
+use janiform::{
+    calibration, forecast, foundation, governance, model, pricing, simulation, time, validation,
+};
 
 #[test]
 fn janiform_keeps_the_curated_top_level_module_roots() {
@@ -8,6 +10,7 @@ fn janiform_keeps_the_curated_top_level_module_roots() {
         module_roots,
         vec![
             "calibration",
+            "forecast",
             "foundation",
             "governance",
             "model",
@@ -32,6 +35,7 @@ fn janiform_exposes_representative_semantic_facade_imports() {
     let _ = std::mem::size_of::<calibration::staged::CalibrationStagedExecutionInput>();
     let _ = std::mem::size_of::<calibration::staged::CalibrationStagedRunReport>();
     let _ = std::mem::size_of::<foundation::math::ComplexScalar>();
+    let _ = std::mem::size_of::<forecast::AffineForecastTerminalLawInput>();
     let _ = std::mem::size_of::<model::hawkes::HawkesKernelParameters>();
     let _ = std::mem::size_of::<
         model::factors::interval_factor_grid::IntervalFactorGridProviderRequest<'static>,

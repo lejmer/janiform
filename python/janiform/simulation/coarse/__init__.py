@@ -37,9 +37,9 @@ from .path import (
     validate_coarse_simulation_run_request,
 )
 from .runtime import run_coarse_simulation
-from ..timestamp_observation import (
-    TimestampBatchingObservationMode,
-    TimestampBatchingObservationModel,
+from ..timestamp_batching_surface import (
+    TimestampBatchingMode,
+    TimestampBatchingSurface,
 )
 
 
@@ -70,8 +70,8 @@ __all__ = [
     "NewsProcessConfiguration",
     "SharedNewsMarkLawConfiguration",
     "SurpriseNewsArrivalConfiguration",
-    "TimestampBatchingObservationMode",
-    "TimestampBatchingObservationModel",
+    "TimestampBatchingMode",
+    "TimestampBatchingSurface",
     "deserialize_coarse_simulation_path",
     "deserialize_coarse_simulation_run_request",
     "run_coarse_simulation",

@@ -57,6 +57,7 @@ use janiform::calibration::staged::{
 };
 use janiform::model::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::model::long_variance::LongVarianceParameters;
+use janiform::model::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform::simulation::MeanReversionFittedParameters;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods};
@@ -232,6 +233,7 @@ fn compute_preset_artifact_content_hash(
 
 fn preset_artifact_from_request(artifact_request: &Bound<'_, PyAny>) -> PyResult<Value> {
     let request = py_any_to_json_value(artifact_request)?;
+
     let mut request = match request {
         Value::Object(request) => request,
         _ => {
@@ -451,6 +453,7 @@ fn normalize_market_data_source(
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     let result = PyDict::new(py);
+
     let normalized_handle = Py::new(
         py,
         PyNormalizedMarketDataHandle {
@@ -459,6 +462,7 @@ fn normalize_market_data_source(
     )?;
 
     result.set_item("normalized_handle", &normalized_handle)?;
+
     result.set_item(
         "tick_data_summary",
         json_value_to_py_object(
@@ -476,6 +480,7 @@ fn normalize_market_data_source(
             })?,
         )?,
     )?;
+
     result.set_item(
         "reference_price",
         normalized_handle
@@ -483,6 +488,7 @@ fn normalize_market_data_source(
             .normalized_output
             .reference_price,
     )?;
+
     result.set_item(
         "fit_warning",
         normalized_handle
@@ -744,6 +750,7 @@ fn run_staged_calibration_with_python_events(
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
 ) -> PyResult<Py<PyAny>> {
     let event_callback = event_callback.clone().unbind();
+
     let callback_error_state = callback_error_state();
     let callback_error_state_for_observer = callback_error_state.clone();
 
@@ -996,6 +1003,7 @@ fn estimate_current_state_from_observed_data(
     kernel_parameters: &Bound<'_, PyAny>,
     long_variance_parameters: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    market_pressure_parameters: &Bound<'_, PyAny>,
     reference_price: f64,
     state_time_utc_nanos: i64,
     observed_log_return: f64,
@@ -1010,6 +1018,9 @@ fn estimate_current_state_from_observed_data(
         )?,
         mean_reversion_fitted_parameters: parse_current_state_mean_reversion_parameters(
             mean_reversion_fitted_parameters,
+        )?,
+        market_pressure_parameters: parse_current_state_market_pressure_parameters(
+            market_pressure_parameters,
         )?,
         reference_price,
         state_time_utc_nanos,
@@ -1038,6 +1049,7 @@ fn update_current_state_tracker(
     kernel_parameters: &Bound<'_, PyAny>,
     long_variance_parameters: &Bound<'_, PyAny>,
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    market_pressure_parameters: &Bound<'_, PyAny>,
     reference_price: f64,
     previous_snapshot: Option<&Bound<'_, PyAny>>,
     state_time_utc_nanos: i64,
@@ -1053,6 +1065,9 @@ fn update_current_state_tracker(
         )?,
         mean_reversion_fitted_parameters: parse_current_state_mean_reversion_parameters(
             mean_reversion_fitted_parameters,
+        )?,
+        market_pressure_parameters: parse_current_state_market_pressure_parameters(
+            market_pressure_parameters,
         )?,
         reference_price,
         previous_snapshot: parse_current_state_tracker_snapshot(previous_snapshot)?,
@@ -1070,6 +1085,19 @@ fn update_current_state_tracker(
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     current_state_value_to_py_object(py, &tracker_snapshot, "current-state tracker snapshot")
+}
+
+#[pyfunction]
+fn neutral_market_pressure_state(
+    py: Python<'_>,
+    market_pressure_parameters: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let parameters = parse_current_state_market_pressure_parameters(market_pressure_parameters)?;
+
+    let market_pressure_state = MarketPressureState::neutral_for_parameters(&parameters)
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    current_state_value_to_py_object(py, &market_pressure_state, "neutral market-pressure state")
 }
 
 fn parse_current_state_kernel_parameters(
@@ -1102,6 +1130,16 @@ fn parse_current_state_mean_reversion_parameters(
             ))
         },
     )
+}
+
+fn parse_current_state_market_pressure_parameters(
+    market_pressure_parameters: &Bound<'_, PyAny>,
+) -> PyResult<MarketPressureParameters> {
+    serde_json::from_value(py_any_to_json_value(market_pressure_parameters)?).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to deserialize current-state market-pressure parameters: {source}"
+        ))
+    })
 }
 
 fn parse_current_state_tracker_snapshot(
@@ -1383,9 +1421,6 @@ fn flatten_stage_report_for_python(
         CalibrationStagedRunStageReport::Hawkes(stage_report) => {
             ("hawkes", serde_json::to_value(stage_report)?)
         }
-        CalibrationStagedRunStageReport::ObservationModels(stage_report) => {
-            ("observation_models", serde_json::to_value(stage_report)?)
-        }
         CalibrationStagedRunStageReport::ReturnComponents(stage_report) => {
             ("return_components", serde_json::to_value(stage_report)?)
         }
@@ -1528,6 +1563,7 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
 
     module.add_function(wrap_pyfunction!(update_current_state_tracker, module)?)?;
+    module.add_function(wrap_pyfunction!(neutral_market_pressure_state, module)?)?;
 
     module.add_function(wrap_pyfunction!(
         materialize_runtime_structural_seasonality,

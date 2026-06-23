@@ -4,11 +4,15 @@ use crate::hawkes::{
     HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
     HawkesKernelParameterConstraint, HawkesKernelParameterError, HawkesKernelParameterViolation,
     HawkesKernelParameters, HawkesKernelValidationStatus, HawkesNewsSeverityMarkError,
-    HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesStructuredAlphaParameterError,
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterError,
-    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-    HawkesTransitionError, HawkesTransitionStep, baseline_intensity_for_stationary_total_intensity,
-    spectral_radius_alpha_over_beta, stationary_intensity_multipliers,
+    HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesStationaryTargetSourceRates,
+    HawkesStructuredAlphaParameterError, HawkesStructuredAlphaParameterization,
+    HawkesStructuredRhoParameterError, HawkesStructuredRhoParameterization,
+    HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
+    baseline_intensity_for_stationary_total_intensity,
+    hawkes_endogenous_event_terminal_state_contribution_for_remaining_time,
+    hawkes_exogenous_news_terminal_state_contribution_for_remaining_time,
+    resolve_hawkes_interval_terminal_state, spectral_radius_alpha_over_beta,
+    stationary_intensity_multipliers, stationary_intensity_rates,
 };
 use serde_json::json;
 
@@ -24,6 +28,156 @@ fn assert_within_tolerance(actual: f64, expected: f64, tolerance: f64, field_nam
 
 fn build_interval_factor_grid_with_seasonality(seasonality_factors: Vec<f64>) -> Vec<f64> {
     seasonality_factors
+}
+
+fn build_asymmetric_kernel_parameters() -> HawkesKernelParameters {
+    HawkesKernelParameters::try_new(
+        0.8,
+        3.0,
+        HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.07,
+            minus_plus: 0.05,
+            minus_minus: 0.16,
+        },
+        HawkesKernelLoadings {
+            plus_plus: 0.04,
+            plus_minus: 0.03,
+            minus_plus: 0.02,
+            minus_minus: 0.05,
+        },
+    )
+    .expect("fixture Hawkes kernel should be stable")
+}
+
+#[test]
+fn excitation_state_add_componentwise_preserves_component_mapping() {
+    let left = HawkesExcitationState {
+        y_plus_plus: 1.0,
+        y_plus_minus: 2.0,
+        y_minus_plus: 3.0,
+        y_minus_minus: 4.0,
+    };
+    let right = HawkesExcitationState {
+        y_plus_plus: 5.0,
+        y_plus_minus: 6.0,
+        y_minus_plus: 7.0,
+        y_minus_minus: 8.0,
+    };
+
+    let combined = left
+        .add_componentwise(right)
+        .expect("finite non-negative states should add");
+
+    assert_eq!(
+        combined,
+        HawkesExcitationState {
+            y_plus_plus: 6.0,
+            y_plus_minus: 8.0,
+            y_minus_plus: 10.0,
+            y_minus_minus: 12.0,
+        }
+    );
+}
+
+#[test]
+fn endogenous_event_terminal_contribution_decays_from_remaining_interval_time() {
+    let kernel_parameters = build_asymmetric_kernel_parameters();
+    let remaining_interval_delta = 0.25;
+    let decay = (-kernel_parameters.beta * remaining_interval_delta).exp();
+
+    let contribution = hawkes_endogenous_event_terminal_state_contribution_for_remaining_time(
+        kernel_parameters,
+        HawkesEventSide::Buy,
+        remaining_interval_delta,
+    )
+    .expect("valid event contribution should resolve");
+
+    assert_within_tolerance(
+        contribution.state_contribution.y_plus_plus,
+        kernel_parameters.alpha.plus_plus * decay,
+        DECAY_TOLERANCE,
+        "y_plus_plus",
+    );
+    assert_eq!(contribution.state_contribution.y_plus_minus, 0.0);
+    assert_within_tolerance(
+        contribution.state_contribution.y_minus_plus,
+        kernel_parameters.alpha.minus_plus * decay,
+        DECAY_TOLERANCE,
+        "y_minus_plus",
+    );
+    assert_eq!(contribution.state_contribution.y_minus_minus, 0.0);
+}
+
+#[test]
+fn interval_terminal_state_adds_drifted_initial_state_and_terminal_contributions() {
+    let kernel_parameters = build_asymmetric_kernel_parameters();
+    let interval_delta = 0.5;
+    let initial_state = HawkesExcitationState {
+        y_plus_plus: 0.2,
+        y_plus_minus: 0.3,
+        y_minus_plus: 0.4,
+        y_minus_minus: 0.5,
+    };
+
+    let endogenous_contribution =
+        hawkes_endogenous_event_terminal_state_contribution_for_remaining_time(
+            kernel_parameters,
+            HawkesEventSide::Sell,
+            0.2,
+        )
+        .expect("valid endogenous contribution should resolve");
+
+    let exogenous_contribution =
+        hawkes_exogenous_news_terminal_state_contribution_for_remaining_time(
+            kernel_parameters,
+            0.7,
+            0.1,
+        )
+        .expect("valid exogenous contribution should resolve");
+
+    let combined_contribution = endogenous_contribution
+        .plus(exogenous_contribution)
+        .expect("combined contribution should be valid");
+
+    let terminal_state = resolve_hawkes_interval_terminal_state(
+        initial_state,
+        kernel_parameters,
+        interval_delta,
+        combined_contribution,
+    )
+    .expect("terminal state should resolve");
+
+    let drift_decay = (-kernel_parameters.beta * interval_delta).exp();
+
+    assert_within_tolerance(
+        terminal_state.y_plus_plus,
+        initial_state.y_plus_plus * drift_decay
+            + combined_contribution.state_contribution.y_plus_plus,
+        DECAY_TOLERANCE,
+        "y_plus_plus",
+    );
+    assert_within_tolerance(
+        terminal_state.y_plus_minus,
+        initial_state.y_plus_minus * drift_decay
+            + combined_contribution.state_contribution.y_plus_minus,
+        DECAY_TOLERANCE,
+        "y_plus_minus",
+    );
+    assert_within_tolerance(
+        terminal_state.y_minus_plus,
+        initial_state.y_minus_plus * drift_decay
+            + combined_contribution.state_contribution.y_minus_plus,
+        DECAY_TOLERANCE,
+        "y_minus_plus",
+    );
+    assert_within_tolerance(
+        terminal_state.y_minus_minus,
+        initial_state.y_minus_minus * drift_decay
+            + combined_contribution.state_contribution.y_minus_minus,
+        DECAY_TOLERANCE,
+        "y_minus_minus",
+    );
 }
 
 #[test]
@@ -985,6 +1139,32 @@ fn stationary_intensity_multipliers_match_closed_form_bivariate_inverse() {
         1.0e-12,
         "total_intensity_multiplier",
     );
+}
+
+#[test]
+fn stationary_intensity_rates_accept_zero_baseline_with_valid_source_rates() {
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.3,
+        plus_minus: 0.1,
+        minus_plus: 0.2,
+        minus_minus: 0.4,
+    };
+
+    let stationary_rates = stationary_intensity_rates(
+        alpha,
+        2.0,
+        0.0,
+        HawkesStationaryTargetSourceRates {
+            target_plus_source_rate: 1.0,
+            target_minus_source_rate: 0.5,
+        },
+    )
+    .expect("valid exogenous source rates should support a zero Hawkes baseline");
+
+    assert!(stationary_rates.buy_event_rate_per_hour.is_finite());
+    assert!(stationary_rates.sell_event_rate_per_hour.is_finite());
+    assert!(stationary_rates.buy_event_rate_per_hour > 0.0);
+    assert!(stationary_rates.sell_event_rate_per_hour > 0.0);
 }
 
 #[test]

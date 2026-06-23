@@ -10,7 +10,8 @@ use crate::stages::return_components::{
 #[cfg(test)]
 use janiform_engine_simulation::{SeededFinePathRecord, SeededFinePathTransitionKind};
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero, compute_finite_quantile_or_zero, pearson_correlation, rolling_sum,
+    arithmetic_mean_or_zero, compute_finite_quantile_or_zero,
+    log_ratio_distance_with_minimum_floor, pearson_correlation, rolling_sum,
     standardized_path_distance,
 };
 use janiform_foundations::time::{ceil_to_interval_utc_nanos, floor_to_interval_utc_nanos};
@@ -114,6 +115,15 @@ pub(crate) fn zeroed_interval_observation_template(
             tick_count: 0,
             sell_share_proxy: 0.0,
         })
+        .collect()
+}
+
+pub(crate) fn interval_log_returns(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Vec<f64> {
+    intervals
+        .iter()
+        .map(|interval| interval.log_return)
         .collect()
 }
 
@@ -247,11 +257,7 @@ pub(crate) fn rolling_variance_activity_metric(
 pub(crate) fn return_scale_summary(
     intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> JointRefinementReturnScaleSummary {
-    let returns: Vec<f64> = intervals
-        .iter()
-        .map(|interval| interval.log_return)
-        .collect();
-
+    let returns = interval_log_returns(intervals);
     return_scale_summary_from_returns(returns.as_slice())
 }
 
@@ -489,11 +495,12 @@ pub(crate) fn normalized_profile_distance(left: &[f64], right: &[f64]) -> f64 {
 }
 
 pub(crate) fn log_ratio_distance(candidate_value: f64, observed_value: f64, floor: f64) -> f64 {
-    let safe_floor = floor.abs().max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
-    let candidate = candidate_value.abs().max(safe_floor);
-    let observed = observed_value.abs().max(safe_floor);
-
-    (candidate / observed).ln().abs()
+    log_ratio_distance_with_minimum_floor(
+        candidate_value,
+        observed_value,
+        floor,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    )
 }
 
 fn business_time_bucket_index(
@@ -805,7 +812,7 @@ mod tests {
             core_total_return_increment: total_return,
             observed_log_price: cumulative_core_log_return,
             anchor_value: 0.0,
-            pressure_state: 0.0,
+            market_pressure_state: 0.0,
             deviation_from_anchor: cumulative_core_log_return,
             cumulative_core_log_return,
             state_snapshot: None,

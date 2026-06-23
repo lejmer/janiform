@@ -1,12 +1,14 @@
 use janiform_calibration_artifacts::{
-    HawkesStageFittedParameters, JointRefinementStageFittedParameters,
-    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
-    TickGridObservationModel,
+    CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, HawkesStageFittedParameters,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    PriceDiscretizationSurface, ReturnComponentsStageFittedParameters,
+    SurpriseNewsDeterministicIntensityProfile,
 };
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization,
 };
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -15,6 +17,13 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+
+use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
+
+use super::state::{
+    JointRefinementCandidateEvaluation, JointRefinementRawAdmissibilityMetrics,
+    JointRefinementRestartOutcome,
+};
 
 pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
     let hawkes_fitted_parameters = HawkesStageFittedParameters {
@@ -73,22 +82,95 @@ pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParame
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
-        tick_grid_observation_model: TickGridObservationModel {
+        market_pressure_parameters: MarketPressureParameters::no_anchor_impact(),
+        price_discretization_surface: PriceDiscretizationSurface {
             tick_size: None,
             tick_size_source: "test".to_string(),
             inference_policy: "test".to_string(),
             observation_policy: "test".to_string(),
         },
-        timestamp_batching_observation_model:
-            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
-            ),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
     };
 
     JointRefinementStageFittedParameters {
         hawkes_fitted_parameters,
         return_components_fitted_parameters,
         pricing_block_fitted_parameters: None,
+    }
+}
+
+pub(crate) fn test_joint_objective_breakdown(
+    global_loss: f64,
+) -> JointRefinementStageObjectiveBreakdown {
+    JointRefinementStageObjectiveBreakdown {
+        global_loss,
+        family_losses: vec![CalibrationLossFamilyDiagnostic {
+            family_id: "test_fit".to_string(),
+            coordinate_count: 1,
+            rank: 1,
+            whitened_coordinates: vec![global_loss.sqrt()],
+            loss: global_loss,
+            max_standardized_residual: global_loss,
+            worst_term_id: Some("test_fit".to_string()),
+            unidentified: false,
+        }],
+        term_diagnostics: Vec::new(),
+        hard_constraint_diagnostics: Vec::new(),
+        admissibility: CalibrationLossAdmissibility {
+            admissible: true,
+            max_standardized_residual: global_loss,
+            excess_loss: 0.0,
+            blockers: Vec::new(),
+        },
+    }
+}
+
+pub(crate) fn test_joint_raw_admissibility_metrics(
+    value: f64,
+) -> JointRefinementRawAdmissibilityMetrics {
+    JointRefinementRawAdmissibilityMetrics {
+        aggregated_likelihood_fit: value,
+        aggregated_return_shape_fit: value,
+        return_asymmetry_fit: value,
+        tick_return_asymmetry_fit: value,
+        aggregated_return_scale_fit: value,
+        tick_return_scale_fit: value,
+        business_time_return_scale_fit: value,
+        intraday_return_level_fit: value,
+        activity_shape_fit: value,
+        activity_level_fit: value,
+        rv_activity_coupling_fit: value,
+        long_variance_horizon_fit: value,
+    }
+}
+
+pub(crate) fn test_joint_candidate_evaluation(
+    global_loss: f64,
+) -> JointRefinementCandidateEvaluation {
+    JointRefinementCandidateEvaluation {
+        fitted_parameters: test_joint_fitted_parameters(),
+        breakdown: test_joint_objective_breakdown(global_loss),
+        raw_admissibility_metrics: test_joint_raw_admissibility_metrics(global_loss),
+        exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts::default(),
+        objective_terms: Vec::new(),
+        invalid_reason: None,
+    }
+}
+
+pub(crate) fn test_joint_restart_outcome(
+    restart_id: &str,
+    global_loss: f64,
+) -> JointRefinementRestartOutcome {
+    let evaluation = test_joint_candidate_evaluation(global_loss);
+
+    JointRefinementRestartOutcome {
+        restart_id: restart_id.to_string(),
+        parameter_vector: vec![global_loss],
+        local_evaluation: evaluation.clone(),
+        final_evaluation: evaluation,
+        local_evaluation_count: 1,
+        stop_reason: "test".to_string(),
     }
 }

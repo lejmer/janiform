@@ -509,7 +509,7 @@ fn build_return_candidate_frontier_entry(
                 evaluation_tier: CalibrationDiagnosticEvaluationTier::ExactBlock,
                 normalized_distance: candidate
                     .continuous_distribution_fit_breakdown
-                    .l_moment_tau3_fit,
+                    .excess_kurtosis_fit,
                 admissible,
                 simulated_value: candidate
                     .return_distribution_diagnostic

@@ -1,14 +1,8 @@
-use std::borrow::Cow;
 use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 
-use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
-use janiform_affine_oracle::endogenous_anchor::{
-    EndogenousAnchorIntervalFactors, materialize_endogenous_anchor_path,
-};
 use janiform_calibration_artifacts::{
     CALIBRATION_MEAN_REVERSION_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_HANDOFF_POLICY,
@@ -18,92 +12,45 @@ use janiform_calibration_artifacts::{
     CalibrationStageSelectedCandidateSource, MeanReversionStageCalibrationGrid,
     MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
     MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
-    MeanReversionStagePredictiveEvidenceDiagnostics, MeanReversionStageSeriesSummary,
+    MeanReversionStageSeriesSummary,
 };
 use janiform_foundations::linear_algebra::{
     RankAwareLeastSquaresSolution, rank_aware_one_column_least_squares,
-    rank_aware_two_column_unit_interval_second_coefficient_least_squares,
-    rank_aware_unit_interval_gain_least_squares,
 };
 use janiform_foundations::numeric::{GOLDEN_RATIO, coverage_ratio};
-use janiform_foundations::time::NANOS_PER_HOUR;
-use janiform_market_time::interval_factor_grids::{
-    IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
-    IntervalSeasonalityFactorSource,
-};
-use janiform_model_kernels::hawkes::HawkesExcitationState;
-use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionFittedParameters,
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
-};
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
+use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 
-use crate::adapters::load_interval_factor_grid_for_calibration;
-use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::hawkes::HawkesStageFittedPayload;
-use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
+use crate::stages::model_selection::bayesian_information_criterion;
 use crate::stages::progress::{StageProgressUpdate, emit_stage_progress};
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, FourierBusinessTimeClockModel,
-    RuntimeIntervalSeasonalityFactorsBuildInput, SeasonalityStageNormalizedPayload,
-    build_runtime_interval_seasonality_factors_from_components,
+    SeasonalityStageNormalizedPayload,
 };
-use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 mod evidence;
-mod evidence_statistics;
-mod observed_pressure_replay;
 mod progress;
 
 pub use progress::{MeanReversionStageProgressPhase, MeanReversionStageProgressUpdate};
 
-const FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT: usize = 2;
-const PRESSURE_GAIN_REGRESSION_COLUMN_COUNT: usize = 1;
 const FLAT_ANCHOR_MEAN_REVERSION_IDENTIFIABLE_PARAMETER_COUNT: usize = 2;
-const OBSERVED_PRESSURE_REPLAY_IDENTIFIABLE_PARAMETER_COUNT: usize = 3;
-const FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY: &str =
-    "endogenous_core_pressure_level_mean_reversion";
-const PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_CANDIDATE_FAMILY: &str =
-    "endogenous_core_pressure_level_no_mean_reversion";
-const OBSERVED_PRESSURE_REPLAY_CANDIDATE_FAMILY: &str =
-    "causal_observed_core_pressure_level_mean_reversion";
 const FLAT_ANCHOR_MEAN_REVERSION_CANDIDATE_FAMILY: &str = "flat_anchor_mean_reversion";
 const RANDOM_WALK_NULL_CANDIDATE_FAMILY: &str = "random_walk_null";
-const FULL_PRESSURE_TO_LEVEL_REASON: &str =
-    "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1";
-const PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_REASON: &str =
-    "endogenous_core_pressure_level_profiled_over_pressure_persistence_phi_reference_fixed_one.v1";
-const OBSERVED_PRESSURE_REPLAY_REASON: &str =
-    "causal_observed_core_pressure_level_profiled_with_training_replay.v1";
 const FLAT_ANCHOR_MEAN_REVERSION_REASON: &str =
-    "flat_anchor_mean_reversion_profiled_over_phi_reference_zero_pressure_gain.v1";
+    "flat_anchor_mean_reversion_profiled_over_phi_reference.v1";
 const RANDOM_WALK_NULL_REASON: &str = "random_walk_null_baseline.v1";
 const ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON: &str =
     "endogenous_anchor_runtime_projection_required.v1";
-const CALIBRATION_GRID_ALIGNMENT_POLICY: &str =
-    "calibration_grid_observation_boundary_alignment.v1";
 const NO_MEAN_REVERSION_GRID_CANDIDATE_REASON: &str = "mean_reversion_grid_candidate_required.v1";
 
-pub(crate) fn default_mean_reversion_predictive_evidence_alpha() -> f64 {
-    0.05
-}
-
-pub(crate) fn mean_reversion_predictive_evidence_alpha_is_valid(
-    predictive_evidence_alpha: f64,
-) -> bool {
-    predictive_evidence_alpha.is_finite()
-        && predictive_evidence_alpha > 0.0
-        && predictive_evidence_alpha <= 1.0
-}
-
 pub(crate) fn mean_reversion_full_model_required_source_observation_count() -> usize {
-    // The richest endogenous candidate fits a two-column regression, so the stage needs three
-    // directly covered boundary observations to identify that structure over the prepared horizon.
-    FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT.saturating_add(1)
+    mean_reversion_flat_anchor_required_source_observation_count()
 }
 
-pub(crate) fn mean_reversion_pressure_gain_required_source_observation_count() -> usize {
-    PRESSURE_GAIN_REGRESSION_COLUMN_COUNT.saturating_add(1)
+pub(crate) fn mean_reversion_random_walk_required_source_observation_count() -> usize {
+    mean_reversion_flat_anchor_required_source_observation_count()
 }
 
 fn mean_reversion_flat_anchor_required_source_observation_count() -> usize {
@@ -149,7 +96,6 @@ pub struct MeanReversionStageExecutionInput {
     pub seasonality_stage_input: Option<MeanReversionStageSeasonalityInput>,
     pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
-    pub predictive_evidence_alpha: f64,
     pub grid_candidates: Vec<MeanReversionStageGridCandidate>,
 }
 
@@ -437,16 +383,6 @@ fn estimate_mean_reversion_fitted_parameters(
         });
     }
 
-    if !mean_reversion_predictive_evidence_alpha_is_valid(execution_input.predictive_evidence_alpha)
-    {
-        return Err(MeanReversionStageExecutionFailure::InvalidRunSpec {
-            error_message: format!(
-                "mean-reversion predictive_evidence_alpha must be finite and in (0, 1], found {}",
-                execution_input.predictive_evidence_alpha
-            ),
-        });
-    }
-
     let mut grid_evaluations = Vec::with_capacity(execution_input.grid_candidates.len());
     let grid_candidate_count = execution_input.grid_candidates.len();
 
@@ -480,15 +416,11 @@ fn estimate_mean_reversion_fitted_parameters(
         MeanReversionStageProgressPhase::CandidateSelection,
         0,
         2,
-        Some("evaluate predictive evidence"),
+        Some("rank BIC candidates"),
     );
 
-    let Some(selection) = evidence::select_mean_reversion_candidate(
-        grid_evaluations.as_mut_slice(),
-        solver_settings,
-        execution_input.predictive_evidence_alpha,
-        progress_sender,
-    )?
+    let Some(selection) =
+        evidence::select_mean_reversion_candidate(grid_evaluations.as_mut_slice())
     else {
         return zero_kappa_endogenous_fit_with_grid_evaluations(
             grid_evaluations,
@@ -520,21 +452,12 @@ fn estimate_mean_reversion_fitted_parameters(
         });
     };
 
-    let fitted_parameters = MeanReversionFittedParameters::try_new(
-        selected_candidate.kappa,
-        selected_candidate.anchor_model.clone(),
-    )
-    .map_err(
-        |source| MeanReversionStageExecutionFailure::InvalidRunSpec {
-            error_message: format!("selected mean-reversion candidate is invalid: {source}"),
-        },
-    )?;
-
-    let selected_core_expected_increments = selected_grid
-        .calibration_context
-        .as_ref()
-        .map(|context| context.core_expected_increments.as_slice())
-        .unwrap_or(&[]);
+    let fitted_parameters = MeanReversionFittedParameters::try_new(selected_candidate.kappa)
+        .map_err(
+            |source| MeanReversionStageExecutionFailure::InvalidRunSpec {
+                error_message: format!("selected mean-reversion candidate is invalid: {source}"),
+            },
+        )?;
 
     emit_mean_reversion_progress(
         progress_sender,
@@ -547,7 +470,6 @@ fn estimate_mean_reversion_fitted_parameters(
     let diagnostics = MeanReversionStageDiagnostics {
         selected_candidate_family: selected_candidate.candidate_family.to_string(),
         calibration_grid: selected_grid.calibration_grid.clone(),
-        anchor_parameter_estimates: selected_candidate.anchor_model.clone(),
         anchor_origin_level: selected_candidate.anchor_origin_level,
         phi_reference: selected_candidate.phi_reference,
         kappa: selected_candidate.kappa,
@@ -563,7 +485,7 @@ fn estimate_mean_reversion_fitted_parameters(
         evaluated_candidates: selected_grid
             .evaluated_candidates
             .iter()
-            .map(|candidate| candidate.to_diagnostics(selected_core_expected_increments))
+            .map(MeanReversionStageCandidateEvaluation::to_diagnostics)
             .collect(),
         evaluated_grids: grid_evaluations
             .iter()
@@ -648,43 +570,21 @@ fn evaluate_mean_reversion_grid_candidate(
 
 #[derive(Debug, Clone, Copy)]
 struct MeanReversionCandidateFamilySupport {
-    full_pressure_to_level: bool,
-    pressure_to_level_without_mean_reversion: bool,
-    observed_pressure_replay: bool,
     flat_anchor_mean_reversion: bool,
     random_walk_null: bool,
-}
-
-impl MeanReversionCandidateFamilySupport {
-    fn requires_endogenous_context(self) -> bool {
-        self.full_pressure_to_level || self.pressure_to_level_without_mean_reversion
-    }
 }
 
 fn mean_reversion_candidate_family_support(
     grid_candidate: &MeanReversionStageGridCandidate,
 ) -> MeanReversionCandidateFamilySupport {
     MeanReversionCandidateFamilySupport {
-        full_pressure_to_level: mean_reversion_sample_supports_required_source_observations(
-            grid_candidate,
-            mean_reversion_full_model_required_source_observation_count(),
-        ),
-        pressure_to_level_without_mean_reversion:
-            mean_reversion_sample_supports_required_source_observations(
-                grid_candidate,
-                mean_reversion_pressure_gain_required_source_observation_count(),
-            ),
-        observed_pressure_replay: mean_reversion_sample_supports_required_source_observations(
-            grid_candidate,
-            mean_reversion_full_model_required_source_observation_count(),
-        ),
         flat_anchor_mean_reversion: mean_reversion_sample_supports_required_source_observations(
             grid_candidate,
             mean_reversion_flat_anchor_required_source_observation_count(),
         ),
         random_walk_null: mean_reversion_sample_supports_required_source_observations(
             grid_candidate,
-            mean_reversion_pressure_gain_required_source_observation_count(),
+            mean_reversion_random_walk_required_source_observation_count(),
         ),
     }
 }
@@ -710,15 +610,8 @@ fn mean_reversion_sample_supports_required_source_observations(
 }
 
 #[derive(Debug, Clone)]
-struct EndogenousMeanReversionCalibrationContext {
-    core_expected_increments: Vec<f64>,
-    interval_deltas: Vec<f64>,
-}
-
-#[derive(Debug, Clone)]
 struct MeanReversionStageCandidateEvaluation {
     candidate_family: &'static str,
-    anchor_model: MeanReversionAnchorModel,
     anchor_origin_level: Option<f64>,
     phi_reference: f64,
     kappa: f64,
@@ -727,22 +620,16 @@ struct MeanReversionStageCandidateEvaluation {
     information_criterion_bic: f64,
     parameter_count: usize,
     least_squares_rank: usize,
-    pressure_state_path: Vec<f64>,
     boundary_anchor_values: Vec<f64>,
     deviations: Vec<f64>,
     residuals: Vec<f64>,
-    predictive_evidence: Option<MeanReversionStagePredictiveEvidenceDiagnostics>,
     stage_decision_reason: String,
 }
 
 impl MeanReversionStageCandidateEvaluation {
-    fn to_diagnostics(
-        &self,
-        core_expected_increments: &[f64],
-    ) -> MeanReversionStageCandidateDiagnostics {
+    fn to_diagnostics(&self) -> MeanReversionStageCandidateDiagnostics {
         MeanReversionStageCandidateDiagnostics {
             candidate_family: self.candidate_family.to_string(),
-            anchor_model: self.anchor_model.clone(),
             anchor_origin_level: self.anchor_origin_level,
             phi_reference: self.phi_reference,
             kappa: self.kappa,
@@ -754,12 +641,6 @@ impl MeanReversionStageCandidateEvaluation {
             deviation_sample_count: self.deviations.len(),
             regression_pair_count: self.residuals.len(),
             series_summaries: MeanReversionStageCandidateSeriesDiagnostics {
-                core_expected_increments: MeanReversionStageSeriesSummary::from_values(
-                    core_expected_increments,
-                ),
-                pressure_state_path: MeanReversionStageSeriesSummary::from_values(
-                    self.pressure_state_path.as_slice(),
-                ),
                 boundary_anchor_values: MeanReversionStageSeriesSummary::from_values(
                     self.boundary_anchor_values.as_slice(),
                 ),
@@ -768,7 +649,6 @@ impl MeanReversionStageCandidateEvaluation {
                 ),
                 residuals: MeanReversionStageSeriesSummary::from_values(self.residuals.as_slice()),
             },
-            predictive_evidence: self.predictive_evidence.clone(),
             stage_decision_reason: self.stage_decision_reason.clone(),
         }
     }
@@ -777,26 +657,18 @@ impl MeanReversionStageCandidateEvaluation {
 #[derive(Debug, Clone)]
 struct MeanReversionGridCandidateEvaluation {
     calibration_grid: MeanReversionStageCalibrationGrid,
-    observation_levels: Vec<f64>,
-    calibration_context: Option<EndogenousMeanReversionCalibrationContext>,
     evaluated_candidates: Vec<MeanReversionStageCandidateEvaluation>,
     stage_decision_reason: String,
 }
 
 impl MeanReversionGridCandidateEvaluation {
     fn to_diagnostics(&self) -> MeanReversionStageGridDiagnostics {
-        let core_expected_increments = self
-            .calibration_context
-            .as_ref()
-            .map(|context| context.core_expected_increments.as_slice())
-            .unwrap_or(&[]);
-
         MeanReversionStageGridDiagnostics {
             calibration_grid: self.calibration_grid.clone(),
             evaluated_candidates: self
                 .evaluated_candidates
                 .iter()
-                .map(|candidate| candidate.to_diagnostics(core_expected_increments))
+                .map(MeanReversionStageCandidateEvaluation::to_diagnostics)
                 .collect(),
             stage_decision_reason: self.stage_decision_reason.clone(),
         }
@@ -804,65 +676,15 @@ impl MeanReversionGridCandidateEvaluation {
 }
 
 fn estimate_endogenous_mean_reversion_grid_candidate(
-    calendar_registry: &ExchangeCalendarRegistry,
-    execution_input: &MeanReversionStageExecutionInput,
+    _calendar_registry: &ExchangeCalendarRegistry,
+    _execution_input: &MeanReversionStageExecutionInput,
     solver_settings: &CalibrationOptimizerSettings,
     calibration_grid: MeanReversionStageCalibrationGrid,
-    grid_candidate: &MeanReversionStageGridCandidate,
+    _grid_candidate: &MeanReversionStageGridCandidate,
     observation_levels: &[f64],
     candidate_family_support: MeanReversionCandidateFamilySupport,
 ) -> Result<MeanReversionGridCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    let calibration_context = if candidate_family_support.requires_endogenous_context() {
-        Some(build_endogenous_mean_reversion_calibration_context(
-            calendar_registry,
-            execution_input,
-            grid_candidate,
-            observation_levels,
-        )?)
-    } else {
-        None
-    };
-
     let mut evaluated_candidates = Vec::new();
-
-    if let Some(calibration_context) = calibration_context.as_ref() {
-        if candidate_family_support.full_pressure_to_level {
-            evaluated_candidates.push(profile_full_pressure_to_level_candidate(
-                observation_levels,
-                calibration_grid.calibration_grid_interval_hours,
-                calibration_context.core_expected_increments.as_slice(),
-                calibration_context.interval_deltas.as_slice(),
-                solver_settings,
-            )?);
-        }
-
-        if candidate_family_support.pressure_to_level_without_mean_reversion {
-            evaluated_candidates.push(profile_pressure_to_level_without_mean_reversion_candidate(
-                observation_levels,
-                calibration_grid.calibration_grid_interval_hours,
-                calibration_context.core_expected_increments.as_slice(),
-                calibration_context.interval_deltas.as_slice(),
-                solver_settings,
-            )?);
-        }
-    }
-
-    if candidate_family_support.observed_pressure_replay {
-        let observed_pressure_interval_deltas = observed_pressure_replay_interval_deltas(
-            calibration_context.as_ref(),
-            calibration_grid.calibration_grid_interval_hours,
-            observation_levels.len(),
-        );
-
-        evaluated_candidates.push(
-            observed_pressure_replay::profile_causal_observed_pressure_replay_candidate(
-                observation_levels,
-                calibration_grid.calibration_grid_interval_hours,
-                observed_pressure_interval_deltas.as_ref(),
-                solver_settings,
-            )?,
-        );
-    }
 
     if candidate_family_support.flat_anchor_mean_reversion {
         evaluated_candidates.push(profile_flat_anchor_mean_reversion_candidate(
@@ -879,416 +701,9 @@ fn estimate_endogenous_mean_reversion_grid_candidate(
 
     Ok(MeanReversionGridCandidateEvaluation {
         calibration_grid,
-        observation_levels: observation_levels.to_vec(),
-        calibration_context,
         evaluated_candidates,
         stage_decision_reason: "mean_reversion_grid_candidate_evaluated.v1".to_string(),
     })
-}
-
-fn observed_pressure_replay_interval_deltas<'a>(
-    calibration_context: Option<&'a EndogenousMeanReversionCalibrationContext>,
-    calibration_grid_interval_hours: f64,
-    observation_count: usize,
-) -> Cow<'a, [f64]> {
-    match calibration_context {
-        Some(context) => Cow::Borrowed(context.interval_deltas.as_slice()),
-        None => Cow::Owned(vec![
-            calibration_grid_interval_hours;
-            observation_count.saturating_sub(1)
-        ]),
-    }
-}
-
-fn build_endogenous_mean_reversion_calibration_context(
-    calendar_registry: &ExchangeCalendarRegistry,
-    execution_input: &MeanReversionStageExecutionInput,
-    grid_candidate: &MeanReversionStageGridCandidate,
-    observation_levels: &[f64],
-) -> Result<EndogenousMeanReversionCalibrationContext, MeanReversionStageExecutionFailure> {
-    let Some(seasonality_input) = execution_input.seasonality_stage_input.as_ref() else {
-        return Err(MeanReversionStageExecutionFailure::MissingSeasonalityStagePayload);
-    };
-
-    let Some(hawkes_payload) = execution_input.hawkes_stage_payload.as_ref() else {
-        return Err(MeanReversionStageExecutionFailure::MissingHawkesStagePayload);
-    };
-
-    let Some(return_components_payload) = execution_input.return_components_stage_payload.as_ref()
-    else {
-        return Err(MeanReversionStageExecutionFailure::MissingReturnComponentsStagePayload);
-    };
-
-    let interval_duration_nanos =
-        derive_observation_interval_duration_nanos(grid_candidate.observations.as_slice())?;
-
-    let Some(first_observation) = grid_candidate.observations.first() else {
-        return Err(
-            MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
-                error_message:
-                    "mean-reversion endogenous calibration requires at least two observations"
-                        .to_string(),
-            },
-        );
-    };
-
-    let Some(last_observation) = grid_candidate.observations.last() else {
-        return Err(
-            MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
-                error_message:
-                    "mean-reversion endogenous calibration requires at least two observations"
-                        .to_string(),
-            },
-        );
-    };
-
-    let range_start_utc =
-        DateTime::<Utc>::from_timestamp_nanos(first_observation.observation_timestamp_utc_nanos);
-
-    let range_end_utc =
-        DateTime::<Utc>::from_timestamp_nanos(last_observation.observation_timestamp_utc_nanos);
-
-    let runtime_interval_seasonality_factors =
-        build_runtime_interval_seasonality_factors_from_components(
-            RuntimeIntervalSeasonalityFactorsBuildInput {
-                calendar_registry,
-                exchange_code: seasonality_input.exchange_code.as_str(),
-                clock_model: &seasonality_input.clock_model,
-                range_start_utc_nanos: first_observation.observation_timestamp_utc_nanos,
-                range_end_utc_nanos: last_observation.observation_timestamp_utc_nanos,
-                interval_duration_nanos,
-            },
-        )
-        .map_err(|error_message| {
-            MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
-                error_message,
-            }
-        })?;
-
-    let interval_count = grid_candidate.observations.len().saturating_sub(1);
-
-    let surprise_deterministic_time_multiplier_by_interval_index =
-        build_surprise_multipliers_for_interval_grid(
-            range_start_utc,
-            interval_count,
-            interval_duration_nanos,
-            &return_components_payload
-                .fitted_parameters
-                .surprise_deterministic_intensity_profile,
-        )
-        .map_err(|error_message| {
-            MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
-                error_message,
-            }
-        })?;
-
-    let interval_factor_grid = load_interval_factor_grid_for_calibration(
-        calendar_registry,
-        IntervalFactorGridProviderRequest {
-            exchange_code: seasonality_input.exchange_code.as_str(),
-            range_start_utc,
-            range_end_utc,
-            interval_duration_nanos,
-            seasonality_source: Some(IntervalSeasonalityFactorSource::Explicit {
-                interval_factors: runtime_interval_seasonality_factors.as_slice(),
-                materialization_method: RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
-            }),
-            news_intensity_source: Some(IntervalNewsIntensityFactorSource::Materialized {
-                known_scheduled_event_timestamps_utc_nanos: return_components_payload
-                    .fitted_parameters
-                    .news_process_configuration
-                    .arrivals
-                    .known
-                    .scheduled_event_timestamps_utc_nanos
-                    .as_slice(),
-                surprise_open_baseline_intensity: return_components_payload
-                    .fitted_parameters
-                    .news_process_configuration
-                    .arrivals
-                    .surprise
-                    .open_baseline_intensity,
-                surprise_closed_baseline_intensity: return_components_payload
-                    .fitted_parameters
-                    .news_process_configuration
-                    .arrivals
-                    .surprise
-                    .closed_baseline_intensity,
-                surprise_deterministic_time_multiplier_by_interval_index:
-                    surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
-            }),
-        },
-    )
-    .map_err(|source| {
-        MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
-    if interval_factor_grid.diagnostics.interval_count != interval_count {
-        return Err(
-            MeanReversionStageExecutionFailure::IntervalFactorGridMaterializationFailed {
-                error_message: format!(
-                    "mean-reversion endogenous calibration expected {interval_count} interval factors from the observation grid, found {}",
-                    interval_factor_grid.diagnostics.interval_count
-                ),
-            },
-        );
-    }
-
-    let interval_delta = interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
-
-    let interval_factor_grids: Result<Vec<EndogenousAnchorIntervalFactors>, _> =
-        interval_factor_grid
-            .seasonality_factor
-            .iter()
-            .zip(interval_factor_grid.known_news_intensity.iter())
-            .zip(interval_factor_grid.surprise_news_intensity.iter())
-            .map(
-                |((seasonality_factor, known_intensity), surprise_intensity)| {
-                    EndogenousAnchorIntervalFactors::try_new(
-                        *seasonality_factor,
-                        *known_intensity,
-                        *surprise_intensity,
-                        interval_delta,
-                    )
-                },
-            )
-            .collect();
-
-    let Some(initial_observation_level) = observation_levels.first().copied() else {
-        return Err(
-            MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
-                error_message:
-                    "mean-reversion endogenous calibration requires at least one observation level"
-                        .to_string(),
-            },
-        );
-    };
-
-    let anchor_materialization = materialize_endogenous_anchor_path(
-        CALIBRATION_GRID_ALIGNMENT_POLICY,
-        initial_observation_level,
-        ExponentialAffineTransformEquationSpecification::new(
-            hawkes_payload.fitted_parameters.kernel_parameters,
-            return_components_payload
-                .fitted_parameters
-                .news_process_configuration
-                .shared_mark_law
-                .gamma_severity_marks,
-            return_components_payload
-                .fitted_parameters
-                .long_variance_parameters,
-        ),
-        return_components_payload
-            .fitted_parameters
-            .nig_shared_plus_shift_configuration,
-        &return_components_payload
-            .fitted_parameters
-            .news_process_configuration,
-        HawkesExcitationState {
-            y_plus_plus: 0.0,
-            y_plus_minus: 0.0,
-            y_minus_plus: 0.0,
-            y_minus_minus: 0.0,
-        },
-        interval_factor_grids
-            .map_err(|source| {
-                MeanReversionStageExecutionFailure::EndogenousAnchorMaterializationFailed {
-                    error_message: source.to_string(),
-                }
-            })?
-            .as_slice(),
-    )
-    .map_err(|source| {
-        MeanReversionStageExecutionFailure::EndogenousAnchorMaterializationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
-    Ok(EndogenousMeanReversionCalibrationContext {
-        core_expected_increments: anchor_materialization
-            .interval_expectations
-            .iter()
-            .map(|expectation| expectation.core_expected_increment)
-            .collect(),
-        interval_deltas: anchor_materialization
-            .runtime_interval_anchors
-            .interval_deltas,
-    })
-}
-
-fn profile_full_pressure_to_level_candidate(
-    observation_levels: &[f64],
-    calibration_grid_interval_hours: f64,
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-    solver_settings: &CalibrationOptimizerSettings,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    profile_candidate_over_pressure_persistence(solver_settings, |pressure_persistence| {
-        profile_full_pressure_to_level_candidate_at_pressure_persistence(
-            observation_levels,
-            calibration_grid_interval_hours,
-            core_expected_increments,
-            interval_deltas,
-            solver_settings,
-            pressure_persistence,
-        )
-    })
-}
-
-fn profile_full_pressure_to_level_candidate_at_pressure_persistence(
-    observation_levels: &[f64],
-    calibration_grid_interval_hours: f64,
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-    solver_settings: &CalibrationOptimizerSettings,
-    pressure_persistence_per_reference_interval: f64,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    let phi_boundary_candidate = evaluate_full_pressure_to_level_candidate(
-        observation_levels,
-        calibration_grid_interval_hours,
-        core_expected_increments,
-        interval_deltas,
-        pressure_persistence_per_reference_interval,
-        1.0,
-    )?;
-
-    profile_candidate_over_unit_interval(solver_settings, phi_boundary_candidate, |phi_reference| {
-        evaluate_full_pressure_to_level_candidate(
-            observation_levels,
-            calibration_grid_interval_hours,
-            core_expected_increments,
-            interval_deltas,
-            pressure_persistence_per_reference_interval,
-            phi_reference,
-        )
-    })
-}
-
-fn evaluate_full_pressure_to_level_candidate(
-    observation_levels: &[f64],
-    calibration_grid_interval_hours: f64,
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-    pressure_persistence_per_reference_interval: f64,
-    phi_reference: f64,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    let pressure_state_path = materialize_pressure_state_path(
-        calibration_grid_interval_hours,
-        pressure_persistence_per_reference_interval,
-        core_expected_increments,
-        interval_deltas,
-    )?;
-
-    let transition_terms = build_transition_terms(
-        observation_levels,
-        pressure_state_path.as_slice(),
-        interval_deltas,
-        calibration_grid_interval_hours,
-        phi_reference,
-    );
-
-    let least_squares_solution = solve_full_pressure_to_level_least_squares(
-        transition_terms.intercept_column.as_slice(),
-        transition_terms.pressure_column.as_slice(),
-        transition_terms.response.as_slice(),
-    )?;
-
-    let anchor_origin_level = if phi_reference == 1.0 {
-        None
-    } else {
-        Some(least_squares_solution.first_coefficient)
-    };
-
-    assemble_candidate_evaluation(
-        observation_levels,
-        core_expected_increments,
-        interval_deltas,
-        calibration_grid_interval_hours,
-        FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY,
-        4,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(
-            calibration_grid_interval_hours,
-            pressure_persistence_per_reference_interval,
-            least_squares_solution.second_coefficient,
-        ),
-        anchor_origin_level,
-        phi_reference,
-        least_squares_solution.rank,
-        transition_terms.response.as_slice(),
-        transition_terms.intercept_column.as_slice(),
-        Some(transition_terms.pressure_column.as_slice()),
-        pressure_state_path,
-        FULL_PRESSURE_TO_LEVEL_REASON,
-    )
-}
-
-fn profile_pressure_to_level_without_mean_reversion_candidate(
-    observation_levels: &[f64],
-    calibration_grid_interval_hours: f64,
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-    solver_settings: &CalibrationOptimizerSettings,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    profile_candidate_over_pressure_persistence(solver_settings, |pressure_persistence| {
-        evaluate_pressure_to_level_without_mean_reversion_candidate(
-            observation_levels,
-            calibration_grid_interval_hours,
-            core_expected_increments,
-            interval_deltas,
-            pressure_persistence,
-        )
-    })
-}
-
-fn evaluate_pressure_to_level_without_mean_reversion_candidate(
-    observation_levels: &[f64],
-    calibration_grid_interval_hours: f64,
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-    pressure_persistence_per_reference_interval: f64,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    let pressure_state_path = materialize_pressure_state_path(
-        calibration_grid_interval_hours,
-        pressure_persistence_per_reference_interval,
-        core_expected_increments,
-        interval_deltas,
-    )?;
-
-    let response = adjacent_observation_level_differences(observation_levels);
-
-    let pressure_column = pressure_state_path
-        .iter()
-        .zip(pressure_state_path.iter().skip(1))
-        .map(|(current_pressure_state, next_pressure_state)| {
-            next_pressure_state - current_pressure_state
-        })
-        .collect::<Vec<_>>();
-
-    let least_squares_solution =
-        solve_unit_interval_gain_least_squares(pressure_column.as_slice(), response.as_slice())?;
-
-    assemble_candidate_evaluation(
-        observation_levels,
-        core_expected_increments,
-        interval_deltas,
-        calibration_grid_interval_hours,
-        PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_CANDIDATE_FAMILY,
-        2,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(
-            calibration_grid_interval_hours,
-            pressure_persistence_per_reference_interval,
-            least_squares_solution.first_coefficient,
-        ),
-        None,
-        1.0,
-        least_squares_solution.rank,
-        response.as_slice(),
-        &[],
-        Some(pressure_column.as_slice()),
-        pressure_state_path,
-        PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_REASON,
-    )
 }
 
 fn profile_flat_anchor_mean_reversion_candidate(
@@ -1359,27 +774,23 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
 
     Ok(MeanReversionStageCandidateEvaluation {
         candidate_family: FLAT_ANCHOR_MEAN_REVERSION_CANDIDATE_FAMILY,
-        anchor_model: MeanReversionAnchorModel::endogenous_core_pressure_level(
-            calibration_grid_interval_hours,
-            0.0,
-            0.0,
-        ),
         anchor_origin_level,
         phi_reference,
         kappa: kappa_from_phi_reference(phi_reference, calibration_grid_interval_hours),
         residual_sum_of_squares,
         quasi_log_likelihood,
-        information_criterion_bic: bic(residuals.len(), 2, quasi_log_likelihood),
+        information_criterion_bic: bayesian_information_criterion(
+            residuals.len(),
+            2,
+            quasi_log_likelihood,
+        ),
         parameter_count: 2,
         least_squares_rank: least_squares_solution.rank,
-        pressure_state_path: vec![0.0; observation_levels.len()],
         boundary_anchor_values,
         deviations,
         residuals,
-        predictive_evidence: None,
-        stage_decision_reason: stage_decision_reason_with_boundary_flags(
+        stage_decision_reason: stage_decision_reason_with_phi_reference_flags(
             FLAT_ANCHOR_MEAN_REVERSION_REASON,
-            None,
             Some(phi_reference),
         ),
     })
@@ -1387,7 +798,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
 
 fn evaluate_random_walk_null_candidate(
     observation_levels: &[f64],
-    calibration_grid_interval_hours: f64,
+    _calibration_grid_interval_hours: f64,
 ) -> MeanReversionStageCandidateEvaluation {
     let residuals = adjacent_observation_level_differences(observation_levels);
 
@@ -1401,24 +812,21 @@ fn evaluate_random_walk_null_candidate(
 
     MeanReversionStageCandidateEvaluation {
         candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY,
-        anchor_model: MeanReversionAnchorModel::endogenous_core_pressure_level(
-            calibration_grid_interval_hours,
-            0.0,
-            0.0,
-        ),
         anchor_origin_level: None,
         phi_reference: 1.0,
         kappa: 0.0,
         residual_sum_of_squares,
         quasi_log_likelihood,
-        information_criterion_bic: bic(residuals.len(), 0, quasi_log_likelihood),
+        information_criterion_bic: bayesian_information_criterion(
+            residuals.len(),
+            0,
+            quasi_log_likelihood,
+        ),
         parameter_count: 0,
         least_squares_rank: 0,
-        pressure_state_path: vec![0.0; observation_levels.len()],
         boundary_anchor_values: vec![0.0; observation_levels.len()],
         deviations: observation_levels.to_vec(),
         residuals,
-        predictive_evidence: None,
         stage_decision_reason: RANDOM_WALK_NULL_REASON.to_string(),
     }
 }
@@ -1430,28 +838,6 @@ fn candidate_supports_quasi_likelihood_model_selection(
     // sample as the structural coefficients, so the candidate needs one residual degree of
     // freedom after estimating both the structural parameters and that variance term.
     candidate.residuals.len() > candidate.parameter_count.saturating_add(1)
-}
-
-fn profile_candidate_over_pressure_persistence(
-    solver_settings: &CalibrationOptimizerSettings,
-    mut evaluate_candidate_at_pressure_persistence: impl FnMut(
-        f64,
-    ) -> Result<
-        MeanReversionStageCandidateEvaluation,
-        MeanReversionStageExecutionFailure,
-    >,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    let psi_zero_candidate = evaluate_candidate_at_pressure_persistence(0.0)?;
-    let psi_one_candidate = evaluate_candidate_at_pressure_persistence(1.0)?;
-
-    let best_boundary_candidate =
-        best_candidate_by_quasi_log_likelihood(psi_zero_candidate, psi_one_candidate);
-
-    profile_candidate_over_unit_interval(
-        solver_settings,
-        best_boundary_candidate,
-        evaluate_candidate_at_pressure_persistence,
-    )
 }
 
 fn profile_candidate_over_unit_interval<Error>(
@@ -1519,48 +905,6 @@ fn best_candidate_by_quasi_log_likelihood(
     }
 }
 
-fn materialize_pressure_state_path(
-    calibration_grid_interval_hours: f64,
-    pressure_persistence_per_reference_interval: f64,
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-) -> Result<Vec<f64>, MeanReversionStageExecutionFailure> {
-    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
-        calibration_grid_interval_hours,
-        pressure_persistence_per_reference_interval,
-        0.0,
-    );
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            CALIBRATION_GRID_ALIGNMENT_POLICY,
-            0.0,
-            0.0,
-            &anchor_model,
-            core_expected_increments,
-            interval_deltas,
-        )
-        .map_err(|source| {
-            MeanReversionStageExecutionFailure::EndogenousAnchorMaterializationFailed {
-                error_message: source.to_string(),
-            }
-        })?;
-
-    let mut pressure_state_path =
-        Vec::with_capacity(runtime_interval_anchors.end_pressure_states.len() + 1);
-
-    pressure_state_path.push(runtime_interval_anchors.start_pressure_state);
-    pressure_state_path.extend(runtime_interval_anchors.end_pressure_states);
-
-    Ok(pressure_state_path)
-}
-
-struct TransitionTerms {
-    response: Vec<f64>,
-    intercept_column: Vec<f64>,
-    pressure_column: Vec<f64>,
-}
-
 fn adjacent_observation_level_differences(observation_levels: &[f64]) -> Vec<f64> {
     observation_levels
         .iter()
@@ -1581,161 +925,11 @@ fn remove_scaled_column_contribution(
         .collect::<Vec<_>>()
 }
 
-fn build_transition_terms(
-    observation_levels: &[f64],
-    pressure_state_path: &[f64],
-    interval_deltas: &[f64],
-    calibration_grid_interval_hours: f64,
-    phi_reference: f64,
-) -> TransitionTerms {
-    let mut response = Vec::with_capacity(interval_deltas.len());
-    let mut intercept_column = Vec::with_capacity(interval_deltas.len());
-    let mut pressure_column = Vec::with_capacity(interval_deltas.len());
-
-    for (
-        ((current_observation, next_observation), (current_pressure_state, next_pressure_state)),
-        interval_delta,
-    ) in observation_levels
-        .iter()
-        .zip(observation_levels.iter().skip(1))
-        .zip(
-            pressure_state_path
-                .iter()
-                .zip(pressure_state_path.iter().skip(1)),
-        )
-        .zip(interval_deltas.iter())
-    {
-        let phi = phi_reference.powf(interval_delta / calibration_grid_interval_hours);
-
-        response.push(next_observation - phi * current_observation);
-        intercept_column.push(1.0 - phi);
-        pressure_column.push(next_pressure_state - phi * current_pressure_state);
-    }
-
-    TransitionTerms {
-        response,
-        intercept_column,
-        pressure_column,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn assemble_candidate_evaluation(
-    observation_levels: &[f64],
-    core_expected_increments: &[f64],
-    interval_deltas: &[f64],
-    calibration_grid_interval_hours: f64,
-    candidate_family: &'static str,
-    parameter_count: usize,
-    anchor_model: MeanReversionAnchorModel,
-    anchor_origin_level: Option<f64>,
-    phi_reference: f64,
-    least_squares_rank: usize,
-    response: &[f64],
-    intercept_column: &[f64],
-    pressure_column: Option<&[f64]>,
-    pressure_state_path: Vec<f64>,
-    base_stage_decision_reason: &str,
-) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
-    let anchor_origin_level_value = anchor_origin_level.unwrap_or(0.0);
-
-    let pressure_persistence_per_reference_interval =
-        anchor_model.pressure_persistence_per_reference_interval;
-
-    let residuals = match (pressure_column, intercept_column.is_empty()) {
-        (Some(pressure_column), true) => remove_scaled_column_contribution(
-            response,
-            pressure_column,
-            anchor_model.pressure_level_gain,
-        ),
-        (Some(pressure_column), false) => response
-            .iter()
-            .zip(intercept_column.iter())
-            .zip(pressure_column.iter())
-            .map(
-                |((current_response, intercept_term), current_pressure_term)| {
-                    current_response
-                        - anchor_origin_level_value * intercept_term
-                        - anchor_model.pressure_level_gain * current_pressure_term
-                },
-            )
-            .collect::<Vec<_>>(),
-        (None, _) => {
-            remove_scaled_column_contribution(response, intercept_column, anchor_origin_level_value)
-        }
-    };
-
-    let residual_sum_of_squares = residuals
-        .iter()
-        .map(|residual| residual * residual)
-        .sum::<f64>();
-
-    let quasi_log_likelihood =
-        gaussian_quasi_log_likelihood(residuals.len(), residual_sum_of_squares);
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            CALIBRATION_GRID_ALIGNMENT_POLICY,
-            anchor_origin_level_value,
-            0.0,
-            &anchor_model,
-            core_expected_increments,
-            interval_deltas,
-        )
-        .map_err(|source| {
-            MeanReversionStageExecutionFailure::EndogenousAnchorMaterializationFailed {
-                error_message: source.to_string(),
-            }
-        })?;
-
-    let mut boundary_anchor_values =
-        Vec::with_capacity(runtime_interval_anchors.end_anchor_values.len() + 1);
-
-    boundary_anchor_values.push(runtime_interval_anchors.start_anchor_value);
-    boundary_anchor_values.extend(runtime_interval_anchors.end_anchor_values);
-
-    let deviations = observation_levels
-        .iter()
-        .zip(boundary_anchor_values.iter())
-        .map(|(observed_log_price, anchor_value)| observed_log_price - anchor_value)
-        .collect::<Vec<_>>();
-
-    Ok(MeanReversionStageCandidateEvaluation {
-        candidate_family,
-        anchor_model,
-        anchor_origin_level,
-        phi_reference,
-        kappa: kappa_from_phi_reference(phi_reference, calibration_grid_interval_hours),
-        residual_sum_of_squares,
-        quasi_log_likelihood,
-        information_criterion_bic: bic(residuals.len(), parameter_count, quasi_log_likelihood),
-        parameter_count,
-        least_squares_rank,
-        pressure_state_path,
-        boundary_anchor_values,
-        deviations,
-        residuals,
-        predictive_evidence: None,
-        stage_decision_reason: stage_decision_reason_with_boundary_flags(
-            base_stage_decision_reason,
-            Some(pressure_persistence_per_reference_interval),
-            Some(phi_reference),
-        ),
-    })
-}
-
 fn runtime_projection_required_grid_evaluation(
     calibration_grid: MeanReversionStageCalibrationGrid,
 ) -> MeanReversionGridCandidateEvaluation {
-    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
-        calibration_grid.calibration_grid_interval_hours,
-        0.0,
-        0.0,
-    );
-
     let fallback_candidate = MeanReversionStageCandidateEvaluation {
         candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY,
-        anchor_model: anchor_model.clone(),
         anchor_origin_level: None,
         phi_reference: 1.0,
         kappa: 0.0,
@@ -1744,18 +938,14 @@ fn runtime_projection_required_grid_evaluation(
         information_criterion_bic: f64::INFINITY,
         parameter_count: 0,
         least_squares_rank: 0,
-        pressure_state_path: Vec::new(),
         boundary_anchor_values: Vec::new(),
         deviations: Vec::new(),
         residuals: Vec::new(),
-        predictive_evidence: None,
         stage_decision_reason: ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON.to_string(),
     };
 
     MeanReversionGridCandidateEvaluation {
         calibration_grid,
-        observation_levels: Vec::new(),
-        calibration_context: None,
         evaluated_candidates: vec![fallback_candidate],
         stage_decision_reason: ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON.to_string(),
     }
@@ -1779,31 +969,20 @@ fn zero_kappa_endogenous_fit_with_grid_evaluations(
         });
     };
 
-    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
-        calibration_grid.calibration_grid_interval_hours,
-        0.0,
-        0.0,
-    );
-
-    let fitted_parameters = MeanReversionFittedParameters {
-        kappa: 0.0,
-        anchor_model: anchor_model.clone(),
-    };
+    let fitted_parameters = MeanReversionFittedParameters::zero_kappa();
 
     Ok((
         fitted_parameters,
         MeanReversionStageDiagnostics {
             selected_candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY.to_string(),
             calibration_grid: calibration_grid.clone(),
-            anchor_parameter_estimates: anchor_model,
             anchor_origin_level: None,
             phi_reference: 1.0,
             kappa: 0.0,
             residual_sum_of_squares: 0.0,
             quasi_log_likelihood: None,
             information_criterion_bic: None,
-            model_selection_policy: evidence::PREDICTIVE_EVIDENCE_MODEL_SELECTION_POLICY
-                .to_string(),
+            model_selection_policy: evidence::MEAN_REVERSION_BIC_MODEL_SELECTION_POLICY.to_string(),
             deviation_sample_count: 0,
             regression_pair_count: 0,
             least_squares_rank: 0,
@@ -1817,81 +996,12 @@ fn zero_kappa_endogenous_fit_with_grid_evaluations(
     ))
 }
 
-fn derive_observation_interval_duration_nanos(
-    observations: &[MeanReversionStageObservation],
-) -> Result<i64, MeanReversionStageExecutionFailure> {
-    let mut interval_duration_nanos: Option<i64> = None;
-
-    for observation_window in observations.windows(2) {
-        let [current_observation, next_observation] = observation_window else {
-            continue;
-        };
-
-        let current_timestamp = current_observation.observation_timestamp_utc_nanos;
-        let next_timestamp = next_observation.observation_timestamp_utc_nanos;
-
-        let observed_delta_nanos = next_timestamp.saturating_sub(current_timestamp);
-        if observed_delta_nanos <= 0 {
-            return Err(
-                MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
-                    error_message: format!(
-                        "mean-reversion observations must be strictly increasing, found current_timestamp_utc_nanos={current_timestamp} and next_timestamp_utc_nanos={next_timestamp}"
-                    ),
-                },
-            );
-        }
-
-        match interval_duration_nanos {
-            Some(expected_delta_nanos) if observed_delta_nanos != expected_delta_nanos => {
-                return Err(
-                    MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
-                        error_message: format!(
-                            "mean-reversion observations must lie on one regular interval grid, found expected_delta_nanos={expected_delta_nanos} and observed_delta_nanos={observed_delta_nanos}"
-                        ),
-                    },
-                );
-            }
-            Some(_) => {}
-            None => interval_duration_nanos = Some(observed_delta_nanos),
-        }
-    }
-
-    interval_duration_nanos.ok_or(
-        MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
-            error_message:
-                "mean-reversion endogenous calibration requires at least two observations"
-                    .to_string(),
-        },
-    )
-}
-
-fn solve_full_pressure_to_level_least_squares(
-    intercept_column: &[f64],
-    pressure_column: &[f64],
-    response: &[f64],
-) -> Result<RankAwareLeastSquaresSolution, MeanReversionStageExecutionFailure> {
-    rank_aware_two_column_unit_interval_second_coefficient_least_squares(
-        intercept_column,
-        pressure_column,
-        response,
-    )
-    .ok_or_else(|| least_squares_failure("full pressure-to-level"))
-}
-
 fn solve_one_column_least_squares(
     column: &[f64],
     response: &[f64],
 ) -> Result<RankAwareLeastSquaresSolution, MeanReversionStageExecutionFailure> {
     rank_aware_one_column_least_squares(column, response)
         .ok_or_else(|| least_squares_failure("one-column"))
-}
-
-fn solve_unit_interval_gain_least_squares(
-    column: &[f64],
-    response: &[f64],
-) -> Result<RankAwareLeastSquaresSolution, MeanReversionStageExecutionFailure> {
-    rank_aware_unit_interval_gain_least_squares(column, response)
-        .ok_or_else(|| least_squares_failure("unit-interval gain"))
 }
 
 fn least_squares_failure(fit_label: &str) -> MeanReversionStageExecutionFailure {
@@ -1927,17 +1037,6 @@ fn gaussian_quasi_log_likelihood(
     -0.5 * pair_count * (1.0 + (2.0 * std::f64::consts::PI * sigma_squared_hat).ln())
 }
 
-fn bic(regression_pair_count: usize, parameter_count: usize, quasi_log_likelihood: f64) -> f64 {
-    if quasi_log_likelihood.is_infinite() && quasi_log_likelihood.is_sign_positive() {
-        return f64::NEG_INFINITY;
-    }
-    if regression_pair_count == 0 {
-        return f64::INFINITY;
-    }
-
-    (parameter_count as f64) * (regression_pair_count as f64).ln() - 2.0 * quasi_log_likelihood
-}
-
 fn finite_metric_or_none(value: f64) -> Option<f64> {
     if value.is_finite() { Some(value) } else { None }
 }
@@ -1958,22 +1057,11 @@ fn emit_mean_reversion_progress(
     );
 }
 
-fn stage_decision_reason_with_boundary_flags(
+fn stage_decision_reason_with_phi_reference_flags(
     base_reason: &str,
-    pressure_persistence_per_reference_interval: Option<f64>,
     phi_reference: Option<f64>,
 ) -> String {
     let mut reason = base_reason.to_string();
-
-    match pressure_persistence_per_reference_interval {
-        Some(0.0) => {
-            reason.push_str("|pressure_persistence_per_reference_interval_boundary_zero.v1");
-        }
-        Some(1.0) => {
-            reason.push_str("|pressure_persistence_per_reference_interval_boundary_one.v1");
-        }
-        _ => {}
-    }
 
     if phi_reference == Some(1.0) {
         reason.push_str("|phi_reference_boundary_one.v1");

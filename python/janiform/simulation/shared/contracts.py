@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any, cast
 
 from .errors import SIMULATION_ERROR_FACTORY, _simulation_error
+from ...market_pressure import MarketPressureParameters, MarketPressureState
 from ...contracts import (
     ContractModel,
     compute_hawkes_alpha_over_beta_spectral_radius,
@@ -16,7 +17,6 @@ from ...contracts.base import (
     require_positive_finite_number,
 )
 from ...mean_reversion import (
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -248,10 +248,11 @@ class HawkesExcitationState(ContractModel):
 
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
-    "MeanReversionAnchorModel",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",

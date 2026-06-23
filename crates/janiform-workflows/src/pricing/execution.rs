@@ -299,13 +299,11 @@ fn prepare_pricing_input(
         0,
         boundary_state.excitation_state,
         boundary_state.long_variance_state,
+        boundary_state.market_pressure_state,
         context
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            // Intentional copy because the pricing boundary owns a validated
-            // mean-reversion contract independent of the shared model context.
-            .clone(),
+            .mean_reversion_fitted_parameters,
         interval_delta,
         boundary_state.mean_reversion_boundary_state,
     )

@@ -36,9 +36,6 @@ pub use constants::{
     CALIBRATION_NEWS_SHOCKS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_HANDOFF_POLICY,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_OBSERVATION_MODELS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-    CALIBRATION_OBSERVATION_MODELS_STAGE_HANDOFF_POLICY,
-    CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_HANDOFF_POLICY,
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
@@ -66,8 +63,6 @@ pub use handoff_resume::{
 pub use objective::{
     CalibrationHardConstraintDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,
     CalibrationLossFamilyDiagnostic, CalibrationLossTermDiagnostic, CalibrationLossTermKind,
-    CalibrationObjectivePolicy, CalibrationObjectivePolicyError,
-    DEFAULT_STYLIZED_FACT_ADMISSIBILITY_Z, DEFAULT_STYLIZED_FACT_HUBER_CUTOFF,
 };
 pub use optimizer::{
     CalibrationEffortOptions, CalibrationEffortOptionsError, CalibrationOptimizerSettings,

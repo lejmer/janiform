@@ -19,13 +19,14 @@ mod analytics;
 mod loadings;
 mod parameters;
 mod state;
+mod terminal;
 
 pub use analytics::{
     HawkesSpectralRadiusStabilityCheck, HawkesStationaryIntensityMultipliers,
     HawkesStationaryIntensityRates, HawkesStationaryTargetSourceRates,
     baseline_intensity_for_stationary_total_intensity, spectral_radius_alpha_over_beta,
     spectral_radius_stability_check, stationary_intensity_multipliers, stationary_intensity_rates,
-    target_source_rates_from_shared_activity_loading,
+    stationary_signed_event_rate, target_source_rates_from_shared_activity_loading,
 };
 pub use loadings::{
     HawkesKernelLoadings, HawkesStructuredAlphaParameterError,
@@ -46,6 +47,12 @@ pub use state::{
     HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesIntensityProjection,
     HawkesNewsSeverityMarkError, HawkesSeasonalityIntervalError, HawkesSideIntensities,
     HawkesSourceComponents, HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+};
+pub use terminal::{
+    HawkesIntervalTerminalStateContribution,
+    hawkes_endogenous_event_terminal_state_contribution_for_remaining_time,
+    hawkes_exogenous_news_terminal_state_contribution_for_remaining_time,
+    resolve_hawkes_interval_terminal_state,
 };
 
 #[cfg(test)]

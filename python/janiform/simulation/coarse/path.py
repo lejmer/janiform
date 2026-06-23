@@ -28,7 +28,8 @@ from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
     _simulation_error,
 )
-from ..timestamp_observation import TimestampBatchingObservationModel
+from ..timestamp_batching_surface import TimestampBatchingSurface
+from ...market_pressure import MarketPressureState
 from ...mean_reversion import MeanReversionBoundaryState
 from ...long_variance import LongVarianceParameters, LongVarianceState
 from ...return_clock import ReturnClockExposureParameters
@@ -37,6 +38,7 @@ from ...contracts.base import (
     parse_json_object,
     require_datetime_utc,
     require_finite_number,
+    require_finite_scalar,
     require_mapping,
     require_non_empty_string,
     require_non_negative_integer,
@@ -74,7 +76,7 @@ class CoarseSimulationModelInputs(ContractModel):
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
-    timestamp_batching_observation_model: TimestampBatchingObservationModel
+    timestamp_batching_surface: TimestampBatchingSurface
     observed_price_tick_size: Optional[float]
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
@@ -102,12 +104,12 @@ class CoarseSimulationModelInputs(ContractModel):
             )
 
         if not isinstance(
-            self.timestamp_batching_observation_model,
-            TimestampBatchingObservationModel,
+            self.timestamp_batching_surface,
+            TimestampBatchingSurface,
         ):
             raise _simulation_error(
-                "timestamp_batching_observation_model",
-                "must be a TimestampBatchingObservationModel",
+                "timestamp_batching_surface",
+                "must be a TimestampBatchingSurface",
             )
 
         if self.observed_price_tick_size is not None and (
@@ -197,14 +199,14 @@ class CoarseSimulationModelInputs(ContractModel):
                 field_path=f"{field_path}.initial_long_variance_state",
                 error_factory=SIMULATION_ERROR_FACTORY,
             ),
-            timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+            timestamp_batching_surface=TimestampBatchingSurface.from_mapping(
                 require_mapping(
                     raw_payload,
-                    "timestamp_batching_observation_model",
-                    f"{field_path}.timestamp_batching_observation_model",
+                    "timestamp_batching_surface",
+                    f"{field_path}.timestamp_batching_surface",
                     SIMULATION_ERROR_FACTORY,
                 ),
-                field_path=f"{field_path}.timestamp_batching_observation_model",
+                field_path=f"{field_path}.timestamp_batching_surface",
             ),
             observed_price_tick_size=(
                 require_finite_number(
@@ -298,8 +300,12 @@ class CoarseSimulationRunRequest(ContractModel):
             self.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors
         )
         if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
+            field_path = (
+                "model_inputs.sufficient_statistics_model_inputs"
+                ".mean_reversion_runtime_interval_anchors.end_anchor_values"
+            )
             raise _simulation_error(
-                "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
+                field_path,
                 f"must contain {self.horizon_interval_count} values",
             )
 
@@ -339,7 +345,7 @@ class CoarseSimulationRunRequest(ContractModel):
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
         initial_long_variance_state: LongVarianceState,
-        timestamp_batching_observation_model: TimestampBatchingObservationModel,
+        timestamp_batching_surface: TimestampBatchingSurface,
         observed_price_tick_size: Optional[float],
         calendar_registry: CalendarRegistry,
         exchange_code: str,
@@ -362,7 +368,7 @@ class CoarseSimulationRunRequest(ContractModel):
                 return_clock_exposure_parameters=return_clock_exposure_parameters,
                 long_variance_parameters=long_variance_parameters,
                 initial_long_variance_state=initial_long_variance_state,
-                timestamp_batching_observation_model=timestamp_batching_observation_model,
+                timestamp_batching_surface=timestamp_batching_surface,
                 observed_price_tick_size=observed_price_tick_size,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,
@@ -445,7 +451,7 @@ class CoarseSimulationPathRecord(ContractModel):
     observed_interval_return: float
     observed_log_price_end: float
     anchor_value_end: float
-    pressure_state_end: float
+    market_pressure_state_end: float
     deviation_from_anchor_end: float
 
     def __post_init__(self) -> None:
@@ -473,8 +479,12 @@ class CoarseSimulationPathRecord(ContractModel):
         MeanReversionBoundaryState(
             observed_log_price=self.observed_log_price_end,
             anchor_value=self.anchor_value_end,
-            pressure_state=self.pressure_state_end,
             deviation=self.deviation_from_anchor_end,
+        )
+        require_finite_scalar(
+            self.market_pressure_state_end,
+            "market_pressure_state_end",
+            SIMULATION_ERROR_FACTORY,
         )
 
     @staticmethod
@@ -574,10 +584,10 @@ class CoarseSimulationPathRecord(ContractModel):
                 f"{field_path}.anchor_value_end",
                 SIMULATION_ERROR_FACTORY,
             ),
-            pressure_state_end=require_finite_number(
+            market_pressure_state_end=require_finite_number(
                 raw_payload,
-                "pressure_state_end",
-                f"{field_path}.pressure_state_end",
+                "market_pressure_state_end",
+                f"{field_path}.market_pressure_state_end",
                 SIMULATION_ERROR_FACTORY,
             ),
             deviation_from_anchor_end=require_finite_number(

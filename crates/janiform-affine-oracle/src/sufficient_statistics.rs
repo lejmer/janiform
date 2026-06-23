@@ -4,6 +4,7 @@ mod errors;
 mod execution;
 mod inputs;
 mod return_components;
+mod sampling;
 mod validation;
 
 pub use constants::{
@@ -21,9 +22,10 @@ pub use constants::{
     SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY,
 };
 pub use contracts::{
-    SufficientStatisticsBoundaryStateUpdateSnapshot,
+    SufficientStatisticsBoundaryState, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsIntervalStatistics,
     SufficientStatisticsIntervalStatisticsChunk, SufficientStatisticsIntervalStatisticsPathChunk,
+    SufficientStatisticsSampledEventCounts, SufficientStatisticsSampledIntervalTransition,
     SufficientStatisticsStreamingChunkingSettings, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
 };
@@ -40,6 +42,7 @@ pub use execution::{
     derive_expected_interval_statistics_from_transform_sensitivities,
     derive_expected_interval_statistics_from_transform_slices,
     derive_sufficient_statistics_batch_path_seed,
+    sample_interval_event_counts_from_expected_statistics_with_randomness_factory,
     sample_interval_statistics_batch_from_transform_slices,
     sample_interval_statistics_batch_from_transform_slices_with_randomness_factory,
     sample_interval_statistics_from_expected_statistics_with_randomness_factory,
@@ -65,4 +68,5 @@ pub use inputs::{
 pub use return_components::{
     SufficientStatisticsReturnComponents, SufficientStatisticsReturnComponentsError,
 };
+pub use sampling::sample_interval_endogenous_transition_from_sampled_counts_with_randomness_factory;
 pub use validation::validate_excitation_state;

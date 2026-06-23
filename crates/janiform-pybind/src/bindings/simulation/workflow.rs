@@ -3,9 +3,9 @@ use janiform::model::affine_oracle::{
     materialize_endogenous_anchor_path,
 };
 use janiform::model::long_variance::LongVarianceParameters;
+use janiform::model::market_pressure::MarketPressureParameters;
 use janiform::model::news::NewsProcessConfiguration;
 use janiform::simulation::{
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
     run_coarse_simulation as run_coarse_simulation_core,
     run_coarse_simulation_with_observer as run_coarse_simulation_core_with_observer,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
@@ -143,8 +143,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
 
-    let parsed_mean_reversion_fitted_parameters =
-        parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
+    parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
 
     let parsed_seasonality_factor =
         parse_required_numeric_sequence(seasonality_factor, "seasonality_factor")?;
@@ -202,6 +201,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
                 .shared_mark_law
                 .gamma_severity_marks,
             parsed_long_variance_parameters,
+            MarketPressureParameters::no_anchor_impact(),
         ),
         parsed_nig_shared_plus_shift_configuration,
         &parsed_news_process_configuration,
@@ -214,26 +214,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
         ))
     })?;
 
-    let core_expected_increments: Vec<f64> = materialization
-        .interval_expectations
-        .iter()
-        .map(|expectation| expectation.core_expected_increment)
-        .collect();
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            interval_alignment_policy,
-            start_anchor_value,
-            0.0,
-            &parsed_mean_reversion_fitted_parameters.anchor_model,
-            core_expected_increments.as_slice(),
-            &parsed_interval_deltas,
-        )
-        .map_err(|source| {
-            SeasonalityInputValidationError::new_err(format!(
-                "endogenous mean-reversion runtime anchor materialization failed: {source}"
-            ))
-        })?;
+    let runtime_interval_anchors = materialization.runtime_interval_anchors;
 
     let serialized_runtime_interval_anchors = serde_json::to_value(&runtime_interval_anchors)
         .map_err(|source| {

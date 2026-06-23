@@ -1,6 +1,7 @@
 use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::model::long_variance::LongVarianceState;
+use janiform::model::market_pressure::MarketPressureState;
 use janiform::simulation::MeanReversionBoundaryState;
 
 use crate::error::WorkflowError;
@@ -15,6 +16,7 @@ pub(super) struct PricingBoundaryState {
     pub(super) excitation_state: HawkesExcitationState,
     pub(super) long_variance_state: LongVarianceState,
     pub(super) mean_reversion_boundary_state: MeanReversionBoundaryState,
+    pub(super) market_pressure_state: MarketPressureState,
 }
 
 pub(super) fn resolve_pricing_boundary_state(
@@ -29,14 +31,14 @@ pub(super) fn resolve_pricing_boundary_state(
             boundary_interval_factor_grid,
             excitation_state,
             observed_log_return,
-            context.interval_delta,
-            1,
         )?;
+        let market_pressure_state = neutral_market_pressure_state_for_context(context)?;
 
         return Ok(PricingBoundaryState {
             excitation_state,
             long_variance_state: LongVarianceState::unit(),
             mean_reversion_boundary_state,
+            market_pressure_state,
         });
     }
 
@@ -52,6 +54,7 @@ pub(super) fn resolve_pricing_boundary_state(
             excitation_state: estimated_state.hawkes_excitation_state,
             long_variance_state: estimated_state.long_variance_state,
             mean_reversion_boundary_state: estimated_state.mean_reversion_boundary_state,
+            market_pressure_state: estimated_state.market_pressure_state,
         });
     }
 
@@ -66,13 +69,25 @@ pub(super) fn resolve_pricing_boundary_state(
         boundary_interval_factor_grid,
         excitation_state,
         observed_log_return,
-        context.interval_delta,
-        1,
     )?;
+    let market_pressure_state = neutral_market_pressure_state_for_context(context)?;
 
     Ok(PricingBoundaryState {
         excitation_state,
         long_variance_state: LongVarianceState::unit(),
         mean_reversion_boundary_state,
+        market_pressure_state,
     })
+}
+
+fn neutral_market_pressure_state_for_context(
+    context: &FittedModelContext,
+) -> Result<MarketPressureState, WorkflowError> {
+    MarketPressureState::neutral_for_parameters(
+        &context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .market_pressure_parameters,
+    )
+    .map_err(|source| validation_error("market_pressure_state", source.to_string()))
 }

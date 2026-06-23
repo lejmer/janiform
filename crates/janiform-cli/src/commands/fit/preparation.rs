@@ -48,13 +48,10 @@ const FIT_PREPARATION_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.re
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FitPreparationOverrides {
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
-    pub(crate) mean_reversion_predictive_evidence_alpha: Option<f64>,
     pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
     pub(crate) option_refinement_candidate_count: Option<usize>,
     pub(crate) diagnostics: Vec<CalibrationDiagnosticOption>,
     pub(crate) treat_calibration_warnings_as_errors: bool,
-    pub(crate) stylized_fact_huber_cutoff: Option<f64>,
-    pub(crate) stylized_fact_admissibility_z_threshold: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -236,10 +233,6 @@ pub(crate) fn prepare_fit_preview(
         diagnostics: calibration_diagnostics_request(
             preview_options.overrides.diagnostics.as_slice(),
         ),
-        stylized_fact_huber_cutoff: preview_options.overrides.stylized_fact_huber_cutoff,
-        stylized_fact_admissibility_z_threshold: preview_options
-            .overrides
-            .stylized_fact_admissibility_z_threshold,
         known_news_inputs: prepared_inputs.known_news_inputs,
         mean_reversion: mean_reversion_configuration_from_overrides(&preview_options.overrides),
     };
@@ -406,16 +399,13 @@ pub(crate) fn prepare_fit_preview(
 fn mean_reversion_configuration_from_overrides(
     overrides: &FitPreparationOverrides,
 ) -> Option<CalibrationMarketDataMeanReversionConfiguration> {
-    if overrides.mean_reversion_grid_interval_hours.is_none()
-        && overrides.mean_reversion_predictive_evidence_alpha.is_none()
-    {
-        return None;
-    }
-
-    Some(CalibrationMarketDataMeanReversionConfiguration {
-        calibration_grid_interval_hours: overrides.mean_reversion_grid_interval_hours,
-        predictive_evidence_alpha: overrides.mean_reversion_predictive_evidence_alpha,
-    })
+    overrides
+        .mean_reversion_grid_interval_hours
+        .map(
+            |interval_hours| CalibrationMarketDataMeanReversionConfiguration {
+                calibration_grid_interval_hours: Some(interval_hours),
+            },
+        )
 }
 
 fn calibration_settings_from_tick_size(
@@ -555,7 +545,7 @@ fn prepare_market_data_calibration_plan_with_terminal_progress(
                 ProgressMeasure::Unbounded,
                 market_data_preparation_progress_signal(preparation_phase),
             ),
-            MarketDataPreparationProgressEvent::TimestampBatchingObservation(_) => return Ok(()),
+            MarketDataPreparationProgressEvent::TimestampBatchingSurface(_) => return Ok(()),
         };
 
         progress_adapter.observe(ProgressEvent::StageProgress {

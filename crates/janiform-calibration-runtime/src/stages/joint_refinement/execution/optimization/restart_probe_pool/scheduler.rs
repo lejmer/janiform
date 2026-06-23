@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::{
@@ -12,16 +13,18 @@ use super::super::super::{
 };
 use super::super::workflow::joint_refinement_has_fatal_execution_failure;
 use super::finalization::{
-    RestartProbeFinalizationJob, RestartProbeFinalizationResult, run_restart_probe_finalization_job,
+    RestartProbeFinalizationJob, RestartProbeFinalizationResult, restart_probe_finalization_jobs,
+    run_restart_probe_finalization_job, select_restart_probe_finalization_outcome,
 };
 use super::progress::{
-    emit_batched_restart_progress, emit_restart_finalization_progress,
-    emit_restart_finalization_started, restart_probe_evaluation_timing_diagnostic,
+    RestartFinalizationStartedProgressInput, emit_batched_restart_progress,
+    emit_restart_finalization_progress, emit_restart_finalization_started,
+    restart_probe_evaluation_timing_diagnostic,
 };
 use super::{
     RestartProbeJob, RestartProbeResult, RestartProbeState,
     mark_pending_restart_probe_states_completed, mark_unscheduled_restart_probe_states_completed,
-    next_restart_probe_job_round_robin, record_restart_probe_result, run_restart_probe_job,
+    next_restart_probe_job_racing, record_restart_probe_result, run_restart_probe_job,
 };
 
 enum RestartProbePoolJob {
@@ -36,7 +39,10 @@ enum RestartProbePoolResult {
 
 struct RestartProbeWorkerPoolState<'a> {
     states: &'a mut [RestartProbeState],
+    worker_capacity: usize,
     restart_outcomes: Vec<Option<JointRefinementRestartOutcome>>,
+    finalization_candidate_outcomes: Vec<Vec<Option<JointRefinementRestartOutcome>>>,
+    pending_finalization_jobs: VecDeque<RestartProbeFinalizationJob>,
     finalization_scheduled: Vec<bool>,
     next_restart_position: usize,
     next_finalization_restart_position: usize,
@@ -49,7 +55,6 @@ struct RestartProbeWorkerPoolState<'a> {
 
 pub(super) struct RestartProbeWorkerPoolInput<'a> {
     pub(super) states: &'a mut [RestartProbeState],
-    pub(super) poll_directions: &'a [Vec<f64>],
     pub(super) context: &'a JointRefinementContext,
     pub(super) solver_settings: &'a CalibrationOptimizerSettings,
     pub(super) search_pool_budget: usize,
@@ -75,9 +80,14 @@ fn run_restart_probe_worker_pool_with_scheduler(
 
     let mut pool_state = RestartProbeWorkerPoolState {
         states: input.states,
+        worker_capacity,
         restart_outcomes: std::iter::repeat_with(|| None)
             .take(restart_count)
             .collect(),
+        finalization_candidate_outcomes: std::iter::repeat_with(Vec::new)
+            .take(restart_count)
+            .collect(),
+        pending_finalization_jobs: VecDeque::new(),
         finalization_scheduled: vec![false; restart_count],
         next_restart_position: 0,
         next_finalization_restart_position: 0,
@@ -96,7 +106,6 @@ fn run_restart_probe_worker_pool_with_scheduler(
             |pool_state: &mut RestartProbeWorkerPoolState<'_>, _status| {
                 next_restart_probe_pool_job(
                     pool_state,
-                    input.poll_directions,
                     input.context,
                     input.solver_settings,
                     input.search_pool_budget,
@@ -129,7 +138,6 @@ fn run_restart_probe_worker_pool_with_scheduler(
 
 fn next_restart_probe_pool_job(
     pool_state: &mut RestartProbeWorkerPoolState<'_>,
-    poll_directions: &[Vec<f64>],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     search_pool_budget: usize,
@@ -139,12 +147,15 @@ fn next_restart_probe_pool_job(
     if restart_probe_search_scheduling_complete(pool_state, search_pool_budget, context) {
         mark_pending_restart_probe_states_completed(pool_state.states);
     } else {
-        let search_job = next_restart_probe_job_round_robin(
+        let max_in_flight_per_restart =
+            restart_probe_max_in_flight_per_restart(pool_state.states, pool_state.worker_capacity);
+
+        let search_job = next_restart_probe_job_racing(
             pool_state.states,
-            poll_directions,
             context,
             solver_settings,
             &mut pool_state.next_restart_position,
+            max_in_flight_per_restart,
         );
 
         if let Some(search_job) = search_job {
@@ -181,11 +192,32 @@ fn restart_probe_search_in_flight_count(states: &[RestartProbeState]) -> usize {
         .sum::<usize>()
 }
 
+fn restart_probe_max_in_flight_per_restart(
+    states: &[RestartProbeState],
+    worker_capacity: usize,
+) -> usize {
+    let active_restart_count = states
+        .iter()
+        .filter(|state| !state.completed && super::restart_probe_state_has_remaining_budget(state))
+        .count()
+        .max(1);
+
+    worker_capacity
+        .saturating_add(active_restart_count - 1)
+        .checked_div(active_restart_count)
+        .unwrap_or(1)
+        .max(1)
+}
+
 fn next_restart_probe_finalization_job(
     pool_state: &mut RestartProbeWorkerPoolState<'_>,
     total_progress_units: usize,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Option<RestartProbeFinalizationJob> {
+    if let Some(finalization_job) = pool_state.pending_finalization_jobs.pop_front() {
+        return Some(finalization_job);
+    }
+
     if pool_state.states.is_empty() {
         return None;
     }
@@ -207,26 +239,41 @@ fn next_restart_probe_finalization_job(
             continue;
         };
 
-        emit_restart_finalization_started(
+        let finalization_jobs = restart_probe_finalization_jobs(restart_position, state);
+        if finalization_jobs.is_empty() {
+            continue;
+        }
+
+        emit_restart_finalization_started(RestartFinalizationStartedProgressInput {
             progress_sender,
             state,
-            pool_state.states.len(),
-            pool_state.completed_search_evaluation_count,
-            pool_state.completed_finalization_count,
+            states: pool_state.states,
+            restart_outcomes: pool_state.restart_outcomes.as_slice(),
+            total_restart_count: pool_state.states.len(),
+            completed_search_evaluation_count: pool_state.completed_search_evaluation_count,
+            completed_finalization_count: pool_state.completed_finalization_count,
             total_progress_units,
-        );
+        });
 
         if let Some(finalization_slot) = pool_state.finalization_scheduled.get_mut(restart_position)
         {
             *finalization_slot = true;
         }
 
-        // Finalization workers own a completed restart snapshot so the scheduler can keep
-        // mutating unrelated restart state while final loss runs.
-        return Some(RestartProbeFinalizationJob {
-            restart_position,
-            state: state.clone(),
-        });
+        if let Some(candidate_outcome_slots) = pool_state
+            .finalization_candidate_outcomes
+            .get_mut(restart_position)
+        {
+            *candidate_outcome_slots = std::iter::repeat_with(|| None)
+                .take(finalization_jobs.len())
+                .collect();
+        }
+
+        pool_state
+            .pending_finalization_jobs
+            .extend(finalization_jobs);
+
+        return pool_state.pending_finalization_jobs.pop_front();
     }
 
     None
@@ -307,8 +354,10 @@ fn record_restart_probe_pool_result(
             record_restart_probe_finalization_result(
                 pool_state,
                 *finalization_result,
+                solver_settings,
                 total_progress_units,
                 progress_sender,
+                context,
             );
         }
     }
@@ -360,17 +409,60 @@ fn record_restart_probe_search_result(
 fn record_restart_probe_finalization_result(
     pool_state: &mut RestartProbeWorkerPoolState<'_>,
     result: RestartProbeFinalizationResult,
+    solver_settings: &CalibrationOptimizerSettings,
     total_progress_units: usize,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    context: &JointRefinementContext,
 ) {
     let restart_position = result.restart_position;
+
+    let Some(candidate_outcome_slots) = pool_state
+        .finalization_candidate_outcomes
+        .get_mut(restart_position)
+    else {
+        return;
+    };
+
+    let Some(candidate_outcome_slot) = candidate_outcome_slots.get_mut(result.candidate_position)
+    else {
+        return;
+    };
+
+    if candidate_outcome_slot.is_some() {
+        return;
+    }
+
+    *candidate_outcome_slot = Some(result.outcome);
+
+    if candidate_outcome_slots.iter().any(Option::is_none) {
+        return;
+    }
+
+    let candidate_outcomes = candidate_outcome_slots
+        .iter_mut()
+        .filter_map(Option::take)
+        .collect::<Vec<_>>();
+
+    let Some(state) = pool_state.states.get(restart_position) else {
+        return;
+    };
+
+    let selected_outcome = select_restart_probe_finalization_outcome(
+        state,
+        candidate_outcomes,
+        context,
+        solver_settings,
+    );
+
     if let Some(outcome_slot) = pool_state.restart_outcomes.get_mut(restart_position) {
-        if outcome_slot.is_none() {
-            pool_state.completed_finalization_count =
-                pool_state.completed_finalization_count.saturating_add(1);
+        if outcome_slot.is_some() {
+            return;
         }
 
-        *outcome_slot = Some(result.outcome);
+        pool_state.completed_finalization_count =
+            pool_state.completed_finalization_count.saturating_add(1);
+
+        *outcome_slot = Some(selected_outcome);
     }
 
     if let Some(outcome) = pool_state
@@ -392,6 +484,8 @@ fn record_restart_probe_finalization_result(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
     use janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic;
 
     use super::super::{
@@ -409,13 +503,24 @@ mod tests {
             seed_vector: vec![0.0],
             accepted_vector: vec![0.0],
             best_vector: vec![0.0],
+            initial_objective: Some(10.0),
             accepted_objective: Some(10.0),
             best_objective: Some(10.0),
-            poll_best_vector: None,
-            poll_best_objective: None,
-            mesh_radii: vec![1.0],
-            next_poll_direction_position: 0,
-            completed_poll_rounds: 0,
+            round_best_vector: None,
+            round_best_objective: None,
+            round_best_residuals: None,
+            round_best_predicted_residual_objective: None,
+            accepted_residuals: None,
+            evaluated_records: Vec::new(),
+            scheduled_parameter_bits: Vec::new(),
+            model_probe_vectors: Vec::new(),
+            next_model_probe_position: 0,
+            model_probes_prepared: false,
+            trust_region_proposal_vectors: Vec::new(),
+            next_trust_region_proposal_position: 0,
+            trust_region_proposals_prepared: false,
+            trust_region_radius: 0.25,
+            completed_search_rounds: 0,
             evaluation_count: 4,
             max_evaluation_count: 4,
             in_flight_count: 0,
@@ -431,13 +536,24 @@ mod tests {
             seed_vector: vec![0.0],
             accepted_vector: vec![0.0],
             best_vector: vec![0.0],
+            initial_objective: Some(10.0),
             accepted_objective: Some(10.0),
             best_objective: Some(10.0),
-            poll_best_vector: None,
-            poll_best_objective: None,
-            mesh_radii: vec![1.0],
-            next_poll_direction_position: 0,
-            completed_poll_rounds: 0,
+            round_best_vector: None,
+            round_best_objective: None,
+            round_best_residuals: None,
+            round_best_predicted_residual_objective: None,
+            accepted_residuals: None,
+            evaluated_records: Vec::new(),
+            scheduled_parameter_bits: Vec::new(),
+            model_probe_vectors: Vec::new(),
+            next_model_probe_position: 0,
+            model_probes_prepared: false,
+            trust_region_proposal_vectors: Vec::new(),
+            next_trust_region_proposal_position: 0,
+            trust_region_proposals_prepared: false,
+            trust_region_radius: 0.25,
+            completed_search_rounds: 0,
             evaluation_count: 3,
             max_evaluation_count: 8,
             in_flight_count: 0,
@@ -464,9 +580,14 @@ mod tests {
 
         RestartProbeWorkerPoolState {
             states,
+            worker_capacity: 4,
             restart_outcomes: std::iter::repeat_with(|| None)
                 .take(restart_count)
                 .collect(),
+            finalization_candidate_outcomes: std::iter::repeat_with(Vec::new)
+                .take(restart_count)
+                .collect(),
+            pending_finalization_jobs: VecDeque::new(),
             finalization_scheduled: vec![false; restart_count],
             next_restart_position: 0,
             next_finalization_restart_position: 0,
@@ -495,8 +616,34 @@ mod tests {
             .expect("completed restart should schedule finalization");
 
         assert_eq!(finalization_job.restart_position, 0);
-        assert_eq!(finalization_job.state.restart_id, "finished");
+        assert_eq!(finalization_job.restart_context.restart_id, "finished");
         assert_eq!(pool_state.finalization_scheduled, vec![true, false]);
+    }
+
+    #[test]
+    fn completed_restart_schedules_distinct_finalization_candidate_vectors() {
+        let mut state = completed_search_state("finished");
+        state.seed_vector = vec![0.0];
+        state.accepted_vector = vec![1.0];
+        state.best_vector = vec![2.0];
+        state.round_best_vector = Some(vec![3.0]);
+
+        let mut states = vec![state];
+        let mut evaluation_timing_diagnostics = Vec::new();
+
+        let mut pool_state =
+            test_pool_state(states.as_mut_slice(), &mut evaluation_timing_diagnostics);
+
+        let mut scheduled_candidate_positions = Vec::new();
+        while let Some(finalization_job) =
+            next_restart_probe_finalization_job(&mut pool_state, 12, None)
+        {
+            scheduled_candidate_positions.push(finalization_job.candidate_position);
+        }
+
+        assert_eq!(scheduled_candidate_positions, vec![0, 1, 2, 3]);
+        assert_eq!(pool_state.finalization_scheduled, vec![true]);
+        assert!(pool_state.pending_finalization_jobs.is_empty());
     }
 
     #[test]

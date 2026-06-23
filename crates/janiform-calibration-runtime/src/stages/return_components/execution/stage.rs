@@ -42,6 +42,9 @@ use crate::optimizer_adapter::{
     CalibrationOptimizerParameterBound, run_constrained_optimizer_adapter,
 };
 use crate::stages::return_components::progress::emit_return_components_progress;
+use crate::stages::return_components::{
+    build_hawkes_return_source_responsibilities, open_session_returns_with_source_activities,
+};
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -58,6 +61,18 @@ struct ReturnComponentsStageSelectionArtifacts {
     selected_candidate_raw_objective: f64,
     selected_candidate_penalized_objective: f64,
     optimizer_adapter_metadata: CalibrationOptimizerAdapterRunMetadata,
+}
+
+struct ReturnComponentsStageSuccessReportInput<'a> {
+    run_spec: &'a CalibrationRunSpec,
+    stage_input: ReturnComponentsStageExecutionInput,
+    stage_solver_settings: janiform_calibration_artifacts::CalibrationOptimizerSettings,
+    source_window_open_exposure_hours: f64,
+    generated_candidates:
+        super::candidate_generation::ReturnComponentsStageCandidateGenerationOutput,
+    selection: ReturnComponentsStageSelectionArtifacts,
+    resolved_stage_seed: CalibrationResolvedStageSeed,
+    progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
 }
 
 /// Execute the return-components stage with NIG and coupled-gap parameter constraints.
@@ -125,6 +140,11 @@ fn run_return_components_calibration_stage_internal(
     stage_input: ReturnComponentsStageExecutionInput,
     progress_sender: Option<Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> ReturnComponentsStageExecutionReport {
+    let stage_input = match stage_input_with_hawkes_return_source_responsibilities(stage_input) {
+        Ok(stage_input) => stage_input,
+        Err(failure) => return build_return_components_stage_failure_report(run_spec, failure),
+    };
+
     let preflight = match prepare_return_components_stage_execution(
         run_spec,
         calendar_registry,
@@ -158,18 +178,73 @@ fn run_return_components_calibration_stage_internal(
         Err(failure) => return build_return_components_stage_failure_report(run_spec, failure),
     };
 
-    match build_return_components_stage_success_report(
+    match build_return_components_stage_success_report(ReturnComponentsStageSuccessReportInput {
         run_spec,
         stage_input,
-        preflight.stage_solver_settings,
+        stage_solver_settings: preflight.stage_solver_settings,
+        source_window_open_exposure_hours: preflight
+            .prepared_candidate_generation_input
+            .source_window_open_exposure_hours,
         generated_candidates,
         selection,
         resolved_stage_seed,
-        progress_sender.as_ref(),
-    ) {
+        progress_sender: progress_sender.as_ref(),
+    }) {
         Ok(report) => report,
         Err(failure) => build_return_components_stage_failure_report(run_spec, failure),
     }
+}
+
+fn stage_input_with_hawkes_return_source_responsibilities(
+    mut stage_input: ReturnComponentsStageExecutionInput,
+) -> Result<ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionFailure> {
+    let Some(responsibility_input) = stage_input
+        .hawkes_return_source_responsibility_input
+        .as_ref()
+    else {
+        return Ok(stage_input);
+    };
+
+    let Some(hawkes_payload) = stage_input.activity_input.payload() else {
+        return Err(
+            ReturnComponentsStageExecutionFailure::InvalidHawkesReturnSourceResponsibilities {
+                error_message: "Hawkes payload is required to build return-source responsibilities"
+                    .to_string(),
+            },
+        );
+    };
+
+    let responsibilities = build_hawkes_return_source_responsibilities(
+        stage_input
+            .candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+        &responsibility_input.seasonality_payload,
+        responsibility_input.event_side_codes.as_slice(),
+        &hawkes_payload.fitted_parameters,
+    )
+    .map_err(|source| {
+        ReturnComponentsStageExecutionFailure::InvalidHawkesReturnSourceResponsibilities {
+            error_message: source,
+        }
+    })?;
+
+    stage_input
+        .candidate_generation_input
+        .observed_open_session_returns = open_session_returns_with_source_activities(
+        stage_input
+            .candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+        responsibilities.responsibilities.as_slice(),
+    )
+    .map_err(|source| {
+        ReturnComponentsStageExecutionFailure::InvalidHawkesReturnSourceResponsibilities {
+            error_message: source.to_string(),
+        }
+    })?;
+
+    Ok(stage_input)
 }
 
 fn prepare_return_components_stage_execution(
@@ -229,14 +304,6 @@ fn prepare_return_components_stage_execution(
     })?;
 
     validate_activity_input_transport(run_spec, stage_input)?;
-
-    emit_return_components_progress(
-        progress_sender,
-        ReturnComponentsStageProgressPhase::InputPreflight,
-        3,
-        3,
-        Some("ready"),
-    );
 
     Ok(ReturnComponentsStagePreflight {
         stage_solver_settings,
@@ -360,6 +427,7 @@ fn generate_stage_candidates(
             activity_calibration_context: resolve_activity_calibration_context(
                 &stage_input.activity_input,
             ),
+            coarse_data_records: stage_input.coarse_data_records.as_deref(),
             stage_seed,
             stage_solver_settings: &preflight.stage_solver_settings,
             progress_sender,
@@ -673,14 +741,19 @@ fn build_candidate_diagnostics(
 }
 
 fn build_return_components_stage_success_report(
-    run_spec: &CalibrationRunSpec,
-    stage_input: ReturnComponentsStageExecutionInput,
-    stage_solver_settings: janiform_calibration_artifacts::CalibrationOptimizerSettings,
-    generated_candidates: super::candidate_generation::ReturnComponentsStageCandidateGenerationOutput,
-    selection: ReturnComponentsStageSelectionArtifacts,
-    resolved_stage_seed: CalibrationResolvedStageSeed,
-    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
+    input: ReturnComponentsStageSuccessReportInput<'_>,
 ) -> Result<ReturnComponentsStageExecutionReport, ReturnComponentsStageExecutionFailure> {
+    let ReturnComponentsStageSuccessReportInput {
+        run_spec,
+        stage_input,
+        stage_solver_settings,
+        source_window_open_exposure_hours,
+        generated_candidates,
+        selection,
+        resolved_stage_seed,
+        progress_sender,
+    } = input;
+
     emit_return_components_progress(
         progress_sender,
         ReturnComponentsStageProgressPhase::ReportAssembly,
@@ -710,6 +783,7 @@ fn build_return_components_stage_success_report(
     let fitted_stage_payload = super::super::contracts::ReturnComponentsStageFittedPayload {
         schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
         selected_candidate_id: selected_candidate_input.candidate_id.clone(),
+        source_window_open_exposure_hours,
         fitted_parameters: ReturnComponentsStageFittedParameters {
             nig_shared_plus_shift_configuration: nig_configuration,
             news_process_configuration,
@@ -738,15 +812,17 @@ fn build_return_components_stage_success_report(
                 .return_clock_exposure_parameters,
             long_variance_parameters:
                 janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
-            tick_grid_observation_model: selected_candidate_input
-                .tick_grid_observation_model
+            // The fitted stage payload owns the selected pressure contract.
+            market_pressure_parameters: selected_candidate_input.market_pressure_parameters.clone(),
+            price_discretization_surface: selected_candidate_input
+                .price_discretization_surface
                 .clone(),
-            timestamp_batching_observation_model: selected_candidate_input
-                .timestamp_batching_observation_model
-                .clone(),
-            mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+            timestamp_batching_surface: selected_candidate_input.timestamp_batching_surface.clone(),
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         },
+        market_pressure_runtime_state: Some(std::sync::Arc::clone(
+            &generated_candidates.market_pressure_runtime_state,
+        )),
         candidate_diagnostics: selection.candidate_diagnostics,
         candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
         objective_weighting_policy: CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
@@ -797,14 +873,6 @@ fn build_return_components_stage_success_report(
         }),
         failure: None,
     };
-
-    emit_return_components_progress(
-        progress_sender,
-        ReturnComponentsStageProgressPhase::ReportAssembly,
-        2,
-        2,
-        Some("report ready"),
-    );
 
     Ok(report)
 }

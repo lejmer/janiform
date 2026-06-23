@@ -114,8 +114,6 @@ class JaniformEstimator:
     _joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     _joint_refinement_audit_option_pricing_enabled: bool
     _diagnostics: CalibrationDiagnosticsRequest
-    _stylized_fact_huber_cutoff: Optional[float]
-    _stylized_fact_admissibility_z_threshold: Optional[float]
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -151,8 +149,6 @@ class JaniformEstimator:
         joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None,
         joint_refinement_audit_option_pricing: bool = False,
         diagnostics: Optional[CalibrationDiagnosticsRequest] = None,
-        stylized_fact_huber_cutoff: Optional[float] = None,
-        stylized_fact_admissibility_z_threshold: Optional[float] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -242,27 +238,6 @@ class JaniformEstimator:
                 "must be strictly positive when provided",
             )
 
-        if (
-            stylized_fact_huber_cutoff is not None
-            and (not isfinite(stylized_fact_huber_cutoff) or stylized_fact_huber_cutoff <= 0.0)
-        ):
-            raise calibration_error(
-                "stylized_fact_huber_cutoff",
-                "must be finite and strictly positive when provided",
-            )
-
-        if (
-            stylized_fact_admissibility_z_threshold is not None
-            and (
-                not isfinite(stylized_fact_admissibility_z_threshold)
-                or stylized_fact_admissibility_z_threshold <= 0.0
-            )
-        ):
-            raise calibration_error(
-                "stylized_fact_admissibility_z_threshold",
-                "must be finite and strictly positive when provided",
-            )
-
         if diagnostics is not None and not isinstance(diagnostics, CalibrationDiagnosticsRequest):
             raise calibration_error(
                 "diagnostics",
@@ -318,10 +293,6 @@ class JaniformEstimator:
             joint_refinement_audit_option_pricing
         )
         self._diagnostics = CalibrationDiagnosticsRequest() if diagnostics is None else diagnostics
-        self._stylized_fact_huber_cutoff = stylized_fact_huber_cutoff
-        self._stylized_fact_admissibility_z_threshold = (
-            stylized_fact_admissibility_z_threshold
-        )
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
         self._known_news_reference = coerce_known_news_reference(known_news)
@@ -472,10 +443,6 @@ class JaniformEstimator:
                 self._joint_refinement_audit_option_pricing_enabled
             ),
             diagnostics=self._diagnostics,
-            stylized_fact_huber_cutoff=self._stylized_fact_huber_cutoff,
-            stylized_fact_admissibility_z_threshold=(
-                self._stylized_fact_admissibility_z_threshold
-            ),
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()
             ),

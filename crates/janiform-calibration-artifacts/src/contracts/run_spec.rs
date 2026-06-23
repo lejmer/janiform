@@ -5,12 +5,11 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CalibrationExecutionMode, CalibrationObjectivePolicy,
-    CalibrationObjectivePolicyError, CalibrationOptimizerSettingsError, CalibrationResumeSettings,
-    CalibrationResumeSettingsError, CalibrationRunDataInputs, CalibrationRunDataInputsError,
-    CalibrationRunSeedSettings, CalibrationRunSeedSettingsError, CalibrationStage,
-    CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffTransport,
-    CalibrationStageSolverSettings,
+    CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CalibrationExecutionMode,
+    CalibrationOptimizerSettingsError, CalibrationResumeSettings, CalibrationResumeSettingsError,
+    CalibrationRunDataInputs, CalibrationRunDataInputsError, CalibrationRunSeedSettings,
+    CalibrationRunSeedSettingsError, CalibrationStage, CalibrationStageHandoff,
+    CalibrationStageHandoffError, CalibrationStageHandoffTransport, CalibrationStageSolverSettings,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -21,8 +20,6 @@ pub struct CalibrationRunSpec {
     pub selected_stages: Vec<CalibrationStage>,
     pub seed_settings: CalibrationRunSeedSettings,
     pub optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
-    #[serde(default)]
-    pub objective_policy: CalibrationObjectivePolicy,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stage_handoffs: Vec<CalibrationStageHandoff>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,7 +34,6 @@ pub struct CalibrationRunSpecBuilder {
     selected_stages: Vec<CalibrationStage>,
     seed_settings: CalibrationRunSeedSettings,
     optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
-    objective_policy: CalibrationObjectivePolicy,
     stage_handoffs: Vec<CalibrationStageHandoff>,
     resume_settings: Option<CalibrationResumeSettings>,
 }
@@ -53,11 +49,6 @@ impl CalibrationRunSpecBuilder {
         self
     }
 
-    pub fn with_objective_policy(mut self, objective_policy: CalibrationObjectivePolicy) -> Self {
-        self.objective_policy = objective_policy;
-        self
-    }
-
     pub fn build(self) -> Result<CalibrationRunSpec, CalibrationRunSpecError> {
         let run_spec = CalibrationRunSpec {
             run_id: self.run_id,
@@ -66,7 +57,6 @@ impl CalibrationRunSpecBuilder {
             selected_stages: self.selected_stages,
             seed_settings: self.seed_settings,
             optimizer_settings_by_stage: self.optimizer_settings_by_stage,
-            objective_policy: self.objective_policy,
             stage_handoffs: self.stage_handoffs,
             resume_settings: self.resume_settings,
         };
@@ -112,7 +102,6 @@ impl CalibrationRunSpec {
             selected_stages,
             seed_settings,
             optimizer_settings_by_stage,
-            objective_policy: CalibrationObjectivePolicy::default(),
             stage_handoffs: Vec::new(),
             resume_settings: None,
         }
@@ -174,10 +163,6 @@ impl CalibrationRunSpec {
         self.seed_settings
             .validate()
             .map_err(|source| CalibrationRunSpecError::InvalidSeedSettings { source })?;
-
-        self.objective_policy
-            .validate()
-            .map_err(|source| CalibrationRunSpecError::InvalidObjectivePolicy { source })?;
 
         for stage_seed_override in &self.seed_settings.stage_seed_overrides {
             if !selected_stages.contains(&stage_seed_override.stage) {
@@ -268,9 +253,6 @@ pub enum CalibrationRunSpecError {
     InvalidSeedSettings {
         source: CalibrationRunSeedSettingsError,
     },
-    InvalidObjectivePolicy {
-        source: CalibrationObjectivePolicyError,
-    },
     SeedOverrideForUnselectedStage {
         stage: CalibrationStage,
     },
@@ -345,9 +327,6 @@ impl Display for CalibrationRunSpecError {
             Self::InvalidSeedSettings { source } => {
                 write!(formatter, "seed_settings payload is invalid: {source}")
             }
-            Self::InvalidObjectivePolicy { source } => {
-                write!(formatter, "objective_policy payload is invalid: {source}")
-            }
             Self::SeedOverrideForUnselectedStage { stage } => write!(
                 formatter,
                 "seed_settings.stage_seed_overrides contains stage `{stage:?}` that is not selected"
@@ -390,7 +369,6 @@ impl Error for CalibrationRunSpecError {
         match self {
             Self::InvalidDataInputs { source } => Some(source),
             Self::InvalidSeedSettings { source } => Some(source),
-            Self::InvalidObjectivePolicy { source } => Some(source),
             Self::InvalidStageSolverSettings { source, .. } => Some(source),
             Self::InvalidStageHandoff { source } => Some(source),
             Self::InvalidResumeSettings { source } => Some(source),

@@ -179,17 +179,14 @@ fn build_grid_batch_execution_input(
         0,
         estimated_state.hawkes_excitation_state,
         estimated_state.long_variance_state,
+        // Pricing boundary inputs own their pressure-state distribution.
+        estimated_state.market_pressure_state.clone(),
         context
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            // Intentional copy because the pricing boundary owns a validated
-            // mean-reversion contract independent of the shared model context.
-            .clone(),
+            .mean_reversion_fitted_parameters,
         interval_delta,
-        // Intentional copy because the pricing boundary owns the estimated
-        // state while prepared snapshots remain available for result assembly.
-        estimated_state.mean_reversion_boundary_state.clone(),
+        estimated_state.mean_reversion_boundary_state,
     )
     .map_err(|source| pricing_validation_error("boundary_input", source.to_string()))?;
 

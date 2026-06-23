@@ -6,6 +6,7 @@
   "pybind_boundary_crate": "janiform-pybind",
   "curated_facade_module_roots": [
     "calibration",
+    "forecast",
     "foundation",
     "governance",
     "model",

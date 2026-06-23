@@ -375,7 +375,7 @@ pub fn materialize_endogenous_anchor_path(
 
         let first_moment_projection = expected_interval_projection_from_first_moment_dynamics(
             interval_index,
-            equation_specification,
+            &equation_specification,
             factors,
             structural_state_before,
             expected_activity_loading_rate,
@@ -447,9 +447,7 @@ pub fn materialize_endogenous_anchor_path(
     let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
         interval_alignment_policy,
         start_anchor_value,
-        0.0,
         end_anchor_values,
-        vec![0.0; interval_deltas.len()],
         interval_deltas,
     )
     .map_err(
@@ -476,7 +474,7 @@ struct HawkesTargetSumFirstMoment {
 /// Derive sufficient-statistics first moments from structural dynamics without
 /// solving transform slices.
 pub fn derive_expected_interval_statistics_from_first_moment_dynamics(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     expected_severity_mark: f64,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
@@ -492,7 +490,7 @@ pub fn derive_expected_interval_statistics_from_first_moment_dynamics(
 /// Derive one interval's exact first-moment statistics and terminal target state.
 pub fn derive_expected_interval_projection_from_first_moment_dynamics(
     interval_index: usize,
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     expected_severity_mark: f64,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
@@ -511,7 +509,7 @@ pub fn derive_expected_interval_projection_from_first_moment_dynamics(
 
 fn expected_interval_projection_from_first_moment_dynamics(
     interval_index: usize,
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
     expected_activity_loading_rate: f64,
@@ -551,7 +549,7 @@ fn expected_interval_projection_from_first_moment_dynamics(
 }
 
 fn expected_interval_statistics_from_first_moment_dynamics(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     expected_severity_mark: f64,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
@@ -577,7 +575,7 @@ fn expected_interval_statistics_from_first_moment_dynamics(
 }
 
 fn expected_interval_statistics_from_target_sum_first_moment(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     factors: EndogenousAnchorIntervalFactors,
     target_sum_first_moment: HawkesTargetSumFirstMoment,
 ) -> Result<
@@ -605,7 +603,7 @@ fn expected_interval_statistics_from_target_sum_first_moment(
 }
 
 fn integrate_expected_target_sums(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     factors: EndogenousAnchorIntervalFactors,
     structural_state_before: HawkesExcitationState,
     expected_activity_loading_rate: f64,
@@ -710,6 +708,7 @@ mod tests {
     use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
     use janiform_model_kernels::long_variance::LongVarianceParameters;
+    use janiform_model_kernels::market_pressure::MarketPressureParameters;
     use janiform_model_kernels::news::{
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
         NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
@@ -740,6 +739,7 @@ mod tests {
             GammaSeverityMarkConfiguration::try_new(2.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
+            MarketPressureParameters::no_anchor_impact(),
         )
         .expect("equation specification should construct");
 
@@ -818,6 +818,7 @@ mod tests {
             GammaSeverityMarkConfiguration::try_new(4.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
+            MarketPressureParameters::no_anchor_impact(),
         )
         .expect("equation specification should construct");
 
@@ -894,6 +895,7 @@ mod tests {
             GammaSeverityMarkConfiguration::try_new(2.0)
                 .expect("gamma configuration should construct"),
             LongVarianceParameters::neutral(),
+            MarketPressureParameters::no_anchor_impact(),
         )
         .expect("equation specification should construct");
 

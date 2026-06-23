@@ -1,6 +1,6 @@
 # Simulate paths
 
-Simulation takes a fitted `JaniformModel` and generates synthetic market paths from the behavior learned during fitting. The simulated path is not a forecast of one exact future. It is a plausible path drawn from the fitted activity, return, news, and mean-reversion structure.
+Simulation takes a fitted `JaniformModel` and generates synthetic market paths from the behavior learned during fitting. The simulated path is not a forecast of one exact future. It is a plausible path drawn from the fitted activity, return, news, mean-reversion, and market-pressure structure.
 
 This page focuses on running simulation as a workflow after a model has already been fitted.
 
@@ -23,13 +23,13 @@ To simulate a path we need a fitted model and a horizon.
 
 | Input                  | Required | Notes                                                                                                                                      |
 |------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| Fitted model           | Yes      | The usual inputs are a `JaniformModel` in Python or the `model.jf` file produced by `janiform fit` in the CLI.                            |
+| Fitted model           | Yes      | The usual inputs are a `JaniformModel` in Python or the `model.jf` file produced by `janiform fit` in the CLI.                             |
 | Horizon interval count | Yes      | Number of intervals to simulate.                                                                                                           |
-| Interval duration      | No       | Defaults to `1h`. Exact duration labels such as `1min`, `15min`, `1h`, or `1D` also work, as does a Python `timedelta`.                  |
+| Interval duration      | No       | Defaults to `1h`. Exact duration labels such as `1min`, `15min`, `1h`, or `1D` also work, as does a Python `timedelta`.                    |
 | Start time             | No       | Defaults to the current UTC time. Pass an aware Python `datetime` or an RFC 3339 CLI timestamp when the run must be repeatable.            |
 | Seed                   | No       | Defaults to `0`. Pass it explicitly when outputs must be reproducible.                                                                     |
 | Output path            | No       | Python can keep the result in memory, export from the result, or write artifacts during simulation. The CLI defaults to a timestamped run. |
-| Simulation mode        | No       | Defaults to seeded tick simulation. `coarse=True` in Python or `--coarse` in the CLI switches to interval-level simulation.               |
+| Simulation mode        | No       | Defaults to seeded tick simulation. `coarse=True` in Python or `--coarse` in the CLI switches to interval-level simulation.                |
 
 For repeatable work, make the model path, start time, interval, interval count, seed, output path, and simulation mode explicit.
 
@@ -181,9 +181,9 @@ The path data is the primary output. Python returns a `JaniformSimulationResult`
 | Run manifest      | Written when `output_path` is used                | `run.json`                     | Run id, run directory, primary output path, and report path.                         |
 | JSON completion   | Not applicable                                    | Standard output                | Emitted only when `--json` is used.                                                  |
 
-Path data includes a timestamp column and a price column. Seeded tick output can also include a side column when the fitted model records an explicit trade-sign column. Both seeded and coarse output include state columns for `observed_log_price`, `anchor_value`, `pressure_state`, and `deviation_from_anchor`.
+Path data includes a timestamp column and a price column. Seeded tick output can also include a side column when the fitted model records an explicit trade-sign column. Both seeded and coarse output include state columns for `observed_log_price`, `anchor_value`, `market_pressure_state`, and `deviation_from_anchor`.
 
-> **Technical note:** Coarse interval simulation uses the same fitted seasonality, return-clock exposure, long-variance, news routing, mean-reversion, and tick-grid observation contracts as seeded tick simulation while sampling interval sufficient statistics directly.
+> **Technical note:** Coarse interval simulation uses the same fitted seasonality, return-clock exposure, long-variance, news routing, temporary-deviation mean reversion, market-pressure anchor pressure, and tick-grid observation contracts as seeded tick simulation while sampling interval sufficient statistics directly.
 
 ## Advanced configuration
 

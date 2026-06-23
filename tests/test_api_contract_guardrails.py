@@ -75,15 +75,23 @@ def test_public_api_contract_guardrail_accepts_documented_snapshot_update() -> N
 def test_public_api_contract_guardrail_supports_public_domain_submodules() -> None:
     approved_snapshot = _minimal_snapshot(
         public_modules={
+            "janiform.market_pressure": [
+                "MarketPressureParameters",
+                "MarketPressureState",
+            ],
+            "janiform.market_pressure.contracts": [
+                "MarketPressureParameters",
+                "MarketPressureState",
+            ],
             "janiform.contracts": [
                 "ContractModel",
             ],
             "janiform.mean_reversion": [
-                "MeanReversionAnchorModel",
+                "MeanReversionBoundaryState",
                 "MeanReversionFittedParameters",
             ],
             "janiform.mean_reversion.contracts": [
-                "MeanReversionAnchorModel",
+                "MeanReversionBoundaryState",
                 "MeanReversionFittedParameters",
             ],
             "janiform.simulation": ["SeededTickSimulationRequest", "run_seeded_tick_event_simulation"],
@@ -244,6 +252,8 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
     guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
 
     assert set(approved_snapshot["public_modules"]) == {
+        "janiform.market_pressure",
+        "janiform.market_pressure.contracts",
         "janiform.contracts",
         "janiform.mean_reversion",
         "janiform.mean_reversion.contracts",

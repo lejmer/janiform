@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.sufficient_statistics import (
@@ -22,6 +23,7 @@ from janiform.sufficient_statistics import (
     validate_sufficient_statistics_run_request,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
 from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
@@ -273,6 +275,9 @@ def _valid_run_request_model() -> SufficientStatisticsRunRequest:
                     shape_k=1.8,
                 ),
                 long_variance_parameters=LongVarianceParameters.neutral(),
+                market_pressure_parameters=MarketPressureParameters.from_mapping(
+                    build_no_anchor_impact_market_pressure_parameters_payload(),
+                ),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
@@ -289,6 +294,7 @@ def _valid_run_request_model() -> SufficientStatisticsRunRequest:
             ),
             long_variance_parameters=LongVarianceParameters.neutral(),
             initial_long_variance_state=LongVarianceState.unit(),
+            initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -339,6 +345,16 @@ def _valid_path_payload() -> dict[str, Any]:
                             "endogenous_a_minus": 0.3,
                             "n_plus": 3,
                             "n_minus": 2,
+                            "terminal_excitation_state": {
+                                "y_plus_plus": 0.25,
+                                "y_plus_minus": 0.12,
+                                "y_minus_plus": 0.34,
+                                "y_minus_minus": 0.42,
+                            },
+                            "terminal_market_pressure_state": {
+                                "state_weights": [1.0],
+                            },
+                            "market_pressure_anchor_increment": 0.0,
                         },
                         "return_components": {
                             "buy_side_return": 0.03,
@@ -352,7 +368,7 @@ def _valid_path_payload() -> dict[str, Any]:
                         "observed_interval_return": 0.0,
                         "observed_log_price_end": 0.0,
                         "anchor_value_end": 0.0,
-                        "pressure_state_end": 0.0,
+                        "market_pressure_state_end": 0.0,
                         "deviation_from_anchor_end": 0.0,
                     }
                 ],
@@ -387,6 +403,16 @@ def _valid_path_payload() -> dict[str, Any]:
                             "endogenous_a_minus": 0.3,
                             "n_plus": 3,
                             "n_minus": 2,
+                            "terminal_excitation_state": {
+                                "y_plus_plus": 0.25,
+                                "y_plus_minus": 0.12,
+                                "y_minus_plus": 0.34,
+                                "y_minus_minus": 0.42,
+                            },
+                            "terminal_market_pressure_state": {
+                                "state_weights": [1.0],
+                            },
+                            "market_pressure_anchor_increment": 0.0,
                         },
                         "return_components": {
                             "buy_side_return": 0.03,
@@ -400,7 +426,7 @@ def _valid_path_payload() -> dict[str, Any]:
                         "observed_interval_return": 0.0,
                         "observed_log_price_end": 0.0,
                         "anchor_value_end": 0.0,
-                        "pressure_state_end": 0.0,
+                        "market_pressure_state_end": 0.0,
                         "deviation_from_anchor_end": 0.0,
                     }
                 ],
@@ -435,6 +461,16 @@ def _valid_path_payload() -> dict[str, Any]:
                             "endogenous_a_minus": 0.3,
                             "n_plus": 3,
                             "n_minus": 2,
+                            "terminal_excitation_state": {
+                                "y_plus_plus": 0.25,
+                                "y_plus_minus": 0.12,
+                                "y_minus_plus": 0.34,
+                                "y_minus_minus": 0.42,
+                            },
+                            "terminal_market_pressure_state": {
+                                "state_weights": [1.0],
+                            },
+                            "market_pressure_anchor_increment": 0.0,
                         },
                         "return_components": {
                             "buy_side_return": 0.03,
@@ -448,7 +484,7 @@ def _valid_path_payload() -> dict[str, Any]:
                         "observed_interval_return": 0.0,
                         "observed_log_price_end": 0.0,
                         "anchor_value_end": 0.0,
-                        "pressure_state_end": 0.0,
+                        "market_pressure_state_end": 0.0,
                         "deviation_from_anchor_end": 0.0,
                     }
                 ],
@@ -481,6 +517,14 @@ def _valid_path_payload() -> dict[str, Any]:
                     endogenous_a_minus=0.3,
                     n_plus=3,
                     n_minus=2,
+                    terminal_excitation_state=HawkesExcitationState(
+                        y_plus_plus=0.25,
+                        y_plus_minus=0.12,
+                        y_minus_plus=0.34,
+                        y_minus_minus=0.42,
+                    ),
+                    terminal_market_pressure_state=MarketPressureState(state_weights=[1.0]),
+                    market_pressure_anchor_increment=0.0,
                 ),
                 return_components=SufficientStatisticsReturnComponents(
                     buy_side_return=0.03,
@@ -494,7 +538,7 @@ def _valid_path_payload() -> dict[str, Any]:
                 observed_interval_return=0.0,
                 observed_log_price_end=0.0,
                 anchor_value_end=0.0,
-                pressure_state_end=0.0,
+                market_pressure_state_end=0.0,
                 deviation_from_anchor_end=0.0,
             ),
         ),

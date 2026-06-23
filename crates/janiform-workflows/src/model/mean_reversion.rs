@@ -3,16 +3,12 @@ use janiform::model::affine_oracle::{
 };
 use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::model::hawkes::HawkesExcitationState;
-use janiform::simulation::{
-    MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
-};
+use janiform::simulation::{MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors};
 
 use crate::error::WorkflowError;
 
 use super::context::{FittedModelContext, validation_error};
 
-const DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE: f64 = 0.0;
 const DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION: f64 = 0.0;
 
 pub(crate) fn materialize_mean_reversion_runtime_inputs(
@@ -20,8 +16,6 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
     interval_factor_grid: &IntervalFactorGrid,
     initial_excitation_state: HawkesExcitationState,
     start_anchor_value: f64,
-    interval_delta: f64,
-    interval_count: usize,
 ) -> Result<
     (
         MeanReversionRuntimeIntervalAnchors,
@@ -55,6 +49,12 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
                 .fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
+            // Anchor materialization owns the pressure contract through the affine spec.
+            context
+                .fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters
+                .clone(),
         )
         .map_err(|source| validation_error("equation_specification", source.to_string()))?,
         context
@@ -70,33 +70,11 @@ pub(crate) fn materialize_mean_reversion_runtime_inputs(
     )
     .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
 
-    let core_expected_increments = anchor_materialization
-        .interval_expectations
-        .iter()
-        .map(|expectation| expectation.core_expected_increment)
-        .collect::<Vec<_>>();
-
-    let interval_deltas = vec![interval_delta; interval_count];
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            interval_alignment_policy,
-            start_anchor_value,
-            DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE,
-            &context
-                .fitted_parameters
-                .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .anchor_model,
-            core_expected_increments.as_slice(),
-            interval_deltas.as_slice(),
-        )
-        .map_err(|source| validation_error("mean_reversion_runtime", source.to_string()))?;
+    let runtime_interval_anchors = anchor_materialization.runtime_interval_anchors;
 
     let initial_boundary_state = MeanReversionBoundaryState::try_new(
         runtime_interval_anchors.start_anchor_value,
         runtime_interval_anchors.start_anchor_value,
-        runtime_interval_anchors.start_pressure_state,
         DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION,
     )
     .map_err(|source| validation_error("mean_reversion_boundary_state", source.to_string()))?;

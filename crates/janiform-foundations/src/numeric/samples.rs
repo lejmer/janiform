@@ -172,6 +172,18 @@ pub fn sample_variance(values: &[f64]) -> Option<f64> {
     variance.is_finite().then_some(variance)
 }
 
+/// Compute the sample variance of the arithmetic mean after discarding non-finite observations.
+pub fn sample_mean_variance(values: &[f64]) -> Option<f64> {
+    let finite_count = values.iter().filter(|value| value.is_finite()).count();
+    if finite_count < 2 {
+        return None;
+    }
+
+    let variance = sample_variance(values)? / finite_count as f64;
+
+    (variance.is_finite() && variance >= 0.0).then_some(variance)
+}
+
 /// Estimated mean and standard error for aligned independent estimates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MeanEstimate {
@@ -203,7 +215,7 @@ pub fn mean_estimate_from_standard_errors(
         / standard_errors.len() as f64;
 
     let between_estimate_variance = if values.len() > 1 {
-        sample_variance(values).unwrap_or(0.0) / values.len() as f64
+        sample_mean_variance(values).unwrap_or(0.0)
     } else {
         0.0
     };
@@ -572,7 +584,7 @@ mod tests {
         central_skewness_or_zero, coefficient_of_variation, finite_arithmetic_mean_or_zero,
         mean_absolute_aligned_distance, mean_estimate_from_standard_errors, pearson_correlation,
         relative_rmse, rolling_sum, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
-        sample_adjusted_skewness, sample_standard_deviation, sample_variance,
+        sample_adjusted_skewness, sample_mean_variance, sample_standard_deviation, sample_variance,
         standardized_path_distance, winsorized_sample_standard_deviation_from_sorted, z_score,
     };
 
@@ -602,6 +614,10 @@ mod tests {
                 < sample_standard_deviation(&[1.0, 2.0, 3.0, 100.0])
         );
         assert_eq!(sample_variance(&[1.0, 2.0, 3.0]), Some(1.0));
+        assert_eq!(
+            sample_mean_variance(&[1.0, 3.0, 2.0, 4.0]),
+            Some(5.0 / 12.0)
+        );
         assert_eq!(
             central_skewness_or_zero(&[1.0, 2.0, 3.0, 4.0, 5.0], 1.0e-12),
             0.0

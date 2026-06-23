@@ -13,6 +13,7 @@ use crate::stages::joint_refinement::contracts::{
     JointRefinementStageProgressUpdate,
 };
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
+use crate::stages::parallelism::resolved_stage_cpu_count;
 
 use super::super::super::setup::{
     apply_option_pricing_kernel_bounds, parameter_vector_to_fitted_parameters,
@@ -38,9 +39,9 @@ use super::pricing_block_optimizer::{
     OptionRefinementCandidateSearchBudget, OptionRefinementCandidateWallClockGuard,
     optimize_pricing_block_from_search_tier_sensitivities,
 };
-use super::reduced_model::option_reduced_model_parameter_count;
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
+pub(crate) const OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT: usize = 3;
 const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_SELECTION_CANDIDATE_COUNT: usize = 1;
 const OPTION_SELECTION_TIER_EVALUATION_BUDGET: usize = 1;
 
@@ -391,7 +392,7 @@ fn context_with_option_pricing_cpu_count(
 ) -> JointRefinementContext {
     let mut updated_context = context.clone();
     if let Some(option_pricing_context) = updated_context.option_pricing_context.as_mut() {
-        option_pricing_context.cpu_count = pricing_cpu_count.max(1);
+        option_pricing_context.cpu_count = resolved_stage_cpu_count(pricing_cpu_count);
     }
 
     updated_context
@@ -570,6 +571,7 @@ fn refine_single_search_tier_candidate(
         first_oracle_call_wall_clock_millis,
         wall_clock_budget,
         candidate_budget_share_count,
+        pricing_block_search_coordinate_count(&refinement_context),
     );
 
     optimize_pricing_block_from_search_tier_sensitivities(
@@ -614,6 +616,7 @@ fn option_refinement_candidate_search_budget(
     first_oracle_call_wall_clock_millis: u64,
     wall_clock_budget: Option<OptionRefinementWallClockBudget>,
     candidate_budget_share_count: usize,
+    pricing_coordinate_count: usize,
 ) -> OptionRefinementCandidateSearchBudget {
     let wall_clock_guard = wall_clock_budget.map(|wall_clock_budget| {
         let elapsed_millis = elapsed_millis(wall_clock_budget.started_at);
@@ -631,7 +634,7 @@ fn option_refinement_candidate_search_budget(
     });
 
     OptionRefinementCandidateSearchBudget {
-        total_evaluation_budget: option_pricing_block_evaluation_budget(),
+        total_evaluation_budget: option_pricing_block_evaluation_budget(pricing_coordinate_count),
         wall_clock_guard,
     }
 }
@@ -681,7 +684,9 @@ fn refine_parallel_search_tier_candidate(
         restart_id: dynamics_candidate.restart_id.as_str(),
         current_weighted_objective: None,
         current_evaluation_count: Some(0),
-        total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
+        total_evaluation_budget: Some(option_pricing_block_evaluation_budget(
+            pricing_block_search_coordinate_count(context),
+        )),
         evaluation_progress_percent: Some(0),
     });
 
@@ -695,7 +700,9 @@ fn refine_parallel_search_tier_candidate(
         current_evaluation_progress_percent: Cell::new(0),
         current_weighted_objective: Cell::new(None),
         current_best_weighted_objective: Cell::new(None),
-        total_evaluation_budget: Some(option_pricing_block_evaluation_budget()),
+        total_evaluation_budget: Some(option_pricing_block_evaluation_budget(
+            pricing_block_search_coordinate_count(context),
+        )),
     };
 
     let refined_candidate = refine_single_search_tier_candidate(
@@ -1193,8 +1200,7 @@ fn pricing_block_refinement_context(
         .final_evaluation
         .fitted_parameters
         .return_components_fitted_parameters
-        .mean_reversion_fitted_parameters
-        .clone();
+        .mean_reversion_fitted_parameters;
 
     refinement_context.option_pricing_refinement_enabled = true;
 
@@ -1229,17 +1235,17 @@ fn restart_outcome_with_pricing_block(
     }
 }
 
-pub(crate) fn option_pricing_block_evaluation_budget() -> usize {
+pub(crate) fn option_pricing_block_evaluation_budget(pricing_coordinate_count: usize) -> usize {
     // One exact baseline price plus two proposal prices per active coordinate.
     // The proposal allowance matches a lower/upper coordinate sweep.
-    1 + 2 * pricing_block_search_coordinate_count()
+    1 + 2 * pricing_coordinate_count
 }
 
-pub(crate) fn pricing_block_search_coordinate_count() -> usize {
-    // Search currently uses the reduced-model basis as its active pricing
-    // coordinates. Keep the mapping here so that budget and progress policies
-    // have one place to change if those coordinate sets diverge.
-    option_reduced_model_parameter_count()
+pub(crate) fn pricing_block_search_coordinate_count(context: &JointRefinementContext) -> usize {
+    context
+        .active_parameter_layout
+        .option_pricing_kernel_block
+        .len()
 }
 
 fn pricing_block_parameter_bits(
@@ -1309,11 +1315,12 @@ mod tests {
 
     #[test]
     fn option_refinement_candidate_search_budget_uses_deterministic_default() {
-        let search_budget = option_refinement_candidate_search_budget(Instant::now(), 100, None, 5);
+        let search_budget =
+            option_refinement_candidate_search_budget(Instant::now(), 100, None, 5, 2);
 
         assert_eq!(
             search_budget.total_evaluation_budget,
-            option_pricing_block_evaluation_budget()
+            option_pricing_block_evaluation_budget(2)
         );
         assert!(search_budget.wall_clock_guard.is_none());
     }

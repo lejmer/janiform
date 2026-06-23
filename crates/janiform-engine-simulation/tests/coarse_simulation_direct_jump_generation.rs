@@ -16,6 +16,7 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
@@ -47,6 +48,7 @@ fn coarse_simulation_direct_jump_generation_is_seed_deterministic() {
 
     let first_path = run_coarse_simulation(run_request.clone())
         .expect("first coarse simulation run should succeed");
+
     let second_path =
         run_coarse_simulation(run_request).expect("second coarse simulation run should succeed");
 
@@ -64,6 +66,7 @@ fn coarse_simulation_direct_jump_generation_is_seed_deterministic() {
 #[test]
 fn coarse_simulation_single_interval_runner_emits_canonical_non_hourly_path_artifact() {
     let start_time_utc_nanos = 1_704_205_800_000_000_000;
+
     let run_request = build_run_request(
         3_010,
         start_time_utc_nanos,
@@ -95,6 +98,7 @@ fn coarse_simulation_single_interval_runner_emits_canonical_non_hourly_path_arti
     );
 
     let serialized = serde_json::to_value(&path).expect("path should serialize");
+
     assert_eq!(
         serialized["output_schema_metadata"]["required_provenance_fields"],
         json!([
@@ -232,6 +236,7 @@ fn coarse_simulation_surfaces_first_moment_projection_failures() {
             default_surprise_component_mark_scales(),
         ),
     );
+
     let run_request = build_run_request_with_model_inputs(
         3_013,
         1_704_205_800_000_000_000,
@@ -254,71 +259,6 @@ fn coarse_simulation_surfaces_first_moment_projection_failures() {
 }
 
 #[test]
-fn coarse_simulation_surfaces_invalid_news_target_source_rates() {
-    let model_inputs = build_model_inputs_with_components(
-        build_sufficient_statistics_model_inputs(
-            HawkesKernelParameters::try_new(
-                0.8,
-                1.6,
-                HawkesKernelLoadings {
-                    plus_plus: 0.2,
-                    plus_minus: 0.1,
-                    minus_plus: 0.1,
-                    minus_minus: 0.25,
-                },
-                HawkesKernelLoadings {
-                    plus_plus: 6.0e307,
-                    plus_minus: 6.0e307,
-                    minus_plus: 6.0e307,
-                    minus_minus: 6.0e307,
-                },
-            )
-            .expect("boundary-failure kernel parameters should construct"),
-            GammaSeverityMarkConfiguration::try_new(1.8)
-                .expect("boundary-failure gamma configuration should construct"),
-            1,
-            1.0,
-        ),
-        build_news_process_configuration(
-            vec![1_704_206_700_000_000_000],
-            GammaSeverityMarkConfiguration::try_new(1.5)
-                .expect("news gamma configuration should construct"),
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 8.0,
-                return_jump_drift: 0.0,
-                return_jump_volatility: 1.2,
-            },
-            default_surprise_component_mark_scales(),
-        ),
-    );
-    let run_request = build_run_request_with_model_inputs(
-        3_014,
-        1_704_205_800_000_000_000,
-        1.0,
-        model_inputs,
-        SufficientStatisticsIntervalFactors::try_new(vec![1.0], vec![1.0], vec![0.0], Some(1.0))
-            .expect("boundary-failure interval factors should construct"),
-    );
-
-    let error = run_coarse_simulation(run_request)
-        .expect_err("overflowing boundary-state loadings must surface through the runner");
-
-    assert!(
-        matches!(
-            error,
-            CoarseSimulationRunError::InvalidNewsTargetSourceRates { interval_index: 0 }
-        ),
-        "unexpected news target-source error: {error:?}"
-    );
-    assert!(
-        error
-            .to_string()
-            .contains("invalid Hawkes target source rates"),
-        "news source-rate validation should surface through the named runner error: {error}"
-    );
-}
-
-#[test]
 fn coarse_run_request_deserialization_rejects_invalid_gamma_severity_configuration() {
     let mut payload = serde_json::to_value(build_run_request(
         3_003,
@@ -330,6 +270,7 @@ fn coarse_run_request_deserialization_rejects_invalid_gamma_severity_configurati
         vec![0.0],
     ))
     .expect("valid run request should serialize");
+
     payload["model_inputs"]["news_process_configuration"]["shared_mark_law"]["gamma_severity_marks"]
         ["shape_k"] = json!(-1.0);
 
@@ -351,8 +292,10 @@ fn coarse_run_request_deserialization_rejects_uncoupled_return_jump_configuratio
         vec![0.0],
     ))
     .expect("valid run request should serialize");
+
     payload["model_inputs"]["news_process_configuration"]["known_component_mark_scales"]["activity_coupling_scale"] =
         json!(0.0);
+
     payload["model_inputs"]["news_process_configuration"]["known_component_mark_scales"]["return_jump_volatility"] =
         json!(0.2);
 
@@ -459,8 +402,8 @@ fn build_model_inputs_with_components(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
-        timestamp_batching_observation_model:
-            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
             ),
         calendar_registry_artifact: build_calendar_registry_artifact(),
         exchange_code: "XNYS".to_string(),
@@ -479,6 +422,7 @@ fn build_sufficient_statistics_model_inputs(
             kernel_parameters,
             gamma_severity_configuration,
             LongVarianceParameters::neutral(),
+            MarketPressureParameters::no_anchor_impact(),
         )
         .expect("equation specification should construct"),
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
@@ -486,24 +430,20 @@ fn build_sufficient_statistics_model_inputs(
         )
         .expect("nig configuration should construct"),
         initial_excitation_state: default_initial_excitation_state(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion should construct"),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
-            0.0,
-            vec![0.0; interval_count],
             vec![0.0; interval_count],
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-            0.0, 0.0, 0.0, 0.0,
-        )
-        .expect("disabled mean-reversion boundary state should construct"),
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     })
     .expect("sufficient-statistics model inputs should construct")
 }

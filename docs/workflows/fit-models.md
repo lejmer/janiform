@@ -13,12 +13,12 @@ A fit run has two jobs:
 
 Tick data is always required. Coarse historical data and option surface data are optional and change the calibration target:
 
-| Input set                   | Best for                                                                                        |
-|-----------------------------|-------------------------------------------------------------------------------------------------|
-| Tick data only              | You need a model for simulation, model validation, or model-implied pricing.                    |
-| Tick data + coarse data     | You want tick-level activity fit and slower return, variance, mean-reversion, gap, or tail fit. |
-| Tick data + option data     | You need a model to price options.                                                              |
-| Tick + coarse + option data | You want slower physical evidence and option-surface evidence in one calibration.               |
+| Input set                   | Best for                                                                                                         |
+|-----------------------------|------------------------------------------------------------------------------------------------------------------|
+| Tick data only              | You need a model for simulation, model validation, or model-implied pricing.                                     |
+| Tick data + coarse data     | You want tick-level activity fit and slower return, variance, mean-reversion, market-pressure, gap, or tail fit. |
+| Tick data + option data     | You need a model to price options.                                                                               |
+| Tick + coarse + option data | You want slower physical evidence and option-surface evidence in one calibration.                                |
 
 Coarse and option data do not replace tick data. Coarse data supplies slower physical evidence when available, and option data adds a forward-looking constraint on top of the underlying history.
 
@@ -54,7 +54,7 @@ model: JaniformModel = estimator.fit(
 )
 ```
 
-In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and adds coarse evidence to slower return, variance, mean-reversion, gap, and tail targets.
+In Janiform, coarse data means lower-frequency price observations such as one-minute, hourly, daily, or close-only bars. Pass `coarse_data_path` when you also have OHLCV bars or close-only history. Janiform keeps tick data as the event/activity source and adds coarse evidence to slower return, variance, mean-reversion, market-pressure, gap, and tail targets.
 Coarse timestamp columns are interpreted as bar-open times by default. For sources stamped at bar close, use `CalibrationCoarseDataTimestampSemantics.BAR_CLOSE_TIME` in Python or pass `--coarse-timestamp-semantics bar-close-time` in the CLI.
 
 ```python
@@ -263,8 +263,6 @@ janiform fit staged plan \
   --mean-reversion-grid-interval-hours 24 \
   --run-id eurusd-fit
 ```
-
-Advanced users can override the predictive evidence level with `predictive_evidence_alpha` in Python or `--mean-reversion-predictive-evidence-alpha` in the CLI. This changes the documented statistical gate for selecting a model with `kappa > 0`, so keep the default unless the run policy requires a different level.
 
 ### Prepared staged runs
 

@@ -6,7 +6,7 @@ use janiform_foundations::randomness::{SimulationRandomnessRng, SimulationRandom
 use janiform_model_kernels::hawkes::HawkesEventSide;
 use janiform_model_kernels::long_variance::{
     LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
-    LongVarianceStateTransitionError,
+    LongVarianceStateTransitionError, return_energy_increment_from_log_return,
 };
 use rand::distributions::Distribution;
 use statrs::distribution::{ChiSquared, Poisson};
@@ -77,6 +77,23 @@ pub(crate) fn apply_long_variance_event_jump(
 ) -> Result<LongVarianceState, LongVarianceTransitionSamplingError> {
     state
         .apply_event_jump(parameters, event_side)
+        .map_err(|source| LongVarianceTransitionSamplingError::StateTransitionFailure { source })
+}
+
+pub(crate) fn apply_long_variance_return_energy_jump(
+    state: LongVarianceState,
+    parameters: LongVarianceParameters,
+    return_energy_increment: f64,
+) -> Result<LongVarianceState, LongVarianceTransitionSamplingError> {
+    state
+        .apply_return_energy_jump(parameters, return_energy_increment)
+        .map_err(|source| LongVarianceTransitionSamplingError::StateTransitionFailure { source })
+}
+
+pub(crate) fn return_energy_increment_from_generated_log_return(
+    generated_log_return: f64,
+) -> Result<f64, LongVarianceTransitionSamplingError> {
+    return_energy_increment_from_log_return(generated_log_return)
         .map_err(|source| LongVarianceTransitionSamplingError::StateTransitionFailure { source })
 }
 
@@ -303,7 +320,7 @@ mod tests {
 
     use super::{
         LongVarianceTransitionSample, apply_long_variance_event_count_jumps,
-        sample_long_variance_transition,
+        return_energy_increment_from_generated_log_return, sample_long_variance_transition,
     };
 
     #[test]
@@ -331,8 +348,8 @@ mod tests {
     #[test]
     fn elevated_initial_state_increases_baseline_clock_scale() {
         let mut stream = SplitMix64SimulationRandomnessStream::from_seed(11);
-        let parameters =
-            LongVarianceParameters::try_new(2.0, 0.0, 0.0, 0.0).expect("parameters should build");
+        let parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            .expect("parameters should build");
 
         let transition = sample_long_variance_transition(
             LongVarianceState::try_new(2.0).expect("state should build"),
@@ -349,13 +366,22 @@ mod tests {
 
     #[test]
     fn event_count_jumps_apply_side_specific_loadings() {
-        let parameters =
-            LongVarianceParameters::try_new(2.0, 0.0, 0.25, 0.5).expect("parameters should build");
+        let parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.0, 0.0, 0.25, 0.5)
+            .expect("parameters should build");
 
         let state =
             apply_long_variance_event_count_jumps(LongVarianceState::unit(), parameters, 2, 3)
                 .expect("event count jumps should apply");
 
         assert_eq!(state.level, 1.0 + 2.0 * 0.25 + 3.0 * 0.5);
+    }
+
+    #[test]
+    fn generated_return_energy_uses_squared_log_return_contract() {
+        assert_eq!(
+            return_energy_increment_from_generated_log_return(-0.25)
+                .expect("finite generated return should produce energy"),
+            0.0625
+        );
     }
 }

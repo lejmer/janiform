@@ -19,8 +19,19 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
     interval_factor_grid: IntervalFactorGrid,
-) -> SeededTickSimulationModelInputs {
-    SeededTickSimulationModelInputs {
+) -> Result<SeededTickSimulationModelInputs, WorkflowError> {
+    let market_pressure_parameters = context
+        .fitted_parameters
+        .return_components_fitted_parameters
+        .market_pressure_parameters
+        .clone();
+    let initial_market_pressure_state =
+        janiform::model::market_pressure::MarketPressureState::neutral_for_parameters(
+            &market_pressure_parameters,
+        )
+        .map_err(|source| validation_error("initial_market_pressure_state", source.to_string()))?;
+
+    Ok(SeededTickSimulationModelInputs {
         kernel_parameters: context
             .fitted_parameters
             .hawkes_fitted_parameters
@@ -37,15 +48,14 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
             .news_process_configuration
             .clone(),
         initial_excitation_state,
-        // Intentional copy because seeded simulation owns a validated model
-        // input independent of the shared workflow context.
         mean_reversion_fitted_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            .clone(),
+            .mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
+        market_pressure_parameters,
+        initial_market_pressure_state,
         interval_factor_grid,
         return_clock_exposure_parameters: context
             .fitted_parameters
@@ -59,17 +69,17 @@ pub(crate) fn build_seeded_tick_simulation_model_inputs(
         observed_price_tick_size: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .tick_grid_observation_model
+            .price_discretization_surface
             .tick_size,
-        timestamp_batching_observation_model: context
+        timestamp_batching_surface: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .timestamp_batching_observation_model
+            .timestamp_batching_surface
             .clone(),
         // Intentional copy because seeded simulation owns runtime inputs
         // independent of the shared workflow context.
         calendar_registry: context.calendar_registry.clone(),
-    }
+    })
 }
 
 pub(crate) fn build_sufficient_statistics_model_inputs(
@@ -93,8 +103,23 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
             .fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
+        // The affine specification owns its pressure contract.
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .market_pressure_parameters
+            .clone(),
     )
     .map_err(|source| validation_error("equation_specification", source.to_string()))?;
+
+    let initial_market_pressure_state =
+        janiform::model::market_pressure::MarketPressureState::neutral_for_parameters(
+            &context
+                .fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters,
+        )
+        .map_err(|source| validation_error("initial_market_pressure_state", source.to_string()))?;
 
     SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
         equation_specification,
@@ -103,18 +128,16 @@ pub(crate) fn build_sufficient_statistics_model_inputs(
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
         initial_excitation_state,
+        initial_market_pressure_state,
         long_variance_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
         initial_long_variance_state: janiform::model::long_variance::LongVarianceState::unit(),
-        // Intentional copy because the sufficient-statistics contract owns
-        // validated fitted parameters independent of the shared workflow context.
         mean_reversion_fitted_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            .clone(),
+            .mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
     })
@@ -146,12 +169,12 @@ pub(crate) fn build_coarse_simulation_model_inputs(
         observed_price_tick_size: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .tick_grid_observation_model
+            .price_discretization_surface
             .tick_size,
-        timestamp_batching_observation_model: context
+        timestamp_batching_surface: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .timestamp_batching_observation_model
+            .timestamp_batching_surface
             .clone(),
         // Intentional copies because coarse simulation owns serialized calendar
         // and exchange identity independent of the shared workflow context.

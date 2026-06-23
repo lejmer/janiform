@@ -10,8 +10,8 @@
 | News/gap layer                    | Known scheduled news, surprise news, shared severity, activity shock, open jumps, closed-session gaps               |
 | Long-variance layer               | (Z_t), event feedback, unit stationary normalization, baseline return-clock scaling                                 |
 | Business-time return drivers      | NIG side drivers, mean compensation, side skew shift                                                                |
-| Observed-state mean reversion     | Optional anchor/pressure recursion applied after structural return increments                                       |
-| Affine schedule transform         | (C,D,V) solver, schedule composition, domain constraints                                                            |
+| Observed-state mean reversion     | `X=A+D`, temporary deviation relaxation, and market-pressure anchor-pressure driven by `Omega`                 |
+| Affine schedule transform         | (C,D,V,W) solver, schedule composition, domain constraints                                                          |
 | Pricing layer                     | Terminal cumulant, activity-risk premiums (\pi_+,\pi_-), derived martingale tilt (\theta), risk-neutral CF          |
 | Sufficient-statistics consistency | Seeded ticks, coarse simulation, sufficient-stat sampling, and affine pricing using the same decomposition          |
 | Observation layer                 | Latent log-price to observed tick-grid projection                                                                   |
@@ -34,7 +34,8 @@
 | Tails                     | Tail plot, excess kurtosis by horizon, optional Hill estimator                                               |
 | Vol clustering            | ACF of (r), (r^2), realized variance                                                                         |
 | Directional asymmetry     | Signed-return stats conditional on buy/sell dominance; skew by horizon                                       |
-| Observed-state relaxation | Response/decay plot for (\kappa=0), weak (\kappa), strong (\kappa) showing anchor-state relaxation           |
+| Observed-state relaxation | Response/decay plot for (\kappa=0), weak (\kappa), strong (\kappa) showing temporary deviation relaxation    |
+| Market pressure       | finite-state `Omega` path, signed-balance side composition, and anchor-pressure movement without total-activity feedback |
 | Tick-grid layer           | Latent vs observed rounded path; distribution of observed tick moves                                         |
 | Aggregation               | Seeded tick aggregation vs direct coarse simulation                                                          |
 | Sufficient statistics     | Compare distributions/moments of ((B_Z^+,E^+,B_Z^-,E^-,N^+,N^-,Z_T)) from tick aggregation vs coarse sampler |
@@ -53,7 +54,8 @@ Minimum v1 ablations:
 | No Hawkes vs Hawkes                          | Value of endogenous bursts               |
 | No (Z_t) vs (Z_t)                            | Value of persistent long-variance memory |
 | No news/gaps vs news/gaps                    | Value of event/gap layer                 |
-| Observed-state mean reversion off vs on      | Show optional anchor-state relaxation    |
+| Observed-state mean reversion off vs on      | Show optional temporary-deviation relaxation |
+| Market pressure anchor-pressure off vs on | Show `Omega` anchor-pressure contribution |
 | Tick aggregation vs direct coarse simulation | Core consistency test                    |
 | Underlying-only vs joint option refinement   | Pricing-layer contribution               |
 
@@ -70,9 +72,9 @@ Minimum v1 ablations:
 | Conditional mean baseline clock scale (\overline Z_h)        |      High |
 | News mark MGF (M_c(q,r))                                     |      High |
 | Open-news vs closed-gap decomposition                        |      High |
-| Observed-state anchor/pressure recursion                     |    Medium |
-| Affine transform ansatz (F=\exp(C+D\cdot y_0+VZ_0))          | Very high |
-| Riccati/ODE system for (C,D,V)                               | Very high |
+| Observed-state `X=A+D` and market-pressure anchor pressure |    Medium |
+| Affine transform ansatz (F=\exp(C+D\cdot y_0+VZ_0+W\Omega_0)) | Very high |
+| Riccati/ODE system for (C,D,V,W)                             | Very high |
 | Affine domain constraints                                    | Very high |
 | Terminal cumulant adapter (v\mapsto u_\pm^B,u_\pm^E,z_\pm,q) | Very high |
 | Pricing density normalization                                | Very high |
@@ -106,7 +108,7 @@ Recommended structure:
 8. News, gaps, and shared severity
 9. Long-variance state and return clocks
 10. Business-time return drivers
-11. Observed-state anchor and pressure recursion
+11. Observed-state deviation and market-pressure anchor pressure
 12. Affine schedule transform
 13. Sufficient-statistics consistency
 14. Terminal affine pricing measure

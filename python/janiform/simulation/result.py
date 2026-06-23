@@ -137,7 +137,7 @@ class JaniformSimulationResult:
                 "surprise_news_intensity",
                 "observed_log_price",
                 "anchor_value",
-                "pressure_state",
+                "market_pressure_state",
                 "deviation_from_anchor",
             )
 
@@ -168,7 +168,7 @@ def coarse_simulation_rows(
                 "surprise_news_intensity": interval.surprise_news_intensity,
                 "observed_log_price": interval.observed_log_price,
                 "anchor_value": interval.anchor_value,
-                "pressure_state": interval.pressure_state,
+                "market_pressure_state": interval.market_pressure_state,
                 "deviation_from_anchor": interval.deviation_from_anchor,
             }
         )

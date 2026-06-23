@@ -5,6 +5,7 @@ use crate::affine_oracle::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::market_pressure::MarketPressureState;
 
 use super::constants::{
     DEFAULT_STREAMING_MAX_INTERVALS_PER_CHUNK, DEFAULT_TRANSFORM_SLICE_A_MINUS_U,
@@ -22,22 +23,25 @@ use super::errors::{
 use super::validation::validate_excitation_state;
 
 /// One-interval context used to solve and sample sufficient-statistics transform slices.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsTransformSliceContext {
     pub interval_index: usize,
     pub seasonality_factor: f64,
     pub news_intensity: ExponentialAffineTransformNewsIntensityInput,
     pub delta: f64,
     pub initial_excitation_state: HawkesExcitationState,
+    pub initial_market_pressure_state: MarketPressureState,
 }
 
 impl SufficientStatisticsTransformSliceContext {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         interval_index: usize,
         seasonality_factor: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
         delta: f64,
         initial_excitation_state: HawkesExcitationState,
+        initial_market_pressure_state: MarketPressureState,
     ) -> Result<Self, SufficientStatisticsTransformSliceContextError> {
         let context = Self {
             interval_index,
@@ -45,6 +49,7 @@ impl SufficientStatisticsTransformSliceContext {
             news_intensity,
             delta,
             initial_excitation_state,
+            initial_market_pressure_state,
         };
 
         context.validate()?;
@@ -52,7 +57,7 @@ impl SufficientStatisticsTransformSliceContext {
         Ok(context)
     }
 
-    pub fn validate(self) -> Result<(), SufficientStatisticsTransformSliceContextError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsTransformSliceContextError> {
         if !self.seasonality_factor.is_finite() || self.seasonality_factor < 0.0 {
             return Err(
                 SufficientStatisticsTransformSliceContextError::InvalidSeasonalityFactor {
@@ -85,6 +90,15 @@ impl SufficientStatisticsTransformSliceContext {
                 value,
             }
         })?;
+
+        self.initial_market_pressure_state
+            .validate()
+            .map_err(|source| {
+                SufficientStatisticsTransformSliceContextError::InvalidInitialMarketPressureState {
+                    interval_index: self.interval_index,
+                    error_message: source.to_string(),
+                }
+            })?;
 
         Ok(())
     }
@@ -171,7 +185,7 @@ impl Default for SufficientStatisticsTransformSliceSettings {
 }
 
 /// One interval's transform-slice payload used to sample `A` and `N` sufficient statistics.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsTransformSlices {
     pub equation_specification: ExponentialAffineTransformEquationSpecification,
     pub context: SufficientStatisticsTransformSliceContext,
@@ -256,6 +270,33 @@ impl SufficientStatisticsExpectedIntervalStatistics {
     }
 }
 
+/// Sampled buy and sell event counts for one interval.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SufficientStatisticsSampledEventCounts {
+    pub n_plus: u64,
+    pub n_minus: u64,
+}
+
+impl SufficientStatisticsSampledEventCounts {
+    pub const fn new(n_plus: u64, n_minus: u64) -> Self {
+        Self { n_plus, n_minus }
+    }
+}
+
+/// Hidden-placement transition implied by sampled sufficient-statistics event counts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SufficientStatisticsSampledIntervalTransition {
+    /// Interval-end Hawkes excitation state after hidden event placements are applied.
+    pub terminal_excitation_state: HawkesExcitationState,
+
+    /// Interval-end market-pressure state after hidden event placements are applied.
+    pub terminal_market_pressure_state: MarketPressureState,
+
+    /// Market-pressure anchor increment integrated over the interval.
+    pub market_pressure_anchor_increment: f64,
+}
+
 impl SufficientStatisticsTransformSlices {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
@@ -284,7 +325,7 @@ impl SufficientStatisticsTransformSlices {
         Ok(slices)
     }
 
-    pub fn validate(self) -> Result<(), SufficientStatisticsTransformSlicesError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsTransformSlicesError> {
         self.equation_specification.validate().map_err(|source| {
             SufficientStatisticsTransformSlicesError::InvalidEquationSpecification { source }
         })?;
@@ -292,6 +333,17 @@ impl SufficientStatisticsTransformSlices {
         self.context.validate().map_err(|source| {
             SufficientStatisticsTransformSlicesError::InvalidContext { source }
         })?;
+        self.context
+            .initial_market_pressure_state
+            .validate_for_parameters(&self.equation_specification.market_pressure_parameters)
+            .map_err(|source| {
+                SufficientStatisticsTransformSlicesError::InvalidContext {
+                    source: SufficientStatisticsTransformSliceContextError::InvalidInitialMarketPressureState {
+                        interval_index: self.context.interval_index,
+                        error_message: source.to_string(),
+                    },
+                }
+            })?;
 
         self.settings.validate().map_err(|source| {
             SufficientStatisticsTransformSlicesError::InvalidSettings { source }
@@ -377,7 +429,7 @@ fn ensure_finite_transform_slice(
 
     Ok(())
 }
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsIntervalStatistics {
     pub a_plus: f64,
     pub a_minus: f64,
@@ -387,9 +439,13 @@ pub struct SufficientStatisticsIntervalStatistics {
     pub endogenous_a_minus: f64,
     pub n_plus: u64,
     pub n_minus: u64,
+    pub terminal_excitation_state: HawkesExcitationState,
+    pub terminal_market_pressure_state: MarketPressureState,
+    pub market_pressure_anchor_increment: f64,
 }
 
 impl SufficientStatisticsIntervalStatistics {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         baseline_a_plus: f64,
         endogenous_a_plus: f64,
@@ -397,6 +453,9 @@ impl SufficientStatisticsIntervalStatistics {
         endogenous_a_minus: f64,
         n_plus: u64,
         n_minus: u64,
+        terminal_excitation_state: HawkesExcitationState,
+        terminal_market_pressure_state: MarketPressureState,
+        market_pressure_anchor_increment: f64,
     ) -> Result<Self, SufficientStatisticsIntervalStatisticsError> {
         let a_plus = baseline_a_plus + endogenous_a_plus;
         let a_minus = baseline_a_minus + endogenous_a_minus;
@@ -410,6 +469,9 @@ impl SufficientStatisticsIntervalStatistics {
             endogenous_a_minus,
             n_plus,
             n_minus,
+            terminal_excitation_state,
+            terminal_market_pressure_state,
+            market_pressure_anchor_increment,
         };
 
         interval_statistics.validate()?;
@@ -417,7 +479,7 @@ impl SufficientStatisticsIntervalStatistics {
         Ok(interval_statistics)
     }
 
-    pub fn validate(self) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
         if !self.a_plus.is_finite() || self.a_plus < 0.0 {
             return Err(SufficientStatisticsIntervalStatisticsError::InvalidAPlus {
                 value: self.a_plus,
@@ -449,11 +511,31 @@ impl SufficientStatisticsIntervalStatistics {
             self.endogenous_a_minus,
         )?;
 
+        validate_excitation_state(self.terminal_excitation_state).map_err(|(field, value)| {
+            SufficientStatisticsIntervalStatisticsError::InvalidTerminalExcitationState {
+                field,
+                value,
+            }
+        })?;
+
+        self.terminal_market_pressure_state
+            .validate()
+            .map_err(|source| {
+                SufficientStatisticsIntervalStatisticsError::InvalidTerminalMarketPressureState {
+                    error_message: source.to_string(),
+                }
+            })?;
+
+        validate_finite_statistic(
+            "market_pressure_anchor_increment",
+            self.market_pressure_anchor_increment,
+        )?;
+
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SufficientStatisticsIntervalStatisticsPayload {
     a_plus: f64,
@@ -464,6 +546,9 @@ struct SufficientStatisticsIntervalStatisticsPayload {
     endogenous_a_minus: f64,
     n_plus: u64,
     n_minus: u64,
+    terminal_excitation_state: HawkesExcitationState,
+    terminal_market_pressure_state: MarketPressureState,
+    market_pressure_anchor_increment: f64,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsIntervalStatistics {
@@ -480,6 +565,9 @@ impl<'de> Deserialize<'de> for SufficientStatisticsIntervalStatistics {
             payload.endogenous_a_minus,
             payload.n_plus,
             payload.n_minus,
+            payload.terminal_excitation_state,
+            payload.terminal_market_pressure_state,
+            payload.market_pressure_anchor_increment,
         )
         .map_err(serde::de::Error::custom)?;
 
@@ -533,11 +621,7 @@ fn validate_non_negative_finite_statistic(
     field: &'static str,
     value: f64,
 ) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
-    if !value.is_finite() {
-        return Err(
-            SufficientStatisticsIntervalStatisticsError::NonFiniteStatistic { field, value },
-        );
-    }
+    validate_finite_statistic(field, value)?;
 
     if value < 0.0 {
         return Err(
@@ -547,20 +631,53 @@ fn validate_non_negative_finite_statistic(
 
     Ok(())
 }
+
+fn validate_finite_statistic(
+    field: &'static str,
+    value: f64,
+) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
+    if !value.is_finite() {
+        return Err(
+            SufficientStatisticsIntervalStatisticsError::NonFiniteStatistic { field, value },
+        );
+    }
+
+    Ok(())
+}
+
+/// Boundary state carried between sufficient-statistics intervals.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SufficientStatisticsBoundaryState {
+    pub excitation_state: HawkesExcitationState,
+    pub market_pressure_state: MarketPressureState,
+}
+
+impl SufficientStatisticsBoundaryState {
+    pub fn new(
+        excitation_state: HawkesExcitationState,
+        market_pressure_state: MarketPressureState,
+    ) -> Self {
+        Self {
+            excitation_state,
+            market_pressure_state,
+        }
+    }
+}
+
 /// Snapshot metadata for one deterministic boundary-state update step.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsBoundaryStateUpdateSnapshot {
     pub interval_index: usize,
     pub interval_delta: f64,
-    pub state_before_update: HawkesExcitationState,
+    pub state_before_update: SufficientStatisticsBoundaryState,
     pub sampled_statistics: SufficientStatisticsIntervalStatistics,
 }
 
 impl SufficientStatisticsBoundaryStateUpdateSnapshot {
-    pub const fn new(
+    pub fn new(
         interval_index: usize,
         interval_delta: f64,
-        state_before_update: HawkesExcitationState,
+        state_before_update: SufficientStatisticsBoundaryState,
         sampled_statistics: SufficientStatisticsIntervalStatistics,
     ) -> Self {
         Self {

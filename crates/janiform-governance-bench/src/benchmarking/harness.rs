@@ -426,7 +426,7 @@ fn run_profile_benchmark(
     let sufficient_statistics_slices = build_sufficient_statistics_transform_slices(
         profile,
         benchmark_policy,
-        equation_specification,
+        &equation_specification,
         oracle_solver_settings,
         sufficient_statistics_component_seed,
     )?;
@@ -443,7 +443,7 @@ fn run_profile_benchmark(
             let transform_input = build_oracle_transform_input(
                 profile,
                 benchmark_policy,
-                equation_specification,
+                &equation_specification,
                 invocation_seed,
             )?;
 

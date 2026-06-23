@@ -74,7 +74,7 @@ Full calibration reports separate the final pipeline into the stages users see i
 | `Fit long variance`           | Full runs              | Initializes persistent variance parameters and reports horizon diagnostics.                                                              |
 | `Fit news shocks`             | Full runs              | Fits news and gap shock parameters used as fixed inputs to the return-distribution backfit.                                              |
 | `Backfit return distribution` | Full runs              | Re-estimates the physical return layer against the fixed long-variance and news/gap fit so scale is not counted twice.                   |
-| `Fit mean reversion`          | Full runs              | Fits anchor/pressure mean-reversion behavior.                                                                                            |
+| `Fit mean reversion`          | Full runs              | Fits temporary-deviation mean-reversion behavior.                                                                                        |
 | `Refine dynamics`             | Full runs              | Searches restart candidates for the physical dynamics fitted to underlying data.                                                         |
 | `Fit option surface`          | Full runs with options | Fits the option pricing block from the selected dynamics frontier.                                                                       |
 | `Finalize model`              | Full runs              | Resolves upstream fit artifacts, prepares runtime inputs, builds final diagnostics, and writes the canonical final fitted model payload. |
@@ -89,13 +89,12 @@ Janiform reports some terms that are useful but easy to misread.
 |-----------------------|-------------------------------------------------------------------------------------------------------------------|
 | Candidate             | One complete fitted model that Janiform considered during calibration.                                            |
 | Baseline              | The starting fit used as a comparison point before final improvement attempts.                                    |
-| Global loss           | The single pseudo-likelihood loss used to rank complete joint-refinement candidates. Lower is better.             |
+| Global loss           | The single objective loss used to rank complete joint-refinement candidates. Lower is better.                     |
 | Option surface loss   | The root mean square option quote residual after each quote is scaled by its quote spread floor. Lower is better. |
-| Family loss           | The mean loss for one named group of related checks, such as activity shape or return scale.                      |
+| Family loss           | The rank-normalized whitened loss for one named group of related checks, such as activity shape or return scale.  |
 | Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                           |
-| Standardized residual | The observed-versus-modeled difference divided by its uncertainty scale.                                          |
-| Huber loss            | The per-term loss used for stylized facts. It is quadratic near zero and linear for large residuals.              |
-| Excess loss           | The extra loss for standardized residuals or constraints beyond the admissibility threshold.                      |
+| Standardized residual | A marginal observed-versus-modeled difference divided by its coordinate uncertainty scale.                        |
+| Covariance diagonal   | The coordinate variance used for marginal residual reporting inside a family covariance matrix.                   |
 | Admissibility blocker | A term or hard constraint that crossed the final acceptance threshold.                                            |
 | Activity              | How often market events arrive. In tick data, high activity means ticks arrive frequently.                        |
 | Return scale          | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior.      |
@@ -109,11 +108,11 @@ The option search and selection tables use a different loss from restart optimiz
 
 Lower loss is better.
 
-Exact likelihood terms use shifted average negative log likelihood, so only relative comparisons inside the same calibration context are meaningful. Stylized-fact terms use standardized residuals. For a stylized fact, a standardized residual near `0.0` means the model is close to the training data for that measurement. A residual near `1.0` means the mismatch is about one combined uncertainty scale. Residuals above `1.0` are allowed.
+Exact likelihood evidence is reported as calibrated likelihood-family diagnostics, so only relative comparisons inside the same calibration context are meaningful. Diagnostic families use residual vectors and covariance matrices. A marginal standardized residual near `0.0` means the model is close to the training data for that coordinate. A residual near `1.0` means the mismatch is about one coordinate uncertainty scale. Residuals above `1.0` are allowed.
 
-The reported stylized-fact `loss` is Huberized from the absolute standardized residual. That means a large residual still makes the candidate worse, but one extreme term cannot dominate the entire global loss as aggressively as a purely quadratic penalty would.
+Family loss is the squared norm of the family residual vector after covariance whitening, divided by the identified covariance rank. Correlated coordinates share evidence through the covariance matrix, and singular directions are omitted from the family loss.
 
-Do not read `2.0` as "200 percent wrong." For standardized residuals, it means the modeled value is about two uncertainty scales away from the observed value. For Huberized loss, the number is the objective contribution after the Huber transform.
+Do not read `2.0` as "200 percent wrong." For a marginal standardized residual, it means the modeled coordinate is about two uncertainty scales away from the observed coordinate. For a family loss, it means the covariance-whitened residual vector has average squared distance `2.0` across identified directions.
 
 Also avoid reading one number by itself. A useful fit is usually balanced: activity, return scale, return shape, and activity-volatility coupling should all be plausible for the intended workflow.
 
@@ -132,13 +131,13 @@ Also avoid reading one number by itself. A useful fit is usually balanced: activ
 | `rv_activity_coupling`       | Does higher activity tend to come with higher price variation in the same way?  |
 | `options`                    | When options are present, do model prices match market quotes on quote scale?   |
 
-`global_loss` is the mean of available family losses plus domain-margin prior loss plus admissibility excess loss. The excess loss is zero when every standardized residual and hard constraint is inside the admissibility region. Once terms cross the admissibility threshold, each excess beyond that threshold is Huberized and summed into the global loss, so optimization and final acceptance point in the same direction.
+`global_loss` is the mean of available identified family losses plus domain-margin loss plus the invalid-candidate sentinel. Diagnostic families guide ranking through their family loss. Hard constraints and invalid candidates control admissibility.
 
 The global loss is useful for ranking candidate fits, but it is not a standalone quality grade. A model with a slightly worse global loss may still be easier to trust if its weak areas are less important for your use case.
 
 `hard_constraint_diagnostics` reports domain-margin constraints that Janiform treats as required for a usable model. Examples include Hawkes stationarity margin, NIG alpha-beta domain margin, and option/risk-neutral domain margin when options are present. A hard constraint can block admissibility even if the global loss looks low.
 
-`objective_breakdown.admissibility.excess_loss` reports the feasibility penalty that was added to the global loss. It is `0.0` for candidates that are inside all admissibility thresholds.
+`objective_breakdown.admissibility.excess_loss` is the feasibility penalty reported by the objective contract. For diagnostic-family scoring it is `0.0`; hard constraints and invalid candidates are reported through `blockers`.
 
 ## Detailed measurements
 
@@ -150,14 +149,15 @@ Each term has:
 |---------------------------|------------------------------------------------------------------------------------|
 | `term_id`                 | The report name for this measurement.                                              |
 | `family_id`               | The broader behavior it belongs to, such as activity or return scale.              |
-| `term_kind`               | The kind of term: exact likelihood, stylized fact, domain margin, or option quote. |
+| `term_kind`               | The kind of term: exact likelihood, diagnostic coordinate, domain margin, option quote, or invalid candidate. |
 | `observed_value`          | The value measured in the training data when applicable.                           |
 | `model_value`             | The value from the fitted model or simulation when applicable.                     |
 | `observed_standard_error` | The estimated uncertainty of the observed value when applicable.                   |
 | `model_standard_error`    | The estimated uncertainty of the modeled value when applicable.                    |
-| `uncertainty_scale`       | The pooled scale used to standardize observed-versus-modeled mismatch.             |
+| `uncertainty_scale`       | The marginal covariance-diagonal scale used to standardize observed-versus-modeled mismatch. |
 | `standardized_residual`   | The signed mismatch after scaling.                                                 |
-| `loss`                    | The contribution this term makes before family averaging.                          |
+| `covariance_diagonal`     | The coordinate variance used by the family covariance geometry.                    |
+| `loss`                    | The marginal squared standardized residual divided by the identified family rank.  |
 | `admissibility_blocker`   | Whether this term blocks final acceptance.                                         |
 
 Use these terms when a broad area looks weak.
@@ -218,20 +218,20 @@ Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`
 
 When coarse data is present, hourly long-variance return intervals keep tick-derived hourly intervals first and use directly accumulated coarse hourly return intervals only for gaps. Coarse intervals never contribute activity counts. The fields `interval_source_selection_policy`, `return_interval_tick_count`, `return_interval_coarse_candidate_count`, `return_interval_coarse_gap_fill_count`, `return_interval_tick_coarse_overlap_count`, `return_interval_count`, and `activity_interval_count` summarize that source-selection step. The fields `persistence_lag_diagnostics`, `selected_mean_reversion_rate`, `event_loading_fit_candidate_pair_count`, `event_loading_fit_pair_count`, and `event_loading_fit_coverage_ratio` summarize the parameter-estimation evidence.
 
-The `Backfit return distribution` stage is a variance-budget backfit. It keeps the fitted activity, long-variance, seasonality, and news/gap components fixed, then makes the return-distribution handoff represent the residual physical return layer that downstream mean-reversion, joint-refinement, simulation, and pricing workflows should consume. The report includes the selected backfit candidate, whether a no-op candidate was selected, and the variance-budget diagnostic fields used to compare the initial NIG contribution, fixed slow/news contribution, backfitted NIG contribution, modeled scale, and observed target scale when those measurements are available.
+The `Backfit return distribution` stage is a variance-budget backfit. It keeps the fitted activity, long-variance, seasonality, and news/gap components fixed, then makes the return-distribution handoff represent the residual physical return layer that downstream mean-reversion, market-pressure, joint-refinement, simulation, and pricing workflows should consume. The report includes the selected backfit candidate, whether a no-op candidate was selected, and the variance-budget diagnostic fields used to compare the initial NIG contribution, fixed slow/news contribution, backfitted NIG contribution, modeled scale, and observed target scale when those measurements are available.
 
 ### Mean reversion
 
-The `Fit mean reversion` stage decides whether the retained observations support a mean-reverting price component. In this context, mean reversion means that the fitted log price has a tendency to move back toward a learned anchor level after moving away from it.
+The `Fit mean reversion` stage decides whether the retained observations support temporary-deviation relaxation. In this context, mean reversion means that the fitted log state is represented as `X = A + D`, with `kappa` controlling how quickly the temporary deviation `D` relaxes.
 
 The fitted mean-reversion speed is called `kappa`:
 
 | Value       | Practical meaning                                                                                                                                    |
 |-------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `kappa > 0` | Janiform selected a model with a nonzero pull back toward the learned anchor.                                                                        |
-| `kappa = 0` | Janiform selected the random-walk interpretation because the retained observations did not provide supported predictive evidence for a nonzero pull. |
+| `kappa > 0` | Janiform selected a model with nonzero temporary-deviation relaxation.                                                                               |
+| `kappa = 0` | Janiform selected the random-walk interpretation for the temporary-deviation relaxation factor.                                                      |
 
-The stage is asset-agnostic. It does not assume that FX, equities, futures, or crypto should behave differently. It compares each fitted `kappa > 0` candidate with `random_walk_null`, which predicts the next retained log price as the current retained log price.
+The stage is asset-agnostic. It does not assume that FX, equities, futures, or crypto should behave differently. It compares each fitted `kappa > 0` candidate with `random_walk_null`, which predicts the next retained log price as the current retained log price. Market pressure is fitted separately by the return-components stage and enters forecasts, pricing, and simulation as its own model factor.
 
 The diagnostics use the word "grid" for the time spacing used by mean-reversion calibration. This is not the tick grid. The tick grid is the set of prices the instrument can display, such as increments of `0.25` or `0.00001`. The mean-reversion calibration grid is a time spacing, such as one hour, one session, or one day, used to line up retained price observations for this stage.
 
@@ -242,41 +242,22 @@ Users normally do not set a mean-reversion source. Janiform chooses from the ret
 | Tick data only             | Retained open-session tick prices.                                                                                   |
 | Tick data plus coarse data | Retained open-session tick prices and retained coarse price observations, evaluated as separate source-backed grids. |
 
-There is no separate primary or secondary mean-reversion source setting. If slower price history is available, provide it as coarse data. Coarse history can start before the tick data, overlap it, or extend after it. Janiform evaluates whatever retained source-backed grids are viable under the same predictive evidence rule.
+There is no separate primary or secondary mean-reversion source setting. If slower price history is available, provide it as coarse data. Coarse history can start before the tick data, overlap it, or extend after it. Janiform evaluates whatever retained source-backed grids are viable under the same model-selection rule.
 
 Janiform evaluates all viable automatic time grids unless the request provides an explicit `mean_reversion.calibration_grid_interval_hours`. Automatic grids are derived from the retained data. They can include the typical time between retained boundaries, the typical observed session length, a spacing derived from the full retained history length, and the coarse-bar cadence when coarse data is available. The selected grid summary is in `diagnostics.calibration_grid`, and all evaluated grids are listed in `diagnostics.evaluated_grids`.
 
-For each evaluated time grid, `evaluated_candidates` contains the `random_walk_null` baseline and any supported fitted alternatives with `kappa > 0`. A `kappa > 0` candidate includes a `predictive_evidence` block when Janiform could run the rolling comparison. The most useful fields are:
+Each candidate also includes `series_summaries` for the calibration series used internally by the stage: core expected increments, market pressure state path when present, boundary anchor values, deviations from anchor, and residuals. The report keeps counts, endpoints, range, mean, and constant-value detection so users can audit scale and shape.
 
-Each candidate also includes `series_summaries` for the calibration series used internally by the stage: core expected increments, pressure state path, boundary anchor values, deviations from anchor, and residuals. The report keeps counts, endpoints, range, mean, and constant-value detection so users can audit scale and shape.
-
-| Field                                                              | Meaning                                                                                      |
-|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
-| `validation_refit_schedule_policy`                                 | Named policy for how rolling validation refits are spaced.                                   |
-| `validation_refit_count`                                           | Number of model refits used for this rolling comparison.                                     |
-| `validation_transition_count`                                      | Number of held-out one-step transitions used in the rolling comparison.                      |
-| `validation_block_length`                                          | Data-derived contiguous block length from random-walk innovation sign dependence.            |
-| `validation_block_count`                                           | Number of validation blocks after aggregation.                                               |
-| `positive_block_count`, `negative_block_count`, `tied_block_count` | Block-level counts where the candidate beat, lost to, or tied the random walk.               |
-| `random_walk_validation_loss`                                      | Held-out squared log-price prediction loss for `random_walk_null`.                           |
-| `candidate_validation_loss`                                        | Held-out squared log-price prediction loss for the `kappa > 0` candidate.                    |
-| `relative_loss_reduction`                                          | Fractional loss improvement versus `random_walk_null` when the random-walk loss is positive. |
-| `raw_sign_test_p_value`                                            | One-sided exact sign-test p-value before multiple-test correction.                           |
-| `holm_adjusted_p_value`                                            | Holm-adjusted p-value across all tested `kappa > 0` grid/candidate comparisons.              |
-| `gate_status`                                                      | Whether the candidate passed, failed, or had too little validation support.                  |
-| `significance_level`                                               | The predictive evidence alpha used by the request. The default is `0.05`.                    |
-
-A model with `kappa > 0` is selected only when it passes the predictive evidence gate and has a positive total validation loss improvement. Passing candidates are ranked by adjusted p-value, then relative validation loss reduction, then BIC. In this stage, BIC is a secondary model-complexity score: it breaks ties between supported predictive candidates and provides the fallback ranking when `kappa > 0` candidates exist but the retained validation support is too small for the predictive gate to run.
+A model with `kappa > 0` is selected when it is the best admissible candidate under the Gaussian quasi-likelihood BIC policy. The policy ranks viable retained-grid candidates by their profiled one-step residual likelihood with the candidate parameter count included in the BIC penalty.
 
 To diagnose a zero or positive `kappa`, read the mean-reversion diagnostics in this order:
 
-1. Start with `diagnostics.stage_decision_reason`. It distinguishes positive predictive evidence, no positive predictive evidence, thin-sample BIC fallback, and runtime-projection fallback.
+1. Start with `diagnostics.stage_decision_reason`. It distinguishes BIC selection from missing-grid fallback and runtime-projection fallback.
 2. Check `diagnostics.calibration_grid` to see the selected grid, then inspect `diagnostics.evaluated_grids` to see whether another automatic grid was considered.
 3. On each evaluated time grid, compare `random_walk_null` with the `kappa > 0` candidates.
-4. For `kappa > 0` candidates, read `predictive_evidence.gate_status`, `relative_loss_reduction`, and `holm_adjusted_p_value`.
-5. Use BIC only after the predictive evidence fields. BIC explains tie-breaking and thin-sample fallback, not the primary evidence rule for selecting `kappa > 0`.
+4. Compare `information_criterion_bic`, `residual_sum_of_squares`, and `regression_pair_count` before interpreting the selected candidate.
 
-When `kappa = 0`, the practical reading is: Janiform did not find supported predictive evidence that a mean-reverting model improved one-step held-out log-price prediction over `random_walk_null` in the retained calibration observations. That can be the right answer for any asset when the retained window does not show reliable mean reversion.
+When `kappa = 0`, the practical reading is: Janiform selected no temporary-deviation relaxation after comparing viable retained-grid candidates.
 
 ### Business time for returns
 
@@ -300,9 +281,9 @@ Search restarts are built from the fit residuals Janiform can evaluate before th
 
 The restart frontier is selected from low-cost screening losses before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
 
-Before filling the frontier with quasi-random seeds, Janiform builds sensitivity repair seeds from the best screened candidates. For each anchor candidate, it perturbs each active parameter inside the validated bounds, measures how active standardized residuals respond, solves a small damped least-squares repair step in normalized parameter space, and adds bounded trust-region versions of that step back into the same screening and diversity selection path. This is term-driven rather than asset-specific: whichever residuals are currently outside admissibility define the repair direction.
+Before filling the frontier with quasi-random seeds, Janiform builds sensitivity repair seeds from the best screened candidates. For each anchor candidate, it perturbs each active parameter inside the validated bounds, measures how active finite standardized residuals respond, solves a small damped least-squares repair step in normalized parameter space, and adds bounded trust-region versions of that step back into the same screening and diversity selection path. This is term-driven rather than asset-specific: the active residual geometry defines the repair direction.
 
-During restart search, Janiform optimizes the full active parameter vector with one bounded adaptive direct search per restart. The search state owns return-shape, activity, and coupling parameters together, so accepted updates are not forced through a fixed NIG, Hawkes, and coupling block order. Poll probes use coordinate positive and negative directions, which form a positive spanning set for direct search. Coupled repair directions are produced by restart sensitivity seeds before restart optimization. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
+During restart search, Janiform optimizes the full active parameter vector with one bounded trust-region search per restart. The search state updates return-shape, activity, and coupling parameters as one joint candidate. Each restart receives an initial objective sample, and the shared restart pool allocates later probes toward restarts with lower observed loss or stronger early improvement. Search rounds evaluate mechanism-level model probes, fit residual sensitivity models from retained probes, evaluate coupled trust-region proposals ranked by predicted residual objective, and update the trust radius from prediction accuracy. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
 
 The Hawkes search coordinate is a stationary event-rate coordinate rather than a raw `lambda_bar` coordinate. Janiform solves `lambda_bar` from the current excitation matrix and the requested stationary open-event rate, which lets the search change clustering and decay without accidentally changing total activity on every single-coordinate probe.
 
@@ -330,7 +311,7 @@ The cumulative fields split objective evaluation cost into deterministic work, l
 
 Use `cumulative_deterministic_evaluation_millis` as the broad total for deterministic objective work, then use the narrower cumulative fields to identify which deterministic substep dominates. Millisecond counters can remain zero for very small samples or very cheap substeps.
 
-Restart optimization also records `restart_evaluation_timing_diagnostics` for completed probes. These diagnostics include restart id, scheduling category, poll direction, elapsed milliseconds, objective value, admissibility blocker count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long restart searches leave a durable timing trail before the final report is assembled.
+Restart optimization also records `restart_evaluation_timing_diagnostics` for completed probes. These diagnostics include restart id, scheduling category, search direction, elapsed milliseconds, objective value, admissibility blocker count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long restart searches leave a durable timing trail before the final report is assembled.
 
 ## A practical reading order
 

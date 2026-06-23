@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.contracts import parse_json_object
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import (
@@ -12,7 +13,6 @@ from janiform.pricing import (
     AnchoredLocalTiltDomainStatus,
     AnchoredLocalTiltSolveDiagnostics,
     AnchoredVanillaOptionPricingBoundaryInput,
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
@@ -51,6 +51,7 @@ from janiform.simulation.coarse import (
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 )
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
 from tests.support.pricing import (
     build_anchored_request_model,
@@ -430,15 +431,12 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
             y_minus_minus=0.3,
         ),
         long_variance_boundary_state=LongVarianceState.unit(),
-        mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-            kappa=0.4,
-            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-        ),
+        mean_reversion_fitted_parameters=MeanReversionFittedParameters(kappa=0.4),
+        market_pressure_boundary_state=MarketPressureState(state_weights=[1.0]),
         interval_delta=0.5,
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.15,
             anchor_value=0.0,
-            pressure_state=0.0,
             deviation=0.15,
         ),
     )
@@ -464,15 +462,13 @@ def test_anchored_boundary_input_accepts_endogenous_anchor_policy_boundary_state
     ).to_payload()
 
     boundary_payload["mean_reversion_fitted_parameters"] = MeanReversionFittedParameters(
-        kappa=0.3,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
+        kappa=0.3
     ).to_payload()
 
     boundary_payload["observed_boundary_state"] = MeanReversionBoundaryState(
-        observed_log_price=0.15,
         anchor_value=0.1,
-        pressure_state=0.0,
         deviation=0.05,
+        observed_log_price=0.1 + 0.05,
     ).to_payload()
 
     boundary_input = AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
@@ -538,9 +534,9 @@ def test_anchored_local_tilt_diagnostics_roundtrip() -> None:
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.1,
                 anchor_value=0.0,
-                pressure_state=0.0,
                 deviation=0.1,
             ),
+            market_pressure_boundary_state=MarketPressureState(state_weights=[1.0]),
             current_anchor_value=0.0,
             interval_delta=0.5,
             kappa=0.4,
@@ -757,6 +753,9 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
             long_variance_parameters=LongVarianceParameters.neutral(),
+            market_pressure_parameters=MarketPressureParameters.from_mapping(
+                build_no_anchor_impact_market_pressure_parameters_payload(),
+            ),
             pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
         ),
         interval_delta=1.0,
@@ -882,15 +881,12 @@ def _disabled_boundary_input(
         interval_index=0,
         hawkes_boundary_state=hawkes_boundary_state,
         long_variance_boundary_state=LongVarianceState.unit(),
-        mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-            kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-        ),
+        mean_reversion_fitted_parameters=MeanReversionFittedParameters(kappa=0.0),
+        market_pressure_boundary_state=MarketPressureState(state_weights=[1.0]),
         interval_delta=interval_delta,
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
-            pressure_state=0.0,
             deviation=0.0,
         ),
     )

@@ -12,7 +12,6 @@ pub(super) use super::contracts::{
 pub(super) use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
     CalibrationMeanReversionStageObservation,
-    CalibrationObservationModelsOpenSessionTimestampTransition,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,

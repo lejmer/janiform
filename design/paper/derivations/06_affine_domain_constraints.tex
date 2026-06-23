@@ -11,244 +11,82 @@
 \maketitle
 
 \noindent\textbf{Status.} Draft\\
-\textbf{Plan item.} Affine domain constraints\\
-\textbf{Depends on.} \texttt{02\_first\_moment\_guard.tex},
-\texttt{04\_affine\_transform\_ansatz.tex},
-\texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex},
-\texttt{15\_fourier\_business\_time\_clock\_interval\_factor\_grid.tex}\\
-\textbf{Feeds.} Affine schedule transform, terminal pricing measure, admissibility checks, benchmark governance
+\textbf{Plan item.} Affine transform admissibility\\
+\textbf{Depends on.} \texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex}\\
+\textbf{Feeds.} Pricing-domain diagnostics, benchmark governance
 
 \section{Purpose}
 
-State the mathematical domain on which the affine transform is finite and the
-ODE system is well-defined.
-These constraints separate admissible transform queries from parameter or
-argument choices that would make the conditional moment explode or leave the
-model's state domain.
+State the admissibility conditions for affine transform evaluation with
+finite-state market pressure.
 
-\section{Setup}
-
-Use the affine schedule transform from
-\texttt{04\_affine\_transform\_ansatz.tex} and the ODE system from
-\texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex}.
-The domain is checked on the whole backward integration interval
-\(\tau\in[0,\Delta]\), not only at the terminal or initial endpoint.
-
-\section{Notation}
+\section{Inputs}
 
 \begin{tabularx}{\textwidth}{lXX}
 \toprule
-Symbol & Meaning & Units or domain\\
+Input & Meaning & Domain\\
 \midrule
-\(\mathcal D_{\mathrm{aff}}\) & Admissible affine transform domain & Set of parameters, state, and arguments\\
-\(g_c(\tau)\) & Gamma-normal news domain metric for component \(c\) & Complex\\
-\(\theta_U\) & Unit-mean gamma severity scale & Strictly positive\\
-\(k_U\) & Gamma severity shape & Strictly positive\\
-\(\rho(\mathbf A_\alpha/\beta)\) & Hawkes branching spectral radius & Strictly less than one\\
-\(\bar z\) & Derived long-variance mean-reversion level & Strictly positive\\
-\(C,\mathbf D,V\) & Affine ODE solution & Finite on \([0,\Delta]\)\\
+\(\mathbf Y_0\) & Initial Hawkes state & Componentwise finite non-negative\\
+\(Z_0\) & Initial long-variance state & Finite positive\\
+\(\mathbf p^\Omega_0\) & Initial pressure state distribution & Finite non-negative weights with positive sum\\
+\(A^\Omega\) & Physical pressure generator & Finite non-negative off-diagonal rates with zero row sums\\
+\(b_k\) & Pressure side-balance support & Ordered finite values in \([-1,1]\)\\
+\(\gamma_\Omega\) & Anchor drift per signed-balance exposure & Finite real\\
+\(\rho_\Omega\) & Pressure exposure risk price & Finite real\\
+\(\pi_\pm\) & Activity-risk premia & Strictly positive\\
 \bottomrule
 \end{tabularx}
 
-\section{Assumptions used}
+\section{Conditions}
 
-\begin{tabularx}{\textwidth}{XXX}
-\toprule
-Assumption & Where it is used & Why it is needed\\
-\midrule
-Hawkes parameters satisfy non-negativity and branching stability.
-& Defining valid intensities and stationary rates for the long-variance normalization.
-& The model needs non-negative intensities and finite first moments.\\
-The long-variance first-moment guard holds.
-& Ensuring \(\bar z>0\).
-& The CIR mean-reversion level must be positive under unit-mean normalization.\\
-News mark transforms are evaluated only inside the gamma MGF domain.
-& Defining \(M_c\) and \(\ell_c\).
-& The gamma-normal transform is finite only before the gamma pole.\\
-The affine ODE solution is finite throughout integration.
-& Evaluating \(F=\exp(C+\mathbf D\cdot\mathbf y_0+VZ_0)\).
-& A finite-time Riccati or Hamiltonian blowup invalidates the transform.\\
-Boundary states are inside the model state domain.
-& Evaluating the final affine exponent.
-& The transform is conditional on admissible Hawkes and long-variance states.\\
-\bottomrule
-\end{tabularx}
-
-\section{Result}
-
-\noindent\textbf{Proposition.} A schedule-interval affine transform query is
-admissible if all of the following hold.
-
-\begin{enumerate}
-    \item The Hawkes kernel satisfies
-    \[
-        \bar\lambda>0,\qquad
-        \beta>0,\qquad
-        \alpha_{ij}\ge 0,\qquad
-        \rho_{ij}\ge 0,
-        \qquad
-        \rho(\mathbf A_\alpha/\beta)<1.
-    \]
-    \item The long-variance parameters satisfy
-    \[
-        \kappa_z>0,\qquad
-        \sigma_z\ge0,\qquad
-        \chi_+\ge0,\qquad
-        \chi_-\ge0,
-    \]
-    and the first-moment guard
-    \[
-        \kappa_z
-        >
-        \chi_+\lambda_{\mathrm{stat}}^+
-        +\chi_-\lambda_{\mathrm{stat}}^-,
-    \]
-    so that
-    \[
-        \bar z
-        =
-        1-
-            \frac{
-            \chi_+\lambda_{\mathrm{stat}}^+
-            +\chi_-\lambda_{\mathrm{stat}}^-
-        }{\kappa_z}
-        >0.
-    \]
-    \item The boundary state satisfies
-    \[
-        \mathbf y_0\ge0 \quad\hbox{componentwise},
-        \qquad
-        Z_0>0.
-    \]
-    \item The interval and deterministic interval-grid intensities satisfy
-    \[
-        \Delta>0,\qquad s_k\ge0,\qquad
-        \nu_k^{\mathrm{known}}\ge0,\qquad
-        \nu_k^{\mathrm{surprise}}\ge0.
-    \]
-    \item The terminal loadings and transform arguments are finite complex
-    values, and the ODE solution \((C(\tau),\mathbf D(\tau),V(\tau))\) remains
-    finite for every \(\tau\in[0,\Delta]\).
-    \item For every active news component \(c\) and every
-    \(\tau\in[0,\Delta]\),
-    \[
-        \operatorname{Re} g_c(\tau)<\frac{1}{\theta_U},
-    \]
-    where
-    \[
-        g_c(\tau)
-        =
+The Hawkes and news transform domain requires every evaluated news mark MGF to
+remain finite:
+\[
+    \operatorname{Re}\!\left(
         (\mathbf D(\tau)\cdot\mathbf r)a_c
-        +qm_c+\frac{1}{2}q^2\sigma_c^2.
-    \]
-\end{enumerate}
-
-Under these conditions, the affine transform is finite and equals
-\[
-    \exp\!\left(C(\Delta)+\mathbf D(\Delta)\cdot\mathbf y_0+V(\Delta)Z_0\right).
+        +qm_c
+        +\frac{1}{2}q^2\sigma_c^2
+    \right)
+    <
+    \frac{1}{\theta_U}
 \]
+for each news component \(c\) and \(\tau\in[0,\Delta]\).
 
-\section{Derivation}
+The long-variance Riccati equation must have a finite solution \(V(\tau)\) on
+the whole interval.
+This is the usual CIR-style moment-domain condition induced by the quadratic
+term in \(V\).
 
-The Hawkes conditions guarantee non-negative event intensities:
+The pressure transform requires the finite matrix
 \[
-    \lambda_t^+
-    =
-    s_k\bar\lambda+Y_t^{++}+Y_t^{+-},
+    A^\Omega+\operatorname{diag}\left(
+        (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_1,
+        \ldots,
+        (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_{K_\Omega}
+    \right)
+\]
+and finite terminal pressure values.
+For finite \(K_\Omega\), finite rates, finite support, and finite loadings, the
+matrix exponential exists for every finite interval length.
+
+\section{Pricing density}
+
+The terminal density is admissible only when the denominator cumulant is finite
+and the activity premia are strictly positive.
+The martingale tilt is admissible only when both cumulants required by the
+martingale equation are finite:
+\[
+    K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega),
     \qquad
-    \lambda_t^-
-    =
-    s_k\bar\lambda+Y_t^{-+}+Y_t^{--}.
+    K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega).
 \]
-Here \(s_k\) is the non-negative interval factor materialized from the
-Fourier business-time clock for the schedule interval.
-The spectral-radius condition is the finite-branching condition for the
-linear Hawkes reaction system.
-It is also needed when stationary side rates \(\lambda_{\mathrm{stat}}^\pm\) are used to
-derive the long-variance
-mean-reversion level.
-
-The long-variance normalization sets the stationary mean target to one.
-Taking first moments in
-\[
-    dZ_t
-    =
-    \kappa_z(\bar z-Z_t)\,dt
-    +\sigma_z\sqrt{Z_t}\,dW_t^Z
-    +\chi_+\,dN_t^+
-    +\chi_-\,dN_t^-
-\]
-gives
-\[
-    \bar z
-    =
-    1-
-    \frac{
-        \chi_+\lambda_{\mathrm{stat}}^+
-        +\chi_-\lambda_{\mathrm{stat}}^-
-    }{\kappa_z}.
-\]
-The first-moment guard is exactly the condition \(\bar z>0\).
-
-For news marks, condition on a component-\(c\) arrival.
-The activity and return mark multiplier is
-\[
-    \mathbb E\!\left[
-        \exp\!\left(g_c(\tau)U\right)
-    \right],
-\]
-after the conditional normal return shock has been integrated out.
-Since \(U\sim\Gamma(k_U,\theta_U)\), this expectation is
-\[
-    M_c(q,\mathbf D(\tau)\cdot\mathbf r)
-    =
-    \left(1-\theta_U g_c(\tau)\right)^{-k_U},
-\]
-which is finite on the moment half-plane
-\[
-    \operatorname{Re}g_c(\tau)<\frac{1}{\theta_U}.
-\]
-This condition also keeps \(1-\theta_Ug_c(\tau)\) in the right half-plane, so
-the principal power and principal logarithm used for \(M_c\) and \(\ell_c\)
-are single-valued along the integration path.
-
-The remaining domain requirement is finite ODE flow.
-The \(V\) equation is a Riccati equation:
-\[
-    V'
-    =
-    -\kappa_zV
-    +\frac{1}{2}\sigma_z^2 V^2
-    -s_k\bar\lambda(u_+^B+u_-^B).
-\]
-If this equation develops a finite-time pole before \(\Delta\), then the
-exponent is not finite.
-The Hawkes loading equations also contain exponential Hamiltonians,
-so non-finite \(D\) or \(V\) invalidates the event multipliers.
-Therefore \(C\), \(\mathbf D\), and \(V\) must stay finite on the full
-integration interval.
-
-\section{Domain and validity}
-
-The proposition states the full interval domain.
-Components with zero news intensity do not constrain the active news moment
-domain, because they do not enter the interval transform.
-The square-root long-variance process is used on its non-negative affine
-diffusion domain with positive boundary state and positive derived
-mean-reversion level.
-No additional Feller condition is needed for affine closure.
-
-The condition \(\operatorname{Re}g_c(\tau)<1/\theta_U\) is strict.
-Equality is not admissible because it is the gamma pole.
-Values beyond the boundary do not define finite moments.
 
 \section{Consequences}
 
 \begin{itemize}
-    \item Pricing and paper plots must report failures as domain failures when the requested moment lies outside the affine transform domain.
-    \item The news-domain guard is pathwise in ODE time, not a check only on the final exponent.
-    \item The first-moment guard is a parameter-domain condition, while Riccati blowup is a transform-argument condition.
-    \item Inactive news components impose no moment-domain restriction on an interval.
+    \item Pressure admissibility is finite-state matrix-exponential admissibility.
+    \item Pressure-domain failures are model-domain failures, not hidden fallback cases.
+    \item The pressure risk price changes signed-imbalance exposure weighting under the terminal density without creating a second physical pressure model.
 \end{itemize}
 
 \section{Checks}
@@ -257,21 +95,15 @@ Values beyond the boundary do not define finite moments.
 \toprule
 Check & Expected result & Evidence location\\
 \midrule
-News-domain metric
-& The guard metric is \(g_c=(\mathbf D\cdot\mathbf r)a_c+qm_c+\frac12q^2\sigma_c^2\), selected over active news components.
-& \texttt{gamma\_normal\_news\_domain\_metric} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/news\_transform.rs}\\
-News-domain upper bound
-& Guarded integration terminates when the real metric reaches \(1/\theta_U\).
-& Test \texttt{solver\_domain\_guard\_violation\_terminates\_with\_deterministic\_metadata}\\
-Schedule checkpoint guard
-& Schedule integration checks finite \(C\), finite \(\mathbf D\), finite \(V\), and the news-domain metric at every checkpoint.
-& \texttt{evaluate\_schedule\_guard\_checkpoint} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
-Long-variance first-moment domain
-& The derived mean-reversion level must be positive.
-& Test \texttt{stationary\_mean\_reversion\_level\_rejects\_exhausted\_event\_feedback\_budget}\\
-Input state domain
-& Hawkes state components are non-negative finite values and the long-variance boundary state is positive.
-& \texttt{validate\_initial\_state} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/contracts.rs} and \texttt{LongVarianceState::validate}\\
+Pressure parameters
+& Support, rates, and drift loading validate before transform evaluation.
+& \texttt{MarketPressureParameters::validate}\\
+Pressure transform
+& Non-finite pressure loading or terminal values are rejected.
+& \texttt{market\_pressure\_transform\_values}\\
+Pricing kernel
+& Activity premia are positive and pressure risk price is finite.
+& \texttt{VanillaOptionPricingKernelParameters::validate}\\
 \bottomrule
 \end{tabularx}
 

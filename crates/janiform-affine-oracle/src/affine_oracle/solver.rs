@@ -4,6 +4,10 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+use janiform_model_kernels::market_pressure::{
+    MarketPressureStateEvolutionError, MarketPressureTransformLogFactorInput,
+    MarketPressureTransformValuesInput, market_pressure_transform_log_factor,
+};
 
 use super::news_transform::{GammaNormalNewsTransformComponents, gamma_normal_news_domain_metric};
 use super::{
@@ -272,6 +276,9 @@ pub enum ExponentialAffineTransformSolverError {
     InvalidOutput {
         source: ExponentialAffineTransformOutputError,
     },
+    InvalidMarketPressureProjection {
+        source: MarketPressureStateEvolutionError,
+    },
 }
 
 impl Display for ExponentialAffineTransformSolverError {
@@ -291,6 +298,10 @@ impl Display for ExponentialAffineTransformSolverError {
                 formatter,
                 "affine transform solver produced invalid output: {source}"
             ),
+            Self::InvalidMarketPressureProjection { source } => write!(
+                formatter,
+                "affine transform solver market-pressure projection is invalid: {source}"
+            ),
         }
     }
 }
@@ -301,6 +312,7 @@ impl Error for ExponentialAffineTransformSolverError {
             Self::InvalidInput { source } => Some(source),
             Self::InvalidSolverSettings { source } => Some(source),
             Self::InvalidOutput { source } => Some(source),
+            Self::InvalidMarketPressureProjection { source } => Some(source),
         }
     }
 }
@@ -362,7 +374,7 @@ fn solve_exponential_affine_transform_with_optional_settings_and_terminal_loadin
     })?;
 
     let effective_solver_settings = solver_settings
-        .unwrap_or_else(|| internally_selected_default_solver_settings(transform_input));
+        .unwrap_or_else(|| internally_selected_default_solver_settings(&transform_input));
 
     effective_solver_settings.validate().map_err(|source| {
         ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
@@ -398,7 +410,7 @@ fn solve_exponential_affine_transform_with_optional_settings_and_terminal_loadin
 }
 
 pub(super) fn internally_selected_default_solver_settings(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
 ) -> ExponentialAffineTransformSolverSettings {
     let mut solver_settings = ExponentialAffineTransformSolverSettings::default();
 
@@ -473,6 +485,7 @@ fn exact_identity_result(
                 ComplexScalar::new(0.0, 0.0),
                 ComplexScalar::new(0.0, 0.0),
             ),
+            ComplexScalar::new(0.0, 0.0),
             ComplexScalar::new(1.0, 0.0),
         )),
         telemetry: None,
@@ -482,6 +495,7 @@ fn exact_identity_result(
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ExponentialAffineTransformIntegrationState {
     d_vector: ExponentialAffineTransformDVector,
+    market_pressure_loading: ComplexScalar,
     c_value: ComplexScalar,
 }
 
@@ -489,6 +503,7 @@ impl ExponentialAffineTransformIntegrationState {
     fn from_terminal_loading(terminal_loading: ExponentialAffineTransformDVector) -> Self {
         Self {
             d_vector: terminal_loading,
+            market_pressure_loading: ComplexScalar::new(0.0, 0.0),
             c_value: ComplexScalar::new(0.0, 0.0),
         }
     }
@@ -496,14 +511,18 @@ impl ExponentialAffineTransformIntegrationState {
     fn add_scaled_rhs(self, rhs: ExponentialAffineTransformOdeRhs, scale: f64) -> Self {
         Self {
             d_vector: self.d_vector.plus(rhs.d_derivative.scale(scale)),
+            market_pressure_loading: self
+                .market_pressure_loading
+                .plus(rhs.market_pressure_derivative.scale(scale)),
             c_value: self.c_value.plus(rhs.c_derivative.scale(scale)),
         }
     }
 }
 
 type ExponentialAffineTransformOdeRhsEvaluator = fn(
-    ExponentialAffineTransformInput,
+    &ExponentialAffineTransformInput,
     ExponentialAffineTransformDVector,
+    ComplexScalar,
 ) -> ExponentialAffineTransformOdeRhs;
 
 trait ExponentialAffineTransformIntegrator {
@@ -511,7 +530,7 @@ trait ExponentialAffineTransformIntegrator {
     fn rhs_evaluations_per_step(&self) -> usize;
     fn advance_one_step(
         &self,
-        transform_input: ExponentialAffineTransformInput,
+        transform_input: &ExponentialAffineTransformInput,
         step_size: f64,
         state: ExponentialAffineTransformIntegrationState,
         rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
@@ -532,12 +551,16 @@ impl ExponentialAffineTransformIntegrator for ForwardEulerIntegrator {
 
     fn advance_one_step(
         &self,
-        transform_input: ExponentialAffineTransformInput,
+        transform_input: &ExponentialAffineTransformInput,
         step_size: f64,
         state: ExponentialAffineTransformIntegrationState,
         rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
     ) -> ExponentialAffineTransformIntegrationState {
-        let first_derivative = rhs_evaluator(transform_input, state.d_vector);
+        let first_derivative = rhs_evaluator(
+            transform_input,
+            state.d_vector,
+            state.market_pressure_loading,
+        );
         state.add_scaled_rhs(first_derivative, step_size)
     }
 }
@@ -556,26 +579,36 @@ impl ExponentialAffineTransformIntegrator for FourthOrderRungeKuttaIntegrator {
 
     fn advance_one_step(
         &self,
-        transform_input: ExponentialAffineTransformInput,
+        transform_input: &ExponentialAffineTransformInput,
         step_size: f64,
         state: ExponentialAffineTransformIntegrationState,
         rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
     ) -> ExponentialAffineTransformIntegrationState {
-        let k1 = rhs_evaluator(transform_input, state.d_vector);
+        let k1 = rhs_evaluator(
+            transform_input,
+            state.d_vector,
+            state.market_pressure_loading,
+        );
 
+        let k2_state = state.add_scaled_rhs(k1, 0.5 * step_size);
         let k2 = rhs_evaluator(
             transform_input,
-            state.add_scaled_rhs(k1, 0.5 * step_size).d_vector,
+            k2_state.d_vector,
+            k2_state.market_pressure_loading,
         );
 
+        let k3_state = state.add_scaled_rhs(k2, 0.5 * step_size);
         let k3 = rhs_evaluator(
             transform_input,
-            state.add_scaled_rhs(k2, 0.5 * step_size).d_vector,
+            k3_state.d_vector,
+            k3_state.market_pressure_loading,
         );
 
+        let k4_state = state.add_scaled_rhs(k3, step_size);
         let k4 = rhs_evaluator(
             transform_input,
-            state.add_scaled_rhs(k3, step_size).d_vector,
+            k4_state.d_vector,
+            k4_state.market_pressure_loading,
         );
 
         let d_increment = k1
@@ -592,8 +625,18 @@ impl ExponentialAffineTransformIntegrator for FourthOrderRungeKuttaIntegrator {
             .plus(k4.c_derivative)
             .scale(step_size / 6.0);
 
+        let market_pressure_increment = k1
+            .market_pressure_derivative
+            .plus(k2.market_pressure_derivative.scale(2.0))
+            .plus(k3.market_pressure_derivative.scale(2.0))
+            .plus(k4.market_pressure_derivative)
+            .scale(step_size / 6.0);
+
         ExponentialAffineTransformIntegrationState {
             d_vector: state.d_vector.plus(d_increment),
+            market_pressure_loading: state
+                .market_pressure_loading
+                .plus(market_pressure_increment),
             c_value: state.c_value.plus(c_increment),
         }
     }
@@ -628,7 +671,7 @@ where
     };
 
     let initial_checkpoint = evaluate_integration_guard_checkpoint(
-        transform_input,
+        &transform_input,
         integration_state,
         completed_step_count,
         step_size,
@@ -649,7 +692,7 @@ where
 
     for _ in 0..solver_settings.step_count {
         integration_state = integrator.advance_one_step(
-            transform_input,
+            &transform_input,
             step_size,
             integration_state,
             evaluate_exponential_affine_transform_ode_rhs,
@@ -661,7 +704,7 @@ where
             rhs_evaluation_count.saturating_add(integrator.rhs_evaluations_per_step());
 
         let checkpoint = evaluate_integration_guard_checkpoint(
-            transform_input,
+            &transform_input,
             integration_state,
             completed_step_count,
             step_size,
@@ -683,8 +726,13 @@ where
 
     let c_at_delta = integration_state.c_value;
     let d_at_delta = integration_state.d_vector;
+    let market_pressure_loading_at_delta = integration_state.market_pressure_loading;
 
-    let transform_exponent = c_at_delta.plus(d_at_delta.dot_state(transform_input.initial_state));
+    let market_pressure_log_factor = evaluate_market_pressure_log_factor(&transform_input)?;
+
+    let transform_exponent = c_at_delta
+        .plus(d_at_delta.dot_state(transform_input.initial_state))
+        .plus(market_pressure_log_factor);
     let checkpoint_time = completed_step_count as f64 * step_size;
 
     let d_dot_r = d_at_delta.dot_loadings(transform_input.equation_specification.r());
@@ -740,8 +788,13 @@ where
         ));
     }
 
-    let output = ExponentialAffineTransformOutput::try_new(c_at_delta, d_at_delta, transform_value)
-        .map_err(|source| ExponentialAffineTransformSolverError::InvalidOutput { source })?;
+    let output = ExponentialAffineTransformOutput::try_new(
+        c_at_delta,
+        d_at_delta,
+        market_pressure_loading_at_delta,
+        transform_value,
+    )
+    .map_err(|source| ExponentialAffineTransformSolverError::InvalidOutput { source })?;
 
     let status = ExponentialAffineTransformIntegrationStatus::Completed;
 
@@ -764,6 +817,34 @@ where
         }),
         output: Some(output),
         telemetry,
+    })
+}
+
+fn evaluate_market_pressure_log_factor(
+    transform_input: &ExponentialAffineTransformInput,
+) -> Result<ComplexScalar, ExponentialAffineTransformSolverError> {
+    let state_count = transform_input
+        .equation_specification
+        .market_pressure_parameters
+        .state_count();
+    let terminal_values = vec![ComplexScalar::new(1.0, 0.0); state_count];
+
+    market_pressure_transform_log_factor(MarketPressureTransformLogFactorInput {
+        values_input: MarketPressureTransformValuesInput {
+            parameters: &transform_input
+                .equation_specification
+                .market_pressure_parameters,
+            interval_delta: transform_input.delta,
+            signed_balance_exposure_scale: 1.0,
+            return_loading: transform_input.market_pressure_return_loading,
+            pressure_signed_imbalance_exposure_risk_price: transform_input
+                .pressure_signed_imbalance_exposure_risk_price,
+            terminal_values: &terminal_values,
+        },
+        initial_state: &transform_input.initial_market_pressure_state,
+    })
+    .map_err(|source| {
+        ExponentialAffineTransformSolverError::InvalidMarketPressureProjection { source }
     })
 }
 
@@ -911,7 +992,7 @@ impl ExponentialAffineTransformTelemetryAccumulator {
 }
 
 fn evaluate_integration_guard_checkpoint(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     integration_state: ExponentialAffineTransformIntegrationState,
     completed_step_count: usize,
     step_size: f64,
@@ -921,7 +1002,10 @@ fn evaluate_integration_guard_checkpoint(
 
     let checkpoint_time = completed_step_count as f64 * step_size;
 
-    if !integration_state.c_value.is_finite() || integration_state.d_vector.validate().is_err() {
+    if !integration_state.c_value.is_finite()
+        || !integration_state.market_pressure_loading.is_finite()
+        || integration_state.d_vector.validate().is_err()
+    {
         return ExponentialAffineTransformGuardCheckpointEvaluation {
             guard_failure: Some(build_guard_failure(
                 ExponentialAffineTransformGuardFailureCode::NonFiniteState,
@@ -971,7 +1055,7 @@ fn evaluate_integration_guard_checkpoint(
 }
 
 pub(super) fn evaluate_transform_guard_domain_metrics(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     d_vector: ExponentialAffineTransformDVector,
 ) -> ExponentialAffineTransformGuardDomainMetrics {
     let d_dot_r = gamma_normal_news_domain_metric(GammaNormalNewsTransformComponents {

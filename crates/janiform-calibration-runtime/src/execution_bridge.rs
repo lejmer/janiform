@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use janiform_calibration_artifacts::{
     CalibrationEffortOptions, CalibrationExecutionMode, CalibrationRunContract,
     CalibrationRunContractError, CalibrationRunSpec, CalibrationStage, CalibrationStageDependency,
-    CalibrationStageGraph, JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
-    TickGridObservationModel,
+    CalibrationStageGraph, JointRefinementStageCarryInput, PriceDiscretizationSurface,
+    ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_foundations::cancellation::CancellationToken;
@@ -28,7 +28,7 @@ use janiform_model_kernels::news::{
 use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, SideSourceActivityDecomposition,
 };
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
@@ -43,10 +43,7 @@ use super::staged_runner::{
 use super::stages::hawkes::{HawkesStageCandidateInput, HawkesStageObservedSourceRegime};
 use super::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageGridCandidate,
-    MeanReversionStageObservation, default_mean_reversion_predictive_evidence_alpha,
-};
-use super::stages::observation_models::{
-    ObservationModelsOpenSessionTimestampTransition, ObservationModelsStageExecutionInput,
+    MeanReversionStageObservation,
 };
 use super::stages::return_components::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -85,8 +82,6 @@ pub struct CalibrationStagedExecutionInput {
     pub hawkes_candidate_inputs: Option<Vec<CalibrationHawkesStageCandidateInput>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_event_side_codes: Option<Vec<u8>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub observation_models_stage_input: Option<CalibrationObservationModelsStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
@@ -238,20 +233,6 @@ pub struct CalibrationReturnComponentsDetectedIntradayJumpCandidate {
     pub post_shock_activity_lift: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CalibrationObservationModelsOpenSessionTimestampTransition {
-    pub previous_timestamp_utc_nanos: i64,
-    pub current_timestamp_utc_nanos: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CalibrationObservationModelsStageExecutionInput {
-    pub open_session_timestamp_transitions:
-        Vec<CalibrationObservationModelsOpenSessionTimestampTransition>,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsObservedOpenSessionReturn {
@@ -309,8 +290,8 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub tick_grid_observation_model: TickGridObservationModel,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub price_discretization_surface: PriceDiscretizationSurface,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
 }
 
@@ -356,8 +337,6 @@ pub struct CalibrationMeanReversionStageGridCandidate {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationMeanReversionStageExecutionInput {
-    #[serde(default = "default_mean_reversion_predictive_evidence_alpha")]
-    pub predictive_evidence_alpha: f64,
     #[serde(default)]
     pub grid_candidates: Vec<CalibrationMeanReversionStageGridCandidate>,
 }
@@ -556,8 +535,6 @@ impl CalibrationStagedExecutionInput {
 
         let seasonality_selected = selected_stages.contains(&CalibrationStage::Seasonality);
         let hawkes_selected = selected_stages.contains(&CalibrationStage::Hawkes);
-        let observation_models_selected =
-            selected_stages.contains(&CalibrationStage::ObservationModels);
         let return_components_selected =
             selected_stages.contains(&CalibrationStage::ReturnComponents);
         let mean_reversion_selected = selected_stages.contains(&CalibrationStage::MeanReversion);
@@ -588,28 +565,6 @@ impl CalibrationStagedExecutionInput {
             return Err(
                 CalibrationStagedExecutionBridgeError::UnexpectedStageExecutionInput {
                     stage: CalibrationStage::Hawkes,
-                },
-            );
-        }
-
-        if return_components_selected && !observation_models_selected {
-            return Err(
-                CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
-                    stage: CalibrationStage::ObservationModels,
-                },
-            );
-        }
-        if observation_models_selected && self.observation_models_stage_input.is_none() {
-            return Err(
-                CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
-                    stage: CalibrationStage::ObservationModels,
-                },
-            );
-        }
-        if !observation_models_selected && self.observation_models_stage_input.is_some() {
-            return Err(
-                CalibrationStagedExecutionBridgeError::UnexpectedStageExecutionInput {
-                    stage: CalibrationStage::ObservationModels,
                 },
             );
         }
@@ -662,31 +617,6 @@ impl CalibrationStagedExecutionInput {
             .return_components_candidate_generation_input
             .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core);
 
-        let observation_models_stage_input = match (
-            self.observation_models_stage_input,
-            return_components_candidate_generation_input.as_ref(),
-        ) {
-            (Some(input), Some(candidate_generation_input)) => {
-                // Intentional copy because the observation-model stage and the
-                // downstream return-components template both own their inputs.
-                Some(
-                    input.into_core(
-                        candidate_generation_input
-                            .observed_open_session_returns
-                            .clone(),
-                    ),
-                )
-            }
-            (None, _) => None,
-            (Some(_), None) => {
-                return Err(
-                    CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
-                        stage: CalibrationStage::ReturnComponents,
-                    },
-                );
-            }
-        };
-
         let staged_run_inputs = CalibrationStagedRunInputs {
             seasonality_stage_input: self
                 .seasonality_stage_input
@@ -699,7 +629,6 @@ impl CalibrationStagedExecutionInput {
                     .collect()
             }),
             hawkes_event_side_codes: self.hawkes_event_side_codes,
-            observation_models_stage_input,
             return_components_candidate_generation_input,
             coarse_data_records: self.coarse_data_records,
             tick_objective_data_usage_policy: self.tick_objective_data_usage_policy,
@@ -801,12 +730,8 @@ fn canonical_stage_graph_for_selected_stages(
             depends_on: CalibrationStage::Seasonality,
         },
         CalibrationStageDependency {
-            stage: CalibrationStage::ObservationModels,
-            depends_on: CalibrationStage::Hawkes,
-        },
-        CalibrationStageDependency {
             stage: CalibrationStage::ReturnComponents,
-            depends_on: CalibrationStage::ObservationModels,
+            depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::LongVariance,
@@ -970,32 +895,6 @@ impl CalibrationHawkesDirectionalLabelDiagnostics {
     }
 }
 
-impl CalibrationObservationModelsStageExecutionInput {
-    fn into_core(
-        self,
-        observed_open_session_returns: Vec<ReturnComponentsObservedOpenSessionReturn>,
-    ) -> ObservationModelsStageExecutionInput {
-        ObservationModelsStageExecutionInput {
-            observed_open_session_returns,
-            open_session_timestamp_transitions: self
-                .open_session_timestamp_transitions
-                .into_iter()
-                .map(CalibrationObservationModelsOpenSessionTimestampTransition::into_core)
-                .collect(),
-            source_responsibility_input: None,
-        }
-    }
-}
-
-impl CalibrationObservationModelsOpenSessionTimestampTransition {
-    const fn into_core(self) -> ObservationModelsOpenSessionTimestampTransition {
-        ObservationModelsOpenSessionTimestampTransition {
-            previous_timestamp_utc_nanos: self.previous_timestamp_utc_nanos,
-            current_timestamp_utc_nanos: self.current_timestamp_utc_nanos,
-        }
-    }
-}
-
 impl CalibrationReturnComponentsStageCandidateGenerationInput {
     fn into_core(self) -> ReturnComponentsStageCandidateGenerationInput {
         ReturnComponentsStageCandidateGenerationInput {
@@ -1024,8 +923,8 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
             open_session_sell_share_proxy: self.open_session_sell_share_proxy,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
             return_clock_exposure_parameters: self.return_clock_exposure_parameters,
-            tick_grid_observation_model: self.tick_grid_observation_model,
-            timestamp_batching_observation_model: self.timestamp_batching_observation_model,
+            price_discretization_surface: self.price_discretization_surface,
+            timestamp_batching_surface: self.timestamp_batching_surface,
             objective_metric_weights: self.objective_metric_weights.into_core(),
         }
     }
@@ -1166,7 +1065,6 @@ impl CalibrationMeanReversionStageExecutionInput {
             seasonality_stage_input: None,
             hawkes_stage_payload: None,
             return_components_stage_payload: None,
-            predictive_evidence_alpha: self.predictive_evidence_alpha,
             grid_candidates: self
                 .grid_candidates
                 .into_iter()
@@ -1295,8 +1193,6 @@ mod tests {
         CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
         CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
         CalibrationMeanReversionStageObservation,
-        CalibrationObservationModelsOpenSessionTimestampTransition,
-        CalibrationObservationModelsStageExecutionInput,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsDetectedIntradayJumpCandidate,
         CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -1316,7 +1212,7 @@ mod tests {
     use janiform_calibration_artifacts::{
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
-        CalibrationStageSeedOverride, CalibrationStageSolverSettings, TickGridObservationModel,
+        CalibrationStageSeedOverride, CalibrationStageSolverSettings, PriceDiscretizationSurface,
     };
     use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
     use janiform_model_kernels::hawkes::{
@@ -1324,8 +1220,6 @@ mod tests {
         HawkesStructuredRhoSelfDominancePolicy,
     };
     use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
-
-    use crate::stages::mean_reversion::default_mean_reversion_predictive_evidence_alpha;
 
     fn valid_request(execution_mode: CalibrationExecutionMode) -> CalibrationRunSpec {
         CalibrationRunSpec::try_new(
@@ -1341,7 +1235,6 @@ mod tests {
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
-                CalibrationStage::ObservationModels,
                 CalibrationStage::ReturnComponents,
                 CalibrationStage::MeanReversion,
             ],
@@ -1356,7 +1249,6 @@ mod tests {
             vec![
                 stage_solver_settings(CalibrationStage::Seasonality),
                 stage_solver_settings(CalibrationStage::Hawkes),
-                stage_solver_settings(CalibrationStage::ObservationModels),
                 stage_solver_settings(CalibrationStage::ReturnComponents),
                 stage_solver_settings(CalibrationStage::MeanReversion),
             ],
@@ -1430,19 +1322,10 @@ mod tests {
                     price_down_inference_count: 30,
                 },
             }]),
-            hawkes_event_side_codes: None,
-            observation_models_stage_input: Some(CalibrationObservationModelsStageExecutionInput {
-                open_session_timestamp_transitions: vec![
-                    CalibrationObservationModelsOpenSessionTimestampTransition {
-                        previous_timestamp_utc_nanos: 1_770_046_200_000_000_000,
-                        current_timestamp_utc_nanos: 1_770_046_200_000_000_000,
-                    },
-                    CalibrationObservationModelsOpenSessionTimestampTransition {
-                        previous_timestamp_utc_nanos: 1_770_046_200_000_000_000,
-                        current_timestamp_utc_nanos: 1_770_048_300_000_000_000,
-                    },
-                ],
-            }),
+            hawkes_event_side_codes: Some(vec![
+                crate::stages::hawkes::HAWKES_EVENT_SIDE_CODE_BUY,
+                crate::stages::hawkes::HAWKES_EVENT_SIDE_CODE_SELL,
+            ]),
             return_components_candidate_generation_input: Some(
                 CalibrationReturnComponentsStageCandidateGenerationInput {
                     known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {
@@ -1510,14 +1393,14 @@ mod tests {
                     return_clock_exposure_parameters:
                         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
                         ),
-                    tick_grid_observation_model: TickGridObservationModel {
+                    price_discretization_surface: PriceDiscretizationSurface {
                         tick_size: None,
                         tick_size_source: "test".to_string(),
                         inference_policy: "test".to_string(),
                         observation_policy: "test".to_string(),
                     },
-                    timestamp_batching_observation_model:
-                        janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                    timestamp_batching_surface:
+                        janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
                         ),
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                         continuous_distribution_fit_weight: 1.0,
@@ -1533,7 +1416,6 @@ mod tests {
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {
-                predictive_evidence_alpha: default_mean_reversion_predictive_evidence_alpha(),
                 grid_candidates: vec![CalibrationMeanReversionStageGridCandidate {
                     calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
                     calibration_grid_interval_hours: 24.0,
@@ -1628,7 +1510,6 @@ mod tests {
                 CalibrationStage::Seasonality,
                 CalibrationStage::MeanReversion,
                 CalibrationStage::Hawkes,
-                CalibrationStage::ObservationModels,
                 CalibrationStage::ReturnComponents,
             ]
         );

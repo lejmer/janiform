@@ -438,7 +438,7 @@ class SeededFinePathChunkColumns:
     def anchor_value(self) -> list[float]: ...
 
     @property
-    def pressure_state(self) -> list[float]: ...
+    def market_pressure_state(self) -> list[float]: ...
 
     @property
     def deviation_from_anchor(self) -> list[float]: ...
@@ -491,7 +491,7 @@ class SeededTickEventTapeChunkColumns:
     def anchor_value(self) -> list[float]: ...
 
     @property
-    def pressure_state(self) -> list[float]: ...
+    def market_pressure_state(self) -> list[float]: ...
 
     @property
     def deviation_from_anchor(self) -> list[float]: ...
@@ -763,6 +763,7 @@ def estimate_current_state_from_observed_data(
     kernel_parameters: object,
     long_variance_parameters: object,
     mean_reversion_fitted_parameters: object,
+    market_pressure_parameters: object,
     reference_price: float,
     state_time_utc_nanos: int,
     observed_log_return: float,
@@ -776,6 +777,7 @@ def update_current_state_tracker(
     kernel_parameters: object,
     long_variance_parameters: object,
     mean_reversion_fitted_parameters: object,
+    market_pressure_parameters: object,
     reference_price: float,
     previous_snapshot: Optional[object],
     state_time_utc_nanos: int,
@@ -784,6 +786,9 @@ def update_current_state_tracker(
     observation_trade_prices: object,
     observation_trade_sides: object,
 ) -> object: ...
+
+
+def neutral_market_pressure_state(market_pressure_parameters: object) -> object: ...
 
 
 def materialize_runtime_structural_seasonality(

@@ -137,7 +137,7 @@
         },
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, coarse_data_column_mapping: 'Optional[CalibrationCoarseDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, price_coordinate_policy: 'PriceCoordinatePolicy | str' = <PriceCoordinatePolicy.AUTO: 'auto'>, option_forward_parity_warning_threshold: 'Optional[float]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, tick_size: 'Optional[float]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, diagnostics: 'Optional[CalibrationDiagnosticsRequest]' = None, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, coarse_data_column_mapping: 'Optional[CalibrationCoarseDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, price_coordinate_policy: 'PriceCoordinatePolicy | str' = <PriceCoordinatePolicy.AUTO: 'auto'>, option_forward_parity_warning_threshold: 'Optional[float]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, tick_size: 'Optional[float]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, diagnostics: 'Optional[CalibrationDiagnosticsRequest]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -191,7 +191,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, coarse_data_column_mapping: 'Optional[CalibrationCoarseDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, price_coordinate_policy: 'PriceCoordinatePolicy | str' = <PriceCoordinatePolicy.AUTO: 'auto'>, option_forward_parity_warning_threshold: 'Optional[float]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, tick_size: 'Optional[float]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, diagnostics: 'Optional[CalibrationDiagnosticsRequest]' = None, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, coarse_data_column_mapping: 'Optional[CalibrationCoarseDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, price_coordinate_policy: 'PriceCoordinatePolicy | str' = <PriceCoordinatePolicy.AUTO: 'auto'>, option_forward_parity_warning_threshold: 'Optional[float]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, tick_size: 'Optional[float]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, diagnostics: 'Optional[CalibrationDiagnosticsRequest]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -249,7 +249,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, coarse_data_column_mapping: 'Optional[CalibrationCoarseDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, price_coordinate_policy: 'PriceCoordinatePolicy | str' = <PriceCoordinatePolicy.AUTO: 'auto'>, option_forward_parity_warning_threshold: 'Optional[float]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, tick_size: 'Optional[float]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, diagnostics: 'Optional[CalibrationDiagnosticsRequest]' = None, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, coarse_data_column_mapping: 'Optional[CalibrationCoarseDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, price_coordinate_policy: 'PriceCoordinatePolicy | str' = <PriceCoordinatePolicy.AUTO: 'auto'>, option_forward_parity_warning_threshold: 'Optional[float]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, tick_size: 'Optional[float]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, pricing_interval_schedule_policy: 'Optional[PricingIntervalSchedulePolicy]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing: 'bool' = False, diagnostics: 'Optional[CalibrationDiagnosticsRequest]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
@@ -337,13 +337,14 @@
           "field_names": [
             "hawkes_excitation_state",
             "long_variance_state",
-            "mean_reversion_boundary_state"
+            "mean_reversion_boundary_state",
+            "market_pressure_state"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'Mapping[str, Any] | Any', *, field_path: 'str' = 'current_state') -> 'CurrentStateEstimationResult'"
           },
-          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', long_variance_state: 'LongVarianceState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', long_variance_state: 'LongVarianceState', mean_reversion_boundary_state: 'MeanReversionBoundaryState', market_pressure_state: 'MarketPressureState') -> 'None'"
         },
         "CurrentStateTrackerSnapshot": {
           "field_names": [
@@ -370,8 +371,8 @@
       "exports": [
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY",
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY",
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION",
         "CalibrationCoarseDataColumnMapping",
         "CalibrationCoarseDataTimestampSemantics",
         "CalibrationDuplicateRecordPolicy",
@@ -400,8 +401,8 @@
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
         "MarketDataSourceProbe",
-        "MarketDataTimestampBatchingObservationDiagnostic",
-        "MarketDataTimestampBatchingObservationDiagnosticState",
+        "MarketDataTimestampBatchingSurfaceDiagnostic",
+        "MarketDataTimestampBatchingSurfaceDiagnosticState",
         "NormalizedMarketDataSource",
         "OptionForwardParityCheck",
         "OptionForwardParityWarningPolicy",
@@ -435,9 +436,9 @@
           "value": "calibration.market_data.request.v1"
         },
         {
-          "name": "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
+          "name": "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION",
           "public_exported": true,
-          "value": "calibration.market_data.timestamp_batching_observation_diagnostic.v1"
+          "value": "calibration.market_data.timestamp_batching_surface_diagnostic.v1"
         }
       ],
       "symbols": {
@@ -449,13 +450,13 @@
           "kind": "constant",
           "value": "calibration.market_data.request.v1"
         },
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY": {
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY": {
           "kind": "constant",
-          "value": "return_components_timestamp_batching_observation_visibility.v1"
+          "value": "return_components_timestamp_batching_surface_visibility.v1"
         },
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION": {
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "calibration.market_data.timestamp_batching_observation_diagnostic.v1"
+          "value": "calibration.market_data.timestamp_batching_surface_diagnostic.v1"
         },
         "CalibrationCoarseDataColumnMapping": {
           "field_names": [
@@ -655,14 +656,13 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "calibration_grid_interval_hours",
-            "predictive_evidence_alpha"
+            "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMeanReversionConfiguration'"
           },
-          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None, predictive_evidence_alpha: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -759,7 +759,7 @@
             "workflow_scope",
             "selected_stages",
             "executed_calibration_steps",
-            "timestamp_batching_observation",
+            "timestamp_batching_surface",
             "tick_record_count",
             "coarse_data_record_count",
             "coarse_data_return_interval_count",
@@ -782,7 +782,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationPreparationDiagnostics'"
           },
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_calibration_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_calibration_steps: 'tuple[str, ...]', timestamp_batching_surface: 'MarketDataTimestampBatchingSurfaceDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -831,8 +831,6 @@
             "joint_refinement_option_refinement_wall_clock_budget_millis",
             "joint_refinement_audit_option_pricing_enabled",
             "diagnostics",
-            "stylized_fact_huber_cutoff",
-            "stylized_fact_admissibility_z_threshold",
             "known_news_inputs",
             "mean_reversion",
             "tick_objective_data_usage_policy"
@@ -841,7 +839,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationRequest'"
           },
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, coarse_data_source: 'Optional[CalibrationInputFileReference]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count_override: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing_enabled: 'bool' = False, diagnostics: 'CalibrationDiagnosticsRequest' = <factory>, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, coarse_data_source: 'Optional[CalibrationInputFileReference]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count_override: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing_enabled: 'bool' = False, diagnostics: 'CalibrationDiagnosticsRequest' = <factory>, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>) -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -874,22 +872,22 @@
           "kind": "contract_model",
           "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', available_columns: 'tuple[str, ...]', source_row_count_estimate: 'Optional[int]') -> 'None'"
         },
-        "MarketDataTimestampBatchingObservationDiagnostic": {
+        "MarketDataTimestampBatchingSurfaceDiagnostic": {
           "field_names": [
             "schema_version",
             "diagnostic_policy",
             "state",
             "return_components_stage_selected",
-            "observation_model",
+            "timestamp_batching_surface",
             "message"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketDataTimestampBatchingObservationDiagnostic'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'MarketDataTimestampBatchingSurfaceDiagnostic'"
           },
-          "signature": "(schema_version: 'str', diagnostic_policy: 'str', state: 'MarketDataTimestampBatchingObservationDiagnosticState', return_components_stage_selected: 'bool', observation_model: 'TimestampBatchingObservationModel', message: 'str') -> 'None'"
+          "signature": "(schema_version: 'str', diagnostic_policy: 'str', state: 'MarketDataTimestampBatchingSurfaceDiagnosticState', return_components_stage_selected: 'bool', timestamp_batching_surface: 'TimestampBatchingSurface', message: 'str') -> 'None'"
         },
-        "MarketDataTimestampBatchingObservationDiagnosticState": {
+        "MarketDataTimestampBatchingSurfaceDiagnosticState": {
           "kind": "enum",
           "members": [
             {
@@ -899,10 +897,6 @@
             {
               "name": "DISABLED_NO_DETECTABLE_BATCHING",
               "value": "disabled_no_detectable_batching"
-            },
-            {
-              "name": "DEFERRED_TO_OBSERVATION_MODELS_STAGE",
-              "value": "deferred_to_observation_models_stage"
             },
             {
               "name": "NOT_EVALUATED_RETURN_COMPONENTS_NOT_SELECTED",
@@ -1344,14 +1338,13 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "calibration_grid_interval_hours",
-            "predictive_evidence_alpha"
+            "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'CalibrationMeanReversionConfiguration'"
           },
-          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None, predictive_evidence_alpha: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -1532,8 +1525,6 @@
             "joint_refinement_option_refinement_wall_clock_budget_millis",
             "joint_refinement_audit_option_pricing_enabled",
             "diagnostics",
-            "stylized_fact_huber_cutoff",
-            "stylized_fact_admissibility_z_threshold",
             "known_news_inputs",
             "mean_reversion",
             "tick_objective_data_usage_policy"
@@ -1542,7 +1533,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationRequest'"
           },
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, coarse_data_source: 'Optional[CalibrationInputFileReference]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0, restart_pool_minimum_poll_rounds=1, restart_pool_rescue_poll_interval=2), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count_override: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing_enabled: 'bool' = False, diagnostics: 'CalibrationDiagnosticsRequest' = <factory>, stylized_fact_huber_cutoff: 'Optional[float]' = None, stylized_fact_admissibility_z_threshold: 'Optional[float]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, coarse_data_source: 'Optional[CalibrationInputFileReference]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), calibration_settings: 'Optional[CalibrationMarketDataCalibrationSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, dynamics_search_restart_candidate_budget: 'Optional[int]' = None, calibration_effort: 'CalibrationEffortOptions' = CalibrationEffortOptions(restart_candidate_budget=15, restart_pool_total_budget_scale=1.0, restart_pool_max_candidate_budget_scale=2.0), treat_calibration_warnings_as_errors: 'bool' = False, joint_refinement_option_refinement_candidate_count_override: 'Optional[int]' = None, joint_refinement_option_refinement_wall_clock_budget_millis: 'Optional[int]' = None, joint_refinement_audit_option_pricing_enabled: 'bool' = False, diagnostics: 'CalibrationDiagnosticsRequest' = <factory>, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, tick_objective_data_usage_policy: 'CalibrationTickObjectiveDataUsagePolicy' = <CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW: 'short_horizon_window'>) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",
@@ -1592,7 +1583,7 @@
             "workflow_scope",
             "selected_stages",
             "executed_calibration_steps",
-            "timestamp_batching_observation",
+            "timestamp_batching_surface",
             "tick_record_count",
             "coarse_data_record_count",
             "coarse_data_return_interval_count",
@@ -1612,7 +1603,7 @@
             "material_close_open_gap_count"
           ],
           "kind": "contract_model",
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_calibration_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_calibration_steps: 'tuple[str, ...]', timestamp_batching_surface: 'MarketDataTimestampBatchingSurfaceDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataTranslationProvenance": {
           "field_names": [
@@ -1714,7 +1705,7 @@
             "workflow_scope",
             "selected_stages",
             "executed_calibration_steps",
-            "timestamp_batching_observation",
+            "timestamp_batching_surface",
             "tick_record_count",
             "coarse_data_record_count",
             "coarse_data_return_interval_count",
@@ -1737,7 +1728,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'MarketDataCalibrationPreparationDiagnostics'"
           },
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_calibration_steps: 'tuple[str, ...]', timestamp_batching_observation: 'MarketDataTimestampBatchingObservationDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_calibration_steps: 'tuple[str, ...]', timestamp_batching_surface: 'MarketDataTimestampBatchingSurfaceDiagnostic', tick_record_count: 'int', coarse_data_record_count: 'int', coarse_data_return_interval_count: 'int', coarse_data_overlap_interval_count: 'int', coarse_data_independent_interval_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -3400,10 +3391,6 @@
               "value": "hawkes"
             },
             {
-              "name": "OBSERVATION_MODELS",
-              "value": "observation_models"
-            },
-            {
               "name": "RETURN_COMPONENTS",
               "value": "return_components"
             },
@@ -3798,10 +3785,6 @@
             {
               "name": "HAWKES",
               "value": "hawkes"
-            },
-            {
-              "name": "OBSERVATION_MODELS",
-              "value": "observation_models"
             },
             {
               "name": "RETURN_COMPONENTS",
@@ -5417,7 +5400,6 @@
     },
     "janiform.mean_reversion": {
       "exports": [
-        "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors"
@@ -5425,69 +5407,45 @@
       "module_name": "janiform.mean_reversion",
       "schema_identifiers": [],
       "symbols": {
-        "MeanReversionAnchorModel": {
-          "field_names": [
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "endogenous_core_pressure_level": "(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'anchor_model') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'",
-            "zero_gain_endogenous_core_pressure_level": "(*, reference_interval_hours: 'float' = 1.0) -> 'Self'"
-          },
-          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
         "MeanReversionBoundaryState": {
           "field_names": [
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
             "deviation"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'MeanReversionBoundaryState'"
           },
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
         },
         "MeanReversionFittedParameters": {
           "field_names": [
-            "kappa",
-            "anchor_model"
+            "kappa"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "flat_anchor_mean_reversion": "(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'MeanReversionFittedParameters'"
           },
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+          "signature": "(kappa: 'float') -> 'None'"
         },
         "MeanReversionRuntimeIntervalAnchors": {
           "field_names": [
             "interval_alignment_policy",
             "start_anchor_value",
-            "start_pressure_state",
             "end_anchor_values",
-            "end_pressure_states",
             "interval_deltas"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'MeanReversionRuntimeIntervalAnchors'"
           },
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         }
       }
     },
     "janiform.mean_reversion.contracts": {
       "exports": [
-        "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors"
@@ -5495,63 +5453,40 @@
       "module_name": "janiform.mean_reversion.contracts",
       "schema_identifiers": [],
       "symbols": {
-        "MeanReversionAnchorModel": {
-          "field_names": [
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
-          ],
-          "kind": "contract_model",
-          "public_methods": {
-            "endogenous_core_pressure_level": "(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'anchor_model') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'",
-            "zero_gain_endogenous_core_pressure_level": "(*, reference_interval_hours: 'float' = 1.0) -> 'Self'"
-          },
-          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
         "MeanReversionBoundaryState": {
           "field_names": [
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
             "deviation"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'MeanReversionBoundaryState'"
           },
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
         },
         "MeanReversionFittedParameters": {
           "field_names": [
-            "kappa",
-            "anchor_model"
+            "kappa"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "flat_anchor_mean_reversion": "(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'MeanReversionFittedParameters'"
           },
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+          "signature": "(kappa: 'float') -> 'None'"
         },
         "MeanReversionRuntimeIntervalAnchors": {
           "field_names": [
             "interval_alignment_policy",
             "start_anchor_value",
-            "start_pressure_state",
             "end_anchor_values",
-            "end_pressure_states",
             "interval_deltas"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'MeanReversionRuntimeIntervalAnchors'"
           },
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         }
       }
     },
@@ -5604,7 +5539,8 @@
         "AutoExactSparsePricingIntervalSchedulePolicy",
         "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
         "GammaSeverityMarkConfiguration",
-        "MeanReversionAnchorModel",
+        "MarketPressureParameters",
+        "MarketPressureState",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
@@ -5661,6 +5597,7 @@
             "interval_index",
             "hawkes_boundary_state",
             "observed_boundary_state",
+            "market_pressure_boundary_state",
             "current_anchor_value",
             "interval_delta",
             "kappa",
@@ -5671,7 +5608,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'AnchoredLocalTiltBoundaryStateSummary'"
           },
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', market_pressure_boundary_state: 'MarketPressureState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
         },
         "AnchoredLocalTiltDomainStatus": {
           "kind": "enum",
@@ -5715,6 +5652,7 @@
             "hawkes_boundary_state",
             "long_variance_boundary_state",
             "mean_reversion_fitted_parameters",
+            "market_pressure_boundary_state",
             "interval_delta",
             "observed_boundary_state"
           ],
@@ -5722,7 +5660,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'AnchoredVanillaOptionPricingBoundaryInput'"
           },
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', market_pressure_boundary_state: 'MarketPressureState', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "AutoActivityCompressedPricingIntervalSchedulePolicy": {
           "field_names": [
@@ -5765,48 +5703,48 @@
           },
           "signature": "(shape_k: 'float') -> 'None'"
         },
-        "MeanReversionAnchorModel": {
+        "MarketPressureParameters": {
           "field_names": [
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
+            "side_imbalance_levels",
+            "physical_measure"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "endogenous_core_pressure_level": "(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'anchor_model') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'",
-            "zero_gain_endogenous_core_pressure_level": "(*, reference_interval_hours: 'float' = 1.0) -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
             "deviation"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'MeanReversionBoundaryState'"
           },
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
         },
         "MeanReversionFittedParameters": {
           "field_names": [
-            "kappa",
-            "anchor_model"
+            "kappa"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "flat_anchor_mean_reversion": "(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'MeanReversionFittedParameters'"
           },
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+          "signature": "(kappa: 'float') -> 'None'"
         },
         "NigSharedPlusShiftConfiguration": {
           "field_names": [
@@ -5998,14 +5936,15 @@
         "VanillaOptionPricingKernelParameters": {
           "field_names": [
             "buy_activity_premium",
-            "sell_activity_premium"
+            "sell_activity_premium",
+            "pressure_signed_imbalance_exposure_risk_price"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'VanillaOptionPricingKernelParameters'",
             "identity": "() -> 'VanillaOptionPricingKernelParameters'"
           },
-          "signature": "(buy_activity_premium: 'float', sell_activity_premium: 'float') -> 'None'"
+          "signature": "(buy_activity_premium: 'float', sell_activity_premium: 'float', pressure_signed_imbalance_exposure_risk_price: 'float') -> 'None'"
         },
         "VanillaOptionPricingMarketInputs": {
           "field_names": [
@@ -6028,13 +5967,14 @@
             "nig_shared_plus_shift_configuration",
             "return_clock_exposure_parameters",
             "long_variance_parameters",
+            "market_pressure_parameters",
             "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'VanillaOptionPricingModelParameters'"
           },
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', market_pressure_parameters: 'MarketPressureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -6273,7 +6213,8 @@
         "AutoExactSparsePricingIntervalSchedulePolicy",
         "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
         "GammaSeverityMarkConfiguration",
-        "MeanReversionAnchorModel",
+        "MarketPressureParameters",
+        "MarketPressureState",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
@@ -6352,6 +6293,7 @@
             "interval_index",
             "hawkes_boundary_state",
             "observed_boundary_state",
+            "market_pressure_boundary_state",
             "current_anchor_value",
             "interval_delta",
             "kappa",
@@ -6362,7 +6304,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'AnchoredLocalTiltBoundaryStateSummary'"
           },
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', market_pressure_boundary_state: 'MarketPressureState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
         },
         "AnchoredLocalTiltDomainStatus": {
           "kind": "enum",
@@ -6406,6 +6348,7 @@
             "hawkes_boundary_state",
             "long_variance_boundary_state",
             "mean_reversion_fitted_parameters",
+            "market_pressure_boundary_state",
             "interval_delta",
             "observed_boundary_state"
           ],
@@ -6413,7 +6356,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'AnchoredVanillaOptionPricingBoundaryInput'"
           },
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', long_variance_boundary_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', market_pressure_boundary_state: 'MarketPressureState', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "AutoActivityCompressedPricingIntervalSchedulePolicy": {
           "field_names": [
@@ -6456,48 +6399,48 @@
           },
           "signature": "(shape_k: 'float') -> 'None'"
         },
-        "MeanReversionAnchorModel": {
+        "MarketPressureParameters": {
           "field_names": [
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
+            "side_imbalance_levels",
+            "physical_measure"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "endogenous_core_pressure_level": "(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'anchor_model') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'",
-            "zero_gain_endogenous_core_pressure_level": "(*, reference_interval_hours: 'float' = 1.0) -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
             "deviation"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'MeanReversionBoundaryState'"
           },
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
         },
         "MeanReversionFittedParameters": {
           "field_names": [
-            "kappa",
-            "anchor_model"
+            "kappa"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "flat_anchor_mean_reversion": "(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'MeanReversionFittedParameters'"
           },
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+          "signature": "(kappa: 'float') -> 'None'"
         },
         "NigSharedPlusShiftConfiguration": {
           "field_names": [
@@ -6707,13 +6650,14 @@
             "nig_shared_plus_shift_configuration",
             "return_clock_exposure_parameters",
             "long_variance_parameters",
+            "market_pressure_parameters",
             "pricing_kernel_parameters"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'VanillaOptionPricingModelParameters'"
           },
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', market_pressure_parameters: 'MarketPressureParameters', pricing_kernel_parameters: 'VanillaOptionPricingKernelParameters') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -7688,7 +7632,8 @@
         "JaniformSimulationResult",
         "LongVarianceParameters",
         "LongVarianceState",
-        "MeanReversionAnchorModel",
+        "MarketPressureParameters",
+        "MarketPressureState",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -7700,8 +7645,8 @@
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SimulationKind",
-        "TimestampBatchingObservationMode",
-        "TimestampBatchingObservationModel",
+        "TimestampBatchingMode",
+        "TimestampBatchingSurface",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
         "run_seeded_tick_event_simulation"
@@ -7716,7 +7661,7 @@
             "return_clock_exposure_parameters",
             "long_variance_parameters",
             "initial_long_variance_state",
-            "timestamp_batching_observation_model",
+            "timestamp_batching_surface",
             "observed_price_tick_size",
             "calendar_registry_artifact",
             "exchange_code"
@@ -7725,7 +7670,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'model_inputs') -> 'CoarseSimulationModelInputs'"
           },
-          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -7762,7 +7707,7 @@
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'CoarseSimulationRunRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
           "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factor_grid: 'IntervalFactorGridContract') -> 'None'"
@@ -7848,63 +7793,61 @@
           },
           "signature": "(level: 'float') -> 'None'"
         },
-        "MeanReversionAnchorModel": {
+        "MarketPressureParameters": {
           "field_names": [
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
+            "side_imbalance_levels",
+            "physical_measure"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "endogenous_core_pressure_level": "(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'anchor_model') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'",
-            "zero_gain_endogenous_core_pressure_level": "(*, reference_interval_hours: 'float' = 1.0) -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
             "deviation"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'MeanReversionBoundaryState'"
           },
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
         },
         "MeanReversionFittedParameters": {
           "field_names": [
-            "kappa",
-            "anchor_model"
+            "kappa"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "flat_anchor_mean_reversion": "(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'MeanReversionFittedParameters'"
           },
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+          "signature": "(kappa: 'float') -> 'None'"
         },
         "MeanReversionRuntimeIntervalAnchors": {
           "field_names": [
             "interval_alignment_policy",
             "start_anchor_value",
-            "start_pressure_state",
             "end_anchor_values",
-            "end_pressure_states",
             "interval_deltas"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'MeanReversionRuntimeIntervalAnchors'"
           },
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "NewsProcessConfiguration": {
           "field_names": [
@@ -7976,11 +7919,13 @@
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state",
+            "market_pressure_parameters",
+            "initial_market_pressure_state",
             "interval_factor_grid_summary",
             "return_clock_exposure_parameters",
             "long_variance_parameters",
             "initial_long_variance_state",
-            "timestamp_batching_observation_model",
+            "timestamp_batching_surface",
             "observed_price_tick_size",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -7990,10 +7935,10 @@
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SeededTickSimulationRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', market_pressure_parameters: 'MarketPressureParameters', initial_market_pressure_state: 'MarketPressureState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', market_pressure_parameters: 'MarketPressureParameters', initial_market_pressure_state: 'MarketPressureState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -8037,7 +7982,7 @@
             }
           ]
         },
-        "TimestampBatchingObservationMode": {
+        "TimestampBatchingMode": {
           "kind": "enum",
           "members": [
             {
@@ -8050,7 +7995,7 @@
             }
           ]
         },
-        "TimestampBatchingObservationModel": {
+        "TimestampBatchingSurface": {
           "field_names": [
             "schema_version",
             "mode",
@@ -8064,10 +8009,10 @@
           ],
           "kind": "contract_model",
           "public_methods": {
-            "disabled": "() -> 'TimestampBatchingObservationModel'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'"
+            "disabled": "() -> 'TimestampBatchingSurface'",
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingSurface'"
           },
-          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', mode: 'TimestampBatchingMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
         },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
@@ -8111,8 +8056,8 @@
         "NewsProcessConfiguration",
         "SharedNewsMarkLawConfiguration",
         "SurpriseNewsArrivalConfiguration",
-        "TimestampBatchingObservationMode",
-        "TimestampBatchingObservationModel",
+        "TimestampBatchingMode",
+        "TimestampBatchingSurface",
         "deserialize_coarse_simulation_path",
         "deserialize_coarse_simulation_run_request",
         "run_coarse_simulation",
@@ -8215,7 +8160,7 @@
             "return_clock_exposure_parameters",
             "long_variance_parameters",
             "initial_long_variance_state",
-            "timestamp_batching_observation_model",
+            "timestamp_batching_surface",
             "observed_price_tick_size",
             "calendar_registry_artifact",
             "exchange_code"
@@ -8224,7 +8169,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'model_inputs') -> 'CoarseSimulationModelInputs'"
           },
-          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+          "signature": "(sufficient_statistics_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -8319,14 +8264,14 @@
             "observed_interval_return",
             "observed_log_price_end",
             "anchor_value_end",
-            "pressure_state_end",
+            "market_pressure_state_end",
             "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str', expected_interval_index: 'int') -> 'CoarseSimulationPathRecord'"
           },
-          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
+          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', market_pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "CoarseSimulationRunRequest": {
           "field_names": [
@@ -8341,7 +8286,7 @@
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'CoarseSimulationRunRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', interval_delta: 'float', sufficient_statistics_model_inputs: 'Any', interval_factor_grid: 'IntervalFactorGridContract', news_process_configuration: 'NewsProcessConfiguration', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]', calendar_registry: 'CalendarRegistry', exchange_code: 'str') -> 'CoarseSimulationRunRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
           "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factor_grid: 'IntervalFactorGridContract') -> 'None'"
@@ -8418,7 +8363,7 @@
           },
           "signature": "(open_baseline_intensity: 'float', closed_baseline_intensity: 'float') -> 'None'"
         },
-        "TimestampBatchingObservationMode": {
+        "TimestampBatchingMode": {
           "kind": "enum",
           "members": [
             {
@@ -8431,7 +8376,7 @@
             }
           ]
         },
-        "TimestampBatchingObservationModel": {
+        "TimestampBatchingSurface": {
           "field_names": [
             "schema_version",
             "mode",
@@ -8445,10 +8390,10 @@
           ],
           "kind": "contract_model",
           "public_methods": {
-            "disabled": "() -> 'TimestampBatchingObservationModel'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'"
+            "disabled": "() -> 'TimestampBatchingSurface'",
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingSurface'"
           },
-          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', mode: 'TimestampBatchingMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
         },
         "deserialize_coarse_simulation_path": {
           "kind": "function",
@@ -8512,6 +8457,8 @@
         "HawkesKernelParameters",
         "LongVarianceParameters",
         "LongVarianceState",
+        "MarketPressureParameters",
+        "MarketPressureState",
         "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY",
         "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
         "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
@@ -8532,8 +8479,8 @@
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
-        "TimestampBatchingObservationMode",
-        "TimestampBatchingObservationModel",
+        "TimestampBatchingMode",
+        "TimestampBatchingSurface",
         "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "deserialize_seeded_tick_simulation_response",
         "run_seeded_tick_event_simulation",
@@ -8614,6 +8561,27 @@
           },
           "signature": "(level: 'float') -> 'None'"
         },
+        "MarketPressureParameters": {
+          "field_names": [
+            "side_imbalance_levels",
+            "physical_measure"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
+          },
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
+        },
         "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY": {
           "kind": "constant",
           "value": "native_handle_typed_column_chunk_projection.v1"
@@ -8637,7 +8605,7 @@
             "event_projection_record_schema_version",
             "transition_ordering_policy",
             "timestamp_representation_policy",
-            "timestamp_batching_observation_model",
+            "timestamp_batching_surface",
             "side_encoding_policy",
             "state_snapshot_capture",
             "state_snapshot_capture_point_policy"
@@ -8646,7 +8614,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SeededFinePathMetadata'"
           },
-          "signature": "(schema_version: 'str', path_record_schema_version: 'str', event_projection_record_schema_version: 'str', transition_ordering_policy: 'str', timestamp_representation_policy: 'str', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', path_record_schema_version: 'str', event_projection_record_schema_version: 'str', transition_ordering_policy: 'str', timestamp_representation_policy: 'str', timestamp_batching_surface: 'TimestampBatchingSurface', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
         },
         "SeededFinePathNewsArrivalComponent": {
           "kind": "enum",
@@ -8674,7 +8642,7 @@
             "core_total_return_increment",
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
+            "market_pressure_state",
             "deviation_from_anchor",
             "cumulative_core_log_return",
             "state_snapshot"
@@ -8683,7 +8651,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SeededFinePathRecord'"
           },
-          "signature": "(transition_index: 'int', latent_transition_time_utc_nanos: 'int', observed_timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+          "signature": "(transition_index: 'int', latent_transition_time_utc_nanos: 'int', observed_timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', market_pressure_state: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededFinePathTransitionKind": {
           "kind": "enum",
@@ -8731,7 +8699,7 @@
             "core_total_return_increment",
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
+            "market_pressure_state",
             "deviation_from_anchor",
             "state_snapshot"
           ],
@@ -8739,7 +8707,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SeededTickEventRecord'"
           },
-          "signature": "(event_index: 'int', latent_event_time_utc_nanos: 'int', observed_timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+          "signature": "(event_index: 'int', latent_event_time_utc_nanos: 'int', observed_timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', market_pressure_state: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededTickEventSide": {
           "kind": "enum",
@@ -8789,7 +8757,7 @@
             "state_snapshot_schema_version",
             "event_ordering_policy",
             "timestamp_representation_policy",
-            "timestamp_batching_observation_model",
+            "timestamp_batching_surface",
             "side_encoding_policy",
             "state_snapshot_capture",
             "state_snapshot_capture_point_policy"
@@ -8798,7 +8766,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SeededTickEventTapeMetadata'"
           },
-          "signature": "(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', timestamp_batching_surface: 'TimestampBatchingSurface', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
         },
         "SeededTickEventTapeView": {
           "base_classes": [
@@ -8868,11 +8836,13 @@
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state",
+            "market_pressure_parameters",
+            "initial_market_pressure_state",
             "interval_factor_grid_summary",
             "return_clock_exposure_parameters",
             "long_variance_parameters",
             "initial_long_variance_state",
-            "timestamp_batching_observation_model",
+            "timestamp_batching_surface",
             "observed_price_tick_size",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -8882,10 +8852,10 @@
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SeededTickSimulationRequest'",
-            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
+            "from_runtime_inputs": "(*, seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', market_pressure_parameters: 'MarketPressureParameters', initial_market_pressure_state: 'MarketPressureState', interval_factor_grid: 'IntervalFactorGridContract', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'SeededTickSimulationRequest'",
             "to_payload": "(self) -> 'dict[str, Any]'"
           },
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_observation_model: 'TimestampBatchingObservationModel', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', market_pressure_parameters: 'MarketPressureParameters', initial_market_pressure_state: 'MarketPressureState', interval_factor_grid_summary: 'SeededTickSimulationIntervalFactorGridSummary', return_clock_exposure_parameters: 'ReturnClockExposureParameters', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', timestamp_batching_surface: 'TimestampBatchingSurface', observed_price_tick_size: 'Optional[float]' = None, debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -8916,7 +8886,7 @@
           "origin_module": "janiform.simulation.shared.errors",
           "qualname": "SeededTickSimulationValidationError"
         },
-        "TimestampBatchingObservationMode": {
+        "TimestampBatchingMode": {
           "kind": "enum",
           "members": [
             {
@@ -8929,7 +8899,7 @@
             }
           ]
         },
-        "TimestampBatchingObservationModel": {
+        "TimestampBatchingSurface": {
           "field_names": [
             "schema_version",
             "mode",
@@ -8943,10 +8913,10 @@
           ],
           "kind": "contract_model",
           "public_methods": {
-            "disabled": "() -> 'TimestampBatchingObservationModel'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingObservationModel'"
+            "disabled": "() -> 'TimestampBatchingSurface'",
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'TimestampBatchingSurface'"
           },
-          "signature": "(schema_version: 'str', mode: 'TimestampBatchingObservationMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', mode: 'TimestampBatchingMode', bucket_width_source: 'str', inference_policy: 'str', observation_policy: 'str', coarse_interval_compatibility_policy: 'str', bucket_width_nanos: 'Optional[int]' = None, same_timestamp_continuation_count: 'Optional[int]' = None, same_session_observation_transition_count: 'Optional[int]' = None) -> 'None'"
         },
         "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
@@ -8975,7 +8945,8 @@
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
-        "MeanReversionAnchorModel",
+        "MarketPressureParameters",
+        "MarketPressureState",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -9026,63 +8997,61 @@
           },
           "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
         },
-        "MeanReversionAnchorModel": {
+        "MarketPressureParameters": {
           "field_names": [
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
+            "side_imbalance_levels",
+            "physical_measure"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "endogenous_core_pressure_level": "(*, reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'anchor_model') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'",
-            "zero_gain_endogenous_core_pressure_level": "(*, reference_interval_hours: 'float' = 1.0) -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
           },
-          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
             "deviation"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_boundary_state') -> 'MeanReversionBoundaryState'"
           },
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
         },
         "MeanReversionFittedParameters": {
           "field_names": [
-            "kappa",
-            "anchor_model"
+            "kappa"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "flat_anchor_mean_reversion": "(*, kappa: 'float', reference_interval_hours: 'float' = 1.0) -> 'Self'",
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'Self'",
-            "to_json": "(self) -> 'str'",
-            "to_payload": "(self) -> 'dict[str, Any]'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_fitted_parameters') -> 'MeanReversionFittedParameters'"
           },
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+          "signature": "(kappa: 'float') -> 'None'"
         },
         "MeanReversionRuntimeIntervalAnchors": {
           "field_names": [
             "interval_alignment_policy",
             "start_anchor_value",
-            "start_pressure_state",
             "end_anchor_values",
-            "end_pressure_states",
             "interval_deltas"
           ],
           "kind": "contract_model",
           "public_methods": {
-            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'Self'"
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'mean_reversion_runtime_interval_anchors') -> 'MeanReversionRuntimeIntervalAnchors'"
           },
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "SeededTickEventSide": {
           "kind": "enum",
@@ -9746,6 +9715,8 @@
     },
     "janiform.sufficient_statistics": {
       "exports": [
+        "MarketPressureParameters",
+        "MarketPressureState",
         "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY",
         "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION",
         "SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
@@ -9787,6 +9758,27 @@
         }
       ],
       "symbols": {
+        "MarketPressureParameters": {
+          "field_names": [
+            "side_imbalance_levels",
+            "physical_measure"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
+          },
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
+        },
         "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY": {
           "kind": "constant",
           "value": "explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1"
@@ -9807,13 +9799,14 @@
           "field_names": [
             "hawkes_kernel_parameters",
             "gamma_severity_mark_configuration",
-            "long_variance_parameters"
+            "long_variance_parameters",
+            "market_pressure_parameters"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SufficientStatisticsEquationSpecification'"
           },
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters', market_pressure_parameters: 'MarketPressureParameters') -> 'None'"
         },
         "SufficientStatisticsIntervalStatistics": {
           "field_names": [
@@ -9824,13 +9817,16 @@
             "baseline_a_minus",
             "endogenous_a_minus",
             "n_plus",
-            "n_minus"
+            "n_minus",
+            "terminal_excitation_state",
+            "terminal_market_pressure_state",
+            "market_pressure_anchor_increment"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SufficientStatisticsIntervalStatistics'"
           },
-          "signature": "(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
+          "signature": "(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int', terminal_excitation_state: 'HawkesExcitationState', terminal_market_pressure_state: 'MarketPressureState', market_pressure_anchor_increment: 'float') -> 'None'"
         },
         "SufficientStatisticsModelInputs": {
           "field_names": [
@@ -9839,6 +9835,7 @@
             "initial_excitation_state",
             "long_variance_parameters",
             "initial_long_variance_state",
+            "initial_market_pressure_state",
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state"
@@ -9847,7 +9844,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SufficientStatisticsModelInputs'"
           },
-          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', initial_market_pressure_state: 'MarketPressureState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "SufficientStatisticsPath": {
           "field_names": [
@@ -9931,14 +9928,14 @@
             "observed_interval_return",
             "observed_log_price_end",
             "anchor_value_end",
-            "pressure_state_end",
+            "market_pressure_state_end",
             "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str', expected_interval_index: 'int') -> 'SufficientStatisticsPathRecord'"
           },
-          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
+          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', market_pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "SufficientStatisticsReturnComponents": {
           "field_names": [
@@ -10010,6 +10007,8 @@
     },
     "janiform.sufficient_statistics.contracts": {
       "exports": [
+        "MarketPressureParameters",
+        "MarketPressureState",
         "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY",
         "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION",
         "SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
@@ -10059,6 +10058,27 @@
         }
       ],
       "symbols": {
+        "MarketPressureParameters": {
+          "field_names": [
+            "side_imbalance_levels",
+            "physical_measure"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_parameters') -> 'MarketPressureParameters'"
+          },
+          "signature": "(side_imbalance_levels: 'list[float]', physical_measure: 'MarketPressureMeasureParameters') -> 'None'"
+        },
+        "MarketPressureState": {
+          "field_names": [
+            "state_weights"
+          ],
+          "kind": "contract_model",
+          "public_methods": {
+            "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str' = 'market_pressure_state') -> 'MarketPressureState'"
+          },
+          "signature": "(state_weights: 'list[float]') -> 'None'"
+        },
         "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY": {
           "kind": "constant",
           "value": "explicit_interval_aligned_seasonality_factor_and_news_intensity_inputs_without_implicit_resampling.v1"
@@ -10079,13 +10099,14 @@
           "field_names": [
             "hawkes_kernel_parameters",
             "gamma_severity_mark_configuration",
-            "long_variance_parameters"
+            "long_variance_parameters",
+            "market_pressure_parameters"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SufficientStatisticsEquationSpecification'"
           },
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', long_variance_parameters: 'LongVarianceParameters', market_pressure_parameters: 'MarketPressureParameters') -> 'None'"
         },
         "SufficientStatisticsIntervalStatistics": {
           "field_names": [
@@ -10096,13 +10117,16 @@
             "baseline_a_minus",
             "endogenous_a_minus",
             "n_plus",
-            "n_minus"
+            "n_minus",
+            "terminal_excitation_state",
+            "terminal_market_pressure_state",
+            "market_pressure_anchor_increment"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'SufficientStatisticsIntervalStatistics'"
           },
-          "signature": "(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
+          "signature": "(a_plus: 'float', a_minus: 'float', baseline_a_plus: 'float', endogenous_a_plus: 'float', baseline_a_minus: 'float', endogenous_a_minus: 'float', n_plus: 'int', n_minus: 'int', terminal_excitation_state: 'HawkesExcitationState', terminal_market_pressure_state: 'MarketPressureState', market_pressure_anchor_increment: 'float') -> 'None'"
         },
         "SufficientStatisticsModelInputs": {
           "field_names": [
@@ -10111,6 +10135,7 @@
             "initial_excitation_state",
             "long_variance_parameters",
             "initial_long_variance_state",
+            "initial_market_pressure_state",
             "mean_reversion_fitted_parameters",
             "mean_reversion_runtime_interval_anchors",
             "initial_mean_reversion_boundary_state"
@@ -10119,7 +10144,7 @@
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any') -> 'SufficientStatisticsModelInputs'"
           },
-          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(equation_specification: 'SufficientStatisticsEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', long_variance_parameters: 'LongVarianceParameters', initial_long_variance_state: 'LongVarianceState', initial_market_pressure_state: 'MarketPressureState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "SufficientStatisticsPath": {
           "field_names": [
@@ -10203,14 +10228,14 @@
             "observed_interval_return",
             "observed_log_price_end",
             "anchor_value_end",
-            "pressure_state_end",
+            "market_pressure_state_end",
             "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
           "public_methods": {
             "from_mapping": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str', expected_interval_index: 'int') -> 'SufficientStatisticsPathRecord'"
           },
-          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
+          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', market_pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "SufficientStatisticsReturnComponents": {
           "field_names": [

@@ -6,7 +6,7 @@ pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY: &str =
     "positive_u_probes_and_positive_non_unit_z_probes_for_oracle_slice_sampling.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_EXPECTATION_ESTIMATION_POLICY: &str =
     "first_order_finite_difference_of_laplace_and_pgf_slices.v1";
-pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY: &str = "counts_via_fractional_rounding_and_integrated_intensity_via_exponential_with_slice_implied_mean.v1";
+pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY: &str = "counts_via_fractional_rounding_integrated_intensity_via_exponential_and_hidden_terminal_placements_from_seeded_substreams.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_RANDOMNESS_SUBSTREAM_POLICY: &str =
     "reuse_seeded_tick_substream_domains_with_interval_index_for_slice_sampler.v1";
 pub const SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY: &str =
@@ -14,7 +14,7 @@ pub const SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY: &str =
 pub const SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY: &str =
     "path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1";
 pub const SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY: &str =
-    "interval_boundary_drift_then_count_mapped_endogenous_jump_composition.v1";
+    "explicit_terminal_state_replay_from_sampled_interval_statistics.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY: &str =
     "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY: &str =

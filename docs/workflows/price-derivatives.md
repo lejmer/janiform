@@ -1,6 +1,6 @@
 # Price derivatives
 
-Derivative pricing takes a fitted `JaniformModel` and evaluates derivative contracts under the model-implied dynamics. The fitted model supplies the learned activity, return, news, and mean-reversion structure. The pricing request supplies the valuation context and contract terms.
+Derivative pricing takes a fitted `JaniformModel` and evaluates derivative contracts under the model-implied dynamics. The fitted model supplies the learned activity, return, news, mean-reversion, and market-pressure structure. The pricing request supplies the valuation context and contract terms.
 
 This page focuses on pricing workflows after a model has already been fitted.
 

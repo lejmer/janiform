@@ -30,7 +30,7 @@ pub(crate) fn prepare_candidate_generation_input(
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
-        &candidate_generation_input.tick_grid_observation_model,
+        &candidate_generation_input.price_discretization_surface,
     );
 
     let derived_close_open_gap_candidates = derive_close_open_gap_candidates(

@@ -5,10 +5,10 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::hawkes::{
-    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
-    HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
@@ -27,14 +27,15 @@ use super::{
     SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION,
     SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION, SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
     SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY, SufficientStatisticsBoundaryStateUpdateError,
-    SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsGeneratedIntervalReturn,
-    SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalFactorsError,
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError,
-    SufficientStatisticsModelInputs, SufficientStatisticsPath, SufficientStatisticsPathError,
-    SufficientStatisticsPathRecord, SufficientStatisticsReturnComponents,
-    SufficientStatisticsReturnGenerationOptions, SufficientStatisticsRunRequest,
-    SufficientStatisticsRunRequestError, SufficientStatisticsStreamingChunkingSettings,
+    SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY, SufficientStatisticsBoundaryState,
+    SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
+    SufficientStatisticsGeneratedIntervalReturn, SufficientStatisticsIntervalFactors,
+    SufficientStatisticsIntervalFactorsError, SufficientStatisticsIntervalStatistics,
+    SufficientStatisticsIntervalStatisticsError, SufficientStatisticsModelInputs,
+    SufficientStatisticsPath, SufficientStatisticsPathError, SufficientStatisticsPathRecord,
+    SufficientStatisticsReturnComponents, SufficientStatisticsReturnGenerationOptions,
+    SufficientStatisticsRunRequest, SufficientStatisticsRunRequestError,
+    SufficientStatisticsStreamingChunkingSettings,
     SufficientStatisticsStreamingChunkingSettingsError, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
@@ -527,7 +528,7 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
 
     let generated_return = generate_interval_return_from_sampled_statistics(
         driver_parameters,
-        sampled_statistics,
+        sampled_statistics.clone(),
         MarketState::Open,
         open_jump_return,
         closed_gap_return,
@@ -597,7 +598,7 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
 
     let with_breakdown = generate_interval_return_from_sampled_statistics(
         driver_parameters,
-        sampled_statistics,
+        sampled_statistics.clone(),
         MarketState::Closed,
         open_jump_return,
         closed_gap_return,
@@ -651,7 +652,7 @@ fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
 
     let first_generated_return = generate_interval_return_from_sampled_statistics(
         driver_parameters,
-        sampled_statistics,
+        sampled_statistics.clone(),
         MarketState::Closed,
         0.0,
         -0.05,
@@ -675,13 +676,19 @@ fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
 }
 
 #[test]
-fn boundary_state_update_is_consistent_with_shared_transition_api_reference_sequence() {
-    let initial_state = build_initial_state();
+fn boundary_state_update_replays_explicit_terminal_state() {
+    let initial_state = build_initial_boundary_state();
 
-    let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+    let terminal_state = HawkesExcitationState {
+        y_plus_plus: 0.41,
+        y_plus_minus: 0.17,
+        y_minus_plus: 0.23,
+        y_minus_minus: 0.29,
+    };
 
     let sampled_statistics =
-        build_interval_statistics(1.4, 1.1, 3, 2).expect("statistics should be valid");
+        build_interval_statistics_with_terminal_state(1.4, 1.1, 3, 2, terminal_state)
+            .expect("statistics should be valid");
 
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         3,
@@ -695,49 +702,29 @@ fn boundary_state_update_is_consistent_with_shared_transition_api_reference_sequ
         SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY
     );
 
-    let updated_state =
-        update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
-            .expect("boundary-state update should succeed");
+    let updated_state = update_boundary_state_from_interval_statistics(update_snapshot)
+        .expect("boundary-state update should succeed");
 
-    let mut reference_state = evolve_hawkes_state(
-        initial_state,
-        kernel_parameters,
-        HawkesTransitionStep::new(0.75, None, None),
-    )
-    .expect("reference drift step should succeed");
-
-    for _buy_event_position in 0..sampled_statistics.n_plus {
-        reference_state = evolve_hawkes_state(
-            reference_state,
-            kernel_parameters,
-            HawkesTransitionStep::new(0.0, Some(HawkesEventSide::Buy), None),
-        )
-        .expect("reference buy jump step should succeed");
-    }
-
-    for _sell_event_position in 0..sampled_statistics.n_minus {
-        reference_state = evolve_hawkes_state(
-            reference_state,
-            kernel_parameters,
-            HawkesTransitionStep::new(0.0, Some(HawkesEventSide::Sell), None),
-        )
-        .expect("reference sell jump step should succeed");
-    }
-
-    assert_float_close(updated_state.y_plus_plus, reference_state.y_plus_plus);
-    assert_float_close(updated_state.y_plus_minus, reference_state.y_plus_minus);
-    assert_float_close(updated_state.y_minus_plus, reference_state.y_minus_plus);
-    assert_float_close(updated_state.y_minus_minus, reference_state.y_minus_minus);
+    assert_eq!(
+        updated_state,
+        SufficientStatisticsBoundaryState::new(terminal_state, MarketPressureState::neutral())
+    );
 }
 
 #[test]
-fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
-    let initial_state = build_initial_state();
+fn boundary_state_update_does_not_reconstruct_terminal_state_from_counts() {
+    let initial_state = build_initial_boundary_state();
 
-    let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+    let terminal_state = HawkesExcitationState {
+        y_plus_plus: 0.05,
+        y_plus_minus: 0.07,
+        y_minus_plus: 0.11,
+        y_minus_minus: 0.13,
+    };
 
     let sampled_statistics =
-        build_interval_statistics(0.8, 0.6, 4, 5).expect("statistics should be valid");
+        build_interval_statistics_with_terminal_state(0.8, 0.6, 400, 500, terminal_state)
+            .expect("statistics should be valid");
 
     let interval_delta = 0.5;
 
@@ -748,52 +735,68 @@ fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
         sampled_statistics,
     );
 
-    let updated_state =
-        update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
-            .expect("boundary-state mapping update should succeed");
+    let updated_state = update_boundary_state_from_interval_statistics(update_snapshot)
+        .expect("boundary-state replay should succeed");
 
-    let shared_decay_factor = (-kernel_parameters.beta * interval_delta).exp();
-
-    let expected_y_plus_plus = initial_state.y_plus_plus * shared_decay_factor
-        + kernel_parameters.alpha.plus_plus * sampled_statistics.n_plus as f64;
-
-    let expected_y_plus_minus = initial_state.y_plus_minus * shared_decay_factor
-        + kernel_parameters.alpha.plus_minus * sampled_statistics.n_minus as f64;
-
-    let expected_y_minus_plus = initial_state.y_minus_plus * shared_decay_factor
-        + kernel_parameters.alpha.minus_plus * sampled_statistics.n_plus as f64;
-
-    let expected_y_minus_minus = initial_state.y_minus_minus * shared_decay_factor
-        + kernel_parameters.alpha.minus_minus * sampled_statistics.n_minus as f64;
-
-    assert_float_close(updated_state.y_plus_plus, expected_y_plus_plus);
-    assert_float_close(updated_state.y_plus_minus, expected_y_plus_minus);
-    assert_float_close(updated_state.y_minus_plus, expected_y_minus_plus);
-    assert_float_close(updated_state.y_minus_minus, expected_y_minus_minus);
+    assert_eq!(
+        updated_state,
+        SufficientStatisticsBoundaryState::new(terminal_state, MarketPressureState::neutral())
+    );
 }
 
 #[test]
 fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
-    let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
-
     let interval_delta = 1.0;
 
     let sampled_statistics_path = [
-        build_interval_statistics(0.7, 0.5, 2, 1)
-            .expect("first interval statistics should be valid"),
-        build_interval_statistics(0.4, 0.9, 1, 3)
-            .expect("second interval statistics should be valid"),
-        build_interval_statistics(1.1, 0.2, 4, 0)
-            .expect("third interval statistics should be valid"),
+        build_interval_statistics_with_terminal_state(
+            0.7,
+            0.5,
+            2,
+            1,
+            HawkesExcitationState {
+                y_plus_plus: 0.11,
+                y_plus_minus: 0.12,
+                y_minus_plus: 0.13,
+                y_minus_minus: 0.14,
+            },
+        )
+        .expect("first interval statistics should be valid"),
+        build_interval_statistics_with_terminal_state(
+            0.4,
+            0.9,
+            1,
+            3,
+            HawkesExcitationState {
+                y_plus_plus: 0.21,
+                y_plus_minus: 0.22,
+                y_minus_plus: 0.23,
+                y_minus_minus: 0.24,
+            },
+        )
+        .expect("second interval statistics should be valid"),
+        build_interval_statistics_with_terminal_state(
+            1.1,
+            0.2,
+            4,
+            0,
+            HawkesExcitationState {
+                y_plus_plus: 0.31,
+                y_plus_minus: 0.32,
+                y_minus_plus: 0.33,
+                y_minus_minus: 0.34,
+            },
+        )
+        .expect("third interval statistics should be valid"),
     ];
 
-    let mut first_run_state = build_initial_state();
-    let mut second_run_state = build_initial_state();
+    let mut first_run_state = build_initial_boundary_state();
+    let mut second_run_state = build_initial_boundary_state();
 
-    let mut first_run_boundary_states: Vec<HawkesExcitationState> = Vec::new();
-    let mut second_run_boundary_states: Vec<HawkesExcitationState> = Vec::new();
+    let mut first_run_boundary_states: Vec<SufficientStatisticsBoundaryState> = Vec::new();
+    let mut second_run_boundary_states: Vec<SufficientStatisticsBoundaryState> = Vec::new();
 
-    for (interval_index, sampled_statistics) in sampled_statistics_path.iter().copied().enumerate()
+    for (interval_index, sampled_statistics) in sampled_statistics_path.iter().cloned().enumerate()
     {
         let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
             interval_index,
@@ -802,14 +805,13 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
             sampled_statistics,
         );
 
-        first_run_state =
-            update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
-                .expect("first run carryover update should succeed");
+        first_run_state = update_boundary_state_from_interval_statistics(update_snapshot)
+            .expect("first run carryover update should succeed");
 
-        first_run_boundary_states.push(first_run_state);
+        first_run_boundary_states.push(first_run_state.clone());
     }
 
-    for (interval_index, sampled_statistics) in sampled_statistics_path.iter().copied().enumerate()
+    for (interval_index, sampled_statistics) in sampled_statistics_path.iter().cloned().enumerate()
     {
         let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
             interval_index,
@@ -818,11 +820,10 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
             sampled_statistics,
         );
 
-        second_run_state =
-            update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
-                .expect("second run carryover update should succeed");
+        second_run_state = update_boundary_state_from_interval_statistics(update_snapshot)
+            .expect("second run carryover update should succeed");
 
-        second_run_boundary_states.push(second_run_state);
+        second_run_boundary_states.push(second_run_state.clone());
     }
 
     assert_eq!(first_run_boundary_states, second_run_boundary_states);
@@ -831,19 +832,17 @@ fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
 
 #[test]
 fn boundary_state_update_failures_include_interval_and_state_snapshot_metadata() {
-    let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
-
     let sampled_statistics =
         build_interval_statistics(0.7, 0.5, 2, 1).expect("statistics should be valid");
 
     let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
         9,
         0.0,
-        build_initial_state(),
+        build_initial_boundary_state(),
         sampled_statistics,
     );
 
-    let error = update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
+    let error = update_boundary_state_from_interval_statistics(update_snapshot.clone())
         .expect_err("zero interval delta should fail boundary-state update");
 
     assert!(matches!(
@@ -855,47 +854,6 @@ fn boundary_state_update_failures_include_interval_and_state_snapshot_metadata()
         if snapshot.interval_index == 9
             && snapshot.state_before_update == update_snapshot.state_before_update
             && snapshot.sampled_statistics == update_snapshot.sampled_statistics
-    ));
-}
-
-#[test]
-fn boundary_state_update_wraps_transition_failures_with_snapshot_metadata() {
-    let invalid_kernel_parameters = HawkesKernelParameters {
-        lambda_bar: 0.8,
-        beta: 0.0,
-        alpha: HawkesKernelLoadings {
-            plus_plus: 0.2,
-            plus_minus: 0.1,
-            minus_plus: 0.1,
-            minus_minus: 0.25,
-        },
-        rho: HawkesKernelLoadings {
-            plus_plus: 0.08,
-            plus_minus: 0.04,
-            minus_plus: 0.05,
-            minus_minus: 0.1,
-        },
-    };
-
-    let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
-        4,
-        0.5,
-        build_initial_state(),
-        build_interval_statistics(0.7, 0.5, 2, 1).expect("statistics should be valid"),
-    );
-
-    let error =
-        update_boundary_state_from_interval_statistics(invalid_kernel_parameters, update_snapshot)
-            .expect_err("invalid beta should fail transition composition");
-
-    assert!(matches!(
-        error,
-        SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
-            snapshot,
-            source: HawkesTransitionError::InvalidBeta { value: 0.0 }
-        }
-        if snapshot.interval_index == 4
-            && snapshot.state_before_update == update_snapshot.state_before_update
     ));
 }
 
@@ -938,7 +896,7 @@ fn transform_slice_sampler_is_seed_deterministic_for_repeated_sampling() {
         solve_sufficient_statistics_transform_slices(equation_specification, context, settings)
             .expect("transform slices should solve");
 
-    let first_sample = sample_interval_statistics_from_transform_slices(123, slices)
+    let first_sample = sample_interval_statistics_from_transform_slices(123, slices.clone())
         .expect("first sampling run should succeed");
     let second_sample = sample_interval_statistics_from_transform_slices(123, slices)
         .expect("second sampling run should succeed");
@@ -966,7 +924,7 @@ fn transform_slice_sampler_uses_normalized_slice_implied_integrated_intensity_me
     let expected_a_minus = (baseline_transform - slices.a_minus_transform.real)
         / (settings.a_minus_u * baseline_transform);
 
-    let first_sample = sample_interval_statistics_from_transform_slices(11, slices)
+    let first_sample = sample_interval_statistics_from_transform_slices(11, slices.clone())
         .expect("first sampling run should succeed");
 
     let second_sample = sample_interval_statistics_from_transform_slices(29, slices)
@@ -985,7 +943,7 @@ fn transform_slice_batch_sampler_is_seed_deterministic_for_repeated_sampling() {
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let first_interval_slices = solve_sufficient_statistics_transform_slices(
-        equation_specification,
+        equation_specification.clone(),
         build_transform_slice_context(0, 1.1, 0.2, 1.0),
         settings,
     )
@@ -1017,13 +975,13 @@ fn transform_slice_streaming_sampler_matches_batch_sampler_with_ordered_complete
 
     let slices_batch = vec![
         solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            equation_specification.clone(),
             build_transform_slice_context(0, 1.1, 0.2, 1.0),
             settings,
         )
         .expect("first interval slices should solve"),
         solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            equation_specification.clone(),
             build_transform_slice_context(1, 0.8, 0.15, 1.0),
             settings,
         )
@@ -1063,7 +1021,7 @@ fn transform_slice_streaming_sampler_matches_batch_sampler_with_ordered_complete
 
     let streamed_statistics: Vec<SufficientStatisticsIntervalStatistics> = streamed_chunks
         .iter()
-        .flat_map(|chunk| chunk.records.iter().copied())
+        .flat_map(|chunk| chunk.records.iter().cloned())
         .collect();
 
     let batched_statistics =
@@ -1081,13 +1039,13 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
 
     let first_path = vec![
         solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            equation_specification.clone(),
             build_transform_slice_context(0, 1.1, 0.2, 1.0),
             settings,
         )
         .expect("first path first interval should solve"),
         solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            equation_specification.clone(),
             build_transform_slice_context(1, 0.85, 0.13, 1.0),
             settings,
         )
@@ -1096,13 +1054,13 @@ fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning
 
     let second_path = vec![
         solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            equation_specification.clone(),
             build_transform_slice_context(0, 0.9, 0.11, 1.0),
             settings,
         )
         .expect("second path first interval should solve"),
         solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            equation_specification.clone(),
             build_transform_slice_context(1, 0.75, 0.09, 1.0),
             settings,
         )
@@ -1252,7 +1210,7 @@ fn transform_slice_sampler_uses_modulus_for_finite_complex_transform_inputs() {
     )
     .expect("finite transform payload should construct");
 
-    let sampled_statistics = sample_interval_statistics_from_transform_slices(8, slices)
+    let sampled_statistics = sample_interval_statistics_from_transform_slices(8, slices.clone())
         .expect("finite complex transform slice should sample successfully");
 
     let expected_a_plus = (slices.baseline_transform.norm() - slices.a_plus_transform.norm())
@@ -1342,6 +1300,7 @@ fn build_transform_slice_context(
         .expect("slice context news_intensity should be valid"),
         delta,
         build_initial_state(),
+        janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
     )
     .expect("slice context should be valid")
 }
@@ -1369,6 +1328,7 @@ fn build_equation_specification() -> ExponentialAffineTransformEquationSpecifica
         kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(1.8).expect("gamma marks should be valid"),
         LongVarianceParameters::neutral(),
+        MarketPressureParameters::no_anchor_impact(),
     )
     .expect("equation specification should be valid")
 }
@@ -1388,24 +1348,20 @@ fn build_model_inputs_for_grid(
         )
         .expect("nig configuration should be valid"),
         initial_excitation_state: build_initial_state(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion should construct"),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
-            0.0,
-            vec![0.0; interval_count],
             vec![0.0; interval_count],
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-            0.0, 0.0, 0.0, 0.0,
-        )
-        .expect("disabled mean-reversion boundary state should construct"),
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     })
     .expect("model inputs should be valid")
 }
@@ -1425,9 +1381,8 @@ fn build_sufficient_statistics_path_record(
         sufficient_statistics,
         return_components,
         return_components.total_return,
+        return_components.total_return,
         observed_log_price_end,
-        observed_log_price_end,
-        0.0,
         0.0,
         observed_log_price_end,
     )
@@ -1440,7 +1395,33 @@ fn build_interval_statistics(
     n_plus: u64,
     n_minus: u64,
 ) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError> {
-    SufficientStatisticsIntervalStatistics::try_new(a_plus, 0.0, a_minus, 0.0, n_plus, n_minus)
+    build_interval_statistics_with_terminal_state(
+        a_plus,
+        a_minus,
+        n_plus,
+        n_minus,
+        build_initial_state(),
+    )
+}
+
+fn build_interval_statistics_with_terminal_state(
+    a_plus: f64,
+    a_minus: f64,
+    n_plus: u64,
+    n_minus: u64,
+    terminal_excitation_state: HawkesExcitationState,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError> {
+    SufficientStatisticsIntervalStatistics::try_new(
+        a_plus,
+        0.0,
+        a_minus,
+        0.0,
+        n_plus,
+        n_minus,
+        terminal_excitation_state,
+        janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
+        0.0,
+    )
 }
 
 fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDriverParameters {
@@ -1479,6 +1460,10 @@ fn build_initial_state() -> HawkesExcitationState {
         y_minus_plus: 0.3,
         y_minus_minus: 0.4,
     }
+}
+
+fn build_initial_boundary_state() -> SufficientStatisticsBoundaryState {
+    SufficientStatisticsBoundaryState::new(build_initial_state(), MarketPressureState::neutral())
 }
 
 fn assert_float_close(left: f64, right: f64) {

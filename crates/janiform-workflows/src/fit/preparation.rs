@@ -141,12 +141,6 @@ pub struct FitPreparationConfiguration {
     /// Opt-in extended diagnostics.
     #[serde(default)]
     pub diagnostics: CalibrationDiagnosticsRequest,
-    /// Optional stylized-fact Huber cutoff override.
-    #[serde(default)]
-    pub stylized_fact_huber_cutoff: Option<f64>,
-    /// Optional stylized-fact admissibility z-threshold override.
-    #[serde(default)]
-    pub stylized_fact_admissibility_z_threshold: Option<f64>,
     /// Default mean-reversion configuration.
     pub default_endogenous_mean_reversion_configuration:
         CalibrationMarketDataMeanReversionConfiguration,
@@ -752,11 +746,6 @@ fn build_preparation_request(
             .configuration
             .joint_refinement_audit_option_pricing_enabled,
         diagnostics: input.request.configuration.diagnostics.clone(),
-        stylized_fact_huber_cutoff: input.request.configuration.stylized_fact_huber_cutoff,
-        stylized_fact_admissibility_z_threshold: input
-            .request
-            .configuration
-            .stylized_fact_admissibility_z_threshold,
         known_news_inputs,
         mean_reversion: mean_reversion_configuration(input.request, input.workflow_scope),
     })

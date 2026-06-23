@@ -94,31 +94,6 @@ pub(super) fn build_stage_parameter_artifact_input(
                 },
             ))
         }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
-            let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
-                "successful observation-models stage is missing its payload".to_string()
-            })?;
-            let metadata = report.metadata.as_ref().ok_or_else(|| {
-                "successful observation-models stage is missing metadata".to_string()
-            })?;
-
-            Ok(Box::new(
-                janiform_calibration_artifacts::ObservationModelsStageParameterArtifactInput {
-                    metadata: build_stage_parameter_metadata(
-                        metadata.stage_output_schema_version,
-                        metadata.run_global_seed,
-                        metadata.stage_seed,
-                        metadata.stage_seed_source,
-                        metadata.stage_seed_derivation_policy,
-                        metadata.solver_settings.clone(),
-                    ),
-                    timestamp_batching_observation_model: payload
-                        .timestamp_batching_observation_model
-                        .clone(),
-                    diagnostics: payload.diagnostics.clone(),
-                },
-            ))
-        }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
                 "successful return-components stage is missing its payload".to_string()
@@ -157,6 +132,7 @@ pub(super) fn build_stage_parameter_artifact_input(
                         },
                     ),
                     selected_candidate_id: payload.selected_candidate_id.clone(),
+                    source_window_open_exposure_hours: payload.source_window_open_exposure_hours,
                     fitted_parameters: payload.fitted_parameters.clone(),
                     candidate_generation_policy: payload.candidate_generation_policy.to_string(),
                     objective_weighting_policy: payload.objective_weighting_policy.to_string(),
@@ -264,6 +240,9 @@ pub(super) fn build_stage_parameter_artifact_input(
                         .effective_return_components_payload
                         .selected_candidate_id
                         .clone(),
+                    source_window_open_exposure_hours: payload
+                        .effective_return_components_payload
+                        .source_window_open_exposure_hours,
                     effective_fitted_parameters: payload
                         .effective_return_components_payload
                         .fitted_parameters
@@ -311,7 +290,7 @@ pub(super) fn build_stage_parameter_artifact_input(
                         metadata.stage_seed_derivation_policy,
                         metadata.solver_settings.clone(),
                     ),
-                    fitted_parameters: payload.fitted_parameters.clone(),
+                    fitted_parameters: payload.fitted_parameters,
                     diagnostics: payload.diagnostics.clone(),
                     return_components_input_transport: payload.return_components_input_transport,
                     return_components_selected_candidate_id: payload

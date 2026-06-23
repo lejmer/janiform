@@ -29,12 +29,15 @@ use super::super::{
     joint_refinement_has_parallel_worker_capacity, option_pricing_execution_failure_message,
     planned_restart_work_item_labels, simulation_infrastructure_failure_message,
 };
+use super::parameter_space::movable_parameter_count;
 
-// Joint restart direct search uses binary mesh refinement after a failed complete
-// poll, then budgets one incumbent evaluation plus two complete poll rounds.
-pub(super) const JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR: usize = 2;
-const JOINT_REFINEMENT_DIRECT_SEARCH_COMPLETE_POLL_ROUND_COUNT: usize =
-    JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR;
+pub(super) const JOINT_REFINEMENT_RESTART_FAILED_SEARCH_REFINEMENT_DIVISOR: usize = 2;
+
+// Restart search evaluates one complete positive-spanning geometry round, then
+// one round after the first accept or mesh-refinement decision.
+const JOINT_REFINEMENT_RESTART_COMPLETE_SEARCH_ROUND_COUNT: usize =
+    JOINT_REFINEMENT_RESTART_FAILED_SEARCH_REFINEMENT_DIVISOR;
+const JOINT_REFINEMENT_RESTART_TRUST_REGION_PROPOSAL_COUNT: usize = 4;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JointRefinementBudgetSchedule {
     pub(crate) restart_count: usize,
@@ -79,12 +82,19 @@ struct RestartCandidateProgress<'a> {
     finished: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct RestartObjectiveResidual {
+    pub(super) residual_id: String,
+    pub(super) objective_residual: f64,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct RestartObjectiveEvaluation {
     pub(super) objective: f64,
     pub(super) admissibility_blocker_count: usize,
     pub(super) max_standardized_residual: Option<f64>,
     pub(super) exact_likelihood_evaluator_counts: Option<ContinuousLikelihoodEvaluatorCounts>,
+    pub(super) residuals: Vec<RestartObjectiveResidual>,
 }
 
 pub(crate) struct JointRefinementRestartOptimizationOutput {
@@ -239,7 +249,7 @@ fn optimize_restart_seeds_parallel(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     completed_restart_store: Option<&mut JointRefinementResumeStore>,
 ) -> JointRefinementRestartOptimizationOutput {
-    let mut output = super::restart_probe_pool::optimize_restart_seeds_batched_poll_pool(
+    let mut output = super::restart_probe_pool::optimize_restart_seeds_trust_region_pool(
         restart_seeds,
         context,
         solver_settings,
@@ -301,22 +311,29 @@ pub(crate) fn desired_joint_refinement_restart_candidate_budget(
 
 pub(crate) fn joint_refinement_restart_full_vector_direct_search_settings(
     solver_settings: &CalibrationOptimizerSettings,
-    active_parameter_dimension: usize,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
 ) -> AdaptiveDirectSearchSettings {
-    let poll_direction_count = active_parameter_dimension.saturating_mul(2).max(1);
+    let active_parameter_count = movable_parameter_count(lower_bounds, upper_bounds);
+    let interpolation_direction_count = active_parameter_count
+        .saturating_mul(2)
+        .saturating_add(usize::from(active_parameter_count > 1).saturating_mul(2));
+    let complete_search_round_candidate_count = interpolation_direction_count
+        .saturating_add(JOINT_REFINEMENT_RESTART_TRUST_REGION_PROPOSAL_COUNT)
+        .max(1);
 
     AdaptiveDirectSearchSettings {
         absolute_tolerance: solver_settings.absolute_tolerance,
         relative_tolerance: solver_settings.relative_tolerance,
         initial_mesh_divisor: joint_refinement_restart_full_vector_initial_mesh_divisor(
-            active_parameter_dimension,
+            active_parameter_count,
         ),
         failed_poll_mesh_refinement_divisor:
-            JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR,
+            JOINT_REFINEMENT_RESTART_FAILED_SEARCH_REFINEMENT_DIVISOR,
         evaluation_budget: 1usize.saturating_add(
-            poll_direction_count
+            complete_search_round_candidate_count
                 .max(1)
-                .saturating_mul(JOINT_REFINEMENT_DIRECT_SEARCH_COMPLETE_POLL_ROUND_COUNT),
+                .saturating_mul(JOINT_REFINEMENT_RESTART_COMPLETE_SEARCH_ROUND_COUNT),
         ),
     }
 }
@@ -858,7 +875,7 @@ fn optimize_restart_cycle(
         };
     };
 
-    restart_progress.record_evaluation(outer_cycle, Some(initial_objective));
+    restart_progress.record_evaluation(outer_cycle, Some(&initial_objective));
 
     let mut pending_initial_objective = Some(initial_objective);
     let mut evaluate_full_vector = |parameter_vector: &[f64]| -> Option<f64> {
@@ -881,7 +898,7 @@ fn optimize_restart_cycle(
             solver_settings,
         );
 
-        restart_progress.record_evaluation(outer_cycle, objective);
+        restart_progress.record_evaluation(outer_cycle, objective.as_ref());
 
         objective.map(|evaluation| evaluation.objective)
     };
@@ -892,7 +909,8 @@ fn optimize_restart_cycle(
         context.upper_bounds.as_slice(),
         joint_refinement_restart_full_vector_direct_search_settings(
             solver_settings,
-            current_vector.len(),
+            context.lower_bounds.as_slice(),
+            context.upper_bounds.as_slice(),
         ),
         &mut evaluate_full_vector,
     );
@@ -1038,7 +1056,58 @@ fn evaluate_full_parameter_vector_objective(
             exact_likelihood_evaluator_counts: Some(
                 candidate_evaluation.exact_likelihood_evaluator_counts,
             ),
+            residuals: restart_objective_residuals(&candidate_evaluation.breakdown),
         })
+}
+
+fn restart_objective_residuals(
+    breakdown: &janiform_calibration_artifacts::JointRefinementStageObjectiveBreakdown,
+) -> Vec<RestartObjectiveResidual> {
+    breakdown
+        .family_losses
+        .iter()
+        .flat_map(|family| {
+            if family.unidentified
+                || family.rank == 0
+                || family.loss < 0.0
+                || family.whitened_coordinates.is_empty()
+            {
+                return Vec::new();
+            }
+
+            let rank_scale = (family.rank as f64).sqrt();
+            let coordinate_ids = breakdown
+                .term_diagnostics
+                .iter()
+                .filter(|term| term.family_id == family.family_id)
+                .map(|term| term.term_id.as_str())
+                .collect::<Vec<_>>();
+
+            family
+                .whitened_coordinates
+                .iter()
+                .enumerate()
+                .filter_map(|(coordinate_position, whitened_coordinate)| {
+                    let objective_residual = whitened_coordinate / rank_scale;
+
+                    objective_residual
+                        .is_finite()
+                        .then(|| RestartObjectiveResidual {
+                            residual_id: coordinate_ids
+                                .get(coordinate_position)
+                                .map(|coordinate_id| (*coordinate_id).to_string())
+                                .unwrap_or_else(|| {
+                                    format!(
+                                        "{}.whitened_coordinate_{coordinate_position:02}",
+                                        family.family_id
+                                    )
+                                }),
+                            objective_residual,
+                        })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn full_vector_search_fidelity_tier() -> JointRefinementFidelityTier {
@@ -1136,7 +1205,8 @@ pub(super) fn restart_cycle_evaluation_budget(
 ) -> usize {
     joint_refinement_restart_full_vector_direct_search_settings(
         solver_settings,
-        context.active_parameter_layout.vector_length(),
+        context.lower_bounds.as_slice(),
+        context.upper_bounds.as_slice(),
     )
     .evaluation_budget
 }
@@ -1191,7 +1261,7 @@ impl<'a> RestartCandidateProgress<'a> {
     fn record_evaluation(
         &mut self,
         completed_outer_cycles: usize,
-        evaluation: Option<RestartObjectiveEvaluation>,
+        evaluation: Option<&RestartObjectiveEvaluation>,
     ) {
         self.current_evaluation_count = self.current_evaluation_count.saturating_add(1);
 
@@ -1269,7 +1339,7 @@ impl<'a> RestartCandidateProgress<'a> {
         completed_outer_cycles: Option<usize>,
         evaluation_progress_percent: Option<usize>,
         active_restart_count: Option<usize>,
-        evaluation: Option<RestartObjectiveEvaluation>,
+        evaluation: Option<&RestartObjectiveEvaluation>,
     ) {
         let current_global_loss = evaluation.map(|evaluation| evaluation.objective);
 
@@ -1380,8 +1450,9 @@ fn emit_restart_progress(input: RestartProgressEmissionInput<'_>) {
             cumulative_local_evaluation_count: Some(
                 progress_state.cumulative_local_evaluation_count,
             ),
-            current_global_loss: Some(final_display_objective),
+            current_global_loss: None,
             current_restart_best_global_loss: None,
+            current_final_global_loss: Some(final_display_objective),
             current_candidate_assessment: None,
             best_restart_id,
             best_global_loss,
@@ -1488,16 +1559,20 @@ mod tests {
     use std::sync::atomic::Ordering;
     use std::sync::mpsc;
 
-    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use janiform_calibration_artifacts::{
+        CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic,
+        CalibrationLossTermDiagnostic, CalibrationLossTermKind, CalibrationOptimizerSettings,
+        JointRefinementStageObjectiveBreakdown,
+    };
 
     use super::{
         RestartCandidateProgress, RestartObjectiveEvaluation, RestartProgressCounters,
         RestartProgressState, full_vector_refresh_fidelity_tier, full_vector_search_fidelity_tier,
         joint_refinement_restart_full_vector_direct_search_settings,
         precheck_hawkes_structural_domain, precheck_nig_return_composition_domain,
-        precheck_restart_seed_vector_contract, restart_stop_reason_allows_next_outer_cycle,
-        runtime_branching_workload_is_infeasible, select_restart_stop_reason,
-        summary_simulation_event_capacity_is_infeasible,
+        precheck_restart_seed_vector_contract, restart_objective_residuals,
+        restart_stop_reason_allows_next_outer_cycle, runtime_branching_workload_is_infeasible,
+        select_restart_stop_reason, summary_simulation_event_capacity_is_infeasible,
     };
     use crate::stages::joint_refinement::execution::{
         JointRefinementFidelityTier, test_joint_fitted_parameters,
@@ -1509,7 +1584,134 @@ mod tests {
             admissibility_blocker_count: 0,
             max_standardized_residual: None,
             exact_likelihood_evaluator_counts: None,
+            residuals: Vec::new(),
         }
+    }
+
+    #[test]
+    fn restart_objective_residuals_use_family_loss_geometry() {
+        let breakdown = JointRefinementStageObjectiveBreakdown {
+            global_loss: 6.5,
+            family_losses: vec![
+                CalibrationLossFamilyDiagnostic {
+                    family_id: "return_shape".to_string(),
+                    coordinate_count: 2,
+                    rank: 2,
+                    whitened_coordinates: vec![3.0, 0.0],
+                    loss: 9.0,
+                    max_standardized_residual: 4.0,
+                    worst_term_id: Some("return_shape.q01".to_string()),
+                    unidentified: false,
+                },
+                CalibrationLossFamilyDiagnostic {
+                    family_id: "activity_shape".to_string(),
+                    coordinate_count: 2,
+                    rank: 2,
+                    whitened_coordinates: vec![0.0, 2.0],
+                    loss: 4.0,
+                    max_standardized_residual: 3.0,
+                    worst_term_id: Some("activity_shape.hour_12".to_string()),
+                    unidentified: false,
+                },
+                CalibrationLossFamilyDiagnostic {
+                    family_id: "unidentified".to_string(),
+                    coordinate_count: 2,
+                    rank: 0,
+                    whitened_coordinates: Vec::new(),
+                    loss: 25.0,
+                    max_standardized_residual: 5.0,
+                    worst_term_id: None,
+                    unidentified: true,
+                },
+            ],
+            term_diagnostics: vec![
+                CalibrationLossTermDiagnostic {
+                    term_id: "return_shape.q01".to_string(),
+                    family_id: "return_shape".to_string(),
+                    term_kind: CalibrationLossTermKind::DiagnosticCoordinate,
+                    observed_value: Some(0.0),
+                    model_value: Some(1.0),
+                    observed_standard_error: None,
+                    model_standard_error: None,
+                    uncertainty_scale: Some(1.0),
+                    standardized_residual: Some(100.0),
+                    covariance_diagonal: Some(1.0),
+                    loss: 1_666.6666666666667,
+                    admissibility_blocker: false,
+                },
+                CalibrationLossTermDiagnostic {
+                    term_id: "return_shape.q99".to_string(),
+                    family_id: "return_shape".to_string(),
+                    term_kind: CalibrationLossTermKind::DiagnosticCoordinate,
+                    observed_value: Some(0.0),
+                    model_value: Some(1.0),
+                    observed_standard_error: None,
+                    model_standard_error: None,
+                    uncertainty_scale: Some(1.0),
+                    standardized_residual: Some(0.0),
+                    covariance_diagonal: Some(1.0),
+                    loss: 0.0,
+                    admissibility_blocker: false,
+                },
+                CalibrationLossTermDiagnostic {
+                    term_id: "activity_shape.hour_00".to_string(),
+                    family_id: "activity_shape".to_string(),
+                    term_kind: CalibrationLossTermKind::DiagnosticCoordinate,
+                    observed_value: Some(0.0),
+                    model_value: Some(1.0),
+                    observed_standard_error: None,
+                    model_standard_error: None,
+                    uncertainty_scale: Some(1.0),
+                    standardized_residual: Some(0.0),
+                    covariance_diagonal: Some(1.0),
+                    loss: 0.0,
+                    admissibility_blocker: false,
+                },
+                CalibrationLossTermDiagnostic {
+                    term_id: "activity_shape.hour_12".to_string(),
+                    family_id: "activity_shape".to_string(),
+                    term_kind: CalibrationLossTermKind::DiagnosticCoordinate,
+                    observed_value: Some(0.0),
+                    model_value: Some(1.0),
+                    observed_standard_error: None,
+                    model_standard_error: None,
+                    uncertainty_scale: Some(1.0),
+                    standardized_residual: Some(3.0),
+                    covariance_diagonal: Some(1.0),
+                    loss: 9.0,
+                    admissibility_blocker: false,
+                },
+            ],
+            hard_constraint_diagnostics: Vec::new(),
+            admissibility: CalibrationLossAdmissibility {
+                admissible: true,
+                max_standardized_residual: 100.0,
+                excess_loss: 0.0,
+                blockers: Vec::new(),
+            },
+        };
+
+        assert_eq!(
+            restart_objective_residuals(&breakdown),
+            vec![
+                super::RestartObjectiveResidual {
+                    residual_id: "return_shape.q01".to_string(),
+                    objective_residual: 3.0 / 2.0_f64.sqrt(),
+                },
+                super::RestartObjectiveResidual {
+                    residual_id: "return_shape.q99".to_string(),
+                    objective_residual: 0.0,
+                },
+                super::RestartObjectiveResidual {
+                    residual_id: "activity_shape.hour_00".to_string(),
+                    objective_residual: 0.0,
+                },
+                super::RestartObjectiveResidual {
+                    residual_id: "activity_shape.hour_12".to_string(),
+                    objective_residual: 2.0 / 2.0_f64.sqrt(),
+                },
+            ],
+        );
     }
 
     #[test]
@@ -1555,10 +1757,12 @@ mod tests {
             finished: false,
         };
 
-        halton_progress.record_evaluation(1, Some(restart_objective_for_test(10.0)));
+        let initial_halton_objective = restart_objective_for_test(10.0);
+        halton_progress.record_evaluation(1, Some(&initial_halton_objective));
         progress_receiver.recv().unwrap();
 
-        halton_progress.record_evaluation(1, Some(restart_objective_for_test(4.0)));
+        let improved_halton_objective = restart_objective_for_test(4.0);
+        halton_progress.record_evaluation(1, Some(&improved_halton_objective));
 
         let progress_update = progress_receiver.recv().unwrap();
 
@@ -1594,7 +1798,8 @@ mod tests {
             finished: false,
         };
 
-        restart_progress.record_evaluation(1, Some(restart_objective_for_test(3.0)));
+        let restart_objective = restart_objective_for_test(3.0);
+        restart_progress.record_evaluation(1, Some(&restart_objective));
 
         let progress_update = progress_receiver.recv().unwrap();
 
@@ -1627,14 +1832,25 @@ mod tests {
             CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 1.0e-6, 10.0)
                 .expect("solver settings should validate");
 
-        let four_dimensional_settings =
-            joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 4);
-        let one_dimensional_settings =
-            joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 1);
+        let four_dimensional_lower_bounds = vec![-1.0, -1.0, -1.0, -1.0];
+        let four_dimensional_upper_bounds = vec![1.0, 1.0, 1.0, 1.0];
+        let four_dimensional_settings = joint_refinement_restart_full_vector_direct_search_settings(
+            &solver_settings,
+            four_dimensional_lower_bounds.as_slice(),
+            four_dimensional_upper_bounds.as_slice(),
+        );
+
+        let one_movable_dimension_lower_bounds = vec![-1.0, 0.0, 0.0];
+        let one_movable_dimension_upper_bounds = vec![1.0, 0.0, 0.0];
+        let one_dimensional_settings = joint_refinement_restart_full_vector_direct_search_settings(
+            &solver_settings,
+            one_movable_dimension_lower_bounds.as_slice(),
+            one_movable_dimension_upper_bounds.as_slice(),
+        );
 
         assert_eq!(four_dimensional_settings.initial_mesh_divisor, 5);
-        assert_eq!(four_dimensional_settings.evaluation_budget, 17);
-        assert_eq!(one_dimensional_settings.evaluation_budget, 5);
+        assert_eq!(four_dimensional_settings.evaluation_budget, 29);
+        assert_eq!(one_dimensional_settings.evaluation_budget, 13);
     }
 
     #[test]

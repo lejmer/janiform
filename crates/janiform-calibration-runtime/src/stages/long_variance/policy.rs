@@ -13,8 +13,9 @@ const LONG_VARIANCE_SHORTEST_IDENTIFICATION_HORIZON_HOURS: f64 =
     NANOS_PER_FIVE_MINUTES as f64 / NANOS_PER_HOUR as f64;
 
 // Stationary unit mean is decomposed into buy-event feedback drift,
-// sell-event feedback drift, and the retained mean-reversion level.
-const LONG_VARIANCE_STATIONARY_COMPONENT_COUNT: usize = 3;
+// sell-event feedback drift, return-energy feedback drift, and the retained
+// mean-reversion level.
+const LONG_VARIANCE_STATIONARY_COMPONENT_COUNT: usize = 4;
 
 pub(crate) fn long_variance_mean_reversion_rate_calibration_upper_bound() -> f64 {
     std::f64::consts::LN_2 / LONG_VARIANCE_SHORTEST_IDENTIFICATION_HORIZON_HOURS
@@ -51,7 +52,7 @@ pub(crate) fn long_variance_retained_stationary_level_acceptance_floor() -> f64 
     acceptance_floor
 }
 
-pub(crate) fn long_variance_event_feedback_drift_budget(mean_reversion_rate: f64) -> Option<f64> {
+pub(crate) fn long_variance_feedback_drift_budget(mean_reversion_rate: f64) -> Option<f64> {
     if !mean_reversion_rate.is_finite() || mean_reversion_rate <= 0.0 {
         return None;
     }
@@ -79,6 +80,14 @@ fn long_variance_stationary_component_count_as_f64() -> f64 {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct LongVarianceSideEventLoadings {
+    pub(crate) buy_event_loading: f64,
+    pub(crate) sell_event_loading: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LongVarianceFeedbackLoadings {
+    pub(crate) stationary_return_energy_rate_per_hour: f64,
+    pub(crate) return_energy_loading: f64,
     pub(crate) buy_event_loading: f64,
     pub(crate) sell_event_loading: f64,
 }
@@ -114,33 +123,40 @@ pub(crate) fn long_variance_stationary_event_rates_for_hawkes_kernel(
     })
 }
 
-pub(crate) fn project_long_variance_event_loadings_to_stationary_budget(
-    event_loadings: LongVarianceSideEventLoadings,
+pub(crate) fn project_long_variance_feedback_loadings_to_stationary_budget(
+    feedback_loadings: LongVarianceFeedbackLoadings,
     stationary_event_rates: LongVarianceStationaryEventRates,
     mean_reversion_rate: f64,
-) -> LongVarianceSideEventLoadings {
-    let event_loading_drift = event_loadings.buy_event_loading
+) -> LongVarianceFeedbackLoadings {
+    let feedback_loading_drift = feedback_loadings.buy_event_loading
         * stationary_event_rates.buy_event_rate_per_hour
-        + event_loadings.sell_event_loading * stationary_event_rates.sell_event_rate_per_hour;
+        + feedback_loadings.sell_event_loading * stationary_event_rates.sell_event_rate_per_hour
+        + feedback_loadings.return_energy_loading
+            * feedback_loadings.stationary_return_energy_rate_per_hour;
 
-    let Some(event_feedback_drift_budget) =
-        long_variance_event_feedback_drift_budget(mean_reversion_rate)
+    let Some(feedback_drift_budget) = long_variance_feedback_drift_budget(mean_reversion_rate)
     else {
-        return LongVarianceSideEventLoadings {
+        return LongVarianceFeedbackLoadings {
+            stationary_return_energy_rate_per_hour: feedback_loadings
+                .stationary_return_energy_rate_per_hour,
+            return_energy_loading: 0.0,
             buy_event_loading: 0.0,
             sell_event_loading: 0.0,
         };
     };
 
-    if !event_loading_drift.is_finite() || event_loading_drift <= event_feedback_drift_budget {
-        return event_loadings;
+    if !feedback_loading_drift.is_finite() || feedback_loading_drift <= feedback_drift_budget {
+        return feedback_loadings;
     }
 
-    let scale = event_feedback_drift_budget / event_loading_drift;
+    let scale = feedback_drift_budget / feedback_loading_drift;
 
-    LongVarianceSideEventLoadings {
-        buy_event_loading: event_loadings.buy_event_loading * scale,
-        sell_event_loading: event_loadings.sell_event_loading * scale,
+    LongVarianceFeedbackLoadings {
+        stationary_return_energy_rate_per_hour: feedback_loadings
+            .stationary_return_energy_rate_per_hour,
+        return_energy_loading: feedback_loadings.return_energy_loading * scale,
+        buy_event_loading: feedback_loadings.buy_event_loading * scale,
+        sell_event_loading: feedback_loadings.sell_event_loading * scale,
     }
 }
 

@@ -125,6 +125,18 @@ pub(crate) fn finite_long_variance_squared_returns(
         .collect()
 }
 
+pub(crate) fn mean_long_variance_squared_return(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Option<f64> {
+    let squared_returns = finite_long_variance_squared_returns(intervals);
+    if squared_returns.is_empty() {
+        return None;
+    }
+
+    let mean_squared_return = arithmetic_mean_or_zero(squared_returns.as_slice());
+    (mean_squared_return.is_finite() && mean_squared_return > 0.0).then_some(mean_squared_return)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct IntervalAggregationAccumulator {
     interval_start_utc_nanos: i64,

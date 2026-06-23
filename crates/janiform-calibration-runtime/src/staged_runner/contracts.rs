@@ -13,13 +13,12 @@ use super::{
     LongVarianceStageProgressPhase, MeanReversionStageExecutionInput,
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
     MeanReversionStageProgressPhase, NewsShocksStageExecutionMetadata,
-    NewsShocksStageExecutionReport, ObservationModelsStageExecutionInput,
-    ObservationModelsStageExecutionMetadata, ObservationModelsStageExecutionReport,
-    ObservationModelsStageProgressPhase, ReturnBackfitStageExecutionMetadata,
-    ReturnBackfitStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
-    ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
-    ReturnComponentsStageProgressPhase, SeasonalityStageExecutionInput,
-    SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
+    NewsShocksStageExecutionReport, ReturnBackfitStageExecutionMetadata,
+    ReturnBackfitStageExecutionReport, ReturnBackfitStageProgressPhase,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionMetadata,
+    ReturnComponentsStageExecutionReport, ReturnComponentsStageProgressPhase,
+    SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
+    SeasonalityStageExecutionReport,
 };
 use crate::JointRefinementStageOptionPricingInput;
 use crate::SeasonalityStageProgressPhase;
@@ -34,7 +33,6 @@ pub struct CalibrationStagedRunInputs {
     pub seasonality_stage_input: Option<SeasonalityStageExecutionInput>,
     pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
     pub hawkes_event_side_codes: Option<Vec<u8>>,
-    pub observation_models_stage_input: Option<ObservationModelsStageExecutionInput>,
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
     pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
@@ -59,7 +57,6 @@ pub struct CalibrationStagedRunInputs {
 pub enum CalibrationStagedRunStageReport {
     Seasonality(Box<SeasonalityStageExecutionReport>),
     Hawkes(Box<HawkesStageExecutionReport>),
-    ObservationModels(Box<ObservationModelsStageExecutionReport>),
     ReturnComponents(Box<ReturnComponentsStageExecutionReport>),
     LongVariance(Box<LongVarianceStageExecutionReport>),
     NewsShocks(Box<NewsShocksStageExecutionReport>),
@@ -116,32 +113,6 @@ impl CalibrationStageExecutionMetadataForCheckpoint for SeasonalityStageExecutio
 }
 
 impl CalibrationStageExecutionMetadataForCheckpoint for HawkesStageExecutionMetadata {
-    fn stage_output_schema_version(&self) -> &'static str {
-        self.stage_output_schema_version
-    }
-
-    fn run_global_seed(&self) -> u64 {
-        self.run_global_seed
-    }
-
-    fn stage_seed(&self) -> u64 {
-        self.stage_seed
-    }
-
-    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
-        self.stage_seed_source
-    }
-
-    fn stage_seed_derivation_policy(&self) -> &'static str {
-        self.stage_seed_derivation_policy
-    }
-
-    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
-        &self.solver_settings
-    }
-}
-
-impl CalibrationStageExecutionMetadataForCheckpoint for ObservationModelsStageExecutionMetadata {
     fn stage_output_schema_version(&self) -> &'static str {
         self.stage_output_schema_version
     }
@@ -342,7 +313,6 @@ impl CalibrationStagedRunStageReport {
         match self {
             Self::Seasonality(report) => report.stage,
             Self::Hawkes(report) => report.stage,
-            Self::ObservationModels(report) => report.stage,
             Self::ReturnComponents(report) => report.stage,
             Self::LongVariance(report) => report.stage,
             Self::NewsShocks(report) => report.stage,
@@ -358,7 +328,6 @@ impl CalibrationStagedRunStageReport {
         match self {
             Self::Seasonality(report) => report.status,
             Self::Hawkes(report) => report.status,
-            Self::ObservationModels(report) => report.status,
             Self::ReturnComponents(report) => report.status,
             Self::LongVariance(report) => report.status,
             Self::NewsShocks(report) => report.status,
@@ -376,9 +345,6 @@ impl CalibrationStagedRunStageReport {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::Hawkes(report) => checkpoint_components_from_metadata(report.metadata.as_ref()),
-            Self::ObservationModels(report) => {
-                checkpoint_components_from_metadata(report.metadata.as_ref())
-            }
             Self::ReturnComponents(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
@@ -500,9 +466,9 @@ pub struct CalibrationStagedRunReport {
 pub enum CalibrationStageProgressPhase {
     Seasonality(SeasonalityStageProgressPhase),
     Hawkes(HawkesStageProgressPhase),
-    ObservationModels(ObservationModelsStageProgressPhase),
     ReturnComponents(ReturnComponentsStageProgressPhase),
     LongVariance(LongVarianceStageProgressPhase),
+    ReturnBackfit(ReturnBackfitStageProgressPhase),
     MeanReversion(MeanReversionStageProgressPhase),
     JointRefinement(JointRefinementStageProgressPhase),
 }
@@ -519,12 +485,6 @@ impl From<HawkesStageProgressPhase> for CalibrationStageProgressPhase {
     }
 }
 
-impl From<ObservationModelsStageProgressPhase> for CalibrationStageProgressPhase {
-    fn from(phase: ObservationModelsStageProgressPhase) -> Self {
-        Self::ObservationModels(phase)
-    }
-}
-
 impl From<ReturnComponentsStageProgressPhase> for CalibrationStageProgressPhase {
     fn from(phase: ReturnComponentsStageProgressPhase) -> Self {
         Self::ReturnComponents(phase)
@@ -534,6 +494,12 @@ impl From<ReturnComponentsStageProgressPhase> for CalibrationStageProgressPhase 
 impl From<LongVarianceStageProgressPhase> for CalibrationStageProgressPhase {
     fn from(phase: LongVarianceStageProgressPhase) -> Self {
         Self::LongVariance(phase)
+    }
+}
+
+impl From<ReturnBackfitStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: ReturnBackfitStageProgressPhase) -> Self {
+        Self::ReturnBackfit(phase)
     }
 }
 
@@ -557,9 +523,9 @@ impl Serialize for CalibrationStageProgressPhase {
         match self {
             Self::Seasonality(phase) => phase.serialize(serializer),
             Self::Hawkes(phase) => phase.serialize(serializer),
-            Self::ObservationModels(phase) => phase.serialize(serializer),
             Self::ReturnComponents(phase) => phase.serialize(serializer),
             Self::LongVariance(phase) => phase.serialize(serializer),
+            Self::ReturnBackfit(phase) => phase.serialize(serializer),
             Self::MeanReversion(phase) => phase.serialize(serializer),
             Self::JointRefinement(phase) => phase.serialize(serializer),
         }
@@ -671,6 +637,8 @@ pub struct CalibrationStagedRunStageProgressEvent {
     pub current_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_restart_best_global_loss: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_final_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -3,6 +3,7 @@ use serde::Deserialize;
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::long_variance::LongVarianceParameters;
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
 };
@@ -13,12 +14,13 @@ use super::{
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExponentialAffineTransformEquationSpecificationPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
     long_variance_parameters: LongVarianceParameters,
+    market_pressure_parameters: MarketPressureParameters,
 }
 
 impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
@@ -33,6 +35,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformEquationSpecification {
             payload.hawkes_kernel_parameters,
             payload.gamma_severity_mark_configuration,
             payload.long_variance_parameters,
+            payload.market_pressure_parameters,
         )
         .map_err(serde::de::Error::custom)
     }
@@ -97,7 +100,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformActivityLoadings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExponentialAffineTransformInputPayload {
     equation_specification: ExponentialAffineTransformEquationSpecification,
@@ -105,12 +108,15 @@ struct ExponentialAffineTransformInputPayload {
     z_plus: ComplexScalarPayload,
     z_minus: ComplexScalarPayload,
     news_return_loading: ComplexScalarPayload,
+    market_pressure_return_loading: ComplexScalarPayload,
+    pressure_signed_imbalance_exposure_risk_price: f64,
     seasonality_factor: f64,
     news_intensity: ExponentialAffineTransformNewsIntensityInput,
     known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
     surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
     delta: f64,
     initial_state: HawkesExcitationStatePayload,
+    initial_market_pressure_state: MarketPressureState,
 }
 
 impl<'de> Deserialize<'de> for ExponentialAffineTransformInput {
@@ -126,12 +132,15 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformInput {
             payload.z_plus.into(),
             payload.z_minus.into(),
             payload.news_return_loading.into(),
+            payload.market_pressure_return_loading.into(),
+            payload.pressure_signed_imbalance_exposure_risk_price,
             payload.seasonality_factor,
             payload.news_intensity,
             payload.known_news_component_mark_scales,
             payload.surprise_news_component_mark_scales,
             payload.delta,
             payload.initial_state.into(),
+            payload.initial_market_pressure_state,
         )
         .map_err(serde::de::Error::custom)
     }
@@ -168,6 +177,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformDVector {
 struct ExponentialAffineTransformOutputPayload {
     c_at_delta: ComplexScalarPayload,
     d_at_delta: ExponentialAffineTransformDVector,
+    market_pressure_loading_at_delta: ComplexScalarPayload,
     transform_value: ComplexScalarPayload,
 }
 
@@ -181,6 +191,7 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformOutput {
         Self::try_new(
             payload.c_at_delta.into(),
             payload.d_at_delta,
+            payload.market_pressure_loading_at_delta.into(),
             payload.transform_value.into(),
         )
         .map_err(serde::de::Error::custom)

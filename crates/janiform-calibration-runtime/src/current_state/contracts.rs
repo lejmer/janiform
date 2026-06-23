@@ -9,6 +9,10 @@ use janiform_model_kernels::long_variance::{
     LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
     LongVarianceStateTransitionError, LongVarianceStationaryLevelError,
 };
+use janiform_model_kernels::market_pressure::{
+    MarketPressureParameters, MarketPressureParametersValidationError, MarketPressureState,
+    MarketPressureStateEvolutionError, MarketPressureStateValidationError,
+};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateEvolutionError,
     MeanReversionBoundaryStateValidationError, MeanReversionFittedParameters,
@@ -22,6 +26,7 @@ pub struct CurrentStateEstimationInput {
     pub kernel_parameters: HawkesKernelParameters,
     pub long_variance_parameters: LongVarianceParameters,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    pub market_pressure_parameters: MarketPressureParameters,
     pub reference_price: f64,
     pub state_time_utc_nanos: i64,
     pub observed_log_return: f64,
@@ -36,6 +41,7 @@ pub struct CurrentStateEstimationBatchInput {
     pub kernel_parameters: HawkesKernelParameters,
     pub long_variance_parameters: LongVarianceParameters,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    pub market_pressure_parameters: MarketPressureParameters,
     pub reference_price: f64,
     pub state_times_utc_nanos: Vec<i64>,
     pub observation_timestamp_utc_nanos: Vec<i64>,
@@ -49,6 +55,7 @@ pub struct CurrentStateEstimationOutput {
     pub hawkes_excitation_state: HawkesExcitationState,
     pub long_variance_state: LongVarianceState,
     pub mean_reversion_boundary_state: MeanReversionBoundaryState,
+    pub market_pressure_state: MarketPressureState,
 }
 
 /// State estimate at one requested state boundary.
@@ -75,6 +82,10 @@ pub enum CurrentStateEstimationError {
     ObservationColumnLengthMismatch {
         timestamp_count: usize,
         trade_price_count: usize,
+        trade_side_count: usize,
+    },
+    MarketPressureObservationColumnLengthMismatch {
+        timestamp_count: usize,
         trade_side_count: usize,
     },
     StateTimeOutOfOrder {
@@ -123,6 +134,9 @@ pub enum CurrentStateEstimationError {
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
+    InvalidMarketPressureParameters {
+        source: MarketPressureParametersValidationError,
+    },
     InvalidHawkesExcitationState {
         source: NonNegativeNumberValidationError,
     },
@@ -148,6 +162,12 @@ pub enum CurrentStateEstimationError {
     InvalidMeanReversionBoundaryStateEvolution {
         source: MeanReversionBoundaryStateEvolutionError,
     },
+    InvalidMarketPressureState {
+        source: MarketPressureStateValidationError,
+    },
+    InvalidMarketPressureStateTransition {
+        source: MarketPressureStateEvolutionError,
+    },
 }
 
 impl Display for CurrentStateEstimationError {
@@ -172,6 +192,13 @@ impl Display for CurrentStateEstimationError {
             } => write!(
                 formatter,
                 "current-state estimation requires aligned observation columns, received timestamps={timestamp_count}, trade_prices={trade_price_count}, trade_sides={trade_side_count}"
+            ),
+            Self::MarketPressureObservationColumnLengthMismatch {
+                timestamp_count,
+                trade_side_count,
+            } => write!(
+                formatter,
+                "market-pressure state replay requires aligned observation columns, received timestamps={timestamp_count}, trade_sides={trade_side_count}"
             ),
             Self::StateTimeOutOfOrder {
                 state_index,
@@ -247,6 +274,10 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "current-state estimation received invalid mean-reversion fitted parameters: {source}"
             ),
+            Self::InvalidMarketPressureParameters { source } => write!(
+                formatter,
+                "current-state estimation received invalid market-pressure parameters: {source}"
+            ),
             Self::InvalidHawkesExcitationState { source } => write!(
                 formatter,
                 "current-state tracker update received invalid Hawkes excitation state: {source}"
@@ -283,6 +314,14 @@ impl Display for CurrentStateEstimationError {
                 formatter,
                 "current-state estimation failed to replay mean-reversion boundary state: {source}"
             ),
+            Self::InvalidMarketPressureState { source } => write!(
+                formatter,
+                "current-state tracker update received invalid market-pressure state: {source}"
+            ),
+            Self::InvalidMarketPressureStateTransition { source } => write!(
+                formatter,
+                "current-state estimation failed to replay market-pressure state: {source}"
+            ),
         }
     }
 }
@@ -291,6 +330,7 @@ impl Error for CurrentStateEstimationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
+            Self::InvalidMarketPressureParameters { source } => Some(source),
             Self::InvalidHawkesExcitationState { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidLongVarianceState { source } => Some(source),
@@ -299,9 +339,12 @@ impl Error for CurrentStateEstimationError {
             Self::InvalidLongVarianceBoundaryState { source } => Some(source),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source),
             Self::InvalidMeanReversionBoundaryStateEvolution { source } => Some(source),
+            Self::InvalidMarketPressureState { source } => Some(source),
+            Self::InvalidMarketPressureStateTransition { source } => Some(source),
             Self::EmptyObservations
             | Self::EmptyStateTimes
             | Self::ObservationColumnLengthMismatch { .. }
+            | Self::MarketPressureObservationColumnLengthMismatch { .. }
             | Self::StateTimeOutOfOrder { .. }
             | Self::StateTimeBeforeFirstObservation { .. }
             | Self::StateTimeBeforePreviousState { .. }

@@ -180,7 +180,6 @@ impl OraclePricerSufficientStatisticsBenchmarkPolicy {
         .map_err(|source| {
             OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidGammaMarkConfiguration { source }
         })?;
-
         let solver_probes = self.oracle_solver_probes;
         validate_range(
             "oracle_solver_probes.u_probe",

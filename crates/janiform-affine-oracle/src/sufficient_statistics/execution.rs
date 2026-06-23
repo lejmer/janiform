@@ -10,10 +10,8 @@ use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory, derive_simulation_substream_seed,
 };
-use janiform_model_kernels::hawkes::{
-    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
-    HawkesTransitionStep, evolve_hawkes_state,
-};
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::market_pressure::MarketPressureState;
 use janiform_model_kernels::news::NewsComponentMarkScaleConfiguration;
 
 use super::constants::{
@@ -22,9 +20,10 @@ use super::constants::{
     TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE,
 };
 use super::contracts::{
-    SufficientStatisticsBoundaryStateUpdateSnapshot,
+    SufficientStatisticsBoundaryState, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsIntervalStatistics,
     SufficientStatisticsIntervalStatisticsChunk, SufficientStatisticsIntervalStatisticsPathChunk,
+    SufficientStatisticsSampledEventCounts, SufficientStatisticsSampledIntervalTransition,
     SufficientStatisticsStreamingChunkingSettings, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
 };
@@ -32,6 +31,10 @@ use super::errors::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
     SufficientStatisticsTransformSlicesError,
+};
+use super::sampling::{
+    derive_transform_slice_sampling_substream_index,
+    sample_interval_endogenous_transition_from_sampled_counts,
 };
 use super::validation::validate_excitation_state;
 
@@ -73,8 +76,8 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     })?;
 
     let baseline_transform = solve_transform_slice_value(
-        equation_specification,
-        context,
+        &equation_specification,
+        &context,
         TransformSliceEvaluationPoint::new(
             "baseline",
             ComplexScalar::new(0.0, 0.0),
@@ -86,8 +89,8 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )?;
 
     let a_plus_transform = solve_transform_slice_value(
-        equation_specification,
-        context,
+        &equation_specification,
+        &context,
         TransformSliceEvaluationPoint::new(
             "a_plus",
             ComplexScalar::new(settings.a_plus_u, 0.0),
@@ -99,8 +102,8 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )?;
 
     let a_minus_transform = solve_transform_slice_value(
-        equation_specification,
-        context,
+        &equation_specification,
+        &context,
         TransformSliceEvaluationPoint::new(
             "a_minus",
             ComplexScalar::new(0.0, 0.0),
@@ -112,8 +115,8 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )?;
 
     let n_plus_transform = solve_transform_slice_value(
-        equation_specification,
-        context,
+        &equation_specification,
+        &context,
         TransformSliceEvaluationPoint::new(
             "n_plus",
             ComplexScalar::new(0.0, 0.0),
@@ -125,8 +128,8 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )?;
 
     let n_minus_transform = solve_transform_slice_value(
-        equation_specification,
-        context,
+        &equation_specification,
+        &context,
         TransformSliceEvaluationPoint::new(
             "n_minus",
             ComplexScalar::new(0.0, 0.0),
@@ -136,6 +139,8 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
         ),
         solver_settings,
     )?;
+
+    let interval_index = context.interval_index;
 
     SufficientStatisticsTransformSlices::try_new(
         equation_specification,
@@ -149,7 +154,7 @@ pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
     )
     .map_err(
         |source| SufficientStatisticsTransformSliceSolveError::InvalidSolvedSlices {
-            interval_index: context.interval_index,
+            interval_index,
             source,
         },
     )
@@ -181,7 +186,7 @@ pub fn derive_expected_interval_statistics_from_transform_slices(
         SufficientStatisticsTransformSliceSamplingError::InvalidSlices { source }
     })?;
 
-    derive_expected_interval_statistics_from_validated_transform_slices(slices)
+    derive_expected_interval_statistics_from_validated_transform_slices(&slices)
 }
 
 /// Extract interval sufficient-statistic expectations from analytic transform sensitivities.
@@ -202,7 +207,7 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
     let transform_value = sensitivities.output.transform_value;
 
     let expected_a_plus = derive_non_negative_log_derivative_expectation(
-        context,
+        &context,
         "a_plus",
         transform_value,
         sensitivities
@@ -212,7 +217,7 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
     )?;
 
     let expected_a_minus = derive_non_negative_log_derivative_expectation(
-        context,
+        &context,
         "a_minus",
         transform_value,
         sensitivities
@@ -222,34 +227,34 @@ pub fn derive_expected_interval_statistics_from_transform_sensitivities(
     )?;
 
     let expected_n_plus = derive_non_negative_log_derivative_expectation(
-        context,
+        &context,
         "n_plus",
         transform_value,
         sensitivities.z_plus_sensitivity.transform_value_derivative,
     )?;
 
     let expected_n_minus = derive_non_negative_log_derivative_expectation(
-        context,
+        &context,
         "n_minus",
         transform_value,
         sensitivities.z_minus_sensitivity.transform_value_derivative,
     )?;
 
     let baseline_expected_business_time =
-        expected_baseline_business_time_for_context(equation_specification, context);
+        expected_baseline_business_time_for_context(&equation_specification, &context);
 
     let expected_baseline_a_plus = baseline_expected_business_time;
     let expected_baseline_a_minus = baseline_expected_business_time;
 
     let expected_endogenous_a_plus = derive_endogenous_activity_expectation(
-        context,
+        &context,
         "endogenous_a_plus",
         expected_a_plus,
         expected_baseline_a_plus,
     )?;
 
     let expected_endogenous_a_minus = derive_endogenous_activity_expectation(
-        context,
+        &context,
         "endogenous_a_minus",
         expected_a_minus,
         expected_baseline_a_minus,
@@ -283,7 +288,7 @@ where
     sample_interval_statistics_from_transform_slices_with_sampling_index(
         seed,
         0,
-        slices,
+        &slices,
         randomness_factory,
     )
 }
@@ -293,17 +298,26 @@ pub fn sample_interval_statistics_from_expected_statistics_with_randomness_facto
     seed: u64,
     interval_index: usize,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    terminal_excitation_state: HawkesExcitationState,
+    terminal_market_pressure_state: MarketPressureState,
+    market_pressure_anchor_increment: f64,
     randomness_factory: &F,
 ) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
 where
     F: SimulationRandomnessFactory,
 {
     let substream_index = derive_transform_slice_sampling_substream_index(interval_index as u64, 0);
+    let sampled_transition = SufficientStatisticsSampledIntervalTransition {
+        terminal_excitation_state,
+        terminal_market_pressure_state,
+        market_pressure_anchor_increment,
+    };
 
     sample_interval_statistics_from_expected_statistics(
         seed,
         interval_index,
         expected_statistics,
+        sampled_transition,
         substream_index,
         randomness_factory,
     )
@@ -543,7 +557,7 @@ where
     let mut pending_chunk_records: Vec<SufficientStatisticsIntervalStatistics> =
         Vec::with_capacity(chunking_settings.max_intervals_per_chunk);
 
-    for (batch_position, slices) in slices_batch.iter().copied().enumerate() {
+    for (batch_position, slices) in slices_batch.iter().enumerate() {
         if pending_chunk_records.is_empty() {
             chunk_start_interval_index = batch_position;
         }
@@ -633,13 +647,13 @@ impl TransformSliceEvaluationPoint {
 }
 
 fn solve_transform_slice_value(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
-    context: SufficientStatisticsTransformSliceContext,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
+    context: &SufficientStatisticsTransformSliceContext,
     evaluation_point: TransformSliceEvaluationPoint,
     solver_settings: Option<ExponentialAffineTransformSolverSettings>,
 ) -> Result<ComplexScalar, SufficientStatisticsTransformSliceSolveError> {
     let transform_input = ExponentialAffineTransformInput::try_new(
-        equation_specification,
+        equation_specification.clone(),
         ExponentialAffineTransformActivityLoadings::total_activity(
             evaluation_point.u_plus,
             evaluation_point.u_minus,
@@ -647,6 +661,8 @@ fn solve_transform_slice_value(
         evaluation_point.z_plus,
         evaluation_point.z_minus,
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         context.seasonality_factor,
         context.news_intensity,
         NewsComponentMarkScaleConfiguration {
@@ -661,6 +677,7 @@ fn solve_transform_slice_value(
         },
         context.delta,
         context.initial_excitation_state,
+        context.initial_market_pressure_state.clone(),
     )
     .map_err(
         |source| SufficientStatisticsTransformSliceSolveError::InvalidTransformInput {
@@ -712,7 +729,7 @@ fn solve_transform_slice_value(
 fn sample_interval_statistics_from_transform_slices_with_sampling_index<F>(
     seed: u64,
     batch_position: u64,
-    slices: SufficientStatisticsTransformSlices,
+    slices: &SufficientStatisticsTransformSlices,
     randomness_factory: &F,
 ) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
 where
@@ -730,12 +747,28 @@ where
         batch_position,
     );
 
-    sample_interval_statistics_from_expected_statistics(
+    let sampled_counts = sample_interval_counts_from_expected_statistics(
         seed,
         slices.context.interval_index,
         expected_statistics,
         substream_index,
         randomness_factory,
+    )?;
+
+    let sampled_transition = sample_interval_endogenous_transition_from_sampled_counts(
+        seed,
+        substream_index,
+        &slices.equation_specification,
+        &slices.context,
+        sampled_counts,
+        randomness_factory,
+    )?;
+
+    build_interval_statistics_from_sampled_counts(
+        slices.context.interval_index,
+        expected_statistics,
+        sampled_counts,
+        sampled_transition,
     )
 }
 
@@ -743,9 +776,57 @@ fn sample_interval_statistics_from_expected_statistics<F>(
     seed: u64,
     interval_index: usize,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    sampled_transition: SufficientStatisticsSampledIntervalTransition,
     substream_index: u64,
     randomness_factory: &F,
 ) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    let sampled_counts = sample_interval_counts_from_expected_statistics(
+        seed,
+        interval_index,
+        expected_statistics,
+        substream_index,
+        randomness_factory,
+    )?;
+
+    build_interval_statistics_from_sampled_counts(
+        interval_index,
+        expected_statistics,
+        sampled_counts,
+        sampled_transition,
+    )
+}
+
+/// Sample buy and sell counts from exact expected sufficient statistics.
+pub fn sample_interval_event_counts_from_expected_statistics_with_randomness_factory<F>(
+    seed: u64,
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsSampledEventCounts, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    let substream_index = derive_transform_slice_sampling_substream_index(interval_index as u64, 0);
+
+    sample_interval_counts_from_expected_statistics(
+        seed,
+        interval_index,
+        expected_statistics,
+        substream_index,
+        randomness_factory,
+    )
+}
+
+fn sample_interval_counts_from_expected_statistics<F>(
+    seed: u64,
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    substream_index: u64,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsSampledEventCounts, SufficientStatisticsTransformSliceSamplingError>
 where
     F: SimulationRandomnessFactory,
 {
@@ -774,13 +855,29 @@ where
     let sampled_n_minus =
         sample_count_from_expectation(expected_statistics.expected_n_minus, &mut n_minus_stream);
 
+    Ok(SufficientStatisticsSampledEventCounts::new(
+        sampled_n_plus,
+        sampled_n_minus,
+    ))
+}
+
+fn build_interval_statistics_from_sampled_counts(
+    interval_index: usize,
+    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    sampled_counts: SufficientStatisticsSampledEventCounts,
+    sampled_transition: SufficientStatisticsSampledIntervalTransition,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+{
     SufficientStatisticsIntervalStatistics::try_new(
         expected_statistics.expected_baseline_a_plus,
         expected_statistics.expected_endogenous_a_plus,
         expected_statistics.expected_baseline_a_minus,
         expected_statistics.expected_endogenous_a_minus,
-        sampled_n_plus,
-        sampled_n_minus,
+        sampled_counts.n_plus,
+        sampled_counts.n_minus,
+        sampled_transition.terminal_excitation_state,
+        sampled_transition.terminal_market_pressure_state,
+        sampled_transition.market_pressure_anchor_increment,
     )
     .map_err(|source| {
         SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
@@ -791,12 +888,12 @@ where
 }
 
 fn derive_expected_interval_statistics_from_validated_transform_slices(
-    slices: SufficientStatisticsTransformSlices,
+    slices: &SufficientStatisticsTransformSlices,
 ) -> Result<
     SufficientStatisticsExpectedIntervalStatistics,
     SufficientStatisticsTransformSliceSamplingError,
 > {
-    let context = slices.context;
+    let context = &slices.context;
     let settings = slices.settings;
 
     let baseline_transform =
@@ -845,7 +942,7 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
     )?;
 
     let baseline_expected_business_time =
-        expected_baseline_business_time_for_context(slices.equation_specification, context);
+        expected_baseline_business_time_for_context(&slices.equation_specification, context);
 
     let expected_baseline_a_plus = baseline_expected_business_time;
     let expected_baseline_a_minus = baseline_expected_business_time;
@@ -881,8 +978,8 @@ fn derive_expected_interval_statistics_from_validated_transform_slices(
 }
 
 fn expected_baseline_business_time_for_context(
-    equation_specification: ExponentialAffineTransformEquationSpecification,
-    context: SufficientStatisticsTransformSliceContext,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
+    context: &SufficientStatisticsTransformSliceContext,
 ) -> f64 {
     equation_specification.hawkes_kernel_parameters.lambda_bar
         * context.seasonality_factor
@@ -890,7 +987,7 @@ fn expected_baseline_business_time_for_context(
 }
 
 fn derive_endogenous_activity_expectation(
-    context: SufficientStatisticsTransformSliceContext,
+    context: &SufficientStatisticsTransformSliceContext,
     statistic: &'static str,
     expected_total_activity: f64,
     baseline_expected_business_time: f64,
@@ -904,7 +1001,7 @@ fn derive_endogenous_activity_expectation(
 }
 
 fn extract_real_transform_value(
-    context: SufficientStatisticsTransformSliceContext,
+    context: &SufficientStatisticsTransformSliceContext,
     field: &'static str,
     value: ComplexScalar,
 ) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
@@ -935,7 +1032,7 @@ fn extract_real_transform_value(
 }
 
 fn derive_non_negative_expectation(
-    context: SufficientStatisticsTransformSliceContext,
+    context: &SufficientStatisticsTransformSliceContext,
     statistic: &'static str,
     numerator: f64,
     denominator: f64,
@@ -949,7 +1046,7 @@ fn derive_non_negative_expectation(
                 value: expected_value,
                 numerator,
                 denominator,
-                context,
+                context: Box::new(context.clone()),
             },
         );
     }
@@ -962,7 +1059,7 @@ fn derive_non_negative_expectation(
                 value: expected_value,
                 numerator,
                 denominator,
-                context,
+                context: Box::new(context.clone()),
             },
         );
     }
@@ -971,7 +1068,7 @@ fn derive_non_negative_expectation(
 }
 
 fn derive_non_negative_log_derivative_expectation(
-    context: SufficientStatisticsTransformSliceContext,
+    context: &SufficientStatisticsTransformSliceContext,
     statistic: &'static str,
     transform_value: ComplexScalar,
     transform_value_derivative: ComplexScalar,
@@ -984,7 +1081,7 @@ fn derive_non_negative_log_derivative_expectation(
                 value: f64::NAN,
                 numerator: transform_value_derivative.norm(),
                 denominator: transform_value.norm(),
-                context,
+                context: Box::new(context.clone()),
             },
         );
     };
@@ -997,20 +1094,12 @@ fn derive_non_negative_log_derivative_expectation(
                 value: f64::NAN,
                 numerator: transform_value_derivative.norm(),
                 denominator: transform_value.norm(),
-                context,
+                context: Box::new(context.clone()),
             },
         );
     }
 
     derive_non_negative_expectation(context, statistic, logarithmic_derivative.real, 1.0)
-}
-
-fn derive_transform_slice_sampling_substream_index(
-    interval_index: u64,
-    batch_position: u64,
-) -> u64 {
-    let interval_component = interval_index.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    interval_component ^ batch_position
 }
 
 fn sample_count_from_expectation<R>(expected_count: f64, randomness_stream: &mut R) -> u64
@@ -1037,199 +1126,84 @@ where
     sampled_count.min(MAX_INTERVAL_STATISTICS_COUNT)
 }
 
-/// Update one interval boundary state using sampled sufficient statistics.
-///
-/// Composition order:
-/// 1. shared-decay drift over `interval_delta`
-/// 2. buy-count mapped endogenous jump
-/// 3. sell-count mapped endogenous jump
+/// Replay one interval boundary state from sampled sufficient statistics.
 pub fn update_boundary_state_from_interval_statistics(
-    kernel_parameters: HawkesKernelParameters,
     snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
-) -> Result<HawkesExcitationState, SufficientStatisticsBoundaryStateUpdateError> {
-    if !snapshot.interval_delta.is_finite() || snapshot.interval_delta <= 0.0 {
+) -> Result<SufficientStatisticsBoundaryState, SufficientStatisticsBoundaryStateUpdateError> {
+    let interval_delta = snapshot.interval_delta;
+
+    if !interval_delta.is_finite() || interval_delta <= 0.0 {
         return Err(
             SufficientStatisticsBoundaryStateUpdateError::InvalidIntervalDelta {
                 snapshot: Box::new(snapshot),
-                value: snapshot.interval_delta,
+                value: interval_delta,
             },
         );
     }
 
-    validate_excitation_state(snapshot.state_before_update).map_err(|(field, value)| {
-        SufficientStatisticsBoundaryStateUpdateError::InvalidStateBeforeUpdate {
-            snapshot: Box::new(snapshot),
-            field,
-            value,
-        }
-    })?;
-
-    snapshot.sampled_statistics.validate().map_err(|source| {
-        SufficientStatisticsBoundaryStateUpdateError::InvalidSampledStatistics {
-            snapshot: Box::new(snapshot),
-            source,
-        }
-    })?;
-
-    let drifted_state = evolve_hawkes_state(
-        snapshot.state_before_update,
-        kernel_parameters,
-        HawkesTransitionStep::new(snapshot.interval_delta, None, None),
-    )
-    .map_err(
-        |source| SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
-            snapshot: Box::new(snapshot),
-            source,
-        },
-    )?;
-
-    let post_buy_state = apply_endogenous_count_mapped_jump(
-        drifted_state,
-        kernel_parameters,
-        snapshot,
-        HawkesEventSide::Buy,
-        snapshot.sampled_statistics.n_plus,
-    )?;
-
-    let post_sell_state = apply_endogenous_count_mapped_jump(
-        post_buy_state,
-        kernel_parameters,
-        snapshot,
-        HawkesEventSide::Sell,
-        snapshot.sampled_statistics.n_minus,
-    )?;
-
-    validate_excitation_state(post_sell_state).map_err(|(field, value)| {
-        SufficientStatisticsBoundaryStateUpdateError::InvalidStateAfterUpdate {
-            snapshot: Box::new(snapshot),
-            field,
-            value,
-        }
-    })?;
-
-    Ok(post_sell_state)
-}
-
-fn apply_endogenous_count_mapped_jump(
-    state_before_jump: HawkesExcitationState,
-    kernel_parameters: HawkesKernelParameters,
-    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
-    side: HawkesEventSide,
-    event_count: u64,
-) -> Result<HawkesExcitationState, SufficientStatisticsBoundaryStateUpdateError> {
-    if event_count == 0 {
-        return Ok(state_before_jump);
-    }
-
-    let scaled_alpha = scale_kernel_loadings_for_event_count(
-        kernel_parameters.alpha,
-        snapshot,
-        side,
-        event_count,
-    )?;
-
-    let scaled_kernel_parameters = HawkesKernelParameters {
-        alpha: scaled_alpha,
-        ..kernel_parameters
-    };
-
-    evolve_hawkes_state(
-        state_before_jump,
-        scaled_kernel_parameters,
-        HawkesTransitionStep::new(0.0, Some(side), None),
-    )
-    .map_err(
-        |source| SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
-            snapshot: Box::new(snapshot),
-            source,
-        },
-    )
-}
-
-fn scale_kernel_loadings_for_event_count(
-    loadings: HawkesKernelLoadings,
-    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
-    side: HawkesEventSide,
-    event_count: u64,
-) -> Result<HawkesKernelLoadings, SufficientStatisticsBoundaryStateUpdateError> {
-    let event_count_scale = event_count as f64;
-
-    match side {
-        HawkesEventSide::Buy => {
-            let scaled_plus_plus = loadings.plus_plus * event_count_scale;
-            let scaled_minus_plus = loadings.minus_plus * event_count_scale;
-
-            validate_scaled_loading(
-                snapshot,
-                side,
-                event_count,
-                "alpha.plus_plus",
-                scaled_plus_plus,
-            )?;
-            validate_scaled_loading(
-                snapshot,
-                side,
-                event_count,
-                "alpha.minus_plus",
-                scaled_minus_plus,
-            )?;
-
-            Ok(HawkesKernelLoadings {
-                plus_plus: scaled_plus_plus,
-                plus_minus: loadings.plus_minus,
-                minus_plus: scaled_minus_plus,
-                minus_minus: loadings.minus_minus,
-            })
-        }
-        HawkesEventSide::Sell => {
-            let scaled_plus_minus = loadings.plus_minus * event_count_scale;
-            let scaled_minus_minus = loadings.minus_minus * event_count_scale;
-
-            validate_scaled_loading(
-                snapshot,
-                side,
-                event_count,
-                "alpha.plus_minus",
-                scaled_plus_minus,
-            )?;
-            validate_scaled_loading(
-                snapshot,
-                side,
-                event_count,
-                "alpha.minus_minus",
-                scaled_minus_minus,
-            )?;
-
-            Ok(HawkesKernelLoadings {
-                plus_plus: loadings.plus_plus,
-                plus_minus: scaled_plus_minus,
-                minus_plus: loadings.minus_plus,
-                minus_minus: scaled_minus_minus,
-            })
-        }
-    }
-}
-
-fn validate_scaled_loading(
-    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
-    side: HawkesEventSide,
-    event_count: u64,
-    field: &'static str,
-    value: f64,
-) -> Result<(), SufficientStatisticsBoundaryStateUpdateError> {
-    if !value.is_finite() || value < 0.0 {
+    if let Err((field, value)) =
+        validate_excitation_state(snapshot.state_before_update.excitation_state)
+    {
         return Err(
-            SufficientStatisticsBoundaryStateUpdateError::InvalidScaledKernelLoading {
+            SufficientStatisticsBoundaryStateUpdateError::InvalidStateBeforeUpdate {
                 snapshot: Box::new(snapshot),
-                side,
-                event_count,
                 field,
                 value,
             },
         );
     }
 
-    Ok(())
+    if let Err(source) = snapshot
+        .state_before_update
+        .market_pressure_state
+        .validate()
+    {
+        return Err(
+            SufficientStatisticsBoundaryStateUpdateError::InvalidMarketPressureStateBeforeUpdate {
+                snapshot: Box::new(snapshot),
+                error_message: source.to_string(),
+            },
+        );
+    }
+
+    if let Err(source) = snapshot.sampled_statistics.validate() {
+        return Err(
+            SufficientStatisticsBoundaryStateUpdateError::InvalidSampledStatistics {
+                snapshot: Box::new(snapshot),
+                source,
+            },
+        );
+    }
+
+    if let Err(source) = snapshot
+        .sampled_statistics
+        .terminal_market_pressure_state
+        .validate()
+    {
+        return Err(
+            SufficientStatisticsBoundaryStateUpdateError::InvalidMarketPressureStateAfterUpdate {
+                snapshot: Box::new(snapshot),
+                error_message: source.to_string(),
+            },
+        );
+    }
+
+    if let Err((field, value)) =
+        validate_excitation_state(snapshot.sampled_statistics.terminal_excitation_state)
+    {
+        return Err(
+            SufficientStatisticsBoundaryStateUpdateError::InvalidStateAfterUpdate {
+                snapshot: Box::new(snapshot),
+                field,
+                value,
+            },
+        );
+    }
+
+    Ok(SufficientStatisticsBoundaryState::new(
+        snapshot.sampled_statistics.terminal_excitation_state,
+        snapshot.sampled_statistics.terminal_market_pressure_state,
+    ))
 }
 
 /// Solve one-interval exponential-affine transform for sufficient-statistics sampling.
@@ -1259,6 +1233,7 @@ mod tests {
         HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     };
     use janiform_model_kernels::long_variance::LongVarianceParameters;
+    use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
     use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
     use super::{
@@ -1287,12 +1262,13 @@ mod tests {
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.0,
             },
+            MarketPressureState::neutral(),
         )
         .expect("slice context should construct");
 
         let transform_value = ComplexScalar::new(0.9999964795005776, -6.097094342473048e-6);
         let recovered =
-            extract_real_transform_value(context, "baseline_transform", transform_value)
+            extract_real_transform_value(&context, "baseline_transform", transform_value)
                 .expect("finite positive transform should recover");
 
         assert_eq!(recovered, transform_value.norm());
@@ -1312,6 +1288,7 @@ mod tests {
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.0,
             },
+            MarketPressureState::neutral(),
         )
         .expect("slice context should construct");
 
@@ -1340,6 +1317,7 @@ mod tests {
                 GammaSeverityMarkConfiguration::try_new(1.0)
                     .expect("gamma severity marks should construct"),
                 LongVarianceParameters::neutral(),
+                MarketPressureParameters::no_anchor_impact(),
             )
             .expect("equation specification should construct"),
             context,

@@ -21,10 +21,9 @@ use super::labels::simulation_workflow_label;
 /// Default number of simulation output rows written per artifact batch.
 pub const DEFAULT_SIMULATION_EXPORT_BATCH_SIZE: usize = 256;
 
-const STATE_COLUMN_NAMES: [&str; 4] = [
+const STATE_COLUMN_NAMES: [&str; 3] = [
     "observed_log_price",
     "anchor_value",
-    "pressure_state",
     "deviation_from_anchor",
 ];
 
@@ -66,7 +65,6 @@ struct SimulationOutputRow {
     side: Option<String>,
     observed_log_price: f64,
     anchor_value: f64,
-    pressure_state: f64,
     deviation_from_anchor: f64,
 }
 
@@ -116,8 +114,10 @@ pub fn export_coarse_simulation(
     validate_batch_size(batch_size)?;
 
     let mut rows = Vec::new();
+
     for record in &result.records {
         let timestamp = timestamp_from_nanos(record.interval_start_utc_nanos);
+
         if calendar_registry
             .resolve_market_state_at_utc(exchange_code, timestamp)
             .map_err(|source| validation_error("request_json", source.to_string()))?
@@ -132,7 +132,6 @@ pub fn export_coarse_simulation(
             side: None,
             observed_log_price: record.observed_log_price_end,
             anchor_value: record.anchor_value_end,
-            pressure_state: record.pressure_state_end,
             deviation_from_anchor: record.deviation_from_anchor_end,
         });
     }
@@ -188,7 +187,6 @@ fn seeded_output_row(
         side: record.side.map(side_label).map(str::to_string),
         observed_log_price: record.observed_log_price,
         anchor_value: record.anchor_value,
-        pressure_state: record.pressure_state,
         deviation_from_anchor: record.deviation_from_anchor,
     })
 }
@@ -236,6 +234,7 @@ fn write_csv_rows(
         csv::Writer::from_path(output_path).map_err(|source| csv_error(output_path, source))?;
 
     let headers = output_headers(columns);
+
     writer
         .write_record(&headers)
         .map_err(|source| csv_error(output_path, source))?;
@@ -267,6 +266,7 @@ fn write_parquet_rows(
 
     for chunk in rows.chunks(batch_size) {
         let batch = parquet_batch(schema.clone(), columns, chunk, output_path)?;
+
         writer
             .write(&batch)
             .map_err(|source| artifact_write_error(output_path, std::io::Error::other(source)))?;
@@ -341,11 +341,6 @@ fn parquet_batch(
         )),
         Arc::new(Float64Array::from(
             rows.iter()
-                .map(|row| row.pressure_state)
-                .collect::<Vec<_>>(),
-        )),
-        Arc::new(Float64Array::from(
-            rows.iter()
                 .map(|row| row.deviation_from_anchor)
                 .collect::<Vec<_>>(),
         )),
@@ -386,7 +381,6 @@ fn csv_row(
     values.extend([
         row.observed_log_price.to_string(),
         row.anchor_value.to_string(),
-        row.pressure_state.to_string(),
         row.deviation_from_anchor.to_string(),
     ]);
 
@@ -500,7 +494,9 @@ mod tests {
                 .expect("system time should be after unix epoch")
                 .as_nanos()
         ));
+
         let output_path = run_directory.join("simulation.parquet");
+
         let response_payload = json!({
             "simulation_kind": "seeded_tick",
             "export_summary": {
@@ -522,6 +518,7 @@ mod tests {
                 .expect("simulation report should be readable"),
         )
         .expect("simulation report should be valid JSON");
+
         let manifest: Value = serde_json::from_str(
             &std::fs::read_to_string(run_directory.join("run.json"))
                 .expect("run manifest should be readable"),

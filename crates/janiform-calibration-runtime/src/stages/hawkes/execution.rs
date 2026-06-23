@@ -19,7 +19,6 @@ use super::progress::emit_hawkes_progress;
 use super::seasonality_input::validate_hawkes_seasonality_event_vectors;
 use super::selection::ranked_hawkes_candidate_indices;
 use super::short_gap_ratio_from_threshold;
-use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
 use crate::objective::CalibrationObjectiveTermInput;
 use crate::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
@@ -27,6 +26,7 @@ use crate::optimizer_adapter::{
     CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
     run_constrained_optimizer_adapter,
 };
+use crate::precheck_structured_hawkes_kernel_parameter_domain;
 use crate::stages::parallelism::run_in_stage_thread_pool;
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
@@ -2076,7 +2076,7 @@ mod tests {
         populate_observed_activity_targets_cache, prepare_hawkes_candidates_from_validated_inputs,
         ranked_refinement_seed_indices, refinement_alpha_scales,
     };
-    use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
+    use crate::precheck_structured_hawkes_kernel_parameter_domain;
     use crate::stages::hawkes::{
         HawkesStageCandidateDiagnostic, HawkesStageCandidateInput,
         HawkesStageDirectionalLabelDiagnostics, HawkesStageImpliedMetricsDiagnostic,

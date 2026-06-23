@@ -1,9 +1,9 @@
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, bowley_skewness_from_sorted,
     compute_sorted_quantile_or_zero as sorted_quantile, l_moment_lambda2_from_sorted,
-    l_moment_tau3_from_sorted, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
-    sample_adjusted_skewness, sample_standard_deviation, smallest_positive_value,
-    sorted_finite_values, strictly_positive_machine_value,
+    l_moment_tau3_from_sorted, log_ratio_distance, root_mean_square_or_infinity,
+    sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
+    smallest_positive_value, sorted_finite_values, strictly_positive_machine_value,
 };
 
 use super::super::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic;
@@ -126,6 +126,12 @@ pub(super) fn distribution_profile_fit_breakdown(
         abs_quantile_ratio_scale,
     );
 
+    let excess_kurtosis_fit = log_ratio_distance(
+        fitted_profile.adjusted_excess_kurtosis.max(0.0),
+        observed_profile.adjusted_excess_kurtosis.max(0.0),
+        observed_profile.excess_kurtosis_standard_error(),
+    );
+
     let bowley_skewness_fit = scale_aware_absolute_error(
         fitted_profile.bowley_skewness,
         observed_profile.bowley_skewness,
@@ -165,6 +171,7 @@ pub(super) fn distribution_profile_fit_breakdown(
             extreme_left_tail_q01_fit,
             extreme_right_tail_q99_fit,
             abs_quantile_ratio_fit,
+            excess_kurtosis_fit,
         ]
         .as_slice(),
     );
@@ -210,6 +217,10 @@ pub(super) fn distribution_profile_fit_breakdown(
         exact_uncertified_scope_count: 0,
         exact_global_average_log_likelihood_error_upper_bound: None,
         exact_conditional_average_log_likelihood_error_upper_bound: None,
+        location_fit,
+        scale_fit,
+        tail_shape_fit: tail_fit,
+        asymmetry_shape_fit: asymmetry_fit,
         mean_return_fit,
         volatility_fit,
         median_return_fit,
@@ -222,6 +233,7 @@ pub(super) fn distribution_profile_fit_breakdown(
         mean_abs_return_fit,
         median_abs_return_fit,
         abs_quantile_ratio_fit,
+        excess_kurtosis_fit,
         bowley_skewness_fit,
         l_moment_lambda2_fit,
         l_moment_tau3_fit,

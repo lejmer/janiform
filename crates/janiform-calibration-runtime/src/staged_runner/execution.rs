@@ -525,6 +525,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         .enumerate()
         .skip(start_position)
     {
+        let next_stage = execution_stage_order.get(stage_position + 1).copied();
         if cancellation_token.is_cancelled() {
             return build_and_emit_staged_run_cancellation_report(
                 StagedRunCancellationReportInput {
@@ -846,7 +847,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
 
         emitted_checkpoints.push(checkpoint_metadata);
 
-        if cancellation_token.is_cancelled() {
+        if cancellation_token.is_cancelled() && next_stage.is_some() {
             return build_and_emit_staged_run_cancellation_report(
                 StagedRunCancellationReportInput {
                     run_contract,
@@ -857,24 +858,10 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                     resumed_from_checkpoint_reference,
                     resumed_from_last_successful_stage,
                     started_from_stage,
-                    cancelled_before_stage: execution_stage_order.get(stage_position + 1).copied(),
+                    cancelled_before_stage: next_stage,
                 },
             );
         }
-    }
-
-    if cancellation_token.is_cancelled() {
-        return build_and_emit_staged_run_cancellation_report(StagedRunCancellationReportInput {
-            run_contract,
-            run_start_time,
-            observer: &mut observer,
-            stage_reports,
-            emitted_checkpoints,
-            resumed_from_checkpoint_reference,
-            resumed_from_last_successful_stage,
-            started_from_stage,
-            cancelled_before_stage: None,
-        });
     }
 
     let diagnostic_artifact_bundle =
@@ -1175,9 +1162,6 @@ fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport)
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
-            serialized_failure_error_message(report.failure.as_ref())
-        }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
             serialized_failure_error_message(report.failure.as_ref())
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {

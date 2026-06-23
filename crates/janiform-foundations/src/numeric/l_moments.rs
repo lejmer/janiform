@@ -81,6 +81,32 @@ pub fn l_moment_tau3_from_sorted(
     tau3.is_finite().then_some(tau3)
 }
 
+/// Compute the fourth L-moment ratio from a sorted finite sample.
+pub fn l_moment_tau4_from_sorted(
+    sorted_values: &[f64],
+    minimum_denominator_magnitude: f64,
+) -> Option<f64> {
+    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_values, 0)?;
+    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_values, 1)?;
+    let probability_weighted_moment_2 = compute_probability_weighted_moment(sorted_values, 2)?;
+    let probability_weighted_moment_3 = compute_probability_weighted_moment(sorted_values, 3)?;
+
+    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
+    if !lambda2.is_finite() || lambda2.abs() <= minimum_denominator_magnitude {
+        return None;
+    }
+
+    let lambda4 = 20.0 * probability_weighted_moment_3 - 30.0 * probability_weighted_moment_2
+        + 12.0 * probability_weighted_moment_1
+        - probability_weighted_moment_0;
+    if !lambda4.is_finite() {
+        return None;
+    }
+
+    let tau4 = lambda4 / lambda2;
+    tau4.is_finite().then_some(tau4)
+}
+
 fn combination_ratio(
     numerator_index: usize,
     denominator_index: usize,
@@ -112,7 +138,7 @@ fn combination_ratio(
 mod tests {
     use super::{
         bowley_skewness_from_sorted, compute_probability_weighted_moment,
-        l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted,
+        l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted, l_moment_tau4_from_sorted,
     };
 
     #[test]
@@ -128,6 +154,10 @@ mod tests {
         );
         assert_eq!(
             l_moment_tau3_from_sorted(&[1.0, 2.0, 3.0, 4.0], 1.0e-12),
+            Some(0.0)
+        );
+        assert_eq!(
+            l_moment_tau4_from_sorted(&[1.0, 2.0, 3.0, 4.0], 1.0e-12),
             Some(0.0)
         );
     }

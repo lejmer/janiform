@@ -12,6 +12,10 @@ use janiform_market_time::calendar::ExchangeCalendarResolveError;
 use janiform_model_kernels::hawkes::HawkesTransitionError;
 use janiform_model_kernels::long_variance::LongVarianceStationaryLevelForHawkesKernelError;
 use janiform_model_kernels::long_variance::{LongVarianceParametersError, LongVarianceStateError};
+use janiform_model_kernels::market_pressure::{
+    MarketPressureParametersValidationError, MarketPressureStateEvolutionError,
+    MarketPressureStateValidationError,
+};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryStateValidationError, MeanReversionFittedParametersValidationError,
     MeanReversionRuntimeIntervalAnchorsValidationError,
@@ -23,7 +27,7 @@ use janiform_model_kernels::return_clock::{
     EffectiveReturnClocksBuildError, ReturnClockExposureParametersError,
 };
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModelError;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurfaceError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
@@ -87,6 +91,9 @@ pub enum SeededTickSimulationRunError {
     InvalidLongVarianceStationaryLevel {
         source: Box<LongVarianceStationaryLevelForHawkesKernelError>,
     },
+    InvalidLongVarianceStationaryEnergyRate {
+        interval_index: usize,
+    },
     InvalidNewsActivityLoadingRate {
         interval_index: usize,
         source: Box<NewsActivityLoadingRateError>,
@@ -97,8 +104,8 @@ pub enum SeededTickSimulationRunError {
     InvalidObservedPriceTickSize {
         value: f64,
     },
-    InvalidTimestampBatchingObservationModel {
-        source: Box<TimestampBatchingObservationModelError>,
+    InvalidTimestampBatchingSurface {
+        source: Box<TimestampBatchingSurfaceError>,
     },
     TickGridProjectionFailed {
         interval_index: usize,
@@ -126,6 +133,12 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidMeanReversionBoundaryState {
         source: Box<MeanReversionBoundaryStateValidationError>,
+    },
+    InvalidMarketPressureParameters {
+        source: Box<MarketPressureParametersValidationError>,
+    },
+    InvalidInitialMarketPressureState {
+        source: Box<MarketPressureStateValidationError>,
     },
     MeanReversionRuntimeAnchorIntervalCountMismatch {
         expected_interval_count: usize,
@@ -194,6 +207,10 @@ pub enum SeededTickSimulationRunError {
     LongVarianceTransitionFailure {
         interval_index: usize,
         source: Box<LongVarianceTransitionSamplingError>,
+    },
+    MarketPressureTransitionFailure {
+        interval_index: usize,
+        source: Box<MarketPressureStateEvolutionError>,
     },
     InvalidReturnComponents {
         interval_index: usize,
@@ -303,6 +320,10 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "long_variance_parameters imply an invalid stationary mean-reversion level: {source}"
             ),
+            Self::InvalidLongVarianceStationaryEnergyRate { interval_index } => write!(
+                formatter,
+                "interval {interval_index} return generator implies an invalid stationary return-energy rate for long variance"
+            ),
             Self::InvalidNewsActivityLoadingRate {
                 interval_index,
                 source,
@@ -318,10 +339,9 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "observed_price_tick_size must be finite and strictly positive when provided, found {value}"
             ),
-            Self::InvalidTimestampBatchingObservationModel { source } => write!(
-                formatter,
-                "timestamp_batching_observation_model is invalid: {source}"
-            ),
+            Self::InvalidTimestampBatchingSurface { source } => {
+                write!(formatter, "timestamp_batching_surface is invalid: {source}")
+            }
             Self::TickGridProjectionFailed {
                 interval_index,
                 previous_observed_log_price,
@@ -360,6 +380,14 @@ impl Display for SeededTickSimulationRunError {
             Self::InvalidMeanReversionBoundaryState { source } => write!(
                 formatter,
                 "initial_mean_reversion_boundary_state is invalid: {source}"
+            ),
+            Self::InvalidMarketPressureParameters { source } => write!(
+                formatter,
+                "market_pressure_parameters are invalid: {source}"
+            ),
+            Self::InvalidInitialMarketPressureState { source } => write!(
+                formatter,
+                "initial_market_pressure_state is invalid: {source}"
             ),
             Self::MeanReversionRuntimeAnchorIntervalCountMismatch {
                 expected_interval_count,
@@ -468,6 +496,13 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "interval {interval_index} long-variance transition failed: {source}"
             ),
+            Self::MarketPressureTransitionFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} market-pressure transition failed: {source}"
+            ),
             Self::InvalidReturnComponents {
                 interval_index,
                 source,
@@ -498,9 +533,11 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidMeanReversionFittedParameters { source } => Some(source.as_ref()),
             Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source.as_ref()),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source.as_ref()),
+            Self::InvalidMarketPressureParameters { source } => Some(source.as_ref()),
+            Self::InvalidInitialMarketPressureState { source } => Some(source.as_ref()),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source.as_ref()),
             Self::InvalidNewsProcessConfiguration { source } => Some(source.as_ref()),
-            Self::InvalidTimestampBatchingObservationModel { source } => Some(source.as_ref()),
+            Self::InvalidTimestampBatchingSurface { source } => Some(source.as_ref()),
             Self::InvalidReturnClockExposureParameters { source } => Some(source.as_ref()),
             Self::InvalidLongVarianceParameters { source } => Some(source.as_ref()),
             Self::InvalidInitialLongVarianceState { source } => Some(source.as_ref()),
@@ -513,6 +550,7 @@ impl Error for SeededTickSimulationRunError {
             Self::TradingTimeSamplingFailure { source, .. } => Some(source.as_ref()),
             Self::EffectiveReturnClockBuildFailure { source, .. } => Some(source.as_ref()),
             Self::LongVarianceTransitionFailure { source, .. } => Some(source.as_ref()),
+            Self::MarketPressureTransitionFailure { source, .. } => Some(source.as_ref()),
             Self::InvalidReturnComponents { source, .. } => Some(source.as_ref()),
             Self::InvalidTransitionStep { source } => Some(source.as_ref()),
             Self::CalendarSessionBoundaryResolutionFailed { .. } => None,

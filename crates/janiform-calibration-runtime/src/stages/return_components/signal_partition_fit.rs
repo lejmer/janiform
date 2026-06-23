@@ -2,7 +2,7 @@ use super::contracts::{
     ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsRealizedKnownNewsReturnSample,
 };
-use janiform_calibration_artifacts::TickGridObservationModel;
+use janiform_calibration_artifacts::PriceDiscretizationSurface;
 
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_RETURN_FILTER_POLICY: &str = "maximum_explicit_shock_magnitude_or_nearest_tick_grid_adjusted_widest_log_gap_midpoint_in_positive_absolute_open_return_spectrum.v1";
 const MINIMUM_TICK_GRID_CONTINUOUS_THRESHOLD_MULTIPLE: f64 = 1.0;
@@ -17,7 +17,7 @@ pub(crate) fn fit_signal_partition_layer(
     observed_open_session_returns: &[ReturnComponentsObservedOpenSessionReturn],
     realized_known_news_return_samples: &[ReturnComponentsRealizedKnownNewsReturnSample],
     detected_intraday_jump_candidates: &[ReturnComponentsDetectedIntradayJumpCandidate],
-    tick_grid_observation_model: &TickGridObservationModel,
+    price_discretization_surface: &PriceDiscretizationSurface,
 ) -> FittedSignalPartitionLayer {
     FittedSignalPartitionLayer {
         continuous_return_filter_policy: RETURN_COMPONENTS_STAGE_CONTINUOUS_RETURN_FILTER_POLICY,
@@ -25,7 +25,7 @@ pub(crate) fn fit_signal_partition_layer(
             observed_open_session_returns,
             realized_known_news_return_samples,
             detected_intraday_jump_candidates,
-            tick_grid_observation_model,
+            price_discretization_surface,
         ),
     }
 }
@@ -34,7 +34,7 @@ fn fit_continuous_return_filter_threshold(
     observed_open_session_returns: &[ReturnComponentsObservedOpenSessionReturn],
     realized_known_news_return_samples: &[ReturnComponentsRealizedKnownNewsReturnSample],
     detected_intraday_jump_candidates: &[ReturnComponentsDetectedIntradayJumpCandidate],
-    tick_grid_observation_model: &TickGridObservationModel,
+    price_discretization_surface: &PriceDiscretizationSurface,
 ) -> f64 {
     let explicit_shock_ceiling = maximum_explicit_shock_magnitude(
         realized_known_news_return_samples,
@@ -85,7 +85,7 @@ fn fit_continuous_return_filter_threshold(
     };
 
     let tick_grid_adjusted_spectrum_threshold =
-        tick_grid_adjusted_continuous_threshold(spectrum_threshold, tick_grid_observation_model);
+        tick_grid_adjusted_continuous_threshold(spectrum_threshold, price_discretization_surface);
 
     if let Some(explicit_shock_ceiling) = explicit_shock_ceiling {
         tick_grid_adjusted_spectrum_threshold.max(explicit_shock_ceiling)
@@ -96,9 +96,9 @@ fn fit_continuous_return_filter_threshold(
 
 fn tick_grid_adjusted_continuous_threshold(
     spectrum_threshold: f64,
-    tick_grid_observation_model: &TickGridObservationModel,
+    price_discretization_surface: &PriceDiscretizationSurface,
 ) -> f64 {
-    let Some(tick_size) = tick_grid_observation_model.tick_size else {
+    let Some(tick_size) = price_discretization_surface.tick_size else {
         return spectrum_threshold;
     };
 
@@ -145,11 +145,11 @@ mod tests {
         ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsObservedOpenSessionReturn,
         ReturnComponentsRealizedKnownNewsReturnSample,
     };
-    use janiform_calibration_artifacts::TickGridObservationModel;
+    use janiform_calibration_artifacts::PriceDiscretizationSurface;
     use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
 
-    fn disabled_tick_grid_observation_model() -> TickGridObservationModel {
-        TickGridObservationModel {
+    fn disabled_price_discretization_surface() -> PriceDiscretizationSurface {
+        PriceDiscretizationSurface {
             tick_size: None,
             tick_size_source: "unavailable".to_string(),
             inference_policy: "not_inferred_for_signal_partition_tests.v1".to_string(),
@@ -222,7 +222,7 @@ mod tests {
                 jump_return: 5.0e-3,
                 post_shock_activity_lift: 1.0,
             }],
-            &disabled_tick_grid_observation_model(),
+            &disabled_price_discretization_surface(),
         );
 
         assert!((threshold - 5.0e-3).abs() <= 1.0e-12);
@@ -267,7 +267,7 @@ mod tests {
             ],
             &[],
             &[],
-            &disabled_tick_grid_observation_model(),
+            &disabled_price_discretization_surface(),
         );
 
         assert!((threshold - (3.0e-4_f64 * 5.0e-3_f64).sqrt()).abs() <= 1.0e-12);
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn continuous_return_filter_threshold_uses_nearest_tick_grid_multiple() {
-        let tick_grid_observation_model = TickGridObservationModel {
+        let price_discretization_surface = PriceDiscretizationSurface {
             tick_size: Some(1.0e-3),
             tick_size_source: "fixture".to_string(),
             inference_policy: "fixture.v1".to_string(),
@@ -303,7 +303,7 @@ mod tests {
             ],
             &[],
             &[],
-            &tick_grid_observation_model,
+            &price_discretization_surface,
         );
 
         assert_eq!(threshold, 1.0e-3);
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn fitted_signal_partition_layer_records_derived_filter_policy() {
         let fitted_layer =
-            fit_signal_partition_layer(&[], &[], &[], &disabled_tick_grid_observation_model());
+            fit_signal_partition_layer(&[], &[], &[], &disabled_price_discretization_surface());
 
         assert_eq!(
             fitted_layer.continuous_return_filter_policy,

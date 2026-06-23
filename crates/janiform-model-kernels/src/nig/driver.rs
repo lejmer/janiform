@@ -169,6 +169,9 @@ pub struct NigTradingTimeIncrementContributions {
     pub buy_side_increment: f64,
     pub sell_side_increment: f64,
     pub combined_increment: f64,
+    pub buy_side_subordinator_increment: f64,
+    pub sell_side_subordinator_increment: f64,
+    pub combined_subordinator_increment: f64,
     pub policy: &'static str,
 }
 
@@ -583,9 +586,9 @@ impl NigBuySellDriverParameters {
     where
         R: SimulationRandomnessStream,
     {
-        let raw_buy_side_increment = self
+        let buy_side_sample = self
             .buy_side_parameters
-            .sample_increment(integrated_buy_intensity, randomness_stream)
+            .sample_increment_with_subordinator(integrated_buy_intensity, randomness_stream)
             .map_err(
                 |source| NigTradingTimeIncrementSamplingError::BuySideSamplingFailure {
                     integrated_buy_intensity,
@@ -593,9 +596,9 @@ impl NigBuySellDriverParameters {
                 },
             )?;
 
-        let raw_sell_side_increment = self
+        let sell_side_sample = self
             .sell_side_parameters
-            .sample_increment(integrated_sell_intensity, randomness_stream)
+            .sample_increment_with_subordinator(integrated_sell_intensity, randomness_stream)
             .map_err(
                 |source| NigTradingTimeIncrementSamplingError::SellSideSamplingFailure {
                     integrated_sell_intensity,
@@ -603,15 +606,20 @@ impl NigBuySellDriverParameters {
                 },
             )?;
 
-        let buy_side_increment = raw_buy_side_increment
+        let buy_side_increment = buy_side_sample.increment
             - integrated_buy_intensity * self.buy_side_parameters.mean_per_unit_time();
-        let sell_side_increment = raw_sell_side_increment
+        let sell_side_increment = sell_side_sample.increment
             - integrated_sell_intensity * self.sell_side_parameters.mean_per_unit_time();
+        let combined_subordinator_increment =
+            buy_side_sample.subordinator_increment + sell_side_sample.subordinator_increment;
 
         Ok(NigTradingTimeIncrementContributions {
             buy_side_increment,
             sell_side_increment,
             combined_increment: buy_side_increment - sell_side_increment,
+            buy_side_subordinator_increment: buy_side_sample.subordinator_increment,
+            sell_side_subordinator_increment: sell_side_sample.subordinator_increment,
+            combined_subordinator_increment,
             policy: NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY,
         })
     }

@@ -1,11 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use super::contracts::{
-    MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
-    MeanReversionFittedParameters, MeanReversionPressureStateEvolutionError,
-    evolve_mean_reversion_pressure_state,
-};
+use super::contracts::{MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MeanReversionBoundaryStateEvolutionError {
@@ -31,9 +27,6 @@ pub enum MeanReversionBoundaryStateEvolutionError {
         value: f64,
     },
     InvalidCurrentAnchorValue {
-        value: f64,
-    },
-    InvalidIntervalEndPressureState {
         value: f64,
     },
     InvalidEvolvedDeviation {
@@ -79,10 +72,6 @@ impl Display for MeanReversionBoundaryStateEvolutionError {
                 formatter,
                 "current_anchor_value must be a finite number, found {value}"
             ),
-            Self::InvalidIntervalEndPressureState { value } => write!(
-                formatter,
-                "interval_end_pressure_state must be a finite number, found {value}"
-            ),
             Self::InvalidEvolvedDeviation { value } => write!(
                 formatter,
                 "evolved deviation must be a finite number, found {value}"
@@ -102,7 +91,6 @@ impl Error for MeanReversionBoundaryStateEvolutionError {
             | Self::InvalidCoreTotalReturn { .. }
             | Self::InvalidIntervalEndAnchorValue { .. }
             | Self::InvalidCurrentAnchorValue { .. }
-            | Self::InvalidIntervalEndPressureState { .. }
             | Self::InvalidEvolvedDeviation { .. } => None,
         }
     }
@@ -176,7 +164,6 @@ pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
     interval_delta: f64,
     core_total_return: f64,
     interval_end_anchor_value: f64,
-    interval_end_pressure_state: f64,
 ) -> Result<MeanReversionBoundaryState, MeanReversionBoundaryStateEvolutionError> {
     boundary_state.validate().map_err(|source| {
         MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source }
@@ -194,14 +181,6 @@ pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
         );
     }
 
-    if !interval_end_pressure_state.is_finite() {
-        return Err(
-            MeanReversionBoundaryStateEvolutionError::InvalidIntervalEndPressureState {
-                value: interval_end_pressure_state,
-            },
-        );
-    }
-
     let deviation_decay_factor = (-kappa * interval_delta).exp();
 
     let deviation = evolve_mean_reversion_deviation_with_decay_on_interval_grid(
@@ -214,68 +193,6 @@ pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
 
     let observed_log_price = interval_end_anchor_value + deviation;
 
-    MeanReversionBoundaryState::try_new(
-        observed_log_price,
-        interval_end_anchor_value,
-        interval_end_pressure_state,
-        deviation,
-    )
-    .map_err(|source| MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source })
-}
-
-/// Apply the canonical endogenous pressure-to-level update over one interval.
-pub fn evolve_mean_reversion_boundary_state_with_endogenous_pressure(
-    boundary_state: MeanReversionBoundaryState,
-    fitted_parameters: &MeanReversionFittedParameters,
-    interval_delta: f64,
-    core_total_return: f64,
-    core_expected_increment: f64,
-) -> Result<MeanReversionBoundaryState, MeanReversionBoundaryStateEvolutionError> {
-    boundary_state.validate().map_err(|source| {
-        MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source }
-    })?;
-
-    fitted_parameters.validate().map_err(|source| {
-        MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState {
-            source: MeanReversionBoundaryStateValidationError::NonFiniteField {
-                field: "fitted_parameters",
-                value: source.to_string(),
-            },
-        }
-    })?;
-
-    let interval_end_pressure_state = evolve_mean_reversion_pressure_state(
-        &fitted_parameters.anchor_model,
-        boundary_state.pressure_state,
-        core_expected_increment,
-        interval_delta,
-    )
-    .map_err(|source| match source {
-        MeanReversionPressureStateEvolutionError::InvalidAnchorModel { source } => {
-            MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState {
-                source: MeanReversionBoundaryStateValidationError::NonFiniteField {
-                    field: "anchor_model",
-                    value: source.to_string(),
-                },
-            }
-        }
-        MeanReversionPressureStateEvolutionError::InvalidPreviousPressureState { value }
-        | MeanReversionPressureStateEvolutionError::InvalidCoreExpectedIncrement { value }
-        | MeanReversionPressureStateEvolutionError::InvalidIntervalDelta { value } => {
-            MeanReversionBoundaryStateEvolutionError::InvalidIntervalEndPressureState { value }
-        }
-    })?;
-
-    let interval_end_anchor_value = boundary_state.anchor_value
-        + fitted_parameters.anchor_model.pressure_level_gain
-            * (interval_end_pressure_state - boundary_state.pressure_state);
-
-    evolve_mean_reversion_boundary_state_on_interval_grid(
-        boundary_state,
-        fitted_parameters.kappa,
-        interval_delta,
-        core_total_return,
-        interval_end_anchor_value,
-        interval_end_pressure_state,
-    )
+    MeanReversionBoundaryState::try_new(observed_log_price, interval_end_anchor_value, deviation)
+        .map_err(|source| MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source })
 }

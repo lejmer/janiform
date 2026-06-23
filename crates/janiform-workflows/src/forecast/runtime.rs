@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::model::long_variance::LongVarianceState;
+use janiform::model::market_pressure::MarketPressureState;
 use janiform::pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
@@ -221,13 +222,8 @@ pub(super) fn build_runtime(
         request.interval_duration_nanos,
     )?;
 
-    let initial_state = resolve_forecast_initial_state(
-        request,
-        &context,
-        &interval_factor_grid,
-        reference_price,
-        resolved.horizon_interval_count,
-    )?;
+    let initial_state =
+        resolve_forecast_initial_state(request, &context, &interval_factor_grid, reference_price)?;
 
     let model_parameters = match request.measure {
         ForecastMeasure::Physical => build_physical_vanilla_option_model_parameters(&context)?,
@@ -241,6 +237,7 @@ pub(super) fn build_runtime(
         initial_state.excitation_state,
         initial_state.long_variance_state,
         initial_state.mean_reversion_boundary_state,
+        initial_state.market_pressure_state,
     )?;
 
     let pricing_request = build_pricing_request(
@@ -318,18 +315,17 @@ fn build_boundary_input(
     initial_excitation_state: HawkesExcitationState,
     initial_long_variance_state: LongVarianceState,
     mean_reversion_boundary_state: janiform::simulation::MeanReversionBoundaryState,
+    market_pressure_state: MarketPressureState,
 ) -> Result<AnchoredVanillaOptionPricingBoundaryInput, WorkflowError> {
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         initial_excitation_state,
         initial_long_variance_state,
+        market_pressure_state,
         context
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
-            // Intentional copy because the forecast boundary owns a validated
-            // mean-reversion contract independent of the shared model context.
-            .clone(),
+            .mean_reversion_fitted_parameters,
         context.interval_delta,
         mean_reversion_boundary_state,
     )

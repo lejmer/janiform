@@ -19,25 +19,34 @@
 
 Derive the normalized terminal density used to change from the physical
 terminal law to the pricing terminal law.
-The goal is to show that activity premia and the scalar return tilt define a
-valid likelihood ratio when the terminal cumulant is finite.
+The goal is to show that activity premia, signed-imbalance exposure risk price,
+and the scalar return tilt define a valid likelihood ratio when the terminal
+cumulant is finite.
 
 \section{Setup}
 
 Let
 \[
-    K_{t,T}(v,\gamma_+,\gamma_-)
+    K_{t,T}(v,\gamma_+,\gamma_-,\rho_\Omega)
     =
     \log\mathbb E^P\!\left[
-\exp\!\left(
-vX_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
-\right)
+            \exp\!\left(
+                vA_{t,T}^{\Omega}
+                +vX_{t,T}^{\mathrm{core}}
+                +\gamma_+N_{t,T}^+
+                +\gamma_-N_{t,T}^-
+                -\rho_\Omega B_{t,T}^\Omega
+            \right)
 \mid\mathcal F_t
 \right]
 \]
 be the physical stochastic terminal cumulant produced by the adapter in
 \texttt{07\_terminal\_cumulant\_adapter.tex}.
 The deterministic terminal component \(d_{t,T}\) is not included in \(K_{t,T}\).
+The market-pressure anchor-pressure movement \(A_{t,T}^{\Omega}\) is
+stochastic and unweighted by mean-reversion core-shock weights.
+\(B_{t,T}^\Omega\) is the signed-balance exposure integral whose drift-scaled
+version is \(A_{t,T}^{\Omega}\).
 
 Let \(\pi_+,\pi_->0\), and write
 \[
@@ -53,11 +62,12 @@ Let \(\pi_+,\pi_->0\), and write
 Symbol & Meaning & Units or domain\\
 \midrule
 \(P\) & Physical measure & Base terminal law\\
-\(Q^{\theta,\pi}\) & Terminal pricing measure induced by the density & Equivalent terminal measure on the admissible domain\\
+\(Q^{\theta,\pi,\rho_\Omega}\) & Terminal pricing measure induced by the density & Equivalent terminal measure on the admissible domain\\
 \(\theta\) & Scalar stochastic-return tilt & Real transform domain\\
 \(\pi_\pm\) & Activity-premium count multipliers & Strictly positive\\
 \(\gamma_\pm\) & Log activity premia & Real finite\\
-\(M_T(\theta,\pi_+,\pi_-)\) & Terminal density process value & Positive and unit conditional mean\\
+\(M_T(\theta,\pi_+,\pi_-,\rho_\Omega)\) & Terminal density process value & Positive and unit conditional mean\\
+\(\rho_\Omega\) & Signed-imbalance exposure risk price & Real finite\\
 \(K_{t,T}\) & Physical stochastic cumulant & Finite on requested arguments\\
 \bottomrule
 \end{tabularx}
@@ -68,7 +78,7 @@ Symbol & Meaning & Units or domain\\
 \toprule
 Assumption & Where it is used & Why it is needed\\
 \midrule
-The cumulant \(K_{t,T}(\theta,\gamma_+,\gamma_-)\) is finite.
+The cumulant \(K_{t,T}(\theta,\gamma_+,\gamma_-,\rho_\Omega)\) is finite.
 & Defining the normalizing constant.
 & The likelihood ratio needs a finite conditional expectation.\\
 The activity premia are strictly positive.
@@ -77,6 +87,9 @@ The activity premia are strictly positive.
 \(\theta\) is real.
 & Interpreting the exponential as a Radon--Nikodym density.
 & Complex tilts are transform arguments, not probability measures.\\
+\(\rho_\Omega\) is real and finite.
+& Interpreting signed-imbalance exposure weighting as part of the density.
+& Non-finite exposure risk prices cannot define a finite likelihood ratio.\\
 The density is normalized conditionally on \(\mathcal F_t\).
 & Proving unit conditional mean.
 & A terminal pricing measure must preserve total probability.\\
@@ -85,22 +98,24 @@ The density is normalized conditionally on \(\mathcal F_t\).
 
 \section{Result}
 
-\noindent\textbf{Identity.} For every admissible real \(\theta\) and
-strictly positive \(\pi_\pm\), define
+\noindent\textbf{Identity.} For every admissible real \(\theta\), strictly
+positive \(\pi_\pm\), and finite \(\rho_\Omega\), define
 \[
-    M_T(\theta,\pi_+,\pi_-)
+    M_T(\theta,\pi_+,\pi_-,\rho_\Omega)
     =
     \exp\!\left(
-        \theta X_{t,T}
+        \theta A_{t,T}^{\Omega}
+        +\theta X_{t,T}^{\mathrm{core}}
         +\log(\pi_+)N_{t,T}^+
         +\log(\pi_-)N_{t,T}^-
-        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        -\rho_\Omega B_{t,T}^\Omega
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
     \right).
 \]
 Then
 \[
     \mathbb E^P\!\left[
-        M_T(\theta,\pi_+,\pi_-)\mid\mathcal F_t
+        M_T(\theta,\pi_+,\pi_-,\rho_\Omega)\mid\mathcal F_t
     \right]
     =1.
 \]
@@ -109,25 +124,34 @@ Then
 
 By definition of \(K_{t,T}\),
 \[
-    \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
+    \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-,\rho_\Omega)\right)
     =
     \mathbb E^P\!\left[
         \exp\!\left(
-            \theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+            \theta A_{t,T}^{\Omega}
+            +\theta X_{t,T}^{\mathrm{core}}
+            +\gamma_+N_{t,T}^+
+            +\gamma_-N_{t,T}^-
+            -\rho_\Omega B_{t,T}^\Omega
         \right)
         \mid\mathcal F_t
     \right].
 \]
-Set \(\gamma_\pm=\log\pi_\pm\). The density is
+Set \(\gamma_\pm=\log\pi_\pm\).
+The density is
 \[
     M_T
     =
     \frac{
         \exp\!\left(
-            \theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+            \theta A_{t,T}^{\Omega}
+            +\theta X_{t,T}^{\mathrm{core}}
+            +\gamma_+N_{t,T}^+
+            +\gamma_-N_{t,T}^-
+            -\rho_\Omega B_{t,T}^\Omega
         \right)
     }{
-        \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
+        \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-,\rho_\Omega)\right)
     }.
 \]
 Taking the conditional physical expectation gives
@@ -137,26 +161,31 @@ Taking the conditional physical expectation gives
     \frac{
         \mathbb E^P\!\left[
             \exp\!\left(
-                \theta X_{t,T}+\gamma_+N_{t,T}^++\gamma_-N_{t,T}^-
+                \theta A_{t,T}^{\Omega}
+                +\theta X_{t,T}^{\mathrm{core}}
+                +\gamma_+N_{t,T}^+
+                +\gamma_-N_{t,T}^-
+                -\rho_\Omega B_{t,T}^\Omega
             \right)
             \mid\mathcal F_t
         \right]
     }{
-        \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-)\right)
+        \exp\!\left(K_{t,T}(\theta,\gamma_+,\gamma_-,\rho_\Omega)\right)
     }
     =1.
 \]
 
-Since \(\theta\), \(\gamma_+\), and \(\gamma_-\) are real, and since
-\(\pi_\pm>0\), the numerator is strictly positive.
+Since \(\theta\), \(\gamma_+\), \(\gamma_-\), and \(\rho_\Omega\) are real, and
+since \(\pi_\pm>0\), the numerator is strictly positive.
 Therefore, \(M_T\) is a positive normalized terminal density on the
 admissible domain.
 
 \section{Domain and validity}
 
-The result is valid when \(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\) is finite,
-the affine schedule domain constraints hold for the corresponding adapted
-query, \(\theta\) is real, and \(\pi_\pm>0\).
+The result is valid when
+\(K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)\) is finite, the affine
+schedule domain constraints hold for the corresponding adapted query,
+\(\theta\) and \(\rho_\Omega\) are real, and \(\pi_\pm>0\).
 The normalized density alone does not impose the martingale condition.
 That condition determines which \(\theta\) is used for pricing.
 

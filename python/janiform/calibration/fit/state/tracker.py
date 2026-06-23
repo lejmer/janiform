@@ -107,6 +107,7 @@ class JaniformStateTracker:
 
         from .._runtime.option_pricing.support import model_reference_price
         from .._runtime.payloads import (
+            market_pressure_parameters_for_model,
             hawkes_kernel_parameters_for_model,
             long_variance_parameters_for_model,
             mean_reversion_fitted_parameters_for_model,
@@ -116,6 +117,7 @@ class JaniformStateTracker:
             hawkes_kernel_parameters_for_model(self._model).to_payload(),
             long_variance_parameters_for_model(self._model).to_payload(),
             mean_reversion_fitted_parameters_for_model(self._model).to_payload(),
+            market_pressure_parameters_for_model(self._model).to_payload(),
             model_reference_price(self._model),
             None if self._snapshot is None else self._snapshot.to_payload(),
             datetime_to_utc_nanos(resolved_state_time_utc),

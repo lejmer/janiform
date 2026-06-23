@@ -2,7 +2,38 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
+use crate::current_state::{
+    CurrentStateEstimationInput, estimate_current_state_from_observed_data,
+};
+use crate::load_interval_factor_grid_for_calibration;
+use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
+use crate::stages::joint_refinement::contracts::{
+    JointRefinementStageExecutionFailure, JointRefinementStageOptionPricingInput,
+    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
+};
+use crate::stages::joint_refinement::option_surface_tiering::{
+    JointRefinementCanonicalOptionQuote, JointRefinementOptionSurfaceTier,
+    JointRefinementOptionSurfaceTierKind, build_option_surface_tiers, clean_option_pricing_input,
+};
+use crate::stages::parallelism::resolved_stage_cpu_count;
+use crate::stages::progress::progress_percent;
+use crate::stages::seasonality::{
+    RuntimeIntervalSeasonalityFactorsBuildInput,
+    build_runtime_interval_seasonality_factors_from_components,
+};
 use chrono::{DateTime, Utc};
+use janiform_calibration_artifacts::{
+    JointRefinementStageOptionAggregateDiagnostic,
+    JointRefinementStageOptionCalibrationDiagnostics,
+    JointRefinementStageOptionMaturityScoreDiagnostic, JointRefinementStageOptionNodeDiagnostic,
+    JointRefinementStageOptionQuoteUniverseDiagnostics,
+    JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
+    JointRefinementStageOptionSnapshotMetadata,
+    JointRefinementStageOptionTierConstructionDiagnostic,
+    JointRefinementStageOptionTierConstructionDiagnostics,
+    JointRefinementStageOptionTierMaturityDiagnostic,
+    JointRefinementStageOptionTierPricingDiagnostics,
+};
 use janiform_engine_pricing::internal::{
     SpectralThetaWarmStartState,
     run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state,
@@ -21,54 +52,21 @@ use janiform_foundations::time::{
     NANOS_PER_HOUR, ceil_to_hour_utc_nanos, checked_interval_count_between_utc_nanos,
     floor_to_hour_utc_nanos,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::interval_factor_grids::{
     IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
     IntervalSeasonalityFactorSource,
 };
-
-use crate::adapters::load_interval_factor_grid_for_calibration;
-use crate::current_state::{
-    CurrentStateEstimationInput, estimate_current_state_from_observed_data,
-};
-use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
-use crate::stages::joint_refinement::contracts::{
-    JointRefinementStageExecutionFailure, JointRefinementStageOptionPricingInput,
-    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
-};
-use crate::stages::joint_refinement::option_surface_tiering::{
-    JointRefinementCanonicalOptionQuote, JointRefinementOptionSurfaceTier,
-    JointRefinementOptionSurfaceTierKind, build_option_surface_tiers, clean_option_pricing_input,
-};
-use crate::stages::progress::progress_percent;
-use crate::stages::seasonality::{
-    RuntimeIntervalSeasonalityFactorsBuildInput,
-    build_runtime_interval_seasonality_factors_from_components,
-};
-use janiform_calibration_artifacts::{
-    CalibrationObjectivePolicy, JointRefinementStageOptionAggregateDiagnostic,
-    JointRefinementStageOptionCalibrationDiagnostics,
-    JointRefinementStageOptionMaturityScoreDiagnostic, JointRefinementStageOptionNodeDiagnostic,
-    JointRefinementStageOptionQuoteUniverseDiagnostics,
-    JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
-    JointRefinementStageOptionSnapshotMetadata,
-    JointRefinementStageOptionTierConstructionDiagnostic,
-    JointRefinementStageOptionTierConstructionDiagnostics,
-    JointRefinementStageOptionTierMaturityDiagnostic,
-    JointRefinementStageOptionTierPricingDiagnostics,
-};
-use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::root_mean_square;
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
 use super::option_refinement::objective_gradient::{
     JointRefinementOptionNodeResidualSensitivity, differentiate_option_tier_root_mean_square_score,
 };
+use super::option_refinement::option_pricing_block_evaluation_budget;
 use super::option_refinement::reduced_model::{
     build_option_reduced_model_artifact, populate_reduced_model_runtime_estimates,
     reduced_model_diagnostics_from_artifact,
-};
-use super::option_refinement::{
-    option_pricing_block_evaluation_budget, pricing_block_search_coordinate_count,
 };
 use super::state::{
     JointRefinementContext, JointRefinementOptionMaturityScoreArtifact,
@@ -208,6 +206,8 @@ pub(crate) fn build_option_pricing_context(
         return Ok(None);
     };
 
+    let resolved_cpu_count = resolved_stage_cpu_count(cpu_count);
+
     let cleaned_option_pricing_input = clean_option_pricing_input(option_pricing_input)?;
 
     let horizon = resolve_option_pricing_horizon(&cleaned_option_pricing_input)?;
@@ -238,7 +238,7 @@ pub(crate) fn build_option_pricing_context(
     let interval_factor_grids = materialize_schedule_interval_factor_grids_with_cpu_count(
         &runtime_interval_schedule,
         &interval_factor_grid,
-        Some(cpu_count.max(1)),
+        Some(resolved_cpu_count),
     )
     .map_err(|source| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -268,7 +268,7 @@ pub(crate) fn build_option_pricing_context(
         materialize_schedule_interval_factor_grids_with_cpu_count(
             &audit_runtime_interval_schedule,
             &interval_factor_grid,
-            Some(cpu_count.max(1)),
+            Some(resolved_cpu_count),
         )
         .map_err(|source| {
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -313,7 +313,7 @@ pub(crate) fn build_option_pricing_context(
         option_surface_tiers,
         tier_pricing_inputs,
         carry_input: cleaned_option_pricing_input.carry_input.clone(),
-        cpu_count: cpu_count.max(1),
+        cpu_count: resolved_cpu_count,
     }))
 }
 
@@ -329,8 +329,12 @@ fn estimate_option_pricing_current_state(
         long_variance_parameters: return_components_payload
             .fitted_parameters
             .long_variance_parameters,
-        // Intentional clone so pricing-context preparation does not consume the shared stage payload.
-        mean_reversion_fitted_parameters: mean_reversion_payload.fitted_parameters.clone(),
+        mean_reversion_fitted_parameters: mean_reversion_payload.fitted_parameters,
+        // Current-state estimation owns a pressure contract for replaying the tape.
+        market_pressure_parameters: return_components_payload
+            .fitted_parameters
+            .market_pressure_parameters
+            .clone(),
         reference_price: option_pricing_input
             .current_state_estimation_input
             .reference_price,
@@ -586,13 +590,13 @@ fn build_option_boundary_input(
         0,
         current_state_estimation_output.hawkes_excitation_state,
         current_state_estimation_output.long_variance_state,
-        // Intentional clone so the shared fitted payload remains available for later reporting.
-        mean_reversion_payload.fitted_parameters.clone(),
-        runtime_interval_schedule.interval_deltas_hours[0],
-        // Intentional clone so the state estimate remains available to later pricing steps.
+        // Pricing boundary inputs own their initial pressure-state distribution.
         current_state_estimation_output
-            .mean_reversion_boundary_state
+            .market_pressure_state
             .clone(),
+        mean_reversion_payload.fitted_parameters,
+        runtime_interval_schedule.interval_deltas_hours[0],
+        current_state_estimation_output.mean_reversion_boundary_state,
     )
     .map_err(
         |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -842,6 +846,11 @@ fn run_option_grid_batch_pricing(
             fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
+            // Pricing model parameters own the pressure contract for transform construction.
+            fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters
+                .clone(),
             fitted_parameters.pricing_kernel_parameters(),
         ),
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
@@ -1018,9 +1027,12 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
         build_option_surface_tier_pricing_artifact(
             cache_key.clone(),
             &pricing_result,
-            context.objective_policy,
             valuation_time_utc_nanos,
             tier_inputs,
+            context
+                .active_parameter_layout
+                .option_pricing_kernel_block
+                .len(),
         )
         .map(Arc::new)
     });
@@ -1202,12 +1214,12 @@ fn build_observed_tier_option_nodes(
 fn build_option_surface_tier_pricing_artifact(
     cache_key: super::JointRefinementOptionPricingCacheKey,
     pricing_result: &VanillaOptionGridBatchPricingRunResult,
-    objective_policy: CalibrationObjectivePolicy,
     valuation_time_utc_nanos: i64,
     tier_inputs: &JointRefinementOptionTierPricingInputs,
+    pricing_coordinate_count: usize,
 ) -> Result<JointRefinementOptionTierPricingArtifact, String> {
     let mut node_diagnostics = Vec::with_capacity(tier_inputs.observed_nodes.len());
-    let mut loss_builder = CalibrationLossBuilder::new(objective_policy);
+    let mut loss_builder = CalibrationLossBuilder::new();
 
     let quote_scale_floor =
         minimum_positive_option_quote_spread(tier_inputs.observed_nodes.as_slice())?;
@@ -1263,6 +1275,7 @@ fn build_option_surface_tier_pricing_artifact(
                                     model_price_sensitivity,
                                     observed_node,
                                     quote_scale_floor,
+                                    pricing_coordinate_count,
                                 ),
                         });
                     }
@@ -1459,6 +1472,12 @@ pub(crate) fn build_option_calibration_diagnostics(
     let reference_oracle_call_wall_clock_millis = context
         .profiling_state
         .mean_option_pricing_run_wall_clock_millis();
+    let option_pricing_evaluation_budget = option_pricing_block_evaluation_budget(
+        context
+            .active_parameter_layout
+            .option_pricing_kernel_block
+            .len(),
+    );
 
     let mut reduced_model = selection_artifact
         .reduced_model_artifact
@@ -1466,7 +1485,7 @@ pub(crate) fn build_option_calibration_diagnostics(
         .map(|reduced_model_artifact| {
             reduced_model_diagnostics_from_artifact(
                 reduced_model_artifact,
-                option_pricing_block_evaluation_budget(),
+                option_pricing_evaluation_budget,
             )
         })
         .or_else(|| {
@@ -1475,7 +1494,7 @@ pub(crate) fn build_option_calibration_diagnostics(
                 .map(|reduced_model_artifact| {
                     reduced_model_diagnostics_from_artifact(
                         reduced_model_artifact,
-                        option_pricing_block_evaluation_budget(),
+                        option_pricing_evaluation_budget,
                     )
                 })
         });
@@ -1923,6 +1942,7 @@ fn spread_normalized_residual_gradient(
     model_price_sensitivity: VanillaOptionNodePriceSensitivity,
     observed_node: &JointRefinementOptionNodeDefinition,
     quote_scale_floor: f64,
+    pricing_coordinate_count: usize,
 ) -> Vec<f64> {
     let spread_inverse = 1.0
         / option_quote_residual_scale(observed_node, quote_scale_floor)
@@ -1931,9 +1951,11 @@ fn spread_normalized_residual_gradient(
     let mut gradient = vec![
         model_price_sensitivity.buy_activity_premium_derivative * spread_inverse,
         model_price_sensitivity.sell_activity_premium_derivative * spread_inverse,
+        model_price_sensitivity.pressure_signed_imbalance_exposure_risk_price_derivative
+            * spread_inverse,
     ];
 
-    gradient.resize(pricing_block_search_coordinate_count(), 0.0);
+    gradient.resize(pricing_coordinate_count, 0.0);
 
     gradient
 }
@@ -1945,8 +1967,8 @@ mod tests {
 
     use janiform_calibration_artifacts::JointRefinementStageCarryInput;
     use janiform_calibration_artifacts::{
-        CalibrationObjectivePolicy, CalibrationRunSpec, HawkesStageFittedParameters,
-        MeanReversionStageDiagnostics, ReturnComponentsStageFittedParameters,
+        CalibrationRunSpec, HawkesStageFittedParameters, MeanReversionStageDiagnostics,
+        ReturnComponentsStageFittedParameters,
     };
     use janiform_engine_pricing::{
         AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -1974,7 +1996,7 @@ mod tests {
         pricing_progress_interval_value, resolve_option_runtime_interval_schedule,
         validate_option_spot,
     };
-    use crate::adapters::load_interval_factor_grid_for_calibration;
+    use crate::load_interval_factor_grid_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
     use crate::stages::joint_refinement::contracts::{
         JointRefinementStageCurrentStateEstimationInput, JointRefinementStageOptionPricingInput,
@@ -2437,9 +2459,9 @@ mod tests {
         let artifact = build_option_surface_tier_pricing_artifact(
             cache_key.clone(),
             &pricing_result,
-            CalibrationObjectivePolicy::default(),
             0,
             &tier_inputs,
+            2,
         )
         .expect("artifact should build from complete grid prices");
         assert_eq!(artifact.cache_key, cache_key);
@@ -2893,6 +2915,7 @@ mod tests {
         let return_components_payload = ReturnComponentsStageFittedPayload {
             schema_version: "debug_fixture",
             selected_candidate_id: "debug_fixture".to_string(),
+            source_window_open_exposure_hours: 1.0,
             fitted_parameters: return_components_fitted_parameters.clone(),
             candidate_diagnostics: Vec::new(),
             candidate_generation_policy: "debug_fixture",
@@ -2905,7 +2928,9 @@ mod tests {
                     surprise_news_arrival_family_count: 1,
                     return_jump_mark_scale_family_count: 1,
                     activity_coupling_family_count: 1,
+                    market_pressure_family_count: 1,
                 },
+            market_pressure_runtime_state: None,
             activity_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
             activity_selected_hawkes_candidate_id: None,
             activity_artifact_reference: None,
@@ -3069,6 +3094,7 @@ mod tests {
                 return_components_fitted_parameters.nig_shared_plus_shift_configuration,
                 return_components_fitted_parameters.return_clock_exposure_parameters,
                 return_components_fitted_parameters.long_variance_parameters,
+                return_components_fitted_parameters.market_pressure_parameters,
                 janiform_engine_pricing::VanillaOptionPricingKernelParameters::identity(),
             ),
             runtime_interval_schedule: horizon,

@@ -1,13 +1,13 @@
-use janiform_foundations::numeric::{MeanEstimate, mean_estimate_from_standard_errors};
-
 use crate::objective::CalibrationLossBuilder;
 use crate::stages::joint_metrics::log_ratio_distance;
 use crate::stages::joint_refinement::JointRefinementSeedSummary;
 use crate::stages::joint_refinement::execution::JointRefinementObservedData;
-use crate::stages::joint_refinement::objective::{add_direct_term, root_mean_square};
+use crate::stages::joint_refinement::objective::{
+    add_objective_family_from_seed_vectors, diagonal_covariance_from_standard_errors,
+    root_mean_square,
+};
 use crate::stages::long_variance::metrics::{
-    LONG_VARIANCE_HORIZON_DEFINITIONS, LongVarianceHorizonMomentStandardErrors,
-    LongVarianceHorizonMomentSummary,
+    LONG_VARIANCE_HORIZON_DEFINITIONS, LongVarianceHorizonMomentSummary,
 };
 
 const LONG_VARIANCE_OBJECTIVE_FAMILY_ID: &str = "long_variance";
@@ -92,177 +92,129 @@ pub(super) fn add_long_variance_horizon_terms(
             })
             .collect::<Vec<_>>();
 
-        add_metric_term(
+        add_long_variance_horizon_family(
             builder,
             horizon_label,
-            "realized_variance",
-            ObservedLongVarianceMetric {
-                value: observed_summary.realized_variance,
-                standard_error: observed_summary.standard_errors.realized_variance,
-            },
+            *observed_summary,
             model_summaries.as_slice(),
-            |summary| summary.realized_variance,
-            |standard_errors| standard_errors.realized_variance,
-        );
-
-        add_metric_term(
-            builder,
-            horizon_label,
-            "variance_of_variance",
-            ObservedLongVarianceMetric {
-                value: observed_summary.variance_of_variance,
-                standard_error: observed_summary.standard_errors.variance_of_variance,
-            },
-            model_summaries.as_slice(),
-            |summary| summary.variance_of_variance,
-            |standard_errors| standard_errors.variance_of_variance,
-        );
-
-        add_metric_term(
-            builder,
-            horizon_label,
-            "return_skewness",
-            ObservedLongVarianceMetric {
-                value: observed_summary.return_skewness,
-                standard_error: observed_summary.standard_errors.return_skewness,
-            },
-            model_summaries.as_slice(),
-            |summary| summary.return_skewness,
-            |standard_errors| standard_errors.return_skewness,
-        );
-
-        add_metric_term(
-            builder,
-            horizon_label,
-            "return_excess_kurtosis",
-            ObservedLongVarianceMetric {
-                value: observed_summary.return_excess_kurtosis,
-                standard_error: observed_summary.standard_errors.return_excess_kurtosis,
-            },
-            model_summaries.as_slice(),
-            |summary| summary.return_excess_kurtosis,
-            |standard_errors| standard_errors.return_excess_kurtosis,
-        );
-
-        add_metric_term(
-            builder,
-            horizon_label,
-            "activity_variance_correlation",
-            ObservedLongVarianceMetric {
-                value: observed_summary.activity_variance_correlation,
-                standard_error: observed_summary
-                    .standard_errors
-                    .activity_variance_correlation,
-            },
-            model_summaries.as_slice(),
-            |summary| summary.activity_variance_correlation,
-            |standard_errors| standard_errors.activity_variance_correlation,
-        );
-
-        add_metric_term(
-            builder,
-            horizon_label,
-            "signed_activity_future_variance_relation",
-            ObservedLongVarianceMetric {
-                value: observed_summary.signed_activity_future_variance_relation,
-                standard_error: observed_summary
-                    .standard_errors
-                    .signed_activity_future_variance_relation,
-            },
-            model_summaries.as_slice(),
-            |summary| summary.signed_activity_future_variance_relation,
-            |standard_errors| standard_errors.signed_activity_future_variance_relation,
         );
     }
 }
 
-struct ObservedLongVarianceMetric {
-    value: Option<f64>,
-    standard_error: Option<f64>,
-}
-
-fn add_metric_term(
+fn add_long_variance_horizon_family(
     builder: &mut CalibrationLossBuilder,
     horizon_label: &str,
-    metric_name: &str,
-    observed_metric: ObservedLongVarianceMetric,
+    observed_summary: LongVarianceHorizonMomentSummary,
     model_summaries: &[LongVarianceHorizonMomentSummary],
-    extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
-    extract_standard_error: fn(LongVarianceHorizonMomentStandardErrors) -> Option<f64>,
 ) {
-    let Some(observed_value) = observed_metric.value else {
-        return;
-    };
+    let metrics = [
+        LongVarianceMetricDescriptor {
+            metric_name: "realized_variance",
+            observed_value: observed_summary.realized_variance,
+            observed_standard_error: observed_summary.standard_errors.realized_variance,
+            extract_model_value: |summary| summary.realized_variance,
+        },
+        LongVarianceMetricDescriptor {
+            metric_name: "variance_of_variance",
+            observed_value: observed_summary.variance_of_variance,
+            observed_standard_error: observed_summary.standard_errors.variance_of_variance,
+            extract_model_value: |summary| summary.variance_of_variance,
+        },
+        LongVarianceMetricDescriptor {
+            metric_name: "return_skewness",
+            observed_value: observed_summary.return_skewness,
+            observed_standard_error: observed_summary.standard_errors.return_skewness,
+            extract_model_value: |summary| summary.return_skewness,
+        },
+        LongVarianceMetricDescriptor {
+            metric_name: "return_excess_kurtosis",
+            observed_value: observed_summary.return_excess_kurtosis,
+            observed_standard_error: observed_summary.standard_errors.return_excess_kurtosis,
+            extract_model_value: |summary| summary.return_excess_kurtosis,
+        },
+        LongVarianceMetricDescriptor {
+            metric_name: "activity_variance_correlation",
+            observed_value: observed_summary.activity_variance_correlation,
+            observed_standard_error: observed_summary
+                .standard_errors
+                .activity_variance_correlation,
+            extract_model_value: |summary| summary.activity_variance_correlation,
+        },
+        LongVarianceMetricDescriptor {
+            metric_name: "signed_activity_future_variance_relation",
+            observed_value: observed_summary.signed_activity_future_variance_relation,
+            observed_standard_error: observed_summary
+                .standard_errors
+                .signed_activity_future_variance_relation,
+            extract_model_value: |summary| summary.signed_activity_future_variance_relation,
+        },
+    ];
 
-    let Some(observed_standard_error) =
-        finite_positive_standard_error(observed_metric.standard_error)
-    else {
-        return;
-    };
-
-    let Some(model_estimate) =
-        average_summary_metric_estimate(model_summaries, extract_metric, extract_standard_error)
-    else {
-        return;
-    };
-
-    add_direct_term(
-        builder,
-        format!(
-            "{LONG_VARIANCE_OBJECTIVE_FAMILY_ID}.{}.{}",
-            horizon_label, metric_name
-        )
-        .as_str(),
-        LONG_VARIANCE_OBJECTIVE_FAMILY_ID,
-        observed_value,
-        model_estimate.value,
-        observed_standard_error,
-        model_estimate.standard_error,
-    );
-}
-
-fn average_summary_metric_estimate(
-    summaries: &[LongVarianceHorizonMomentSummary],
-    extract_metric: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
-    extract_standard_error: fn(LongVarianceHorizonMomentStandardErrors) -> Option<f64>,
-) -> Option<MeanEstimate> {
-    let estimates = summaries
-        .iter()
-        .copied()
-        .filter_map(|summary| {
-            let value = extract_metric(summary)?;
-            let standard_error =
-                finite_positive_standard_error(extract_standard_error(summary.standard_errors))?;
-
-            value.is_finite().then_some((value, standard_error))
+    let identified_metrics = metrics
+        .into_iter()
+        .filter(|metric| {
+            metric.observed_value.is_some_and(f64::is_finite)
+                && metric
+                    .observed_standard_error
+                    .is_some_and(|standard_error| {
+                        standard_error.is_finite() && standard_error > 0.0
+                    })
         })
         .collect::<Vec<_>>();
 
-    if estimates.is_empty() {
-        return None;
+    if identified_metrics.is_empty() {
+        return;
     }
 
-    let values = estimates
+    let observed_vector = identified_metrics
         .iter()
-        .map(|(value, _)| *value)
+        .filter_map(|metric| metric.observed_value)
+        .collect::<Vec<_>>();
+    let observed_standard_errors = identified_metrics
+        .iter()
+        .filter_map(|metric| metric.observed_standard_error)
         .collect::<Vec<_>>();
 
-    let standard_errors = estimates
+    let Some(observed_covariance_rows) =
+        diagonal_covariance_from_standard_errors(observed_standard_errors.as_slice())
+    else {
+        return;
+    };
+
+    let model_seed_vectors = model_summaries
         .iter()
-        .map(|(_, standard_error)| *standard_error)
+        .filter_map(|summary| {
+            identified_metrics
+                .iter()
+                .map(|metric| {
+                    (metric.extract_model_value)(*summary).filter(|value| value.is_finite())
+                })
+                .collect::<Option<Vec<_>>>()
+        })
         .collect::<Vec<_>>();
 
-    let pooled_estimate =
-        mean_estimate_from_standard_errors(values.as_slice(), standard_errors.as_slice())?;
+    let family_id = format!("{LONG_VARIANCE_OBJECTIVE_FAMILY_ID}.{horizon_label}");
+    let coordinate_ids = identified_metrics
+        .iter()
+        .map(|metric| format!("{family_id}.{}", metric.metric_name))
+        .collect::<Vec<_>>();
 
-    pooled_estimate
-        .standard_error
-        .is_finite()
-        .then_some(pooled_estimate)
+    add_objective_family_from_seed_vectors(
+        builder,
+        family_id,
+        coordinate_ids,
+        observed_vector,
+        observed_covariance_rows,
+        model_seed_vectors,
+    );
 }
 
-fn finite_positive_standard_error(standard_error: Option<f64>) -> Option<f64> {
-    standard_error.filter(|value| value.is_finite() && *value > 0.0)
+#[derive(Debug, Clone, Copy)]
+struct LongVarianceMetricDescriptor {
+    metric_name: &'static str,
+    observed_value: Option<f64>,
+    observed_standard_error: Option<f64>,
+    extract_model_value: fn(LongVarianceHorizonMomentSummary) -> Option<f64>,
 }
 
 fn push_positive_metric_difference(

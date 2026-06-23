@@ -26,8 +26,12 @@ pub(crate) use bounds::{
     nig_search_bounds_for_calibration_sample_with_solver_settings,
     nig_search_point_from_configuration,
 };
-pub(crate) use likelihood::evaluate_configuration_likelihood_objective_with_context_and_counts;
 pub(crate) use likelihood::simulate_matched_scale_returns_with_seed;
+pub(crate) use likelihood::{
+    NetTradingTimeReturnLogDensityInput, average_negative_log_likelihood_resolution,
+    evaluate_configuration_likelihood_objective_with_context_and_counts,
+    log_density_net_trading_time_return,
+};
 #[cfg(test)]
 pub(crate) use optimization::build_nig_search_candidates;
 pub(crate) use optimization::{
@@ -50,7 +54,8 @@ pub(crate) use sample::{
     sample_continuous_return_calibration_sample_by_equal_stride,
 };
 pub(crate) use types::{
-    ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
+    ContinuousLikelihoodBlockScore, ContinuousLikelihoodEvaluatorCounts,
+    ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjectiveEvaluation,
     ContinuousReturnOptimizerContext, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };

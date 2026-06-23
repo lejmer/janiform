@@ -7,13 +7,12 @@ use janiform_model_kernels::hawkes::{
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
-use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionFittedParameters,
-};
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
+use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HawkesStageFittedParameters {
@@ -33,19 +32,11 @@ pub struct SurpriseNewsDeterministicIntensityProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TickGridObservationModel {
+pub struct PriceDiscretizationSurface {
     pub tick_size: Option<f64>,
     pub tick_size_source: String,
     pub inference_policy: String,
     pub observation_policy: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ObservationModelsStageDiagnostics {
-    pub estimation_policy: String,
-    pub observed_open_session_return_count: usize,
-    pub same_session_timestamp_transition_count: u64,
-    pub same_timestamp_continuation_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,8 +46,9 @@ pub struct ReturnComponentsStageFittedParameters {
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub long_variance_parameters: LongVarianceParameters,
-    pub tick_grid_observation_model: TickGridObservationModel,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub market_pressure_parameters: MarketPressureParameters,
+    pub price_discretization_surface: PriceDiscretizationSurface,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
 }
 
@@ -122,6 +114,10 @@ pub struct LongVarianceStageDiagnostics {
     pub event_loading_fit_candidate_pair_count: usize,
     pub event_loading_fit_pair_count: usize,
     pub event_loading_fit_coverage_ratio: f64,
+    pub stationary_return_energy_rate_per_hour: f64,
+    pub return_energy_fit_candidate_pair_count: usize,
+    pub return_energy_fit_pair_count: usize,
+    pub return_energy_fit_coverage_ratio: f64,
     pub selected_candidate_id: String,
     pub horizon_diagnostics: Vec<LongVarianceStageHorizonDiagnostic>,
 }
@@ -143,18 +139,25 @@ pub struct NewsShocksStageDiagnostics {
     pub surprise_return_jump_volatility: f64,
 }
 
+/// Scale accounting for the dynamic parameter handoff performed by return backfit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReturnBackfitStageVarianceBudgetDiagnostic {
-    /// Selected return-components NIG variance scale before backfit.
-    pub initial_nig_contribution: Option<f64>,
-    /// Difference between target variance and backfitted NIG variance.
-    pub fixed_long_variance_news_contribution: Option<f64>,
-    /// NIG variance scale after dividing the observed target by the long-variance clock multiplier.
-    pub backfitted_nig_contribution: Option<f64>,
-    /// Backfitted NIG variance multiplied by the long-variance clock multiplier.
-    pub final_total_modeled_return_scale: Option<f64>,
-    /// Observed return variance target. This is squared volatility, not volatility.
-    pub observed_target_scale: Option<f64>,
+pub struct ReturnBackfitStageScaleHandoffDiagnostic {
+    /// Selected return-components NIG delta supplied to return backfit.
+    pub selected_nig_delta: Option<f64>,
+    /// NIG delta after scaling by the dynamic-clock variance handoff multiplier.
+    pub post_handoff_nig_delta: Option<f64>,
+    /// Selected return-components model variance scale supplied to return backfit.
+    pub selected_continuous_model_variance_scale: Option<f64>,
+    /// Multiplicative return-clock scale implied by the fitted long-variance and news state.
+    pub long_variance_clock_scale_multiplier: Option<f64>,
+    /// Multiplicative NIG delta adjustment applied during return backfit.
+    pub delta_handoff_multiplier: Option<f64>,
+    /// Base continuous-model variance scale after NIG delta handoff.
+    pub post_handoff_base_variance_scale: Option<f64>,
+    /// Dynamic-clock continuous-model variance scale after NIG delta handoff.
+    pub post_handoff_dynamic_variance_scale: Option<f64>,
+    /// Observed return variance used as a diagnostic reference.
+    pub observed_reference_variance_scale: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -168,7 +171,7 @@ pub struct ReturnBackfitStageObjectiveBlockDiagnostic {
 pub struct ReturnBackfitStageDiagnostics {
     pub estimation_policy: String,
     pub selected_candidate_id: String,
-    pub variance_budget: ReturnBackfitStageVarianceBudgetDiagnostic,
+    pub scale_handoff: ReturnBackfitStageScaleHandoffDiagnostic,
     pub objective_blocks: Vec<ReturnBackfitStageObjectiveBlockDiagnostic>,
     pub warnings: Vec<String>,
 }
@@ -186,7 +189,6 @@ pub struct MeanReversionStageCalibrationGrid {
 pub struct MeanReversionStageDiagnostics {
     pub selected_candidate_family: String,
     pub calibration_grid: MeanReversionStageCalibrationGrid,
-    pub anchor_parameter_estimates: MeanReversionAnchorModel,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anchor_origin_level: Option<f64>,
     pub phi_reference: f64,
@@ -206,7 +208,6 @@ pub struct MeanReversionStageDiagnostics {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeanReversionStageCandidateDiagnostics {
     pub candidate_family: String,
-    pub anchor_model: MeanReversionAnchorModel,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anchor_origin_level: Option<f64>,
     pub phi_reference: f64,
@@ -219,18 +220,12 @@ pub struct MeanReversionStageCandidateDiagnostics {
     pub deviation_sample_count: usize,
     pub regression_pair_count: usize,
     pub series_summaries: MeanReversionStageCandidateSeriesDiagnostics,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub predictive_evidence: Option<MeanReversionStagePredictiveEvidenceDiagnostics>,
     pub stage_decision_reason: String,
 }
 
 /// Compact summaries of the internal series used to fit one mean-reversion candidate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeanReversionStageCandidateSeriesDiagnostics {
-    /// Expected core-price increments used by the endogenous anchor model.
-    pub core_expected_increments: MeanReversionStageSeriesSummary,
-    /// Endogenous pressure state path used by the anchor model.
-    pub pressure_state_path: MeanReversionStageSeriesSummary,
     /// Anchor level paired with each retained calibration observation.
     pub boundary_anchor_values: MeanReversionStageSeriesSummary,
     /// Observed log-price deviations from the candidate anchor path.
@@ -341,25 +336,6 @@ pub struct MeanReversionStageGridDiagnostics {
     pub stage_decision_reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MeanReversionStagePredictiveEvidenceDiagnostics {
-    pub gate_status: String,
-    pub significance_level: f64,
-    pub validation_refit_schedule_policy: String,
-    pub validation_refit_count: usize,
-    pub validation_transition_count: usize,
-    pub validation_block_length: usize,
-    pub validation_block_count: usize,
-    pub positive_block_count: usize,
-    pub negative_block_count: usize,
-    pub tied_block_count: usize,
-    pub random_walk_validation_loss: Option<f64>,
-    pub candidate_validation_loss: Option<f64>,
-    pub relative_loss_reduction: Option<f64>,
-    pub raw_sign_test_p_value: Option<f64>,
-    pub holm_adjusted_p_value: Option<f64>,
-}
-
 pub type JointRefinementStageObjectiveBreakdown = CalibrationLossEvaluation;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -424,8 +400,8 @@ pub struct JointRefinementStageRestartEvaluationTimingDiagnostic {
     pub restart_id: String,
     pub schedule_category: String,
     pub candidate_evaluation_count: usize,
-    pub poll_direction_position: Option<usize>,
-    pub poll_direction_label: String,
+    pub search_direction_position: Option<usize>,
+    pub search_direction_label: String,
     pub elapsed_millis: u64,
     pub objective: Option<f64>,
     pub admissibility_blocker_count: Option<usize>,

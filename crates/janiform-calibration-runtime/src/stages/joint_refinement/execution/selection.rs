@@ -682,6 +682,10 @@ pub(crate) fn joint_parameter_name_by_index(
             "long_variance.vol_of_vol",
         ),
         (
+            active_parameter_layout.long_variance_return_energy_loading_index,
+            "long_variance.return_energy_loading",
+        ),
+        (
             active_parameter_layout.long_variance_buy_event_loading_index,
             "long_variance.buy_event_loading",
         ),
@@ -753,7 +757,7 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
 #[cfg(test)]
 mod tests {
     use janiform_calibration_artifacts::{
-        CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationObjectivePolicy,
+        CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic,
         JointRefinementStageObjectiveBreakdown,
     };
 
@@ -835,13 +839,15 @@ mod tests {
         global_loss: f64,
     ) -> JointRefinementStageObjectiveBreakdown {
         JointRefinementStageObjectiveBreakdown {
-            policy: CalibrationObjectivePolicy::default(),
             family_losses: vec![CalibrationLossFamilyDiagnostic {
                 family_id: "test_fit".to_string(),
-                term_count: 1,
+                coordinate_count: 1,
+                rank: 1,
+                whitened_coordinates: vec![global_loss.sqrt()],
                 loss: global_loss,
                 max_standardized_residual: global_loss,
                 worst_term_id: Some("test_fit".to_string()),
+                unidentified: false,
             }],
             term_diagnostics: Vec::new(),
             hard_constraint_diagnostics: Vec::new(),

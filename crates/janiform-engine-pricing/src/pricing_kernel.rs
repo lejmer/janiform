@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 use janiform_foundations::complex_math::ComplexScalar;
 use serde::{Deserialize, Serialize};
 
-/// Predictable activity premia for vanilla option pricing.
+/// Pricing-kernel loadings for vanilla option pricing.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VanillaOptionPricingKernelParameters {
@@ -12,6 +12,8 @@ pub struct VanillaOptionPricingKernelParameters {
     pub buy_activity_premium: f64,
     /// Likelihood-ratio multiplier applied to sell-side endogenous event intensity.
     pub sell_activity_premium: f64,
+    /// Loading applied to future signed side-imbalance exposure in the pricing kernel.
+    pub pressure_signed_imbalance_exposure_risk_price: f64,
 }
 
 impl VanillaOptionPricingKernelParameters {
@@ -20,32 +22,47 @@ impl VanillaOptionPricingKernelParameters {
         Self {
             buy_activity_premium: 1.0,
             sell_activity_premium: 1.0,
+            pressure_signed_imbalance_exposure_risk_price: 0.0,
         }
     }
 
-    /// Construct activity premia without validation.
-    pub const fn new(buy_activity_premium: f64, sell_activity_premium: f64) -> Self {
+    /// Construct pricing-kernel parameters without validation.
+    pub const fn new(
+        buy_activity_premium: f64,
+        sell_activity_premium: f64,
+        pressure_signed_imbalance_exposure_risk_price: f64,
+    ) -> Self {
         Self {
             buy_activity_premium,
             sell_activity_premium,
+            pressure_signed_imbalance_exposure_risk_price,
         }
     }
 
-    /// Construct validated activity premia.
+    /// Construct validated pricing-kernel parameters.
     pub fn try_new(
         buy_activity_premium: f64,
         sell_activity_premium: f64,
+        pressure_signed_imbalance_exposure_risk_price: f64,
     ) -> Result<Self, VanillaOptionPricingKernelParametersError> {
-        let parameters = Self::new(buy_activity_premium, sell_activity_premium);
+        let parameters = Self::new(
+            buy_activity_premium,
+            sell_activity_premium,
+            pressure_signed_imbalance_exposure_risk_price,
+        );
         parameters.validate()?;
 
         Ok(parameters)
     }
 
-    /// Validate both activity premia.
+    /// Validate pricing-kernel parameters.
     pub fn validate(self) -> Result<(), VanillaOptionPricingKernelParametersError> {
         validate_activity_premium("buy_activity_premium", self.buy_activity_premium)?;
         validate_activity_premium("sell_activity_premium", self.sell_activity_premium)?;
+        validate_pressure_risk_price(
+            "pressure_signed_imbalance_exposure_risk_price",
+            self.pressure_signed_imbalance_exposure_risk_price,
+        )?;
 
         Ok(())
     }
@@ -101,10 +118,27 @@ fn validate_activity_premium(
     Ok(())
 }
 
-/// Validation errors for pricing-kernel activity premia.
+fn validate_pressure_risk_price(
+    field: &'static str,
+    value: f64,
+) -> Result<(), VanillaOptionPricingKernelParametersError> {
+    if !value.is_finite() {
+        return Err(
+            VanillaOptionPricingKernelParametersError::InvalidPressureSignedImbalanceExposureRiskPrice {
+                field,
+                value,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+/// Validation errors for pricing-kernel parameters.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionPricingKernelParametersError {
     InvalidActivityPremium { field: &'static str, value: f64 },
+    InvalidPressureSignedImbalanceExposureRiskPrice { field: &'static str, value: f64 },
 }
 
 impl Display for VanillaOptionPricingKernelParametersError {
@@ -114,6 +148,9 @@ impl Display for VanillaOptionPricingKernelParametersError {
                 formatter,
                 "{field} must be finite and strictly positive, found {value}"
             ),
+            Self::InvalidPressureSignedImbalanceExposureRiskPrice { field, value } => {
+                write!(formatter, "{field} must be finite, found {value}")
+            }
         }
     }
 }
@@ -127,7 +164,7 @@ mod tests {
 
     #[test]
     fn terminal_density_activity_premium_tilts_counts_without_intensity_compensator() {
-        let kernel = VanillaOptionPricingKernelParameters::try_new(1.25, 0.75)
+        let kernel = VanillaOptionPricingKernelParameters::try_new(1.25, 0.75, 0.0)
             .expect("pricing kernel parameters should construct");
         let u_input = ComplexScalar::new(0.2, -0.3);
         let z_input = ComplexScalar::new(0.8, 0.4);
@@ -148,12 +185,23 @@ mod tests {
 
     #[test]
     fn pricing_kernel_rejects_non_positive_premia() {
-        let error = VanillaOptionPricingKernelParameters::try_new(0.0, 1.0)
+        let error = VanillaOptionPricingKernelParameters::try_new(0.0, 1.0, 0.0)
             .expect_err("zero premium should be rejected");
 
         assert_eq!(
             error.to_string(),
             "buy_activity_premium must be finite and strictly positive, found 0"
+        );
+    }
+
+    #[test]
+    fn pricing_kernel_rejects_non_finite_pressure_risk_price() {
+        let error = VanillaOptionPricingKernelParameters::try_new(1.0, 1.0, f64::NAN)
+            .expect_err("non-finite pressure risk price should be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "pressure_signed_imbalance_exposure_risk_price must be finite, found NaN"
         );
     }
 }

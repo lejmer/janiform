@@ -1,3 +1,5 @@
+mod support;
+
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform_calibration_artifacts::CalibrationExecutionMode;
 use janiform_engine_sufficient_statistics::{
@@ -28,6 +30,7 @@ use janiform_verification::{
     ScaleConsistencyResolvedSeedSource, ScaleConsistencyVarianceReductionPolicy,
 };
 use serde_json::json;
+use support::neutral_market_pressure_parameters;
 
 #[test]
 fn scale_consistency_run_spec_round_trip_serialization_preserves_contract_fields() {
@@ -355,6 +358,7 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
         hawkes_kernel_parameters,
         GammaSeverityMarkConfiguration::try_new(2.0).expect("gamma severity marks should validate"),
         LongVarianceParameters::neutral(),
+        neutral_market_pressure_parameters(),
     )
     .expect("equation specification should validate");
     let nig_configuration = NigSharedPlusShiftConfiguration::try_new(1.6, 0.15, 0.5, 0.0, -0.1)
@@ -369,24 +373,20 @@ fn build_model_inputs() -> SufficientStatisticsModelInputs {
             y_minus_plus: 0.03,
             y_minus_minus: 0.04,
         },
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-kappa endogenous mean reversion should construct"),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
-            0.0,
-            vec![0.0; 2],
             vec![0.0; 2],
             vec![1.0; 2],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-            0.0, 0.0, 0.0, 0.0,
-        )
-        .expect("disabled mean-reversion boundary state should construct"),
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     })
     .expect("model inputs should validate")
 }

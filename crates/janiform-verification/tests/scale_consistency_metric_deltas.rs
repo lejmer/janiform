@@ -444,9 +444,23 @@ fn build_record(
         total_return,
     ) = record;
 
-    let sufficient_statistics =
-        SufficientStatisticsIntervalStatistics::try_new(a_plus, 0.0, a_minus, 0.0, n_plus, n_minus)
-            .expect("interval statistics should validate");
+    let sufficient_statistics = SufficientStatisticsIntervalStatistics::try_new(
+        a_plus,
+        0.0,
+        a_minus,
+        0.0,
+        n_plus,
+        n_minus,
+        janiform_model_kernels::hawkes::HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        },
+        janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
+        0.0,
+    )
+    .expect("interval statistics should validate");
     let return_components = SufficientStatisticsReturnComponents::try_new(
         buy_side_return,
         sell_side_return,
@@ -464,7 +478,6 @@ fn build_record(
         total_return,
         total_return,
         total_return,
-        0.0,
         0.0,
         total_return,
     )

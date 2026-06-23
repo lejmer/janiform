@@ -175,6 +175,12 @@ pub(super) fn cos_price_sensitivity_from_terminal_characteristic_function(
                 * complex_multiply(phi_sensitivity.buy_activity_premium_derivative, phase).real,
             sell_activity_premium_derivative: scaled_weight
                 * complex_multiply(phi_sensitivity.sell_activity_premium_derivative, phase).real,
+            pressure_signed_imbalance_exposure_risk_price_derivative: scaled_weight
+                * complex_multiply(
+                    phi_sensitivity.pressure_signed_imbalance_exposure_risk_price_derivative,
+                    phase,
+                )
+                .real,
         });
     }
 

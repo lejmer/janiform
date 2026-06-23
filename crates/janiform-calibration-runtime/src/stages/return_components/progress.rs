@@ -29,6 +29,22 @@ pub(crate) fn emit_return_components_progress(
     );
 }
 
+pub(crate) fn emit_return_components_labeled_progress(
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
+    phase: ReturnComponentsStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
+    emit_return_components_progress(
+        progress_sender,
+        phase,
+        completed_units,
+        total_units,
+        Some(current_item_label),
+    );
+}
+
 pub(crate) fn emit_return_components_evaluation_progress(
     progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
     phase: ReturnComponentsStageProgressPhase,

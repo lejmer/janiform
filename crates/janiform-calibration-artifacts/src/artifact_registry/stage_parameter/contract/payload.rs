@@ -6,7 +6,6 @@ use super::joint_refinement::JointRefinementStageParameterPayload;
 use super::long_variance::LongVarianceStageParameterPayload;
 use super::mean_reversion::MeanReversionStageParameterPayload;
 use super::news_shocks::NewsShocksStageParameterPayload;
-use super::observation_models::ObservationModelsStageParameterPayload;
 use super::return_backfit::ReturnBackfitStageParameterPayload;
 use super::return_components::ReturnComponentsStageParameterPayload;
 use super::seasonality::SeasonalityStageParameterPayload;
@@ -16,7 +15,6 @@ use super::seasonality::SeasonalityStageParameterPayload;
 pub enum CalibrationStageParameterPayload {
     Seasonality(Box<SeasonalityStageParameterPayload>),
     Hawkes(Box<HawkesStageParameterPayload>),
-    ObservationModels(Box<ObservationModelsStageParameterPayload>),
     ReturnComponents(Box<ReturnComponentsStageParameterPayload>),
     LongVariance(Box<LongVarianceStageParameterPayload>),
     NewsShocks(Box<NewsShocksStageParameterPayload>),
@@ -32,7 +30,6 @@ impl CalibrationStageParameterPayload {
         match self {
             Self::Seasonality(_) => CalibrationStage::Seasonality,
             Self::Hawkes(_) => CalibrationStage::Hawkes,
-            Self::ObservationModels(_) => CalibrationStage::ObservationModels,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
             Self::LongVariance(_) => CalibrationStage::LongVariance,
             Self::NewsShocks(_) => CalibrationStage::NewsShocks,

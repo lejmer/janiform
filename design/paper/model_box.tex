@@ -12,54 +12,48 @@
 
     \section*{Mathematical formulation}
 
-    Let \(S_t=S_0 e^{X_t}\).
-    In price form, Janiform can be written as
+    The log price decomposes into an anchor and a residual log-price component:
     \[
-        dS_t
-        =
-        S_{t-}\left(e^{dX_t}-1\right),
+        \log S_t=\log S_0+A_t^\Omega+D_t.
     \]
-    where the exponential differential notation is shorthand for applying log-return
-    increments multiplicatively to price.
-    Equivalently, for jumps,
+    The residual component satisfies
     \[
-        \frac{\Delta S_t}{S_{t-}}
+        dD_t
         =
-        e^{\Delta X_t}-1.
-    \]
-
-    Janiform models log price as
-    \[
-        X_t
-        =
-        \widetilde L^+_{A_t^+}
-        -
-        \widetilde L^-_{A_t^-}
-        +
-        M_t+G_t,
-    \]
-    or, in differential form,
-    \[
-        dX_t
-        =
-        d\widetilde L^+_{A_t^+}
-        -
-        d\widetilde L^-_{A_t^-}
-        +
-        dM_t
-        +
-        dG_t.
-    \]
-    The business-time drivers \(L^\pm\) are independent NIG Lévy processes
-    with characteristic exponents
-    \[
-        \mathbb E\left[e^{iuL_t^\pm}\right]
-        =
-        \exp\left(t\psi_\pm(u)\right),
+        -\kappa D_t\,dt
+        +d\widetilde L^+_{A_t^+}
+        -d\widetilde L^-_{A_t^-}
+        +dM_t
+        +dG_t,
         \qquad
-        \psi_\pm(u)=\psi_{\mathrm{NIG}}(u;\alpha,\beta_\pm,\delta,\mu),
+        \kappa\ge0.
     \]
-    where
+    Equivalently,
+    \[
+        d\log S_t
+        =
+        dA_t^\Omega
+        -\kappa D_t\,dt
+        +d\widetilde L^+_{A_t^+}
+        -d\widetilde L^-_{A_t^-}
+        +dM_t
+        +dG_t.
+    \]
+    Thus \(\kappa>0\) makes \(D_t\) decay toward zero, while
+    \(\kappa=0\) leaves the residual component unreverted.
+    The anchor-pressure component is driven by the finite-state market pressure
+    state:
+    \[
+        dA_t^\Omega
+        =
+        \gamma_\Omega b_{\Omega_t}\,dE_t^\Omega.
+    \]
+    Here \(\Omega_t\in\{1,\ldots,K_\Omega\}\), \(b_k\in[-1,1]\) is the fitted
+    signed side-balance level for state \(k\), \(E^\Omega\) is the non-negative
+    signed-balance exposure clock, and \(\gamma_\Omega\) maps signed imbalance
+    exposure into anchor drift.
+    The business-time drivers \(L^\pm\) are independent NIG Lévy processes.
+    They share \((\alpha,\delta,\mu)\) and have side-specific skew parameters
     \[
         \beta_+=\beta_0,
         \qquad
@@ -90,11 +84,11 @@
 
     The recurring baseline activity clock is the Fourier business-time clock
     \[
-        s_\star(t)=\exp(\ell(t)),
+        s_\star(t)=\exp(g_\star(t)),
     \]
     with
     \[
-        \ell(t)
+        g_\star(t)
         =
         c_0
         +
@@ -189,6 +183,19 @@
         \rho_{ij}\,dJ_t,
         \qquad i,j\in\{+,-\}.
     \]
+    The universal market pressure state is a birth-death CTMC over ordered
+    signed-balance support levels:
+    \[
+        \mathbb P(dN_t^+\mid dN_t^++dN_t^->0,\Omega_t=k)
+        =
+        \frac{1+b_k}{2},
+        \qquad
+        \mathbb P(dN_t^-\mid dN_t^++dN_t^->0,\Omega_t=k)
+        =
+        \frac{1-b_k}{2}.
+    \]
+    The CTMC changes side composition through \(b_{\Omega_t}\) while preserving
+    total event-arrival activity.
 
     The long-variance state is
     \[
@@ -257,6 +264,12 @@
         =
         \left(k_U,\nu^{\mathrm{known}},\nu^{\mathrm{surprise}},
         a_c,m_c,\sigma_c\right)_{c\in\{\mathrm{known},\mathrm{surprise}\}},\\
+        \Theta_\Omega
+        =
+        (\{b_k\}_{k=1}^{K_\Omega},A^\Omega,\gamma_\Omega,\mathbf p^\Omega_0),\\
+        \Theta_{\mathrm{obs}}
+        =
+        (\kappa,A_0^\Omega,D_0),
     \end{gather*}
     plus the calendar defining open and closed market states.
 

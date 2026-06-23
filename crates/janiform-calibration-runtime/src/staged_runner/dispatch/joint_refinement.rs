@@ -93,7 +93,6 @@ pub(super) fn run_joint_refinement_like_stage(
         }
         CalibrationStage::Seasonality
         | CalibrationStage::Hawkes
-        | CalibrationStage::ObservationModels
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::NewsShocks
@@ -144,6 +143,7 @@ pub(super) fn forward_joint_refinement_like_stage_progress(
                     .cumulative_local_evaluation_count,
                 current_global_loss: progress_update.current_global_loss,
                 current_restart_best_global_loss: progress_update.current_restart_best_global_loss,
+                current_final_global_loss: progress_update.current_final_global_loss,
                 current_candidate_assessment: progress_update.current_candidate_assessment,
                 best_restart_id: progress_update.best_restart_id,
                 best_global_loss: progress_update.best_global_loss,
@@ -303,7 +303,6 @@ fn option_refinement_dispatch_settings(
         }
         CalibrationStage::Seasonality
         | CalibrationStage::Hawkes
-        | CalibrationStage::ObservationModels
         | CalibrationStage::ReturnComponents
         | CalibrationStage::LongVariance
         | CalibrationStage::NewsShocks

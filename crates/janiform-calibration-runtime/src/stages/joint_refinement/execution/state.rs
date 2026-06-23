@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    CalibrationLossEvaluation, CalibrationObjectivePolicy, HawkesStageFittedParameters,
-    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
-    JointRefinementStageOptionAggregateDiagnostic, JointRefinementStageOptionNodeDiagnostic,
+    CalibrationLossEvaluation, HawkesStageFittedParameters, JointRefinementStageFittedParameters,
+    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptionAggregateDiagnostic,
+    JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
     JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
     SurpriseNewsDeterministicIntensityProfile,
@@ -43,7 +43,12 @@ use super::option_refinement::objective_gradient::{
 };
 use super::option_refinement::reduced_model::JointRefinementOptionReducedModelArtifact;
 
+/// Joint-refinement local search limits multiplicative scale coordinates to a fourfold move.
 pub(crate) const JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
+/// Pressure risk price is a log-density loading, so its local search box uses the same
+/// per-unit log-likelihood ratio bound as activity-premium coordinates.
+pub(crate) const JOINT_REFINEMENT_PRESSURE_RISK_PRICE_LOG_DENSITY_BOUND: f64 =
+    JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
 pub(crate) const JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT: usize = 6;
 pub(crate) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 
@@ -68,6 +73,9 @@ type JointRefinementObservedReturnShapeStatisticCache = Arc<
         >,
     >,
 >;
+
+type JointRefinementObservedReturnShapeCovarianceCache =
+    Arc<Mutex<BTreeMap<JointRefinementObservedReturnShapeStatisticCacheKey, Arc<Vec<Vec<f64>>>>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum JointRefinementFidelityTier {
@@ -99,6 +107,7 @@ pub(crate) struct JointRefinementDeterministicEvaluation {
     pub(crate) modeled_open_event_rate_per_hour: f64,
     pub(crate) raw_aggregated_likelihood_fit: f64,
     pub(crate) component_shifted_average_negative_log_likelihoods: [f64; 3],
+    pub(crate) component_shifted_average_negative_log_likelihood_variances: [Option<f64>; 3],
     pub(crate) exact_likelihood_evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
     pub(crate) expected_hourly_tick_counts: Option<Vec<f64>>,
     pub(crate) raw_expected_activity_shape_fit: Option<f64>,
@@ -122,14 +131,18 @@ pub(crate) struct JointRefinementReturnShapeStatisticEstimate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum JointRefinementReturnShapeHorizon {
     Tick,
+    FiveMinute,
+    FifteenMinute,
     OneHour,
     OneDay,
+    OneWeek,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct JointRefinementObservedReturnShapeStatisticCacheKey {
     pub(crate) horizon: JointRefinementReturnShapeHorizon,
     pub(crate) temporal_block_count: usize,
+    pub(crate) metric_names: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -463,10 +476,12 @@ pub(crate) struct JointRefinementActiveParameterLayout {
     pub(crate) log_sell_excitation_return_clock_scale_index: usize,
     pub(crate) log_long_variance_mean_reversion_rate_scale_index: usize,
     pub(crate) long_variance_vol_of_vol_index: usize,
+    pub(crate) long_variance_return_energy_loading_index: usize,
     pub(crate) long_variance_buy_event_loading_index: usize,
     pub(crate) long_variance_sell_event_loading_index: usize,
     pub(crate) option_pricing_log_buy_activity_premium_index: usize,
     pub(crate) option_pricing_log_sell_activity_premium_index: usize,
+    pub(crate) option_pricing_pressure_signed_imbalance_exposure_risk_price_index: usize,
     pub(crate) known_activity_scale_index: Option<usize>,
     pub(crate) surprise_activity_scale_index: Option<usize>,
     pub(crate) surprise_baseline_scale_index: Option<usize>,
@@ -486,8 +501,11 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) observed_1d_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     pub(crate) observed_tick_intraday_mean_absolute_returns: Vec<f64>,
     pub(crate) observed_tick_shape_returns: Vec<f64>,
+    pub(crate) observed_5m_shape_returns: Vec<f64>,
+    pub(crate) observed_15m_shape_returns: Vec<f64>,
     pub(crate) observed_1h_shape_returns: Vec<f64>,
     pub(crate) observed_1d_shape_returns: Vec<f64>,
+    pub(crate) observed_1w_shape_returns: Vec<f64>,
     pub(crate) observed_tick_return_scale_summary: JointRefinementReturnScaleSummary,
     pub(crate) observed_1h_return_scale_summary: JointRefinementReturnScaleSummary,
     pub(crate) observed_1d_return_scale_summary: JointRefinementReturnScaleSummary,
@@ -523,7 +541,6 @@ pub(crate) struct JointRefinementContext {
     pub(crate) option_pricing_execution_failure: Arc<Mutex<Option<String>>>,
     pub(crate) calendar_registry: ExchangeCalendarRegistry,
     pub(crate) exchange_code: String,
-    pub(crate) objective_policy: CalibrationObjectivePolicy,
     pub(crate) seasonality_clock_model: FourierBusinessTimeClockModel,
     pub(crate) runtime_interval_seasonality_factors: Vec<f64>,
     pub(crate) observed_data: JointRefinementObservedData,
@@ -555,6 +572,8 @@ pub(crate) struct JointRefinementContext {
     >,
     pub(crate) observed_return_shape_statistic_cache:
         JointRefinementObservedReturnShapeStatisticCache,
+    pub(crate) observed_return_shape_covariance_cache:
+        JointRefinementObservedReturnShapeCovarianceCache,
     pub(crate) seed_summary_cache: JointRefinementSeedSummaryCache,
     pub(crate) option_pricing_cache: JointRefinementOptionPricingCache,
     pub(crate) option_pricing_context: Option<JointRefinementOptionPricingContext>,
@@ -731,6 +750,7 @@ pub struct JointRefinementSeedSummary {
     pub simulated_15m_shape_returns: Vec<f64>,
     pub simulated_1h_shape_returns: Vec<f64>,
     pub simulated_1d_shape_returns: Vec<f64>,
+    pub simulated_1w_shape_returns: Vec<f64>,
     pub simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary,
     pub simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
     pub simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,

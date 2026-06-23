@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use janiform_foundations::numeric::validate_positive_number;
+
 use super::super::super::super::contracts::{
     CalibrationExecutionMode, CalibrationStage, CalibrationStageHandoffTransport,
 };
@@ -24,6 +26,7 @@ use super::support::{
 pub struct ReturnBackfitStageParameterPayload {
     pub selected_candidate_id: String,
     pub effective_return_components_selected_candidate_id: String,
+    pub source_window_open_exposure_hours: f64,
     pub effective_fitted_parameters: ReturnComponentsStageFittedParameters,
     pub candidate_generation_policy: String,
     pub objective_weighting_policy: String,
@@ -41,6 +44,7 @@ pub struct ReturnBackfitStageParameterArtifactInput {
     pub metadata: CalibrationStageParameterBuildMetadata,
     pub selected_candidate_id: String,
     pub effective_return_components_selected_candidate_id: String,
+    pub source_window_open_exposure_hours: f64,
     pub effective_fitted_parameters: ReturnComponentsStageFittedParameters,
     pub candidate_generation_policy: String,
     pub objective_weighting_policy: String,
@@ -84,6 +88,7 @@ pub(super) fn build_return_backfit_stage_parameter_artifact(
         selected_candidate_id: input.selected_candidate_id,
         effective_return_components_selected_candidate_id: input
             .effective_return_components_selected_candidate_id,
+        source_window_open_exposure_hours: input.source_window_open_exposure_hours,
         effective_fitted_parameters: input.effective_fitted_parameters,
         candidate_generation_policy: input.candidate_generation_policy,
         objective_weighting_policy: input.objective_weighting_policy,
@@ -127,6 +132,18 @@ pub(super) fn validate_return_backfit_stage_parameter_payload(
             field: "stage_parameters.return_backfit.effective_return_components_selected_candidate_id",
         },
     )?;
+
+    validate_positive_number(
+        payload.source_window_open_exposure_hours,
+        "source_window_open_exposure_hours",
+    )
+    .map_err(|source| {
+        CalibrationStageParameterArtifactValidationError::InvalidStageParameterField {
+            stage,
+            field: "stage_parameters.return_backfit.source_window_open_exposure_hours",
+            error_message: source.to_string(),
+        }
+    })?;
 
     validate_non_empty_artifact_value(
         payload.candidate_generation_policy.as_str(),

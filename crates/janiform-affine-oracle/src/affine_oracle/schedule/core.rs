@@ -5,6 +5,12 @@ use janiform_model_kernels::hawkes::{
 use janiform_model_kernels::long_variance::{
     LongVarianceState, LongVarianceStationaryLevelForHawkesKernelError,
 };
+use janiform_model_kernels::market_pressure::{
+    MarketPressureState, MarketPressureTransformLogFactorAndDerivativeInput,
+    MarketPressureTransformValuesAndDerivativeInput,
+    market_pressure_transform_log_factor_and_derivative,
+    market_pressure_transform_values_and_derivative,
+};
 use janiform_model_kernels::news::expected_news_activity_loading_rate;
 
 use super::super::contracts::{
@@ -52,7 +58,8 @@ pub fn solve_exponential_affine_schedule_cumulant_with_progress(
     emit_schedule_cumulant_progress(&mut progress_observer, 0, total_interval_count, None);
 
     for (interval_position, interval) in request.intervals.iter().enumerate().rev() {
-        let interval_output = integrate_schedule_interval(*interval, exponent, interval_position)?;
+        let interval_output =
+            integrate_schedule_interval(interval.clone(), exponent, interval_position)?;
 
         exponent = exponent.compose(interval_output.exponent);
 
@@ -71,19 +78,29 @@ pub fn solve_exponential_affine_schedule_cumulant_with_progress(
         );
     }
 
+    let pressure_log_factor = evaluate_schedule_market_pressure_log_factor(request)?;
+
     let output = ExponentialAffineScheduleCumulantOutput {
         exponent: exponent
             .base
-            .evaluated_at(request.initial_state, request.initial_long_variance_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state)
+            .plus(pressure_log_factor.base),
         argument_derivative: exponent
             .argument_tangent
-            .evaluated_at(request.initial_state, request.initial_long_variance_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state)
+            .plus(pressure_log_factor.argument_tangent),
         buy_activity_premium_derivative: exponent
             .buy_activity_premium_tangent
-            .evaluated_at(request.initial_state, request.initial_long_variance_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state)
+            .plus(pressure_log_factor.buy_activity_premium_tangent),
         sell_activity_premium_derivative: exponent
             .sell_activity_premium_tangent
-            .evaluated_at(request.initial_state, request.initial_long_variance_state),
+            .evaluated_at(request.initial_state, request.initial_long_variance_state)
+            .plus(pressure_log_factor.sell_activity_premium_tangent),
+        pressure_signed_imbalance_exposure_risk_price_derivative: exponent
+            .pressure_signed_imbalance_exposure_risk_price_tangent
+            .evaluated_at(request.initial_state, request.initial_long_variance_state)
+            .plus(pressure_log_factor.pressure_signed_imbalance_exposure_risk_price_tangent),
         interval_count: request.intervals.len(),
         completed_step_count,
         rhs_evaluation_count,
@@ -97,6 +114,10 @@ pub fn solve_exponential_affine_schedule_cumulant_with_progress(
     validate_finite_output_derivative(
         "sell_activity_premium",
         output.sell_activity_premium_derivative,
+    )?;
+    validate_finite_output_derivative(
+        "pressure_signed_imbalance_exposure_risk_price",
+        output.pressure_signed_imbalance_exposure_risk_price_derivative,
     )?;
 
     Ok(output)
@@ -117,10 +138,200 @@ fn emit_schedule_cumulant_progress(
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ScheduleMarketPressureLogFactor {
+    base: ComplexScalar,
+    argument_tangent: ComplexScalar,
+    buy_activity_premium_tangent: ComplexScalar,
+    sell_activity_premium_tangent: ComplexScalar,
+    pressure_signed_imbalance_exposure_risk_price_tangent: ComplexScalar,
+}
+
+fn evaluate_schedule_market_pressure_log_factor(
+    request: &ExponentialAffineScheduleCumulantRequest,
+) -> Result<ScheduleMarketPressureLogFactor, ExponentialAffineScheduleCumulantError> {
+    let first_interval = request
+        .intervals
+        .first()
+        .ok_or(ExponentialAffineScheduleCumulantError::EmptySchedule)?;
+    let state_count = first_interval
+        .transform_input
+        .equation_specification
+        .market_pressure_parameters
+        .state_count();
+
+    let mut values = vec![ComplexScalar::new(1.0, 0.0); state_count];
+    let mut argument_derivatives = vec![ComplexScalar::new(0.0, 0.0); state_count];
+    let mut buy_activity_premium_derivatives = vec![ComplexScalar::new(0.0, 0.0); state_count];
+    let mut sell_activity_premium_derivatives = vec![ComplexScalar::new(0.0, 0.0); state_count];
+    let mut pressure_signed_imbalance_exposure_risk_price_derivatives =
+        vec![ComplexScalar::new(0.0, 0.0); state_count];
+
+    for interval in request.intervals.iter().rev() {
+        let terminal_values = values;
+        let terminal_argument_derivatives = argument_derivatives;
+        let terminal_buy_activity_premium_derivatives = buy_activity_premium_derivatives;
+        let terminal_sell_activity_premium_derivatives = sell_activity_premium_derivatives;
+        let terminal_pressure_signed_imbalance_exposure_risk_price_derivatives =
+            pressure_signed_imbalance_exposure_risk_price_derivatives;
+
+        let (next_values, next_argument_derivatives) = propagate_schedule_market_pressure_tangent(
+            interval,
+            &terminal_values,
+            &terminal_argument_derivatives,
+            interval.argument_tangent.market_pressure_return_loading,
+            interval
+                .argument_tangent
+                .pressure_signed_imbalance_exposure_risk_price,
+        )?;
+        let (_, next_buy_activity_premium_derivatives) =
+            propagate_schedule_market_pressure_tangent(
+                interval,
+                &terminal_values,
+                &terminal_buy_activity_premium_derivatives,
+                interval
+                    .buy_activity_premium_tangent
+                    .market_pressure_return_loading,
+                interval
+                    .buy_activity_premium_tangent
+                    .pressure_signed_imbalance_exposure_risk_price,
+            )?;
+        let (_, next_sell_activity_premium_derivatives) =
+            propagate_schedule_market_pressure_tangent(
+                interval,
+                &terminal_values,
+                &terminal_sell_activity_premium_derivatives,
+                interval
+                    .sell_activity_premium_tangent
+                    .market_pressure_return_loading,
+                interval
+                    .sell_activity_premium_tangent
+                    .pressure_signed_imbalance_exposure_risk_price,
+            )?;
+        let (_, next_pressure_signed_imbalance_exposure_risk_price_derivatives) =
+            propagate_schedule_market_pressure_tangent(
+                interval,
+                &terminal_values,
+                &terminal_pressure_signed_imbalance_exposure_risk_price_derivatives,
+                interval
+                    .pressure_signed_imbalance_exposure_risk_price_tangent
+                    .market_pressure_return_loading,
+                interval
+                    .pressure_signed_imbalance_exposure_risk_price_tangent
+                    .pressure_signed_imbalance_exposure_risk_price,
+            )?;
+
+        values = next_values;
+        argument_derivatives = next_argument_derivatives;
+        buy_activity_premium_derivatives = next_buy_activity_premium_derivatives;
+        sell_activity_premium_derivatives = next_sell_activity_premium_derivatives;
+        pressure_signed_imbalance_exposure_risk_price_derivatives =
+            next_pressure_signed_imbalance_exposure_risk_price_derivatives;
+    }
+
+    let (base, argument_tangent) =
+        evaluate_schedule_market_pressure_initial_log_factor_and_derivative(
+            first_interval,
+            &request.initial_market_pressure_state,
+            &values,
+            &argument_derivatives,
+        )?;
+    let (_, buy_activity_premium_tangent) =
+        evaluate_schedule_market_pressure_initial_log_factor_and_derivative(
+            first_interval,
+            &request.initial_market_pressure_state,
+            &values,
+            &buy_activity_premium_derivatives,
+        )?;
+    let (_, sell_activity_premium_tangent) =
+        evaluate_schedule_market_pressure_initial_log_factor_and_derivative(
+            first_interval,
+            &request.initial_market_pressure_state,
+            &values,
+            &sell_activity_premium_derivatives,
+        )?;
+    let (_, pressure_signed_imbalance_exposure_risk_price_tangent) =
+        evaluate_schedule_market_pressure_initial_log_factor_and_derivative(
+            first_interval,
+            &request.initial_market_pressure_state,
+            &values,
+            &pressure_signed_imbalance_exposure_risk_price_derivatives,
+        )?;
+
+    Ok(ScheduleMarketPressureLogFactor {
+        base,
+        argument_tangent,
+        buy_activity_premium_tangent,
+        sell_activity_premium_tangent,
+        pressure_signed_imbalance_exposure_risk_price_tangent,
+    })
+}
+
+fn propagate_schedule_market_pressure_tangent(
+    interval: &ExponentialAffineScheduleIntervalInput,
+    terminal_values: &[ComplexScalar],
+    terminal_value_derivatives: &[ComplexScalar],
+    return_loading_derivative: ComplexScalar,
+    pressure_signed_imbalance_exposure_risk_price_derivative: f64,
+) -> Result<(Vec<ComplexScalar>, Vec<ComplexScalar>), ExponentialAffineScheduleCumulantError> {
+    market_pressure_transform_values_and_derivative(
+        MarketPressureTransformValuesAndDerivativeInput {
+            parameters: &interval
+                .transform_input
+                .equation_specification
+                .market_pressure_parameters,
+            interval_delta: interval.transform_input.delta,
+            signed_balance_exposure_scale: 1.0,
+            return_loading: interval.transform_input.market_pressure_return_loading,
+            return_loading_derivative,
+            pressure_signed_imbalance_exposure_risk_price: interval
+                .transform_input
+                .pressure_signed_imbalance_exposure_risk_price,
+            pressure_signed_imbalance_exposure_risk_price_derivative,
+            terminal_values,
+            terminal_value_derivatives,
+        },
+    )
+    .map_err(|source| {
+        ExponentialAffineScheduleCumulantError::InvalidMarketPressureProjection { source }
+    })
+}
+
+fn evaluate_schedule_market_pressure_initial_log_factor_and_derivative(
+    first_interval: &ExponentialAffineScheduleIntervalInput,
+    initial_state: &MarketPressureState,
+    terminal_values: &[ComplexScalar],
+    terminal_value_derivatives: &[ComplexScalar],
+) -> Result<(ComplexScalar, ComplexScalar), ExponentialAffineScheduleCumulantError> {
+    market_pressure_transform_log_factor_and_derivative(
+        MarketPressureTransformLogFactorAndDerivativeInput {
+            values_input: MarketPressureTransformValuesAndDerivativeInput {
+                parameters: &first_interval
+                    .transform_input
+                    .equation_specification
+                    .market_pressure_parameters,
+                interval_delta: 0.0,
+                signed_balance_exposure_scale: 1.0,
+                return_loading: ComplexScalar::new(0.0, 0.0),
+                return_loading_derivative: ComplexScalar::new(0.0, 0.0),
+                pressure_signed_imbalance_exposure_risk_price: 0.0,
+                pressure_signed_imbalance_exposure_risk_price_derivative: 0.0,
+                terminal_values,
+                terminal_value_derivatives,
+            },
+            initial_state,
+        },
+    )
+    .map_err(|source| {
+        ExponentialAffineScheduleCumulantError::InvalidMarketPressureProjection { source }
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct AffineState {
     d_vector: ExponentialAffineTransformDVector,
     long_variance_loading: ComplexScalar,
+    market_pressure_loading: ComplexScalar,
     c_value: ComplexScalar,
 }
 
@@ -129,6 +340,7 @@ impl AffineState {
         Self {
             d_vector: ExponentialAffineTransformDVector::zero(),
             long_variance_loading: ComplexScalar::new(0.0, 0.0),
+            market_pressure_loading: ComplexScalar::new(0.0, 0.0),
             c_value: ComplexScalar::new(0.0, 0.0),
         }
     }
@@ -139,6 +351,9 @@ impl AffineState {
             long_variance_loading: self
                 .long_variance_loading
                 .plus(rhs.long_variance_loading.scale(scale)),
+            market_pressure_loading: self
+                .market_pressure_loading
+                .plus(rhs.market_pressure_loading.scale(scale)),
             c_value: self.c_value.plus(rhs.c_value.scale(scale)),
         }
     }
@@ -160,6 +375,7 @@ struct ScheduleExponent {
     argument_tangent: AffineState,
     buy_activity_premium_tangent: AffineState,
     sell_activity_premium_tangent: AffineState,
+    pressure_signed_imbalance_exposure_risk_price_tangent: AffineState,
 }
 
 impl ScheduleExponent {
@@ -169,6 +385,7 @@ impl ScheduleExponent {
             argument_tangent: AffineState::zero(),
             buy_activity_premium_tangent: AffineState::zero(),
             sell_activity_premium_tangent: AffineState::zero(),
+            pressure_signed_imbalance_exposure_risk_price_tangent: AffineState::zero(),
         }
     }
 
@@ -177,11 +394,13 @@ impl ScheduleExponent {
             base: AffineState {
                 d_vector: interval_output.base.d_vector,
                 long_variance_loading: interval_output.base.long_variance_loading,
+                market_pressure_loading: interval_output.base.market_pressure_loading,
                 c_value: self.base.c_value.plus(interval_output.base.c_value),
             },
             argument_tangent: AffineState {
                 d_vector: interval_output.argument_tangent.d_vector,
                 long_variance_loading: interval_output.argument_tangent.long_variance_loading,
+                market_pressure_loading: interval_output.argument_tangent.market_pressure_loading,
                 c_value: self
                     .argument_tangent
                     .c_value
@@ -192,6 +411,9 @@ impl ScheduleExponent {
                 long_variance_loading: interval_output
                     .buy_activity_premium_tangent
                     .long_variance_loading,
+                market_pressure_loading: interval_output
+                    .buy_activity_premium_tangent
+                    .market_pressure_loading,
                 c_value: self
                     .buy_activity_premium_tangent
                     .c_value
@@ -202,10 +424,32 @@ impl ScheduleExponent {
                 long_variance_loading: interval_output
                     .sell_activity_premium_tangent
                     .long_variance_loading,
+                market_pressure_loading: interval_output
+                    .sell_activity_premium_tangent
+                    .market_pressure_loading,
                 c_value: self
                     .sell_activity_premium_tangent
                     .c_value
                     .plus(interval_output.sell_activity_premium_tangent.c_value),
+            },
+            pressure_signed_imbalance_exposure_risk_price_tangent: AffineState {
+                d_vector: interval_output
+                    .pressure_signed_imbalance_exposure_risk_price_tangent
+                    .d_vector,
+                long_variance_loading: interval_output
+                    .pressure_signed_imbalance_exposure_risk_price_tangent
+                    .long_variance_loading,
+                market_pressure_loading: interval_output
+                    .pressure_signed_imbalance_exposure_risk_price_tangent
+                    .market_pressure_loading,
+                c_value: self
+                    .pressure_signed_imbalance_exposure_risk_price_tangent
+                    .c_value
+                    .plus(
+                        interval_output
+                            .pressure_signed_imbalance_exposure_risk_price_tangent
+                            .c_value,
+                    ),
             },
         }
     }
@@ -233,7 +477,7 @@ fn integrate_schedule_interval(
             },
         )?;
 
-    let solver_settings = internally_selected_default_solver_settings(interval.transform_input);
+    let solver_settings = internally_selected_default_solver_settings(&interval.transform_input);
 
     solver_settings.validate().map_err(|source| {
         ExponentialAffineScheduleCumulantError::InvalidSolverSettings { source }
@@ -245,11 +489,13 @@ fn integrate_schedule_interval(
         base: AffineState {
             d_vector: terminal_exponent.base.d_vector,
             long_variance_loading: terminal_exponent.base.long_variance_loading,
+            market_pressure_loading: terminal_exponent.base.market_pressure_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
         argument_tangent: AffineState {
             d_vector: terminal_exponent.argument_tangent.d_vector,
             long_variance_loading: terminal_exponent.argument_tangent.long_variance_loading,
+            market_pressure_loading: terminal_exponent.argument_tangent.market_pressure_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
         buy_activity_premium_tangent: AffineState {
@@ -257,6 +503,9 @@ fn integrate_schedule_interval(
             long_variance_loading: terminal_exponent
                 .buy_activity_premium_tangent
                 .long_variance_loading,
+            market_pressure_loading: terminal_exponent
+                .buy_activity_premium_tangent
+                .market_pressure_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
         sell_activity_premium_tangent: AffineState {
@@ -264,12 +513,27 @@ fn integrate_schedule_interval(
             long_variance_loading: terminal_exponent
                 .sell_activity_premium_tangent
                 .long_variance_loading,
+            market_pressure_loading: terminal_exponent
+                .sell_activity_premium_tangent
+                .market_pressure_loading,
+            c_value: ComplexScalar::new(0.0, 0.0),
+        },
+        pressure_signed_imbalance_exposure_risk_price_tangent: AffineState {
+            d_vector: terminal_exponent
+                .pressure_signed_imbalance_exposure_risk_price_tangent
+                .d_vector,
+            long_variance_loading: terminal_exponent
+                .pressure_signed_imbalance_exposure_risk_price_tangent
+                .long_variance_loading,
+            market_pressure_loading: terminal_exponent
+                .pressure_signed_imbalance_exposure_risk_price_tangent
+                .market_pressure_loading,
             c_value: ComplexScalar::new(0.0, 0.0),
         },
     };
 
     let initial_guard =
-        evaluate_schedule_guard_checkpoint(interval.transform_input, state.base, 0, step_size);
+        evaluate_schedule_guard_checkpoint(&interval.transform_input, state.base, 0, step_size);
     if let Some(guard_failure) = initial_guard {
         return Err(ExponentialAffineScheduleCumulantError::GuardFailure {
             interval_position,
@@ -282,7 +546,7 @@ fn integrate_schedule_interval(
 
     for _ in 0..solver_settings.step_count {
         state = advance_schedule_state(
-            interval,
+            &interval,
             state,
             step_size,
             solver_settings.integrator_method,
@@ -296,7 +560,7 @@ fn integrate_schedule_interval(
             });
 
         let guard = evaluate_schedule_guard_checkpoint(
-            interval.transform_input,
+            &interval.transform_input,
             state.base,
             completed_step_count,
             step_size,
@@ -329,6 +593,8 @@ fn integrate_schedule_interval(
             argument_tangent: state.argument_tangent,
             buy_activity_premium_tangent: state.buy_activity_premium_tangent,
             sell_activity_premium_tangent: state.sell_activity_premium_tangent,
+            pressure_signed_imbalance_exposure_risk_price_tangent: state
+                .pressure_signed_imbalance_exposure_risk_price_tangent,
         },
         completed_step_count,
         rhs_evaluation_count,
@@ -336,7 +602,7 @@ fn integrate_schedule_interval(
 }
 
 fn advance_schedule_state(
-    interval: ExponentialAffineScheduleIntervalInput,
+    interval: &ExponentialAffineScheduleIntervalInput,
     state: ScheduleExponent,
     step_size: f64,
     integrator_method: ExponentialAffineTransformIntegratorMethod,
@@ -371,6 +637,12 @@ impl ScheduleExponent {
             sell_activity_premium_tangent: self
                 .sell_activity_premium_tangent
                 .add_scaled_rhs(rhs.sell_activity_premium_tangent, scale),
+            pressure_signed_imbalance_exposure_risk_price_tangent: self
+                .pressure_signed_imbalance_exposure_risk_price_tangent
+                .add_scaled_rhs(
+                    rhs.pressure_signed_imbalance_exposure_risk_price_tangent,
+                    scale,
+                ),
         }
     }
 }
@@ -401,6 +673,12 @@ fn combine_schedule_runge_kutta_rhs(
             k3.sell_activity_premium_tangent,
             k4.sell_activity_premium_tangent,
         ),
+        pressure_signed_imbalance_exposure_risk_price_tangent: combine_affine_runge_kutta(
+            k1.pressure_signed_imbalance_exposure_risk_price_tangent,
+            k2.pressure_signed_imbalance_exposure_risk_price_tangent,
+            k3.pressure_signed_imbalance_exposure_risk_price_tangent,
+            k4.pressure_signed_imbalance_exposure_risk_price_tangent,
+        ),
     }
 }
 
@@ -418,39 +696,52 @@ fn combine_affine_runge_kutta(
             k3.long_variance_loading,
             k4.long_variance_loading,
         ),
+        market_pressure_loading: combine_complex_runge_kutta(
+            k1.market_pressure_loading,
+            k2.market_pressure_loading,
+            k3.market_pressure_loading,
+            k4.market_pressure_loading,
+        ),
         c_value: combine_complex_runge_kutta(k1.c_value, k2.c_value, k3.c_value, k4.c_value),
     }
 }
 
 fn evaluate_schedule_rhs(
-    interval: ExponentialAffineScheduleIntervalInput,
+    interval: &ExponentialAffineScheduleIntervalInput,
     state: ScheduleExponent,
 ) -> Result<ScheduleExponent, ExponentialAffineScheduleCumulantError> {
-    let base_rhs = evaluate_schedule_base_rhs(interval.transform_input, state.base)?;
+    let base_rhs = evaluate_schedule_base_rhs(&interval.transform_input, state.base)?;
 
     Ok(ScheduleExponent {
         base: AffineState {
             d_vector: base_rhs.d_derivative,
             long_variance_loading: base_rhs.long_variance_derivative,
+            market_pressure_loading: base_rhs.market_pressure_derivative,
             c_value: base_rhs.c_derivative,
         },
         argument_tangent: evaluate_schedule_tangent_rhs(
-            interval.transform_input,
+            &interval.transform_input,
             state.base,
             state.argument_tangent,
             interval.argument_tangent,
         )?,
         buy_activity_premium_tangent: evaluate_schedule_tangent_rhs(
-            interval.transform_input,
+            &interval.transform_input,
             state.base,
             state.buy_activity_premium_tangent,
             interval.buy_activity_premium_tangent,
         )?,
         sell_activity_premium_tangent: evaluate_schedule_tangent_rhs(
-            interval.transform_input,
+            &interval.transform_input,
             state.base,
             state.sell_activity_premium_tangent,
             interval.sell_activity_premium_tangent,
+        )?,
+        pressure_signed_imbalance_exposure_risk_price_tangent: evaluate_schedule_tangent_rhs(
+            &interval.transform_input,
+            state.base,
+            state.pressure_signed_imbalance_exposure_risk_price_tangent,
+            interval.pressure_signed_imbalance_exposure_risk_price_tangent,
         )?,
     })
 }
@@ -459,14 +750,15 @@ fn evaluate_schedule_rhs(
 struct ScheduleAffineRhs {
     d_derivative: ExponentialAffineTransformDVector,
     long_variance_derivative: ComplexScalar,
+    market_pressure_derivative: ComplexScalar,
     c_derivative: ComplexScalar,
 }
 
 fn evaluate_schedule_base_rhs(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     base_state: AffineState,
 ) -> Result<ScheduleAffineRhs, ExponentialAffineScheduleCumulantError> {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
     let beta = equation_specification.hawkes_kernel_parameters.beta;
 
     let hamiltonians = evaluate_long_variance_schedule_hamiltonians(transform_input, base_state);
@@ -528,6 +820,8 @@ fn evaluate_schedule_base_rhs(
         )
         .scale(baseline_rate);
 
+    let market_pressure_derivative = transform_input.market_pressure_return_loading;
+
     let c_derivative = base_state
         .long_variance_loading
         .scale(long_variance_parameters.mean_reversion_rate * long_variance_level)
@@ -537,20 +831,20 @@ fn evaluate_schedule_base_rhs(
     Ok(ScheduleAffineRhs {
         d_derivative,
         long_variance_derivative,
+        market_pressure_derivative,
         c_derivative,
     })
 }
 
 fn evaluate_schedule_tangent_rhs(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     base_state: AffineState,
     tangent_state: AffineState,
     direct_tangent: ExponentialAffineTransformInputTangent,
 ) -> Result<AffineState, ExponentialAffineScheduleCumulantError> {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
     let beta = equation_specification.hawkes_kernel_parameters.beta;
     let long_variance_parameters = equation_specification.long_variance_parameters;
-
     let long_variance_level = stationary_long_variance_level(transform_input)?;
 
     let k_plus = equation_specification.k_plus();
@@ -661,6 +955,7 @@ fn evaluate_schedule_tangent_rhs(
                     .plus(direct_tangent.activity_loadings.u_minus_baseline)
                     .scale(-baseline_rate),
             ),
+        market_pressure_loading: direct_tangent.market_pressure_return_loading,
         c_value: tangent_state
             .long_variance_loading
             .scale(long_variance_parameters.mean_reversion_rate * long_variance_level)
@@ -678,10 +973,10 @@ struct ScheduleHamiltonians {
 }
 
 fn evaluate_long_variance_schedule_hamiltonians(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     state: AffineState,
 ) -> ScheduleHamiltonians {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
     let long_variance_parameters = equation_specification.long_variance_parameters;
 
@@ -738,9 +1033,9 @@ fn evaluate_schedule_hamiltonian_component(
 }
 
 fn stationary_long_variance_level(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
 ) -> Result<f64, ExponentialAffineScheduleCumulantError> {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
     let news_activity_loading_rate = expected_news_activity_loading_rate(
         transform_input.news_intensity.known_news_intensity,
@@ -778,12 +1073,12 @@ fn stationary_long_variance_level(
 }
 
 fn evaluate_news_tangent_rhs(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     base_d_vector: ExponentialAffineTransformDVector,
     tangent_d_vector: ExponentialAffineTransformDVector,
     return_loading_tangent: ComplexScalar,
 ) -> ComplexScalar {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
     evaluate_gamma_normal_news_transform_tangent(
         GammaNormalNewsTransformComponents {
@@ -801,10 +1096,10 @@ fn evaluate_news_tangent_rhs(
 }
 
 fn evaluate_news_base_rhs(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     base_d_vector: ExponentialAffineTransformDVector,
 ) -> ComplexScalar {
-    let equation_specification = transform_input.equation_specification;
+    let equation_specification = &transform_input.equation_specification;
 
     evaluate_gamma_normal_news_transform(GammaNormalNewsTransformComponents {
         gamma_severity_mark_configuration: equation_specification.gamma_severity_mark_configuration,
@@ -817,7 +1112,7 @@ fn evaluate_news_base_rhs(
 }
 
 fn evaluate_schedule_guard_checkpoint(
-    transform_input: ExponentialAffineTransformInput,
+    transform_input: &ExponentialAffineTransformInput,
     state: AffineState,
     completed_step_count: usize,
     step_size: f64,
@@ -828,6 +1123,7 @@ fn evaluate_schedule_guard_checkpoint(
 
     if !state.c_value.is_finite()
         || !state.long_variance_loading.is_finite()
+        || !state.market_pressure_loading.is_finite()
         || !d_vector_is_finite(state.d_vector)
     {
         return Some(build_guard_failure(
@@ -889,6 +1185,7 @@ mod tests {
     };
     use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
     use janiform_model_kernels::long_variance::LongVarianceState;
+    use janiform_model_kernels::market_pressure::MarketPressureState;
     use janiform_model_kernels::news::NewsComponentMarkScaleConfiguration;
 
     fn transform_input(
@@ -900,6 +1197,8 @@ mod tests {
             ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(0.95, 0.02),
             ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            0.0,
             1.1,
             ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
                 .expect("news intensity components should construct"),
@@ -907,6 +1206,7 @@ mod tests {
             NewsComponentMarkScaleConfiguration::neutral(),
             1.0,
             standard_initial_state(),
+            MarketPressureState::neutral(),
         )
         .expect("valid transform input should construct")
     }
@@ -929,6 +1229,8 @@ mod tests {
             argument_tangent,
             buy_activity_premium_tangent: ExponentialAffineTransformInputTangent::zero(),
             sell_activity_premium_tangent: ExponentialAffineTransformInputTangent::zero(),
+            pressure_signed_imbalance_exposure_risk_price_tangent:
+                ExponentialAffineTransformInputTangent::zero(),
         }
     }
 
@@ -939,6 +1241,7 @@ mod tests {
         solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
             initial_state: standard_initial_state(),
             initial_long_variance_state: LongVarianceState::unit(),
+            initial_market_pressure_state: MarketPressureState::neutral(),
             intervals: vec![interval_input(activity_loadings, argument_tangent)],
         })
         .expect("schedule cumulant should solve")
@@ -951,6 +1254,7 @@ mod tests {
             solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
                 initial_state: standard_initial_state(),
                 initial_long_variance_state: LongVarianceState::unit(),
+                initial_market_pressure_state: MarketPressureState::neutral(),
                 intervals: vec![interval_input(
                     base_loadings(),
                     ExponentialAffineTransformInputTangent::zero(),
@@ -986,12 +1290,15 @@ mod tests {
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: ComplexScalar::new(0.0, 0.0),
             news_return_loading: ComplexScalar::new(0.0, 0.0),
+            market_pressure_return_loading: ComplexScalar::new(0.0, 0.0),
+            pressure_signed_imbalance_exposure_risk_price: 0.0,
         };
 
         let analytic =
             solve_exponential_affine_schedule_cumulant(&ExponentialAffineScheduleCumulantRequest {
                 initial_state: standard_initial_state(),
                 initial_long_variance_state: LongVarianceState::unit(),
+                initial_market_pressure_state: MarketPressureState::neutral(),
                 intervals: vec![interval_input(base_loadings(), tangent)],
             })
             .expect("schedule cumulant should solve")
@@ -1022,6 +1329,7 @@ mod tests {
             &ExponentialAffineScheduleCumulantRequest {
                 initial_state: standard_initial_state(),
                 initial_long_variance_state: LongVarianceState::unit(),
+                initial_market_pressure_state: MarketPressureState::neutral(),
                 intervals: vec![
                     interval_input(
                         base_loadings(),

@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 pub enum CalibrationStage {
     Seasonality,
     Hawkes,
-    ObservationModels,
     ReturnComponents,
     LongVariance,
     NewsShocks,

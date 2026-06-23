@@ -28,7 +28,10 @@ Let
 \[
     \log S_T
     =
-    \log S_t+d_{t,T}+X_{t,T}.
+    \log S_t
+    +d_{t,T}
+    +A_{t,T}^{\Omega}
+    +X_{t,T}^{\mathrm{core}}.
 \]
 Equivalently, if the deterministic terminal log price conditional on zero
 future stochastic return is
@@ -37,17 +40,27 @@ future stochastic return is
 \]
 then
 \[
-    \log S_T=\ell_{t,T}^{0}+X_{t,T}.
+    \log S_T
+    =
+    \ell_{t,T}^{0}
+    +A_{t,T}^{\Omega}
+    +X_{t,T}^{\mathrm{core}}.
 \]
+The anchor-pressure component \(A_{t,T}^{\Omega}\) is stochastic and
+unweighted by mean-reversion core-shock weights.
+Let \(B_{t,T}^{\Omega}\) be the signed-balance exposure integral satisfying
+\(A_{t,T}^{\Omega}=\gamma_\Omega B_{t,T}^{\Omega}\).
 The pricing density is
 \[
-    M_T(\theta,\pi_+,\pi_-)
+    M_T(\theta,\pi_+,\pi_-,\rho_\Omega)
     =
     \exp\!\left(
-        \theta X_{t,T}
+        \theta A_{t,T}^{\Omega}
+        +\theta X_{t,T}^{\mathrm{core}}
         +\log(\pi_+)N_{t,T}^+
         +\log(\pi_-)N_{t,T}^-
-        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        -\rho_\Omega B_{t,T}^{\Omega}
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
     \right),
 \]
 where \(\theta\) solves the martingale equation in
@@ -63,7 +76,9 @@ Symbol & Meaning & Units or domain\\
 \(\phi_Q(u)\) & Risk-neutral characteristic function of \(\log S_T\) & Complex, \(\phi_Q(0)=1\)\\
 \(\theta\) & Solved martingale tilt & Real cumulant domain\\
 \(\pi_\pm\) & Activity-premium multipliers & Strictly positive\\
-\(K_{t,T}\) & Physical stochastic terminal cumulant & Finite at \(\theta+iu\) and \(\theta\)\\
+\(\rho_\Omega\) & Signed-imbalance exposure risk price & Real finite\\
+\(B_{t,T}^{\Omega}\) & Signed-balance exposure integral & Real finite\\
+\(K_{t,T}\) & Physical stochastic terminal cumulant & Finite at requested arguments\\
 \(\ell_{t,T}^{0}\) & Deterministic terminal log-price component & Real finite\\
 \bottomrule
 \end{tabularx}
@@ -75,7 +90,7 @@ Symbol & Meaning & Units or domain\\
 Assumption & Where it is used & Why it is needed\\
 \midrule
 The terminal pricing density is normalized.
-& Dividing by \(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\).
+& Dividing by \(K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)\).
 & The characteristic function must be an expectation under a probability measure.\\
 The martingale tilt has already been solved.
 & Treating \(\theta\) as fixed in \(\phi_Q\).
@@ -83,7 +98,7 @@ The martingale tilt has already been solved.
 The terminal log price splits into deterministic and stochastic components.
 & Factoring out \(e^{iu\ell_{t,T}^{0}}\).
 & Deterministic terminal log price contributes only a phase.\\
-The cumulant is finite at \(\theta+iu\) and \(\theta\).
+The cumulant is finite at \((\theta+iu,\rho_\Omega)\) and \((\theta,\rho_\Omega)\).
 & Evaluating numerator and denominator transforms.
 & The characteristic function must be finite.\\
 \bottomrule
@@ -98,11 +113,19 @@ terminal log price is
     =
     \exp\!\left(
         iu\,\ell_{t,T}^{0}
-        +K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
-        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        +K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-,\rho_\Omega)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
     \right).
 \]
-For terminal log return \(R_{t,T}=d_{t,T}+X_{t,T}\), replace
+For terminal log return
+\[
+    R_{t,T}
+    =
+    d_{t,T}
+    +A_{t,T}^{\Omega}
+    +X_{t,T}^{\mathrm{core}},
+\]
+replace
 \(\ell_{t,T}^{0}\) by \(d_{t,T}\).
 
 \section{Derivation}
@@ -113,50 +136,73 @@ By definition,
     =
     \mathbb E^Q\!\left[e^{iu\log S_T}\mid\mathcal F_t\right].
 \]
-Using \(\log S_T=\ell_{t,T}^{0}+X_{t,T}\),
+Using
+\[
+    \log S_T
+    =
+    \ell_{t,T}^{0}
+    +A_{t,T}^{\Omega}
+    +X_{t,T}^{\mathrm{core}},
+\]
+the characteristic function factors as
 \[
     \phi_Q(u)
     =
     e^{iu\ell_{t,T}^{0}}
-    \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right].
+    \mathbb E^Q\!\left[
+        e^{iu(A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}})}
+        \mid\mathcal F_t
+    \right].
 \]
 Change measure with \(M_T\):
 \[
-    \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
+    \mathbb E^Q\!\left[
+        e^{iu(A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}})}
+        \mid\mathcal F_t
+    \right]
     =
     \mathbb E^P\!\left[
-        e^{iuX_{t,T}}M_T(\theta,\pi_+,\pi_-)
+        e^{iu(A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}})}
+        M_T(\theta,\pi_+,\pi_-,\rho_\Omega)
         \mid\mathcal F_t
     \right].
 \]
 Substituting the density gives
 \[
-    \mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
+    \mathbb E^Q\!\left[
+        e^{iu(A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}})}
+        \mid\mathcal F_t
+    \right]
     =
     \frac{
         \mathbb E^P\!\left[
             \exp\!\left(
-                (\theta+iu)X_{t,T}
+                (\theta+iu)A_{t,T}^{\Omega}
+                +(\theta+iu)X_{t,T}^{\mathrm{core}}
                 +\log(\pi_+)N_{t,T}^+
                 +\log(\pi_-)N_{t,T}^-
+                -\rho_\Omega B_{t,T}^{\Omega}
             \right)
             \mid\mathcal F_t
         \right]
     }{
-        \exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-)\right)
+        \exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)\right)
     }.
 \]
 The numerator is
 \[
-    \exp\!\left(K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)\right).
+    \exp\!\left(K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-,\rho_\Omega)\right).
 \]
 Therefore
 \[
-\mathbb E^Q\!\left[e^{iuX_{t,T}}\mid\mathcal F_t\right]
+\mathbb E^Q\!\left[
+    e^{iu(A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}})}
+    \mid\mathcal F_t
+\right]
 =
     \exp\!\left(
-        K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
-        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-,\rho_\Omega)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
     \right),
 \]
 and multiplying by the deterministic phase gives the stated formula.
@@ -166,8 +212,8 @@ At \(u=0\),
     \phi_Q(0)
     =
     \exp\!\left(
-        K_{t,T}(\theta,\log\pi_+,\log\pi_-)
-        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
     \right)
     =1,
 \]
@@ -176,10 +222,11 @@ so the transform is normalized.
 \section{Domain and validity}
 
 The formula is valid for real frequencies \(u\) such that the terminal
-cumulant is finite at both \(\theta+iu\) and \(\theta\).
+cumulant is finite at both \((\theta+iu,\rho_\Omega)\) and
+\((\theta,\rho_\Omega)\).
 The solved \(\theta\) must satisfy the martingale equation, the activity premia
-must be strictly positive, and the affine schedule domain must hold along every
-interval.
+must be strictly positive, the pressure risk price must be finite, and the
+affine schedule domain must hold along every interval.
 The expression is the terminal-log-price characteristic function.
 For terminal log returns, the deterministic phase uses \(d_{t,T}\) instead of
 \(\ell_{t,T}^{0}\).

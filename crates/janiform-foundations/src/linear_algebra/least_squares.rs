@@ -2,6 +2,8 @@ use nalgebra::{DMatrix, DVector, Matrix2, SMatrix, SVector, Vector2};
 
 use crate::numeric::clamp_to_unit_interval;
 
+use super::vector::{dot_product, scale_vector_to_euclidean_radius};
+
 /// Coefficients and algebraic rank for a one- or two-column least-squares fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RankAwareLeastSquaresSolution {
@@ -77,6 +79,207 @@ pub fn mean_diagonal_damped_least_squares_step(
         .iter()
         .all(|value| value.is_finite())
         .then(|| solution.iter().copied().collect())
+}
+
+/// Solve a least-squares problem using the Moore-Penrose pseudoinverse.
+///
+/// The singular support is determined from the matrix spectral scale and
+/// floating-point precision, matching the rank policy used by PSD whitening.
+pub fn minimum_norm_least_squares(design_rows: &[Vec<f64>], response: &[f64]) -> Option<Vec<f64>> {
+    let row_count = design_rows.len();
+    let column_count = design_rows.first()?.len();
+    if row_count == 0 || column_count == 0 || response.len() != row_count {
+        return None;
+    }
+
+    let mut design_matrix = DMatrix::<f64>::zeros(row_count, column_count);
+    let mut response_vector = DVector::<f64>::zeros(row_count);
+
+    for (row_position, (row, response_value)) in design_rows.iter().zip(response.iter()).enumerate()
+    {
+        if row.len() != column_count || !response_value.is_finite() {
+            return None;
+        }
+
+        response_vector[row_position] = *response_value;
+
+        for (column_position, value) in row.iter().enumerate() {
+            if !value.is_finite() {
+                return None;
+            }
+
+            design_matrix[(row_position, column_position)] = *value;
+        }
+    }
+
+    let singular_value_decomposition = design_matrix.svd(true, true);
+    let spectral_scale = singular_value_decomposition
+        .singular_values
+        .iter()
+        .copied()
+        .fold(0.0_f64, f64::max);
+
+    if !spectral_scale.is_finite() {
+        return None;
+    }
+
+    if spectral_scale == 0.0 {
+        return Some(vec![0.0; column_count]);
+    }
+
+    let singular_value_floor = spectral_scale * row_count.max(column_count) as f64 * f64::EPSILON;
+
+    let u = singular_value_decomposition.u?;
+    let v_t = singular_value_decomposition.v_t?;
+    let rotated_response = u.transpose() * response_vector;
+
+    let mut solution = DVector::<f64>::zeros(column_count);
+
+    for (position, singular_value) in singular_value_decomposition
+        .singular_values
+        .iter()
+        .enumerate()
+    {
+        if *singular_value > singular_value_floor {
+            let singular_coordinate = rotated_response[position] / singular_value;
+
+            for column_position in 0..column_count {
+                solution[column_position] += v_t[(position, column_position)] * singular_coordinate;
+            }
+        }
+    }
+
+    solution
+        .iter()
+        .all(|value| value.is_finite())
+        .then(|| solution.iter().copied().collect())
+}
+
+/// Compute the exact Cauchy step for a least-squares residual linearization.
+///
+/// Given residual vector `r` and sensitivity matrix `J`, this minimizes
+/// `||r + J step||^2` along the steepest-descent direction.
+pub fn least_squares_cauchy_step(
+    sensitivity_matrix: &[Vec<f64>],
+    residual_vector: &[f64],
+) -> Option<Vec<f64>> {
+    let parameter_count = sensitivity_matrix.first()?.len();
+    if parameter_count == 0 || sensitivity_matrix.len() != residual_vector.len() {
+        return None;
+    }
+
+    let mut gradient = vec![0.0; parameter_count];
+
+    for (sensitivity_row, residual) in sensitivity_matrix.iter().zip(residual_vector.iter()) {
+        if sensitivity_row.len() != parameter_count || !residual.is_finite() {
+            return None;
+        }
+
+        for (gradient_component, sensitivity) in gradient.iter_mut().zip(sensitivity_row.iter()) {
+            if !sensitivity.is_finite() {
+                return None;
+            }
+
+            *gradient_component += sensitivity * residual;
+        }
+    }
+
+    let gradient_norm_squared = dot_product(gradient.as_slice(), gradient.as_slice())?;
+    if gradient_norm_squared == 0.0 || !gradient_norm_squared.is_finite() {
+        return None;
+    }
+
+    let directional_curvature = sensitivity_matrix
+        .iter()
+        .map(|sensitivity_row| dot_product(sensitivity_row.as_slice(), gradient.as_slice()))
+        .collect::<Option<Vec<_>>>()?
+        .into_iter()
+        .map(|directional_sensitivity| directional_sensitivity * directional_sensitivity)
+        .sum::<f64>();
+
+    if directional_curvature <= 0.0 || !directional_curvature.is_finite() {
+        return None;
+    }
+
+    let line_minimizer_scale = gradient_norm_squared / directional_curvature;
+    if !line_minimizer_scale.is_finite() || line_minimizer_scale <= 0.0 {
+        return None;
+    }
+
+    Some(
+        gradient
+            .into_iter()
+            .map(|component| -line_minimizer_scale * component)
+            .collect(),
+    )
+}
+
+/// Compute the dogleg step on a least-squares trust-region path.
+///
+/// The path starts with the Cauchy step and then moves toward the
+/// Gauss-Newton step, stopping at the Euclidean trust-region boundary.
+pub fn least_squares_dogleg_step(
+    cauchy_step: &[f64],
+    gauss_newton_step: &[f64],
+    radius: f64,
+) -> Option<Vec<f64>> {
+    if cauchy_step.len() != gauss_newton_step.len() || !radius.is_finite() || radius <= 0.0 {
+        return None;
+    }
+
+    let gauss_newton_norm = dot_product(gauss_newton_step, gauss_newton_step)?.sqrt();
+    if !gauss_newton_norm.is_finite() {
+        return None;
+    }
+
+    if gauss_newton_norm <= radius {
+        return Some(gauss_newton_step.to_vec());
+    }
+
+    let cauchy_norm = dot_product(cauchy_step, cauchy_step)?.sqrt();
+    if !cauchy_norm.is_finite() {
+        return None;
+    }
+
+    if cauchy_norm >= radius {
+        return scale_vector_to_euclidean_radius(cauchy_step, radius);
+    }
+
+    let segment_step = gauss_newton_step
+        .iter()
+        .zip(cauchy_step.iter())
+        .map(|(gauss_newton_component, cauchy_component)| gauss_newton_component - cauchy_component)
+        .collect::<Vec<_>>();
+
+    let segment_norm_squared = dot_product(segment_step.as_slice(), segment_step.as_slice())?;
+    if segment_norm_squared == 0.0 || !segment_norm_squared.is_finite() {
+        return None;
+    }
+
+    let cauchy_segment_cross = dot_product(cauchy_step, segment_step.as_slice())?;
+    let cauchy_norm_squared = cauchy_norm * cauchy_norm;
+    let radius_squared = radius * radius;
+    let discriminant = cauchy_segment_cross * cauchy_segment_cross
+        + segment_norm_squared * (radius_squared - cauchy_norm_squared);
+
+    if discriminant < 0.0 || !discriminant.is_finite() {
+        return None;
+    }
+
+    let boundary_fraction = (-cauchy_segment_cross + discriminant.sqrt()) / segment_norm_squared;
+    if !boundary_fraction.is_finite() || !(0.0..=1.0).contains(&boundary_fraction) {
+        return None;
+    }
+
+    Some(
+        cauchy_step
+            .iter()
+            .zip(segment_step.iter())
+            .map(|(cauchy_component, segment_component)| {
+                cauchy_component + boundary_fraction * segment_component
+            })
+            .collect(),
+    )
 }
 
 /// Computes a damped least-squares step for a four-parameter residual linearization.
@@ -524,9 +727,10 @@ fn squared_residual_norm_for_two_column_fit(
 #[cfg(test)]
 mod tests {
     use super::{
+        least_squares_cauchy_step, least_squares_dogleg_step,
         mean_diagonal_damped_least_squares_step, mean_diagonal_damped_least_squares_step_4,
-        non_negative_least_squares_2, rank_aware_one_column_least_squares,
-        rank_aware_two_column_least_squares,
+        minimum_norm_least_squares, non_negative_least_squares_2,
+        rank_aware_one_column_least_squares, rank_aware_two_column_least_squares,
         rank_aware_two_column_unit_interval_second_coefficient_least_squares,
         rank_aware_unit_interval_gain_least_squares, squared_residual_norm_for_two_column_fit,
         weighted_ridge_least_squares_from_normal_equations,
@@ -615,6 +819,53 @@ mod tests {
             "second coefficient should solve the diagonal normal equation, found {}",
             solution[1]
         );
+    }
+
+    #[test]
+    fn minimum_norm_least_squares_solves_full_rank_fit() {
+        let design_rows = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let response = vec![3.0, -2.0];
+
+        let solution = minimum_norm_least_squares(design_rows.as_slice(), response.as_slice())
+            .expect("full-rank least-squares problem should solve");
+
+        assert_eq!(solution, vec![3.0, -2.0]);
+    }
+
+    #[test]
+    fn minimum_norm_least_squares_uses_minimum_norm_dependent_solution() {
+        let design_rows = vec![vec![1.0, 1.0]];
+        let response = vec![2.0];
+
+        let solution = minimum_norm_least_squares(design_rows.as_slice(), response.as_slice())
+            .expect("rank-deficient least-squares problem should solve");
+
+        assert_nearly_equal(solution[0], 1.0);
+        assert_nearly_equal(solution[1], 1.0);
+    }
+
+    #[test]
+    fn cauchy_step_uses_exact_line_minimizer_for_linearized_residuals() {
+        let sensitivity_matrix = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let residual_vector = vec![2.0, -1.0];
+
+        let step =
+            least_squares_cauchy_step(sensitivity_matrix.as_slice(), residual_vector.as_slice())
+                .expect("nonzero gradient should produce a Cauchy step");
+
+        assert_eq!(step, vec![-2.0, 1.0]);
+    }
+
+    #[test]
+    fn dogleg_step_intersects_trust_region_boundary_between_cauchy_and_gauss_newton() {
+        let cauchy_step = vec![0.5, 0.0];
+        let gauss_newton_step = vec![2.0, 0.0];
+
+        let step =
+            least_squares_dogleg_step(cauchy_step.as_slice(), gauss_newton_step.as_slice(), 1.0)
+                .expect("dogleg path should intersect the trust-region boundary");
+
+        assert_eq!(step, vec![1.0, 0.0]);
     }
 
     #[test]
@@ -735,5 +986,13 @@ mod tests {
                 stepped_residual * stepped_residual
             })
             .sum()
+    }
+
+    fn assert_nearly_equal(left: f64, right: f64) {
+        let scale = left.abs().max(right.abs()).max(1.0);
+        assert!(
+            (left - right).abs() <= 16.0 * f64::EPSILON * scale,
+            "expected {left} to equal {right} within floating-point SVD tolerance"
+        );
     }
 }

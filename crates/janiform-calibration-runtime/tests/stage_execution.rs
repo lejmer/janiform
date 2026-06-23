@@ -353,6 +353,8 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
+            hawkes_return_source_responsibility_input: None,
+            coarse_data_records: None,
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
     );
@@ -449,6 +451,8 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                         payload: hawkes_payload.clone(),
                     },
+                    hawkes_return_source_responsibility_input: None,
+                    coarse_data_records: None,
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
                 },
@@ -561,6 +565,8 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
             activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
+            hawkes_return_source_responsibility_input: None,
+            coarse_data_records: None,
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
     )
@@ -631,6 +637,8 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
             activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
+            hawkes_return_source_responsibility_input: None,
+            coarse_data_records: None,
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
     )
@@ -696,6 +704,8 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
             },
+            hawkes_return_source_responsibility_input: None,
+            coarse_data_records: None,
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
         },
     )
@@ -1280,6 +1290,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
         &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload.clone(),
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1290,6 +1301,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference_with_payload(
             "artifact://hawkes/run-001",
             Some(hawkes_payload.clone()),
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1565,6 +1577,7 @@ fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk
         &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1607,6 +1620,7 @@ fn return_components_stage_execution_rejects_incomplete_candidate_generation_inp
         &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
+            None,
             candidate_generation_input,
         ),
     );
@@ -1649,6 +1663,7 @@ fn return_components_stage_execution_reports_missing_dependency_stage_outputs() 
         &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1677,6 +1692,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
         &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload.clone(),
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1685,6 +1701,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
         &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1694,6 +1711,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference_with_payload(
             "artifact://hawkes/run-001",
             Some(build_hawkes_stage_success_payload()),
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -1703,6 +1721,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference_with_payload(
             "artifact://hawkes/run-001",
             Some(build_hawkes_stage_success_payload()),
+            None,
             return_components_stage_candidate_generation_fixture(),
         ),
     );

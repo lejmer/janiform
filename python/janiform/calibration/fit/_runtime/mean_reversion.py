@@ -40,7 +40,6 @@ def prepare_model_mean_reversion_runtime_inputs(
     initial_boundary_state = MeanReversionBoundaryState(
         observed_log_price=runtime_interval_anchors.start_anchor_value,
         anchor_value=runtime_interval_anchors.start_anchor_value,
-        pressure_state=runtime_interval_anchors.start_pressure_state,
         deviation=0.0,
     )
 

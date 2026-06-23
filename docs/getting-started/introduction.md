@@ -50,7 +50,7 @@ The exact output depends on the workflow. A Janiform run should leave you with s
 
 Janiform is useful when historical data alone is too narrow, and simple simulated returns aren't enough.
 
-Janiform can create realistic market paths for strategy testing, execution testing, risk checks, and system development. A backtest on one historical period only shows one version of the market. Janiform lets you generate many plausible paths where quiet periods, active bursts, directional pressure, jumps, and gaps can appear in varied yet very realistic sequences.
+Janiform can create realistic market paths for strategy testing, execution testing, risk checks, and system development. A backtest on one historical period only shows one version of the market. Janiform lets you generate many plausible paths where quiet periods, active bursts, market pressure, jumps, and gaps can appear in varied yet very realistic sequences.
 
 Janiform also fits option-pricing workflows that need to reflect the way markets actually move. Clustered activity, jumps, gaps, and buy/sell pressure can change the distribution of future prices. Janiform carries those fitted dynamics into derivative pricing, so pricing experiments can be tied to the same market behavior used for simulation.
 

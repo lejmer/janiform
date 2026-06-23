@@ -22,7 +22,6 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, SurpriseNewsArrival
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use janiform_work_scheduler::{StaticWorkPoolInput, run_static_work_pool};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
@@ -42,14 +41,12 @@ use super::super::contracts::{
     JointRefinementStageProgressUpdate,
 };
 use super::super::execution::{
-    JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT,
-    JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementSeedSummary,
-    JointRefinementSeedSummaryCacheKey, SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
+    JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND,
+    JOINT_REFINEMENT_PRESSURE_RISK_PRICE_LOG_DENSITY_BOUND, JointRefinementActiveParameterLayout,
+    JointRefinementContext, JointRefinementSeedSummary, JointRefinementSeedSummaryCacheKey,
     build_halton_restart_id, deduplicate_restart_seed_candidates, halton_parameter_vector,
     joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
     precheck_seed_summary_workload, rescaled_observed_tick_calibration_sample_for_modeled_rate,
-    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
-    with_joint_refinement_thread_pool,
 };
 use super::super::objective::{
     JointRefinementRestartAdmissionDiagnostics, JointRefinementRestartAdmissionScreening,
@@ -63,6 +60,7 @@ use super::return_clock_restart_seeds::{
     JointReturnClockExposureSeedsBuildInput, ReturnClockExposureRestartSeedProfile,
     joint_return_clock_exposure_restart_seeds, return_clock_exposure_restart_seed_profile,
 };
+use crate::stages::long_variance::generated_energy::project_generated_stationary_feedback_to_budget;
 use crate::stages::long_variance::policy::{
     long_variance_retained_stationary_level_acceptance_floor,
     long_variance_retained_stationary_level_floor,
@@ -72,16 +70,12 @@ use janiform_calibration_artifacts::{
     JointRefinementStagePricingBlockFittedParameters, ReturnComponentsStageFittedParameters,
 };
 
-type RestartSeedCandidate = (String, Vec<f64>);
-type RestartSeedCandidateBatch = Vec<RestartSeedCandidate>;
-
 const RETURN_SCALE_REALIZED_VARIANCE_1D_METRIC_ID: &str = "return_scale.1d.realized_variance";
 const RETURN_SCALE_MEAN_ABSOLUTE_RETURN_1D_METRIC_ID: &str = "return_scale.1d.mean_absolute_return";
 const RETURN_SCALE_TICK_REALIZED_VARIANCE_METRIC_ID: &str = "return_scale.tick.realized_variance";
 const RETURN_SCALE_TICK_MEAN_ABSOLUTE_RETURN_METRIC_ID: &str =
     "return_scale.tick.mean_absolute_return";
 const PROTECTED_RESTART_SEED_IDS: [&str; 2] = ["incumbent_local_search", "activity_aligned"];
-const SENSITIVITY_REPAIR_TRUST_REGION_SCALE_COUNT: usize = JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT;
 
 const RETURN_SCALE_ALIGNMENT_METRICS: [ReturnScaleAlignmentMetric; 4] = [
     ReturnScaleAlignmentMetric {
@@ -331,7 +325,7 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
                 .baseline_return_components_fitted_parameters
                 .long_variance_parameters;
 
-            let long_variance_parameters = LongVarianceParameters::try_new(
+            let decoded_long_variance_parameters = LongVarianceParameters::try_new(
                 baseline_long_variance_parameters.mean_reversion_rate
                     * parameter_vector[context
                         .active_parameter_layout
@@ -340,6 +334,10 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
                 parameter_vector[context
                     .active_parameter_layout
                     .long_variance_vol_of_vol_index],
+                baseline_long_variance_parameters.stationary_return_energy_rate_per_hour,
+                parameter_vector[context
+                    .active_parameter_layout
+                    .long_variance_return_energy_loading_index],
                 parameter_vector[context
                     .active_parameter_layout
                     .long_variance_buy_event_loading_index],
@@ -350,6 +348,14 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
             .map_err(|source| {
                 parameter_decode_error(format!("long-variance parameters are invalid: {source}"))
             })?;
+
+            let long_variance_parameters = project_generated_stationary_feedback_to_budget(
+                decoded_long_variance_parameters,
+                hawkes_fitted_parameters.kernel_parameters,
+                nig_shared_plus_shift_configuration,
+                return_clock_exposure_parameters,
+            )
+            .map_err(parameter_decode_error)?;
 
             let stationary_long_variance_level = long_variance_parameters
                 .stationary_mean_reversion_level_for_hawkes_kernel(
@@ -381,17 +387,20 @@ pub(in crate::stages::joint_refinement) fn checked_parameter_vector_to_fitted_pa
                     .clone(),
                 return_clock_exposure_parameters,
                 long_variance_parameters,
-                tick_grid_observation_model: context
+                // Joint-refinement candidates own a pressure contract copied from baseline fit.
+                market_pressure_parameters: context
                     .baseline_return_components_fitted_parameters
-                    .tick_grid_observation_model
+                    .market_pressure_parameters
                     .clone(),
-                timestamp_batching_observation_model: context
+                price_discretization_surface: context
                     .baseline_return_components_fitted_parameters
-                    .timestamp_batching_observation_model
+                    .price_discretization_surface
                     .clone(),
-                mean_reversion_fitted_parameters: context
-                    .baseline_mean_reversion_fitted_parameters
+                timestamp_batching_surface: context
+                    .baseline_return_components_fitted_parameters
+                    .timestamp_batching_surface
                     .clone(),
+                mean_reversion_fitted_parameters: context.baseline_mean_reversion_fitted_parameters,
             };
 
             return_components_fitted_parameters
@@ -422,10 +431,11 @@ fn pricing_kernel_parameters_from_option_vector(
     VanillaOptionPricingKernelParameters::try_new(
         parameter_vector[layout.option_pricing_log_buy_activity_premium_index].exp(),
         parameter_vector[layout.option_pricing_log_sell_activity_premium_index].exp(),
+        parameter_vector[layout.option_pricing_pressure_signed_imbalance_exposure_risk_price_index],
     )
     .map_err(|source| {
         parameter_decode_error(format!(
-            "option-pricing activity premium parameters are invalid: {source}"
+            "option-pricing kernel parameters are invalid: {source}"
         ))
     })
 }
@@ -508,6 +518,8 @@ pub(in crate::stages::joint_refinement) fn build_baseline_parameter_vector(
         0.0;
     parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index] =
         long_variance_parameters.vol_of_vol;
+    parameter_vector[active_parameter_layout.long_variance_return_energy_loading_index] =
+        long_variance_parameters.return_energy_loading;
     parameter_vector[active_parameter_layout.long_variance_buy_event_loading_index] =
         long_variance_parameters.buy_event_loading;
     parameter_vector[active_parameter_layout.long_variance_sell_event_loading_index] =
@@ -615,6 +627,9 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
     let long_variance_vol_of_vol_index = next_index;
     next_index += 1;
 
+    let long_variance_return_energy_loading_index = next_index;
+    next_index += 1;
+
     let long_variance_buy_event_loading_index = next_index;
     next_index += 1;
 
@@ -624,6 +639,7 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
     let long_variance_block = vec![
         log_long_variance_mean_reversion_rate_scale_index,
         long_variance_vol_of_vol_index,
+        long_variance_return_energy_loading_index,
         long_variance_buy_event_loading_index,
         long_variance_sell_event_loading_index,
     ];
@@ -632,10 +648,14 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
     next_index += 1;
 
     let option_pricing_log_sell_activity_premium_index = next_index;
+    next_index += 1;
+
+    let option_pricing_pressure_signed_imbalance_exposure_risk_price_index = next_index;
 
     let option_pricing_kernel_block = vec![
         option_pricing_log_buy_activity_premium_index,
         option_pricing_log_sell_activity_premium_index,
+        option_pricing_pressure_signed_imbalance_exposure_risk_price_index,
     ];
 
     JointRefinementActiveParameterLayout {
@@ -653,10 +673,12 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
         log_sell_excitation_return_clock_scale_index,
         log_long_variance_mean_reversion_rate_scale_index,
         long_variance_vol_of_vol_index,
+        long_variance_return_energy_loading_index,
         long_variance_buy_event_loading_index,
         long_variance_sell_event_loading_index,
         option_pricing_log_buy_activity_premium_index,
         option_pricing_log_sell_activity_premium_index,
+        option_pricing_pressure_signed_imbalance_exposure_risk_price_index,
         known_activity_scale_index,
         surprise_activity_scale_index,
         surprise_baseline_scale_index,
@@ -799,10 +821,22 @@ pub(in crate::stages::joint_refinement) fn apply_option_pricing_kernel_bounds(
     lower_bounds: &mut [f64],
     upper_bounds: &mut [f64],
 ) {
-    for index in &active_parameter_layout.option_pricing_kernel_block {
-        lower_bounds[*index] = -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
-        upper_bounds[*index] = JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
-    }
+    lower_bounds[active_parameter_layout.option_pricing_log_buy_activity_premium_index] =
+        -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
+    upper_bounds[active_parameter_layout.option_pricing_log_buy_activity_premium_index] =
+        JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
+
+    lower_bounds[active_parameter_layout.option_pricing_log_sell_activity_premium_index] =
+        -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
+    upper_bounds[active_parameter_layout.option_pricing_log_sell_activity_premium_index] =
+        JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
+
+    lower_bounds[active_parameter_layout
+        .option_pricing_pressure_signed_imbalance_exposure_risk_price_index] =
+        -JOINT_REFINEMENT_PRESSURE_RISK_PRICE_LOG_DENSITY_BOUND;
+    upper_bounds[active_parameter_layout
+        .option_pricing_pressure_signed_imbalance_exposure_risk_price_index] =
+        JOINT_REFINEMENT_PRESSURE_RISK_PRICE_LOG_DENSITY_BOUND;
 }
 
 fn joint_nig_search_bounds_from_feasible_sources(
@@ -1407,18 +1441,8 @@ fn finalize_restart_seed_candidates(
 
     let deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates);
 
-    let sensitivity_repair_policy = sensitivity_repair_seed_policy(target_restart_count);
-    let sensitivity_repair_budget = joint_context
-        .map(|_| {
-            sensitivity_repair_screening_evaluation_budget(
-                baseline_parameter_vector.len(),
-                sensitivity_repair_policy,
-            )
-        })
-        .unwrap_or(0);
     let total_screening_units = deduplicated_candidates
         .len()
-        .saturating_add(sensitivity_repair_budget)
         .saturating_add(target_restart_count);
 
     emit_restart_candidate_screening_progress(
@@ -1430,7 +1454,7 @@ fn finalize_restart_seed_candidates(
 
     let completed_screening_units = Mutex::new(0usize);
 
-    let mut screened_restart_candidates = screen_restart_candidates(
+    let screened_restart_candidates = screen_restart_candidates(
         deduplicated_candidates.as_slice(),
         &restart_seed_score,
         joint_context,
@@ -1438,31 +1462,6 @@ fn finalize_restart_seed_candidates(
         &completed_screening_units,
         total_screening_units,
     );
-
-    if let Some(joint_context) = joint_context {
-        let sensitivity_repair_candidates =
-            build_sensitivity_repair_restart_candidates(SensitivityRepairRestartCandidatesInput {
-                screened_restart_candidates: screened_restart_candidates.as_slice(),
-                lower_bounds,
-                upper_bounds,
-                joint_context,
-                policy: sensitivity_repair_policy,
-                progress_sender,
-                completed_screening_units: &completed_screening_units,
-                total_screening_units,
-            });
-
-        let screened_sensitivity_repair_candidates = screen_restart_candidates(
-            sensitivity_repair_candidates.as_slice(),
-            &restart_seed_score,
-            Some(joint_context),
-            progress_sender,
-            &completed_screening_units,
-            total_screening_units,
-        );
-
-        screened_restart_candidates.extend(screened_sensitivity_repair_candidates);
-    }
 
     let mut screened_halton_candidates = Vec::new();
 
@@ -1539,133 +1538,9 @@ struct RestartSeedCandidateFinalizationInput<'a> {
     progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
 }
 
-struct SensitivityRepairRestartCandidatesInput<'a> {
-    screened_restart_candidates: &'a [ScreenedRestartCandidate],
-    lower_bounds: &'a [f64],
-    upper_bounds: &'a [f64],
-    joint_context: &'a JointRefinementContext,
-    policy: SensitivityRepairSeedPolicy,
-    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
-    completed_screening_units: &'a Mutex<usize>,
-    total_screening_units: usize,
-}
-
-struct SensitivityRepairRestartCandidateBatch {
-    anchor_position: usize,
-    candidates: Vec<(String, Vec<f64>)>,
-}
-
 struct ScreenedRestartCandidateOutput {
     candidate_position: usize,
     candidate: Option<ScreenedRestartCandidate>,
-}
-
-fn build_sensitivity_repair_restart_candidates(
-    input: SensitivityRepairRestartCandidatesInput<'_>,
-) -> Vec<(String, Vec<f64>)> {
-    let SensitivityRepairRestartCandidatesInput {
-        screened_restart_candidates,
-        lower_bounds,
-        upper_bounds,
-        joint_context,
-        policy,
-        progress_sender,
-        completed_screening_units,
-        total_screening_units,
-    } = input;
-
-    if screened_restart_candidates.is_empty() {
-        return Vec::new();
-    }
-
-    let mut anchor_candidates = screened_restart_candidates.iter().collect::<Vec<_>>();
-
-    anchor_candidates
-        .sort_by(|left, right| compare_screened_restart_candidates_by_score(left, right));
-    anchor_candidates.truncate(policy.active_anchor_count);
-
-    let sensitivity_evaluator = |parameter_vector: &[f64]| {
-        let evaluation =
-            sensitivity_repair_evaluation_for_parameter_vector(parameter_vector, joint_context);
-
-        emit_completed_restart_candidate_screening_unit(
-            progress_sender,
-            completed_screening_units,
-            total_screening_units,
-            "sensitivity_repair_probe",
-        );
-
-        evaluation
-    };
-
-    let anchor_jobs = anchor_candidates
-        .into_iter()
-        .enumerate()
-        .collect::<Vec<_>>();
-
-    let mut repair_candidate_batches = std::iter::repeat_with(|| None)
-        .take(anchor_jobs.len())
-        .collect::<Vec<Option<RestartSeedCandidateBatch>>>();
-
-    run_static_work_pool(
-        joint_context.stage_thread_pool.as_deref(),
-        StaticWorkPoolInput::new(
-            &mut repair_candidate_batches,
-            joint_context.cancellation_token.shared_handle(),
-            anchor_jobs,
-            joint_refinement_parallel_worker_count(joint_context),
-            |(anchor_position, candidate): (usize, &ScreenedRestartCandidate),
-             _cancellation_token| {
-                SensitivityRepairRestartCandidateBatch {
-                    anchor_position,
-                    candidates: sensitivity_repair_seed_candidates(
-                        candidate.restart_id.as_str(),
-                        candidate.parameter_vector.as_slice(),
-                        lower_bounds,
-                        upper_bounds,
-                        joint_context.objective_policy.admissibility_z_threshold,
-                        policy,
-                        &sensitivity_evaluator,
-                    )
-                    .into_iter()
-                    .map(|seed| (seed.restart_id, seed.parameter_vector))
-                    .collect(),
-                }
-            },
-            |repair_candidate_batches: &mut Vec<Option<RestartSeedCandidateBatch>>,
-             batch: SensitivityRepairRestartCandidateBatch,
-             _status| {
-                if let Some(batch_slot) = repair_candidate_batches.get_mut(batch.anchor_position) {
-                    *batch_slot = Some(batch.candidates);
-                }
-            },
-        ),
-    );
-
-    repair_candidate_batches
-        .into_iter()
-        .flatten()
-        .flatten()
-        .collect()
-}
-
-fn sensitivity_repair_seed_policy(target_restart_count: usize) -> SensitivityRepairSeedPolicy {
-    SensitivityRepairSeedPolicy {
-        active_anchor_count: JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT.min(target_restart_count),
-        trust_region_scale_count: SENSITIVITY_REPAIR_TRUST_REGION_SCALE_COUNT,
-    }
-}
-
-fn sensitivity_repair_evaluation_for_parameter_vector(
-    parameter_vector: &[f64],
-    joint_context: &JointRefinementContext,
-) -> Option<SensitivityRepairEvaluation> {
-    let diagnostics = exploratory_restart_seed_diagnostics(parameter_vector, joint_context).ok()?;
-
-    Some(SensitivityRepairEvaluation {
-        aggregate_score: diagnostics.screening.aggregate_score,
-        term_diagnostics: diagnostics.term_diagnostics,
-    })
 }
 
 #[derive(Debug)]
@@ -1673,6 +1548,7 @@ struct ScreenedRestartCandidate {
     restart_id: String,
     parameter_vector: Vec<f64>,
     score: JointRefinementRestartAdmissionScreening,
+    mechanism_family: RestartSeedMechanismFamily,
     source_order: usize,
 }
 
@@ -1687,9 +1563,74 @@ impl ScreenedRestartCandidate {
             restart_id: restart_id.to_string(),
             parameter_vector: parameter_vector.to_vec(),
             score,
+            mechanism_family: restart_seed_mechanism_family(restart_id),
             source_order,
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RestartSeedMechanismFamily {
+    Incumbent,
+    ActivityAlignment,
+    ReturnScaleAlignment,
+    ReturnClockExposure,
+    NigBasin,
+    NigAlphaDelta,
+    LongVariance,
+    TickShapeAlpha,
+    TickMoment,
+    Midpoint,
+    Halton,
+    Other,
+}
+
+fn restart_seed_mechanism_family(restart_id: &str) -> RestartSeedMechanismFamily {
+    if restart_id == "incumbent_local_search" {
+        return RestartSeedMechanismFamily::Incumbent;
+    }
+
+    if restart_id == "activity_aligned" {
+        return RestartSeedMechanismFamily::ActivityAlignment;
+    }
+
+    if restart_id == "midpoint" {
+        return RestartSeedMechanismFamily::Midpoint;
+    }
+
+    if restart_id.starts_with("return_scale") {
+        return RestartSeedMechanismFamily::ReturnScaleAlignment;
+    }
+
+    if restart_id.starts_with("return_clock") {
+        return RestartSeedMechanismFamily::ReturnClockExposure;
+    }
+
+    if restart_id.starts_with("nig_basin") {
+        return RestartSeedMechanismFamily::NigBasin;
+    }
+
+    if restart_id.starts_with("nig_alpha_delta") {
+        return RestartSeedMechanismFamily::NigAlphaDelta;
+    }
+
+    if restart_id.starts_with("long_variance") {
+        return RestartSeedMechanismFamily::LongVariance;
+    }
+
+    if restart_id.starts_with("tick_shape_alpha") {
+        return RestartSeedMechanismFamily::TickShapeAlpha;
+    }
+
+    if restart_id.starts_with("tick_moment") {
+        return RestartSeedMechanismFamily::TickMoment;
+    }
+
+    if restart_id.starts_with("halton") {
+        return RestartSeedMechanismFamily::Halton;
+    }
+
+    RestartSeedMechanismFamily::Other
 }
 
 #[cfg(test)]
@@ -1700,6 +1641,7 @@ fn restart_admission_screening_from_scalar(
         .is_finite()
         .then_some(JointRefinementRestartAdmissionScreening {
             aggregate_score,
+            component_ids: vec!["scalar".to_string()],
             component_scores: vec![aggregate_score],
         })
 }
@@ -1730,7 +1672,7 @@ fn select_screened_restart_candidates(
     {
         let remaining_slots = target_restart_count - selected_candidate_indices.len();
 
-        let selected_candidate_index = select_next_global_loss_screened_restart_candidate(
+        let selected_candidate_index = select_next_screened_restart_candidate(
             screened_candidates.as_slice(),
             remaining_candidate_indices.as_slice(),
             selected_candidate_indices.as_slice(),
@@ -1788,7 +1730,7 @@ fn select_protected_screened_restart_candidate_indices(
     selected_candidate_indices
 }
 
-fn select_next_global_loss_screened_restart_candidate(
+fn select_next_screened_restart_candidate(
     screened_candidates: &[ScreenedRestartCandidate],
     remaining_candidate_indices: &[usize],
     selected_candidate_indices: &[usize],
@@ -1801,6 +1743,14 @@ fn select_next_global_loss_screened_restart_candidate(
             screened_candidates,
             remaining_candidate_indices,
         );
+    }
+
+    if let Some(candidate_index) = lowest_score_unrepresented_mechanism_candidate(
+        screened_candidates,
+        remaining_candidate_indices,
+        selected_candidate_indices,
+    ) {
+        return candidate_index;
     }
 
     let frontier_candidate_indices = global_loss_frontier_candidate_indices(
@@ -1816,6 +1766,34 @@ fn select_next_global_loss_screened_restart_candidate(
         lower_bounds,
         upper_bounds,
     )
+}
+
+fn lowest_score_unrepresented_mechanism_candidate(
+    screened_candidates: &[ScreenedRestartCandidate],
+    remaining_candidate_indices: &[usize],
+    selected_candidate_indices: &[usize],
+) -> Option<usize> {
+    let selected_mechanism_families = selected_candidate_indices
+        .iter()
+        .filter_map(|candidate_index| screened_candidates.get(*candidate_index))
+        .map(|candidate| candidate.mechanism_family)
+        .collect::<Vec<_>>();
+
+    remaining_candidate_indices
+        .iter()
+        .copied()
+        .filter(|candidate_index| {
+            screened_candidates
+                .get(*candidate_index)
+                .map(|candidate| !selected_mechanism_families.contains(&candidate.mechanism_family))
+                .unwrap_or(false)
+        })
+        .min_by(|left_candidate_index, right_candidate_index| {
+            compare_screened_restart_candidates_by_score(
+                &screened_candidates[*left_candidate_index],
+                &screened_candidates[*right_candidate_index],
+            )
+        })
 }
 
 fn global_loss_frontier_candidate_indices(
@@ -1916,6 +1894,24 @@ fn screened_restart_candidate_is_more_distant(
     );
 
     match left_distance.total_cmp(&right_distance) {
+        std::cmp::Ordering::Greater => return true,
+        std::cmp::Ordering::Less => return false,
+        std::cmp::Ordering::Equal => {}
+    }
+
+    let left_objective_distance = minimum_objective_component_distance_to_selected(
+        screened_candidates,
+        left_candidate_index,
+        selected_candidate_indices,
+    );
+
+    let right_objective_distance = minimum_objective_component_distance_to_selected(
+        screened_candidates,
+        right_candidate_index,
+        selected_candidate_indices,
+    );
+
+    match left_objective_distance.total_cmp(&right_objective_distance) {
         std::cmp::Ordering::Greater => true,
         std::cmp::Ordering::Less => false,
         std::cmp::Ordering::Equal => compare_screened_restart_candidates_by_score(
@@ -1924,6 +1920,57 @@ fn screened_restart_candidate_is_more_distant(
         )
         .is_lt(),
     }
+}
+
+fn minimum_objective_component_distance_to_selected(
+    screened_candidates: &[ScreenedRestartCandidate],
+    candidate_index: usize,
+    selected_candidate_indices: &[usize],
+) -> f64 {
+    selected_candidate_indices
+        .iter()
+        .map(|selected_candidate_index| {
+            objective_component_distance(
+                &screened_candidates[candidate_index].score,
+                &screened_candidates[*selected_candidate_index].score,
+            )
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+fn objective_component_distance(
+    left: &JointRefinementRestartAdmissionScreening,
+    right: &JointRefinementRestartAdmissionScreening,
+) -> f64 {
+    let mut squared_distance_sum = 0.0;
+    let mut shared_component_count = 0usize;
+
+    for (left_component_id, left_component_score) in
+        left.component_ids.iter().zip(left.component_scores.iter())
+    {
+        let Some(right_component_position) = right
+            .component_ids
+            .iter()
+            .position(|right_component_id| right_component_id == left_component_id)
+        else {
+            continue;
+        };
+
+        let right_component_score = right.component_scores[right_component_position];
+        if !left_component_score.is_finite() || !right_component_score.is_finite() {
+            continue;
+        }
+
+        let component_distance = left_component_score - right_component_score;
+        squared_distance_sum += component_distance * component_distance;
+        shared_component_count += 1;
+    }
+
+    if shared_component_count == 0 {
+        return 0.0;
+    }
+
+    (squared_distance_sum / shared_component_count as f64).sqrt()
 }
 
 fn minimum_normalized_parameter_distance_to_selected(
@@ -2119,7 +2166,9 @@ pub(in crate::stages::joint_refinement) fn restart_candidate_screening_max_paral
     candidate_count: usize,
 ) -> usize {
     let thread_pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(cpu_count.max(1))
+        .num_threads(crate::stages::parallelism::resolved_stage_cpu_count(
+            cpu_count,
+        ))
         .build()
         .expect("test thread pool should build");
 
@@ -3156,6 +3205,11 @@ pub(in crate::stages::joint_refinement) struct CandidateSeedSummariesCacheInput<
     pub(in crate::stages::joint_refinement) total_units: usize,
 }
 
+struct SeedSummaryOutput {
+    seed_position: usize,
+    result: Result<(u64, JointRefinementSeedSummary), String>,
+}
+
 pub(crate) fn build_surprise_multipliers_for_interval_grid(
     simulation_start_utc: DateTime<Utc>,
     interval_count: usize,
@@ -3225,34 +3279,74 @@ fn build_seed_summaries_for_candidate_seeds_parallel(
     total_units: usize,
 ) -> Result<Vec<(u64, JointRefinementSeedSummary)>, String> {
     let completed_units = Mutex::new(completed_units_before_missing);
+    let seed_summary_jobs = simulation_seeds
+        .iter()
+        .copied()
+        .enumerate()
+        .collect::<Vec<_>>();
 
-    let seed_summary_results = with_joint_refinement_thread_pool(context, || {
-        simulation_seeds
-            .par_iter()
-            .map(|simulation_seed| {
-                let seed_summary = build_seed_summary_for_candidate_seed(
+    let mut seed_summary_outputs = std::iter::repeat_with(|| None)
+        .take(seed_summary_jobs.len())
+        .collect::<Vec<Option<Result<(u64, JointRefinementSeedSummary), String>>>>();
+
+    run_static_work_pool(
+        context.stage_thread_pool.as_deref(),
+        StaticWorkPoolInput::new(
+            &mut seed_summary_outputs,
+            context.cancellation_token.shared_handle(),
+            seed_summary_jobs,
+            joint_refinement_parallel_worker_count(context),
+            |(seed_position, simulation_seed), cancellation_token: CancellationToken| {
+                if cancellation_token.is_cancelled() {
+                    return SeedSummaryOutput {
+                        seed_position,
+                        result: Err("operation cancelled".to_string()),
+                    };
+                }
+
+                let result = build_seed_summary_for_candidate_seed(
                     context,
                     fitted_parameters,
-                    *simulation_seed,
-                )?;
+                    simulation_seed,
+                )
+                .map(|seed_summary| (simulation_seed, seed_summary));
 
-                if let Ok(mut completed_units_guard) = completed_units.lock() {
+                if result.is_ok()
+                    && let Ok(mut completed_units_guard) = completed_units.lock()
+                {
                     *completed_units_guard = completed_units_guard.saturating_add(1);
                     emit_seed_summary_progress(
                         progress_sender,
                         progress_phase,
                         *completed_units_guard,
                         total_units,
-                        Some(*simulation_seed),
+                        Some(simulation_seed),
                     );
                 }
 
-                Ok((*simulation_seed, seed_summary))
-            })
-            .collect::<Vec<_>>()
-    });
+                SeedSummaryOutput {
+                    seed_position,
+                    result,
+                }
+            },
+            |seed_summary_outputs: &mut Vec<
+                Option<Result<(u64, JointRefinementSeedSummary), String>>,
+            >,
+             output: SeedSummaryOutput,
+             _status| {
+                if let Some(output_slot) = seed_summary_outputs.get_mut(output.seed_position) {
+                    *output_slot = Some(output.result);
+                }
+            },
+        ),
+    );
 
-    seed_summary_results.into_iter().collect()
+    seed_summary_outputs
+        .into_iter()
+        .map(|output| {
+            output.unwrap_or_else(|| Err("seed summary worker did not return result".to_string()))
+        })
+        .collect()
 }
 
 fn build_seed_summary_for_candidate_seed(
@@ -3351,7 +3445,7 @@ mod tests {
         JointRefinementRestartAdmissionScreening, ScreenedRestartCandidate,
         build_active_parameter_layout, compare_screened_restart_candidates_by_score,
         disable_known_activity_coupling_if_known_news_channel_absent,
-        select_screened_restart_candidates,
+        restart_seed_mechanism_family, select_screened_restart_candidates,
     };
     use crate::stages::joint_refinement::execution::test_joint_fitted_parameters;
 
@@ -3367,8 +3461,12 @@ mod tests {
             parameter_vector,
             score: JointRefinementRestartAdmissionScreening {
                 aggregate_score,
+                component_ids: (0..component_scores.len())
+                    .map(|component_position| format!("component_{component_position:02}"))
+                    .collect(),
                 component_scores,
             },
+            mechanism_family: restart_seed_mechanism_family(restart_id),
             source_order,
         }
     }
@@ -3439,6 +3537,104 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(selected_ids, vec!["near", "far"]);
+    }
+
+    #[test]
+    fn screened_restart_selection_represents_mechanisms_before_repeating_one() {
+        let screened_candidates = vec![
+            screened_restart_candidate("tick_moment_01", vec![0.0, 0.0], 0.1, vec![0.1], 0),
+            screened_restart_candidate("tick_moment_02", vec![1.0, 1.0], 0.2, vec![0.2], 1),
+            screened_restart_candidate(
+                "return_scale_tick_mean_absolute_return",
+                vec![0.2, 0.0],
+                5.0,
+                vec![5.0],
+                2,
+            ),
+            screened_restart_candidate("tick_shape_alpha_lower", vec![0.0, 0.2], 6.0, vec![6.0], 3),
+        ];
+
+        let selected = select_screened_restart_candidates(
+            screened_candidates,
+            3,
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+            &[],
+        );
+
+        let selected_ids = selected
+            .iter()
+            .map(|(restart_id, _)| restart_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            selected_ids,
+            vec![
+                "tick_moment_01",
+                "return_scale_tick_mean_absolute_return",
+                "tick_shape_alpha_lower"
+            ]
+        );
+    }
+
+    #[test]
+    fn screened_restart_selection_uses_objective_family_coverage_after_parameter_distance() {
+        let screened_candidates = vec![
+            screened_restart_candidate("dominant", vec![0.0, 0.0], 0.1, vec![0.0, 0.0], 0),
+            screened_restart_candidate(
+                "objective_distinct",
+                vec![0.05, 0.0],
+                0.2,
+                vec![3.0, 0.0],
+                1,
+            ),
+            screened_restart_candidate("parameter_far", vec![1.0, 1.0], 0.2, vec![0.1, 0.1], 2),
+        ];
+
+        let selected = select_screened_restart_candidates(
+            screened_candidates,
+            2,
+            &[0.0, 0.0],
+            &[1.0, 1.0],
+            &[],
+        );
+
+        let selected_ids = selected
+            .iter()
+            .map(|(restart_id, _)| restart_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected_ids, vec!["dominant", "parameter_far"]);
+    }
+
+    #[test]
+    fn screened_restart_selection_uses_objective_family_coverage_as_distance_tiebreaker() {
+        let screened_candidates = vec![
+            screened_restart_candidate("dominant", vec![0.0, 0.0], 0.1, vec![0.0, 0.0], 0),
+            screened_restart_candidate(
+                "objective_distinct",
+                vec![0.5, 0.0],
+                0.2,
+                vec![3.0, 0.0],
+                1,
+            ),
+            screened_restart_candidate("objective_close", vec![-0.5, 0.0], 0.2, vec![0.1, 0.1], 2),
+        ];
+
+        let selected = select_screened_restart_candidates(
+            screened_candidates,
+            2,
+            &[-1.0, -1.0],
+            &[1.0, 1.0],
+            &[],
+        );
+
+        let selected_ids = selected
+            .iter()
+            .map(|(restart_id, _)| restart_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected_ids, vec!["dominant", "objective_distinct"]);
     }
 
     #[test]

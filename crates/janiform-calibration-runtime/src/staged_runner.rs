@@ -45,18 +45,14 @@ pub(super) use crate::stages::news_shocks::{
     NewsShocksStageExecutionInput, NewsShocksStageExecutionMetadata,
     NewsShocksStageExecutionReport, run_news_shocks_calibration_stage,
 };
-pub(super) use crate::stages::observation_models::{
-    ObservationModelsHawkesSourceResponsibilityInput, ObservationModelsStageExecutionInput,
-    ObservationModelsStageExecutionMetadata, ObservationModelsStageExecutionReport,
-    ObservationModelsStageProgressPhase, ObservationModelsStageProgressUpdate,
-    run_observation_models_calibration_stage,
-    run_observation_models_calibration_stage_with_progress_observer,
-};
 pub(super) use crate::stages::return_backfit::{
     ReturnBackfitStageExecutionInput, ReturnBackfitStageExecutionMetadata,
-    ReturnBackfitStageExecutionReport, run_return_backfit_calibration_stage,
+    ReturnBackfitStageExecutionReport, ReturnBackfitStageProgressPhase,
+    ReturnBackfitStageProgressUpdate, run_return_backfit_calibration_stage,
+    run_return_backfit_calibration_stage_with_progress_observer,
 };
 pub(super) use crate::stages::return_components::{
+    ReturnComponentsHawkesReturnSourceResponsibilityInput,
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionInput,
     ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
     ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
@@ -74,7 +70,6 @@ pub(super) use janiform_calibration_artifacts::{
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,

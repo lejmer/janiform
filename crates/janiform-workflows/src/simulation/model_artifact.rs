@@ -231,11 +231,8 @@ fn resolve_initial_state(
             .map_err(|source| validation_error("kernel_parameters", source.to_string()))?,
     };
 
-    // Intentional copy because the resolved state is stored and also inspected
-    // for the runtime anchor start value.
     let mean_reversion_boundary_state = request
         .initial_mean_reversion_boundary_state
-        .clone()
         .or_else(|| estimated_state.map(|state| state.mean_reversion_boundary_state));
 
     let start_anchor_value = mean_reversion_boundary_state
@@ -290,7 +287,6 @@ fn build_direct_job(
 ) -> Result<PreparedDirectSimulationJob, WorkflowError> {
     let (runtime_interval_anchors, derived_boundary_state) =
         materialize_mean_reversion_runtime_inputs(
-            request,
             context,
             &interval_factor_grid,
             initial_state.excitation_state,
@@ -309,7 +305,7 @@ fn build_direct_job(
                 runtime_interval_anchors,
                 initial_mean_reversion_boundary_state,
                 interval_factor_grid,
-            );
+            )?;
 
             let run_config = janiform::simulation::SeededTickSimulationRunConfig::try_new(
                 request.seed,
@@ -395,7 +391,6 @@ fn build_direct_job(
 }
 
 fn materialize_mean_reversion_runtime_inputs(
-    request: &ModelArtifactSimulationWorkflowRequest,
     context: &FittedModelContext,
     interval_factor_grid: &IntervalFactorGrid,
     initial_excitation_state: HawkesExcitationState,
@@ -412,8 +407,6 @@ fn materialize_mean_reversion_runtime_inputs(
         interval_factor_grid,
         initial_excitation_state,
         start_anchor_value,
-        context.interval_delta,
-        request.horizon_interval_count,
     )
 }
 

@@ -36,9 +36,6 @@ fn stage_report_payload(
         CalibrationStagedRunStageReport::Hawkes(report) => {
             stage_report_payload_from_report("hawkes", report)
         }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
-            stage_report_payload_from_report("observation_models", report)
-        }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             stage_report_payload_from_report("return_components", report)
         }

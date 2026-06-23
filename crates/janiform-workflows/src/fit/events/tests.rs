@@ -173,6 +173,48 @@ fn hawkes_likelihood_progress_uses_shared_work_item_table() {
 }
 
 #[test]
+fn return_backfit_delta_handoff_progress_uses_stage_signal() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("apply delta variance handoff"),
+        None,
+        None,
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::ReturnBackfit;
+    progress.progress_phase = CalibrationStageProgressPhase::ReturnBackfit(
+        ReturnBackfitStageProgressPhase::DeltaVarianceHandoff,
+    );
+    progress.aggregate_progress_percent = Some(67);
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("return-backfit delta handoff progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            phase,
+            measure,
+            work_item_label,
+            latest_signal,
+            ..
+        }) => {
+            assert_eq!(phase, "delta variance handoff");
+            assert_eq!(measure, UiProgressMeasure::percent(67));
+            assert_eq!(work_item_label, None);
+            assert_eq!(
+                latest_signal.as_deref(),
+                Some("apply delta variance handoff")
+            );
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
 fn zero_total_phase_progress_uses_unbounded_terminal_measure() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
@@ -268,7 +310,7 @@ fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
         vec![
             ("eval".to_string(), "Evals".to_string()),
             ("current_objective".to_string(), "Trial loss".to_string()),
-            ("best_objective".to_string(), "Accepted loss".to_string()),
+            ("best_objective".to_string(), "Best loss".to_string()),
             ("final_objective".to_string(), "Final loss".to_string()),
             ("exact_buy".to_string(), "CF-Buy".to_string()),
             ("exact_sell".to_string(), "CF-Sell".to_string()),
@@ -287,6 +329,129 @@ fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
             ("exact_buy".to_string(), "3".to_string()),
             ("exact_sell".to_string(), "4".to_string()),
             ("exact_mixed".to_string(), "5".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn restart_progress_signal_uses_stable_global_summary_fields() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("tick_moment_08"),
+        Some(17),
+        Some(80),
+        Some(22.364253),
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::RestartOptimization,
+    );
+    progress.current_global_loss = Some(74.277624);
+    progress.current_restart_best_global_loss = Some(51.125);
+    progress.active_restart_count = Some(4);
+    progress.cumulative_local_evaluation_count = Some(127);
+    progress.best_restart_id = Some("incumbent_local_search".to_string());
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("restart progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress {
+            latest_signal,
+            work_item_label,
+            work_item_metrics,
+            ..
+        }) => {
+            assert_eq!(
+                latest_signal.as_deref(),
+                Some(
+                    "active restarts 4, cumulative evals 127, best loss 22.364253, best candidate incumbent_local_search"
+                )
+            );
+            assert_eq!(work_item_label.as_deref(), Some("tick_moment_08"));
+            assert_eq!(
+                work_item_metrics
+                    .iter()
+                    .map(|metric| (metric.key.as_str(), metric.value.as_str()))
+                    .collect::<Vec<_>>(),
+                vec![
+                    ("eval", "17/80"),
+                    ("current_objective", "74.277624"),
+                    ("best_objective", "51.125000"),
+                ]
+            );
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
+fn restart_progress_signal_uses_placeholders_for_unavailable_summary_fields() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("tick_moment_08"),
+        Some(17),
+        Some(80),
+        None,
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::RestartOptimization,
+    );
+    progress.current_global_loss = Some(74.277624);
+    progress.current_restart_best_global_loss = Some(51.125);
+    progress.active_restart_count = Some(4);
+
+    let progress_event = progress_event_from_staged_event(
+        &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
+    )
+    .expect("restart progress should map to terminal progress");
+
+    match progress_event {
+        Some(ProgressEvent::StageProgress { latest_signal, .. }) => {
+            assert_eq!(
+                latest_signal.as_deref(),
+                Some("active restarts 4, cumulative evals -, best loss -, best candidate -")
+            );
+        }
+        _ => panic!("expected stage progress event"),
+    }
+}
+
+#[test]
+fn restart_finalization_metrics_report_final_loss_without_replacing_search_losses() {
+    let mut progress = return_components_progress_event(
+        ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+        Some("tick_moment_08"),
+        Some(47),
+        Some(47),
+        Some(22.364253),
+        None,
+    );
+
+    progress.stage = CalibrationStage::JointRefinement;
+    progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
+        JointRefinementStageProgressPhase::RestartOptimization,
+    );
+    progress.evaluation_progress_percent = Some(100);
+    progress.current_global_loss = Some(74.277624);
+    progress.current_restart_best_global_loss = Some(51.125);
+    progress.current_final_global_loss = Some(63.75);
+
+    assert_eq!(
+        work_item_table_metrics(&progress)
+            .into_iter()
+            .map(|metric| (metric.key, metric.value))
+            .collect::<Vec<_>>(),
+        vec![
+            ("eval".to_string(), "47/47".to_string()),
+            ("final_objective".to_string(), "63.750000".to_string()),
         ]
     );
 }
@@ -311,8 +476,8 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
             restart_id: "tick_moment_21".to_string(),
             schedule_category: "competitive".to_string(),
             candidate_evaluation_count: 12,
-            poll_direction_position: Some(3),
-            poll_direction_label: "positive.nig.log_alpha".to_string(),
+            search_direction_position: Some(3),
+            search_direction_label: "interpolation.nig.log_alpha".to_string(),
             elapsed_millis: 1234,
             objective: Some(0.5),
             admissibility_blocker_count: Some(1),
@@ -365,9 +530,9 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
             "joint_refinement.restart_eval.restart_id",
             "joint_refinement.restart_eval.schedule_category",
             "joint_refinement.restart_eval.candidate_evaluation_count",
-            "joint_refinement.restart_eval.poll_direction_label",
+            "joint_refinement.restart_eval.search_direction_label",
             "joint_refinement.restart_eval.elapsed_millis",
-            "joint_refinement.restart_eval.poll_direction_position",
+            "joint_refinement.restart_eval.search_direction_position",
             "joint_refinement.restart_eval.objective",
             "joint_refinement.restart_eval.admissibility_blocker_count",
             "joint_refinement.restart_eval.max_standardized_residual",
@@ -715,6 +880,7 @@ fn return_components_progress_event(
         cumulative_local_evaluation_count: None,
         current_global_loss: None,
         current_restart_best_global_loss: None,
+        current_final_global_loss: None,
         current_candidate_assessment: None,
         best_restart_id: None,
         best_global_loss,

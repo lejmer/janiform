@@ -1,3 +1,4 @@
+use janiform_foundations::numeric::validate_positive_number;
 use janiform_foundations::strings::is_non_empty_string;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,7 @@ use super::support::{validate_non_empty_artifact_value, validate_optimizer_state
 #[serde(deny_unknown_fields)]
 pub struct ReturnComponentsStageParameterPayload {
     pub selected_candidate_id: String,
+    pub source_window_open_exposure_hours: f64,
     pub fitted_parameters: ReturnComponentsStageFittedParameters,
     pub candidate_generation_policy: String,
     pub objective_weighting_policy: String,
@@ -37,6 +39,7 @@ pub struct ReturnComponentsStageParameterArtifactInput {
     pub metadata: CalibrationStageParameterBuildMetadata,
     pub optimizer_state: CalibrationStageParameterOptimizerStateInput,
     pub selected_candidate_id: String,
+    pub source_window_open_exposure_hours: f64,
     pub fitted_parameters: ReturnComponentsStageFittedParameters,
     pub candidate_generation_policy: String,
     pub objective_weighting_policy: String,
@@ -78,6 +81,7 @@ pub(super) fn build_return_components_stage_parameter_artifact(
 
     let payload = ReturnComponentsStageParameterPayload {
         selected_candidate_id: input.selected_candidate_id,
+        source_window_open_exposure_hours: input.source_window_open_exposure_hours,
         fitted_parameters: input.fitted_parameters,
         candidate_generation_policy: input.candidate_generation_policy,
         objective_weighting_policy: input.objective_weighting_policy,
@@ -110,6 +114,18 @@ pub(super) fn validate_return_components_stage_parameter_payload(
             field: "stage_parameters.return_components.selected_candidate_id",
         },
     )?;
+
+    validate_positive_number(
+        payload.source_window_open_exposure_hours,
+        "source_window_open_exposure_hours",
+    )
+    .map_err(|source| {
+        CalibrationStageParameterArtifactValidationError::InvalidStageParameterField {
+            stage,
+            field: "stage_parameters.return_components.source_window_open_exposure_hours",
+            error_message: source.to_string(),
+        }
+    })?;
 
     validate_non_empty_artifact_value(
         payload.candidate_generation_policy.as_str(),

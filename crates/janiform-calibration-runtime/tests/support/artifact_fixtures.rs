@@ -3,26 +3,25 @@
 use janiform_calibration_artifacts::{
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationLossAdmissibility,
-    CalibrationObjectivePolicy, CalibrationRunContract, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
-    CalibrationStageParameterBuildMetadata, CalibrationStageParameterOptimizerStateInput,
-    HawkesStageFittedParameters, HawkesStageParameterArtifactInput,
-    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
-    JointRefinementStageOptimizerDiagnostics, JointRefinementStageParameterArtifactInput,
-    JointRefinementStageRestartDiagnostics, JointRefinementStageRuntimeProfile,
-    LongVarianceStageDiagnostics, LongVarianceStageParameterArtifactInput,
-    MeanReversionStageCalibrationGrid, MeanReversionStageDiagnostics,
-    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
-    NewsShocksStageDiagnostics, NewsShocksStageParameterArtifactInput,
-    ObservationModelsStageDiagnostics, ObservationModelsStageParameterArtifactInput,
+    CalibrationRunContract, CalibrationStage, CalibrationStageHandoffTransport,
+    CalibrationStageParameterArtifact, CalibrationStageParameterBuildMetadata,
+    CalibrationStageParameterOptimizerStateInput, HawkesStageFittedParameters,
+    HawkesStageParameterArtifactInput, JointRefinementStageFittedParameters,
+    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
+    JointRefinementStageParameterArtifactInput, JointRefinementStageRestartDiagnostics,
+    JointRefinementStageRuntimeProfile, LongVarianceStageDiagnostics,
+    LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
+    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
+    MeanReversionStageParameterArtifactInput, NewsShocksStageDiagnostics,
+    NewsShocksStageParameterArtifactInput, PriceDiscretizationSurface,
     ReturnBackfitStageDiagnostics, ReturnBackfitStageParameterArtifactInput,
-    ReturnBackfitStageVarianceBudgetDiagnostic, ReturnComponentsStageFittedParameters,
+    ReturnBackfitStageScaleHandoffDiagnostic, ReturnComponentsStageFittedParameters,
     ReturnComponentsStageParameterArtifactInput, SeasonalityStageParameterArtifactInput,
-    SurpriseNewsDeterministicIntensityProfile, TickGridObservationModel,
-    build_calibration_stage_parameter_artifact, calibration_stage_token,
+    SurpriseNewsDeterministicIntensityProfile, build_calibration_stage_parameter_artifact,
+    calibration_stage_token,
 };
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::KnownNewsArrivalConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
@@ -46,8 +45,7 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
 ) -> Vec<CalibrationStageParameterArtifact> {
     let hawkes_fitted_parameters = regression_hawkes_fitted_parameters();
     let return_components_fitted_parameters = regression_return_components_fitted_parameters();
-    let mean_reversion_fitted_parameters =
-        MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion();
+    let mean_reversion_fitted_parameters = MeanReversionFittedParameters::zero_kappa();
 
     vec![
         build_regression_stage_parameter_artifact(
@@ -57,10 +55,6 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
         build_regression_stage_parameter_artifact(
             run_contract,
             regression_hawkes_stage_parameter_input(run_contract, hawkes_fitted_parameters.clone()),
-        ),
-        build_regression_stage_parameter_artifact(
-            run_contract,
-            regression_observation_models_stage_parameter_input(run_contract),
         ),
         build_regression_stage_parameter_artifact(
             run_contract,
@@ -94,7 +88,7 @@ pub(crate) fn build_stage_parameter_artifact_fixture_set(
             run_contract,
             regression_mean_reversion_stage_parameter_input(
                 run_contract,
-                mean_reversion_fitted_parameters.clone(),
+                mean_reversion_fitted_parameters,
             ),
         ),
         build_regression_stage_parameter_artifact(
@@ -174,27 +168,6 @@ fn regression_hawkes_stage_parameter_input(
     }
 }
 
-fn regression_observation_models_stage_parameter_input(
-    run_contract: &CalibrationRunContract,
-) -> ObservationModelsStageParameterArtifactInput {
-    ObservationModelsStageParameterArtifactInput {
-        metadata: regression_stage_build_metadata(
-            run_contract,
-            CalibrationStage::ObservationModels,
-            CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
-        ),
-        timestamp_batching_observation_model:
-            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
-            ),
-        diagnostics: ObservationModelsStageDiagnostics {
-            estimation_policy: "artifact_regression_fixture.v1".to_string(),
-            observed_open_session_return_count: 0,
-            same_session_timestamp_transition_count: 0,
-            same_timestamp_continuation_count: 0,
-        },
-    }
-}
-
 fn regression_return_components_stage_parameter_input(
     run_contract: &CalibrationRunContract,
     fitted_parameters: ReturnComponentsStageFittedParameters,
@@ -210,6 +183,7 @@ fn regression_return_components_stage_parameter_input(
             CalibrationStage::ReturnComponents,
         ),
         selected_candidate_id: "artifact_regression_return_components".to_string(),
+        source_window_open_exposure_hours: 1.0,
         fitted_parameters,
         candidate_generation_policy: "artifact_regression_fixture.v1".to_string(),
         objective_weighting_policy: "artifact_regression_fixture.v1".to_string(),
@@ -217,7 +191,7 @@ fn regression_return_components_stage_parameter_input(
         activity_input_transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
         activity_selected_hawkes_candidate_id: None,
         activity_artifact_reference: Some(format!(
-            "artifact://observation_models/{}",
+            "artifact://hawkes/{}",
             run_contract.run_spec.run_id
         )),
     }
@@ -249,6 +223,11 @@ fn regression_long_variance_stage_parameter_input(
             event_loading_fit_candidate_pair_count: 0,
             event_loading_fit_pair_count: 0,
             event_loading_fit_coverage_ratio: 0.0,
+            stationary_return_energy_rate_per_hour: fitted_parameters
+                .stationary_return_energy_rate_per_hour,
+            return_energy_fit_candidate_pair_count: 0,
+            return_energy_fit_pair_count: 0,
+            return_energy_fit_coverage_ratio: 0.0,
             selected_candidate_id: "artifact_regression_return_components".to_string(),
             horizon_diagnostics: Vec::new(),
         },
@@ -344,6 +323,7 @@ fn regression_return_backfit_stage_parameter_input(
         selected_candidate_id: "artifact_regression_return_backfit".to_string(),
         effective_return_components_selected_candidate_id: "artifact_regression_return_components"
             .to_string(),
+        source_window_open_exposure_hours: 1.0,
         effective_fitted_parameters: fitted_parameters,
         candidate_generation_policy: "artifact_regression_fixture.v1".to_string(),
         objective_weighting_policy: "artifact_regression_fixture.v1".to_string(),
@@ -351,12 +331,15 @@ fn regression_return_backfit_stage_parameter_input(
         diagnostics: ReturnBackfitStageDiagnostics {
             estimation_policy: "artifact_regression_fixture.v1".to_string(),
             selected_candidate_id: "artifact_regression_return_backfit".to_string(),
-            variance_budget: ReturnBackfitStageVarianceBudgetDiagnostic {
-                initial_nig_contribution: Some(0.04),
-                fixed_long_variance_news_contribution: Some(0.01),
-                backfitted_nig_contribution: Some(0.02),
-                final_total_modeled_return_scale: Some(0.04),
-                observed_target_scale: Some(0.04),
+            scale_handoff: ReturnBackfitStageScaleHandoffDiagnostic {
+                selected_nig_delta: Some(0.04),
+                post_handoff_nig_delta: Some(0.02),
+                selected_continuous_model_variance_scale: Some(0.04),
+                long_variance_clock_scale_multiplier: Some(2.0),
+                delta_handoff_multiplier: Some(0.5),
+                post_handoff_base_variance_scale: Some(0.02),
+                post_handoff_dynamic_variance_scale: Some(0.04),
+                observed_reference_variance_scale: Some(0.04),
             },
             objective_blocks: Vec::new(),
             warnings: Vec::new(),
@@ -505,17 +488,16 @@ fn regression_return_components_fitted_parameters() -> ReturnComponentsStageFitt
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
-        tick_grid_observation_model: TickGridObservationModel {
+        market_pressure_parameters: MarketPressureParameters::no_anchor_impact(),
+        price_discretization_surface: PriceDiscretizationSurface {
             tick_size: None,
             tick_size_source: "not_applicable_for_artifact_regression_fixture".to_string(),
             inference_policy: "artifact_regression_fixture.v1".to_string(),
             observation_policy: "artifact_regression_fixture.v1".to_string(),
         },
-        timestamp_batching_observation_model:
-            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
-            ),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
     }
 }
 
@@ -561,7 +543,6 @@ fn regression_mean_reversion_diagnostics(
     MeanReversionStageDiagnostics {
         selected_candidate_family: "artifact_regression_fixture".to_string(),
         calibration_grid: calibration_grid.clone(),
-        anchor_parameter_estimates: fitted_parameters.anchor_model.clone(),
         anchor_origin_level: None,
         phi_reference: 1.0,
         kappa: fitted_parameters.kappa,
@@ -584,7 +565,6 @@ fn regression_mean_reversion_diagnostics(
 
 fn regression_joint_refinement_objective_breakdown() -> JointRefinementStageObjectiveBreakdown {
     JointRefinementStageObjectiveBreakdown {
-        policy: CalibrationObjectivePolicy::default(),
         global_loss: 0.0,
         family_losses: Vec::new(),
         term_diagnostics: Vec::new(),

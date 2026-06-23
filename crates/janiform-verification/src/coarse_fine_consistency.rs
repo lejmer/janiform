@@ -1255,7 +1255,7 @@ fn run_coarse_fine_oracle_experiment(
     let oracle_transform_input = build_oracle_transform_input(
         profile,
         benchmark_policy,
-        equation_specification,
+        &equation_specification,
         oracle_invocation_seed,
     )
     .map_err(|source| {
@@ -1266,7 +1266,8 @@ fn run_coarse_fine_oracle_experiment(
     })?;
 
     let coarse_oracle_result = solve_exponential_affine_transform_with_settings(
-        oracle_transform_input,
+        // Coarse and reference oracle solves own identical transform inputs.
+        oracle_transform_input.clone(),
         setup.oracle_solver_settings,
     )
     .map_err(|source| {
@@ -1435,7 +1436,7 @@ fn run_coarse_fine_sufficient_statistics_experiment(
 
     let coarse_sufficient_statistics_slices = solve_coarse_fine_sufficient_statistics_slices(
         &setup.scenario_id,
-        equation_specification,
+        &equation_specification,
         setup.oracle_solver_settings,
         profile.model_state.initial_excitation_state,
         profile.interval_settings.interval_delta,
@@ -1444,7 +1445,7 @@ fn run_coarse_fine_sufficient_statistics_experiment(
 
     let fine_sufficient_statistics_slices = solve_coarse_fine_sufficient_statistics_slices(
         &setup.scenario_id,
-        equation_specification,
+        &equation_specification,
         setup.oracle_solver_settings,
         profile.model_state.initial_excitation_state,
         setup.fine_interval_delta,
@@ -1805,7 +1806,7 @@ fn expand_sufficient_statistics_factor_series_for_fine_reference(
 
 fn solve_coarse_fine_sufficient_statistics_slices(
     scenario_id: &str,
-    equation_specification: ExponentialAffineTransformEquationSpecification,
+    equation_specification: &ExponentialAffineTransformEquationSpecification,
     solver_settings: ExponentialAffineTransformSolverSettings,
     initial_excitation_state: HawkesExcitationState,
     interval_delta: f64,
@@ -1842,6 +1843,7 @@ fn solve_coarse_fine_sufficient_statistics_slices(
             news_intensity_input,
             interval_delta,
             initial_excitation_state,
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         )
         .map_err(|source| {
             coarse_fine_scenario_error(
@@ -1851,7 +1853,8 @@ fn solve_coarse_fine_sufficient_statistics_slices(
         })?;
 
         let solved_slices = solve_sufficient_statistics_transform_slices_with_solver_settings(
-            equation_specification,
+            // Each interval solve owns its affine equation specification.
+            equation_specification.clone(),
             context,
             sampling_settings,
             Some(solver_settings),

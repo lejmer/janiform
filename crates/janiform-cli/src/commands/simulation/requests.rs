@@ -11,11 +11,12 @@ use janiform::model::factors::interval_factor_grid::{
 };
 use janiform::model::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform::model::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform::model::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform::model::news::NewsProcessConfiguration;
 use janiform::model::nig::NigSharedPlusShiftConfiguration;
 use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
-use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
+use janiform::model::timestamp_batching_surface::TimestampBatchingSurface;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
@@ -56,12 +57,14 @@ struct SeededTickSimulationRequestDocument {
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
+    market_pressure_parameters: MarketPressureParameters,
+    initial_market_pressure_state: MarketPressureState,
     interval_factor_grid_summary: SeededTickIntervalFactorGridSummary,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
-    timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    timestamp_batching_surface: TimestampBatchingSurface,
     #[serde(default)]
     debug_trace_enabled: bool,
     #[serde(default = "default_sample_every_nth_transition")]
@@ -157,12 +160,14 @@ pub(crate) fn load_seeded_tick_simulation_request(
             mean_reversion_runtime_interval_anchors: document
                 .mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state: document.initial_mean_reversion_boundary_state,
+            market_pressure_parameters: document.market_pressure_parameters,
+            initial_market_pressure_state: document.initial_market_pressure_state,
             interval_factor_grid,
             return_clock_exposure_parameters: document.return_clock_exposure_parameters,
             long_variance_parameters: document.long_variance_parameters,
             initial_long_variance_state: document.initial_long_variance_state,
             observed_price_tick_size: document.observed_price_tick_size,
-            timestamp_batching_observation_model: document.timestamp_batching_observation_model,
+            timestamp_batching_surface: document.timestamp_batching_surface,
             calendar_registry,
         },
         Some(run_options),

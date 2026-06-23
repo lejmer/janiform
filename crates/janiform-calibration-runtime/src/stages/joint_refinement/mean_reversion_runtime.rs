@@ -8,7 +8,6 @@ use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 
 /// Convert an interval factor grid contract into endogenous anchor interval factors.
@@ -73,6 +72,11 @@ pub(super) fn materialize_joint_refinement_mean_reversion_runtime_inputs(
             fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
+            // Anchor materialization owns the pressure contract for the affine specification.
+            fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters
+                .clone(),
         )
         .map_err(|source| source.to_string())?,
         fitted_parameters
@@ -86,33 +90,11 @@ pub(super) fn materialize_joint_refinement_mean_reversion_runtime_inputs(
     )
     .map_err(|source| source.to_string())?;
 
-    let core_expected_increments = anchor_materialization
-        .interval_expectations
-        .iter()
-        .map(|expectation| expectation.core_expected_increment)
-        .collect::<Vec<_>>();
-
-    let runtime_interval_anchors =
-        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            interval_alignment_policy,
-            0.0,
-            0.0,
-            &fitted_parameters
-                .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .anchor_model,
-            core_expected_increments.as_slice(),
-            anchor_materialization
-                .runtime_interval_anchors
-                .interval_deltas
-                .as_slice(),
-        )
-        .map_err(|source| source.to_string())?;
+    let runtime_interval_anchors = anchor_materialization.runtime_interval_anchors;
 
     let initial_boundary_state = MeanReversionBoundaryState::try_new(
         runtime_interval_anchors.start_anchor_value,
         runtime_interval_anchors.start_anchor_value,
-        runtime_interval_anchors.start_pressure_state,
         0.0,
     )
     .map_err(|source| source.to_string())?;

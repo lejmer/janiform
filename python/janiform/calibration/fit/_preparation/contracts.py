@@ -77,8 +77,6 @@ class FitPreparationConfiguration:
     joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     joint_refinement_audit_option_pricing_enabled: bool
     diagnostics: CalibrationDiagnosticsRequest
-    stylized_fact_huber_cutoff: Optional[float]
-    stylized_fact_admissibility_z_threshold: Optional[float]
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]
     known_news_reference: Optional[KnownNewsPresetReference]

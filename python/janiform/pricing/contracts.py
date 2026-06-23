@@ -18,6 +18,7 @@ from .._pricing_field_names import (
     PRICING_STATUS_FIELD_NAME,
 )
 from .._timestamps import NANOS_PER_HOUR, hours_to_exact_nanoseconds
+from ..market_pressure import MarketPressureParameters, MarketPressureState
 from ..contracts import (
     ContractModel,
     serialize_pretty_json,
@@ -27,6 +28,7 @@ from ..contracts import (
 from ..contracts.base import (
     require_boolean,
     require_finite_number,
+    require_finite_scalar,
     require_mapping,
     require_negative_finite_number,
     require_non_negative_finite_number,
@@ -45,7 +47,6 @@ from ..errors import JaniformValidationError
 from ..interval_factor_grids import IntervalFactorGridContract
 from ..long_variance import LongVarianceParameters, LongVarianceState
 from ..mean_reversion import (
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
 )
@@ -501,6 +502,7 @@ class VanillaOptionPricingMarketInputs(ContractModel):
 class VanillaOptionPricingKernelParameters(ContractModel):
     buy_activity_premium: float
     sell_activity_premium: float
+    pressure_signed_imbalance_exposure_risk_price: float
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(
@@ -515,11 +517,21 @@ class VanillaOptionPricingKernelParameters(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
+        require_finite_scalar(
+            self.pressure_signed_imbalance_exposure_risk_price,
+            (
+                "model_parameters.pricing_kernel_parameters."
+                "pressure_signed_imbalance_exposure_risk_price"
+            ),
+            PRICING_ERROR_FACTORY,
+        )
+
     @staticmethod
     def identity() -> VanillaOptionPricingKernelParameters:
         return VanillaOptionPricingKernelParameters(
             buy_activity_premium=1.0,
             sell_activity_premium=1.0,
+            pressure_signed_imbalance_exposure_risk_price=0.0,
         )
 
     @staticmethod
@@ -544,6 +556,12 @@ class VanillaOptionPricingKernelParameters(ContractModel):
                 f"{field_path}.sell_activity_premium",
                 PRICING_ERROR_FACTORY,
             ),
+            pressure_signed_imbalance_exposure_risk_price=require_finite_number(
+                raw_payload,
+                "pressure_signed_imbalance_exposure_risk_price",
+                f"{field_path}.pressure_signed_imbalance_exposure_risk_price",
+                PRICING_ERROR_FACTORY,
+            ),
         )
 
 
@@ -556,6 +574,7 @@ class VanillaOptionPricingModelParameters(ContractModel):
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
+    market_pressure_parameters: MarketPressureParameters
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters
 
     def __post_init__(self) -> None:
@@ -599,6 +618,15 @@ class VanillaOptionPricingModelParameters(ContractModel):
             raise _pricing_error(
                 "model_parameters.long_variance_parameters",
                 "must be a LongVarianceParameters",
+            )
+
+        if not isinstance(
+            self.market_pressure_parameters,
+            MarketPressureParameters,
+        ):
+            raise _pricing_error(
+                "model_parameters.market_pressure_parameters",
+                "must be an MarketPressureParameters",
             )
 
         if not isinstance(
@@ -668,6 +696,15 @@ class VanillaOptionPricingModelParameters(ContractModel):
                     field_path=f"{field_path}.long_variance_parameters",
                     error_factory=PRICING_ERROR_FACTORY,
                 ),
+                market_pressure_parameters=MarketPressureParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "market_pressure_parameters",
+                        f"{field_path}.market_pressure_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.market_pressure_parameters",
+                ),
                 pricing_kernel_parameters=VanillaOptionPricingKernelParameters.from_mapping(
                     require_mapping(
                         raw_payload,
@@ -688,6 +725,7 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
     hawkes_boundary_state: HawkesExcitationState
     long_variance_boundary_state: LongVarianceState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
+    market_pressure_boundary_state: MarketPressureState
     interval_delta: float
     observed_boundary_state: MeanReversionBoundaryState
 
@@ -713,6 +751,15 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
             raise _pricing_error(
                 "boundary_input.mean_reversion_fitted_parameters",
                 "must be a MeanReversionFittedParameters",
+            )
+
+        if not isinstance(
+            self.market_pressure_boundary_state,
+            MarketPressureState,
+        ):
+            raise _pricing_error(
+                "boundary_input.market_pressure_boundary_state",
+                "must be an MarketPressureState",
             )
 
         if not isinstance(self.observed_boundary_state, MeanReversionBoundaryState):
@@ -787,6 +834,15 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
                     ),
                     field_path=f"{field_path}.mean_reversion_fitted_parameters",
                 ),
+                market_pressure_boundary_state=MarketPressureState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "market_pressure_boundary_state",
+                        f"{field_path}.market_pressure_boundary_state",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.market_pressure_boundary_state",
+                ),
                 interval_delta=require_positive_finite_number(
                     raw_payload,
                     "interval_delta",
@@ -825,6 +881,7 @@ class AnchoredLocalTiltBoundaryStateSummary(ContractModel):
     interval_index: int
     hawkes_boundary_state: HawkesExcitationState
     observed_boundary_state: MeanReversionBoundaryState
+    market_pressure_boundary_state: MarketPressureState
     current_anchor_value: float
     interval_delta: float
     kappa: float
@@ -864,6 +921,15 @@ class AnchoredLocalTiltBoundaryStateSummary(ContractModel):
                     PRICING_ERROR_FACTORY,
                 ),
                 field_path=f"{field_path}.observed_boundary_state",
+            ),
+            market_pressure_boundary_state=MarketPressureState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "market_pressure_boundary_state",
+                    f"{field_path}.market_pressure_boundary_state",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.market_pressure_boundary_state",
             ),
             current_anchor_value=require_finite_number(
                 raw_payload,
@@ -2329,6 +2395,8 @@ from .surface.contracts import (
 
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "AutoActivityCompressedPricingIntervalSchedulePolicy",
     "AutoExactSparsePricingIntervalSchedulePolicy",
     "AnchoredLocalTiltAdmissibilityStatus",
@@ -2338,7 +2406,6 @@ __all__ = [
     "AnchoredVanillaOptionPricingBoundaryInput",
     "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
     "GammaSeverityMarkConfiguration",
-    "MeanReversionAnchorModel",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "NigSharedPlusShiftConfiguration",

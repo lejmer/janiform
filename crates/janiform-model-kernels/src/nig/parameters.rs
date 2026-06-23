@@ -35,7 +35,63 @@ pub struct NigParameters {
     pub mu: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct NigIncrementSample {
+    pub(crate) increment: f64,
+    pub(crate) subordinator_increment: f64,
+}
+
+/// Unit business-time cumulants for one NIG driver.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NigUnitCumulants {
+    pub mean: f64,
+    pub variance: f64,
+    pub third_cumulant: f64,
+    pub fourth_cumulant: f64,
+}
+
 impl NigParameters {
+    /// Evaluate the first four cumulants per unit business-time increment.
+    pub fn unit_cumulants(self) -> Option<NigUnitCumulants> {
+        let gamma_squared = self.alpha * self.alpha - self.beta * self.beta;
+        if !gamma_squared.is_finite() || gamma_squared <= 0.0 {
+            return None;
+        }
+
+        let gamma = gamma_squared.sqrt();
+
+        let mean = self.mu + self.delta * self.beta / gamma;
+        let variance = self.delta * self.alpha * self.alpha / gamma.powi(3);
+        let third_cumulant = 3.0 * self.delta * self.beta * self.alpha * self.alpha / gamma.powi(5);
+        let fourth_cumulant = 3.0
+            * self.delta
+            * self.alpha
+            * self.alpha
+            * (self.alpha * self.alpha + 4.0 * self.beta * self.beta)
+            / gamma.powi(7);
+
+        if !mean.is_finite()
+            || !variance.is_finite()
+            || variance < 0.0
+            || !third_cumulant.is_finite()
+            || !fourth_cumulant.is_finite()
+        {
+            return None;
+        }
+
+        Some(NigUnitCumulants {
+            mean,
+            variance,
+            third_cumulant,
+            fourth_cumulant,
+        })
+    }
+
+    /// Evaluate the variance per unit business-time increment.
+    pub fn variance_per_unit_time(self) -> Option<f64> {
+        self.unit_cumulants().map(|cumulants| cumulants.variance)
+    }
+
     /// Evaluate the first moment per unit business-time increment.
     ///
     /// The unit-time mean is:
@@ -424,6 +480,19 @@ impl NigParameters {
     where
         R: SimulationRandomnessStream,
     {
+        Ok(self
+            .sample_increment_with_subordinator(business_time_increment_scale, randomness_stream)?
+            .increment)
+    }
+
+    pub(crate) fn sample_increment_with_subordinator<R>(
+        self,
+        business_time_increment_scale: f64,
+        randomness_stream: &mut R,
+    ) -> Result<NigIncrementSample, NigIncrementSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
         if !business_time_increment_scale.is_finite() || business_time_increment_scale < 0.0 {
             return Err(
                 NigIncrementSamplingError::InvalidBusinessTimeIncrementScale {
@@ -433,7 +502,10 @@ impl NigParameters {
         }
 
         if business_time_increment_scale == 0.0 {
-            return Ok(0.0);
+            return Ok(NigIncrementSample {
+                increment: 0.0,
+                subordinator_increment: 0.0,
+            });
         }
 
         let scaled_delta = self.delta * business_time_increment_scale;
@@ -469,7 +541,10 @@ impl NigParameters {
             });
         }
 
-        Ok(sampled_increment)
+        Ok(NigIncrementSample {
+            increment: sampled_increment,
+            subordinator_increment: business_clock_increment,
+        })
     }
 
     /// Sample a vector of NIG increments for one sequence of business-time scales.

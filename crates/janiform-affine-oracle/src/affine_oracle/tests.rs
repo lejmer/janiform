@@ -32,6 +32,7 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
 };
@@ -43,6 +44,14 @@ fn total_activity_loadings(
     ExponentialAffineTransformActivityLoadings::total_activity(u_plus, u_minus)
 }
 
+fn neutral_market_pressure_parameters() -> MarketPressureParameters {
+    MarketPressureParameters::no_anchor_impact()
+}
+
+fn neutral_market_pressure_state() -> MarketPressureState {
+    MarketPressureState::neutral()
+}
+
 fn valid_input() -> ExponentialAffineTransformInput {
     ExponentialAffineTransformInput::try_new(
         valid_equation_specification(),
@@ -50,6 +59,8 @@ fn valid_input() -> ExponentialAffineTransformInput {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("news intensity components should construct"),
@@ -57,6 +68,7 @@ fn valid_input() -> ExponentialAffineTransformInput {
         NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         standard_initial_state(),
+        neutral_market_pressure_state(),
     )
     .expect("valid transform input should construct")
 }
@@ -86,8 +98,20 @@ fn reference_transform_input_payload() -> Value {
             "long_variance_parameters": {
                 "mean_reversion_rate": 1.0,
                 "vol_of_vol": 0.0,
+                "stationary_return_energy_rate_per_hour": 0.0,
+                "return_energy_loading": 0.0,
                 "buy_event_loading": 0.0,
                 "sell_event_loading": 0.0
+            },
+            "market_pressure_parameters": {
+                "side_imbalance_levels": [0.0],
+                "physical_measure": {
+                    "transition_rates": {
+                        "upward_transition_rates": [],
+                        "downward_transition_rates": []
+                    },
+                    "anchor_drift_per_signed_balance": 0.0
+                }
             }
         },
         "activity_loadings": {
@@ -120,6 +144,11 @@ fn reference_transform_input_payload() -> Value {
             "real": 0.0,
             "imaginary": 0.0
         },
+        "market_pressure_return_loading": {
+            "real": 0.0,
+            "imaginary": 0.0
+        },
+        "pressure_signed_imbalance_exposure_risk_price": 0.0,
         "seasonality_factor": 1.1,
         "news_intensity": {
             "known_news_intensity": 0.03,
@@ -141,6 +170,9 @@ fn reference_transform_input_payload() -> Value {
             "y_plus_minus": 0.2,
             "y_minus_plus": 0.3,
             "y_minus_minus": 0.5
+        },
+        "initial_market_pressure_state": {
+            "state_weights": [1.0]
         }
     })
 }
@@ -155,6 +187,7 @@ fn valid_output() -> ExponentialAffineTransformOutput {
             ComplexScalar::new(0.09, 0.00),
         )
         .expect("valid d_at_delta should construct"),
+        ComplexScalar::new(0.0, 0.0),
         ComplexScalar::new(0.98, -0.04),
     )
     .expect("valid output should construct")
@@ -183,12 +216,15 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("closed-form fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            neutral_market_pressure_parameters(),
         )
         .expect("closed-form fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(0.2, 0.0), ComplexScalar::new(0.3, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("closed-form fixture news-intensity payload should construct"),
@@ -196,6 +232,7 @@ fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
         NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         standard_initial_state(),
+        neutral_market_pressure_state(),
     )
     .expect("closed-form fixture input should construct")
 }
@@ -223,12 +260,15 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("domain violation fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            neutral_market_pressure_parameters(),
         )
         .expect("domain violation fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(10.0, 0.0), ComplexScalar::new(10.0, 0.0)),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(2.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         2.0,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 1.0)
             .expect("domain violation fixture news-intensity payload should construct"),
@@ -240,6 +280,7 @@ fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
         },
         0.5,
         standard_initial_state(),
+        neutral_market_pressure_state(),
     )
     .expect("domain violation fixture input should construct")
 }
@@ -267,12 +308,15 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("blowup fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            neutral_market_pressure_parameters(),
         )
         .expect("blowup fixture equation specification should construct"),
         total_activity_loadings(ComplexScalar::new(0.0, 0.0), ComplexScalar::new(0.0, 0.0)),
         ComplexScalar::new(1.0e308, 0.0),
         ComplexScalar::new(1.0e308, 0.0),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         1.0,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("blowup fixture news-intensity payload should construct"),
@@ -280,6 +324,7 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
         NewsComponentMarkScaleConfiguration::neutral(),
         2.0,
         standard_initial_state(),
+        neutral_market_pressure_state(),
     )
     .expect("blowup fixture input should construct")
 }
@@ -323,6 +368,7 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("stiff fixture gamma payload should construct"),
             LongVarianceParameters::neutral(),
+            neutral_market_pressure_parameters(),
         )
         .expect("stiff fixture equation specification should construct"),
         total_activity_loadings(
@@ -332,6 +378,8 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         0.36,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
             .expect("stiff fixture news-intensity payload should construct"),
@@ -344,6 +392,7 @@ fn stiff_near_identity_fixture_input() -> ExponentialAffineTransformInput {
             y_minus_plus: 991.0,
             y_minus_minus: 991.0,
         },
+        neutral_market_pressure_state(),
     )
     .expect("stiff fixture input should construct")
 }
@@ -355,6 +404,8 @@ fn exact_identity_query_input() -> ExponentialAffineTransformInput {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, -0.0),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         1.3,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.17, 0.29)
             .expect("identity-query news-intensity payload should construct"),
@@ -362,6 +413,7 @@ fn exact_identity_query_input() -> ExponentialAffineTransformInput {
         NewsComponentMarkScaleConfiguration::neutral(),
         0.5,
         standard_initial_state(),
+        neutral_market_pressure_state(),
     )
     .expect("identity-query transform input should construct")
 }
@@ -390,8 +442,8 @@ fn assert_complex_close(
 fn exact_identity_query_short_circuits_to_exact_identity_output() {
     let input = exact_identity_query_input();
 
-    let result =
-        solve_exponential_affine_transform(input).expect("identity query should solve exactly");
+    let result = solve_exponential_affine_transform(input.clone())
+        .expect("identity query should solve exactly");
 
     assert_eq!(
         result.status,
@@ -563,8 +615,11 @@ fn hamiltonians_match_hand_checked_complex_fixture() {
         ComplexScalar::new(0.09, 0.00),
     );
 
-    let hamiltonians =
-        evaluate_exponential_affine_transform_hamiltonians(transform_input, d_vector);
+    let hamiltonians = evaluate_exponential_affine_transform_hamiltonians(
+        &transform_input,
+        d_vector,
+        ComplexScalar::new(0.0, 0.0),
+    );
 
     assert_complex_close(
         hamiltonians.h_plus_endogenous,
@@ -588,6 +643,8 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
         ComplexScalar::new(0.9, 0.0),
         ComplexScalar::new(1.1, 0.0),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("fixture news intensity should construct"),
@@ -595,6 +652,7 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
         NewsComponentMarkScaleConfiguration::neutral(),
         1.0,
         standard_initial_state(),
+        neutral_market_pressure_state(),
     )
     .expect("fixture input should construct");
 
@@ -605,7 +663,11 @@ fn ode_rhs_matches_hand_checked_real_fixture() {
         ComplexScalar::new(0.1, 0.0),
     );
 
-    let rhs = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
+    let rhs = evaluate_exponential_affine_transform_ode_rhs(
+        &transform_input,
+        d_vector,
+        ComplexScalar::new(0.0, 0.0),
+    );
 
     assert_complex_close(
         rhs.d_derivative.plus_plus,
@@ -650,8 +712,16 @@ fn ode_rhs_is_deterministic_for_identical_inputs() {
         ComplexScalar::new(0.11, 0.03),
     );
 
-    let first = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
-    let second = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
+    let first = evaluate_exponential_affine_transform_ode_rhs(
+        &transform_input,
+        d_vector,
+        ComplexScalar::new(0.0, 0.0),
+    );
+    let second = evaluate_exponential_affine_transform_ode_rhs(
+        &transform_input,
+        d_vector,
+        ComplexScalar::new(0.0, 0.0),
+    );
 
     assert_eq!(first, second);
 }
@@ -727,7 +797,7 @@ fn solver_integrator_selection_wiring_uses_requested_method() {
     .expect("valid Runge-Kutta settings should construct");
 
     let euler_result =
-        solve_exponential_affine_transform_with_settings(transform_input, euler_settings)
+        solve_exponential_affine_transform_with_settings(transform_input.clone(), euler_settings)
             .expect("Euler integration should succeed");
 
     let runge_kutta_result =
@@ -761,8 +831,8 @@ fn solver_integrator_selection_wiring_uses_requested_method() {
 fn default_solver_executes_deterministic_closed_form_fixture() {
     let transform_input = linear_closed_form_fixture_input();
 
-    let solve_result =
-        solve_exponential_affine_transform(transform_input).expect("default solver should succeed");
+    let solve_result = solve_exponential_affine_transform(transform_input.clone())
+        .expect("default solver should succeed");
 
     let output = solve_result
         .output
@@ -1084,7 +1154,7 @@ fn telemetry_toggle_preserves_solver_semantics() {
         .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Enabled);
 
     let telemetry_disabled_result = solve_exponential_affine_transform_with_settings(
-        transform_input,
+        transform_input.clone(),
         telemetry_disabled_settings,
     )
     .expect("telemetry-disabled solve should succeed");
@@ -1212,7 +1282,7 @@ fn telemetry_payload_reports_guarded_failure_context() {
     .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Enabled);
 
     let solve_result =
-        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+        solve_exponential_affine_transform_with_settings(transform_input.clone(), solver_settings)
             .expect("guarded-failure solve should return deterministic result");
 
     assert_eq!(

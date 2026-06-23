@@ -2,32 +2,38 @@ use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
-use crate::stages::adaptive_direct_search::{
-    adaptive_direct_search_poll_directions, initial_mesh_radii, mesh_is_at_tolerance,
-    mesh_poll_candidate, objective_improves, refine_mesh_radii,
-};
+use crate::stages::adaptive_direct_search::objective_improves;
 use crate::stages::joint_refinement::contracts::JointRefinementStageProgressUpdate;
 use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 
-use super::super::selection::joint_parameter_name_by_index;
-use super::super::{JointRefinementActiveParameterLayout, JointRefinementContext, elapsed_millis};
+use super::super::{JointRefinementContext, elapsed_millis, ordered_parameter_bits};
 use super::workflow::{
-    JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR, JointRefinementBudgetSchedule,
-    JointRefinementRestartOptimizationOutput, RestartObjectiveEvaluation,
+    JOINT_REFINEMENT_RESTART_FAILED_SEARCH_REFINEMENT_DIVISOR, JointRefinementBudgetSchedule,
+    JointRefinementRestartOptimizationOutput, RestartObjectiveEvaluation, RestartObjectiveResidual,
     evaluate_prechecked_full_parameter_vector_objective,
-    joint_refinement_restart_full_vector_direct_search_settings,
+    joint_refinement_restart_full_vector_initial_mesh_divisor,
     restart_candidate_total_evaluation_budget, restart_cycle_evaluation_budget,
 };
 
+use model_probe::trust_region_model_probe_vectors;
 use progress::emit_batched_restart_pool_finished;
+use racing::racing_restart_positions;
 use scheduler::{RestartProbeWorkerPoolInput, run_restart_probe_worker_pool};
+use trust_region::{
+    refined_trust_region_radius, residual_squared_objective, trust_region_candidate_vectors,
+    trust_region_radius_after_prediction, trust_region_radius_is_at_tolerance,
+};
 
 mod finalization;
+mod model_probe;
 mod progress;
+mod racing;
 mod scheduler;
+mod trust_region;
 
 const RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL: &str = "initial";
-const RESTART_PROBE_SCHEDULE_CATEGORY_POLL: &str = "poll";
+const RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE: &str = "model_probe";
+const RESTART_PROBE_SCHEDULE_CATEGORY_TRUST_REGION_PROPOSAL: &str = "trust_region_proposal";
 const RESTART_STOP_REASON_POOL_BUDGET: &str = "restart_pool_budget";
 const RESTART_STOP_REASON_NO_SCHEDULABLE_WORK: &str = "restart_pool_no_schedulable_work";
 
@@ -37,13 +43,24 @@ struct RestartProbeState {
     seed_vector: Vec<f64>,
     accepted_vector: Vec<f64>,
     best_vector: Vec<f64>,
+    initial_objective: Option<f64>,
     accepted_objective: Option<f64>,
     best_objective: Option<f64>,
-    poll_best_vector: Option<Vec<f64>>,
-    poll_best_objective: Option<f64>,
-    mesh_radii: Vec<f64>,
-    next_poll_direction_position: usize,
-    completed_poll_rounds: usize,
+    round_best_vector: Option<Vec<f64>>,
+    round_best_objective: Option<f64>,
+    round_best_residuals: Option<Vec<RestartObjectiveResidual>>,
+    round_best_predicted_residual_objective: Option<f64>,
+    accepted_residuals: Option<Vec<RestartObjectiveResidual>>,
+    evaluated_records: Vec<RestartProbeRecord>,
+    scheduled_parameter_bits: Vec<Vec<u64>>,
+    model_probe_vectors: Vec<trust_region::TrustRegionCandidate>,
+    next_model_probe_position: usize,
+    model_probes_prepared: bool,
+    trust_region_proposal_vectors: Vec<trust_region::TrustRegionCandidate>,
+    next_trust_region_proposal_position: usize,
+    trust_region_proposals_prepared: bool,
+    trust_region_radius: f64,
+    completed_search_rounds: usize,
     evaluation_count: usize,
     max_evaluation_count: usize,
     in_flight_count: usize,
@@ -53,13 +70,20 @@ struct RestartProbeState {
 }
 
 #[derive(Debug, Clone)]
+struct RestartProbeRecord {
+    parameter_vector: Vec<f64>,
+    residuals: Vec<RestartObjectiveResidual>,
+}
+
+#[derive(Debug, Clone)]
 struct RestartProbeJob {
     restart_position: usize,
     parameter_vector: Vec<f64>,
     schedule_category: &'static str,
     candidate_evaluation_count: usize,
-    poll_direction_position: Option<usize>,
-    poll_direction_label: String,
+    search_direction_position: Option<usize>,
+    search_direction_label: String,
+    predicted_residual_objective: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,13 +92,14 @@ struct RestartProbeResult {
     parameter_vector: Vec<f64>,
     schedule_category: &'static str,
     candidate_evaluation_count: usize,
-    poll_direction_position: Option<usize>,
-    poll_direction_label: String,
+    search_direction_position: Option<usize>,
+    search_direction_label: String,
+    predicted_residual_objective: Option<f64>,
     elapsed_millis: u64,
     evaluation: Option<RestartObjectiveEvaluation>,
 }
 
-pub(super) fn optimize_restart_seeds_batched_poll_pool(
+pub(super) fn optimize_restart_seeds_trust_region_pool(
     restart_seeds: &[(String, Vec<f64>)],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
@@ -83,9 +108,6 @@ pub(super) fn optimize_restart_seeds_batched_poll_pool(
 ) -> JointRefinementRestartOptimizationOutput {
     let mut states =
         build_restart_probe_states(restart_seeds, context, solver_settings, budget_schedule);
-
-    let poll_directions =
-        adaptive_direct_search_poll_directions(context.active_parameter_layout.vector_length());
 
     let search_pool_budget =
         restart_pool_total_evaluation_budget(context, solver_settings, budget_schedule);
@@ -96,7 +118,6 @@ pub(super) fn optimize_restart_seeds_batched_poll_pool(
 
     let restart_outcomes = run_restart_probe_worker_pool(RestartProbeWorkerPoolInput {
         states: states.as_mut_slice(),
-        poll_directions: poll_directions.as_slice(),
         context,
         solver_settings,
         search_pool_budget,
@@ -138,22 +159,27 @@ fn build_restart_probe_states(
                 seed_vector: seed_vector.clone(),
                 accepted_vector: seed_vector.clone(),
                 best_vector: seed_vector.clone(),
+                initial_objective: None,
                 accepted_objective: None,
                 best_objective: None,
-                poll_best_vector: None,
-                poll_best_objective: None,
-                mesh_radii: initial_mesh_radii(
+                round_best_vector: None,
+                round_best_objective: None,
+                round_best_residuals: None,
+                round_best_predicted_residual_objective: None,
+                accepted_residuals: None,
+                evaluated_records: Vec::new(),
+                scheduled_parameter_bits: Vec::new(),
+                model_probe_vectors: Vec::new(),
+                next_model_probe_position: 0,
+                model_probes_prepared: false,
+                trust_region_proposal_vectors: Vec::new(),
+                next_trust_region_proposal_position: 0,
+                trust_region_proposals_prepared: false,
+                trust_region_radius: initial_restart_trust_region_radius(
                     context.lower_bounds.as_slice(),
                     context.upper_bounds.as_slice(),
-                    joint_refinement_restart_full_vector_direct_search_settings(
-                        solver_settings,
-                        seed_vector.len(),
-                    )
-                    .initial_mesh_divisor,
-                    solver_settings.absolute_tolerance,
                 ),
-                next_poll_direction_position: 0,
-                completed_poll_rounds: 0,
+                completed_search_rounds: 0,
                 evaluation_count: 0,
                 max_evaluation_count: max_candidate_budget,
                 in_flight_count: 0,
@@ -202,56 +228,63 @@ fn run_restart_probe_job(
         parameter_vector: probe_job.parameter_vector,
         schedule_category: probe_job.schedule_category,
         candidate_evaluation_count: probe_job.candidate_evaluation_count,
-        poll_direction_position: probe_job.poll_direction_position,
-        poll_direction_label: probe_job.poll_direction_label,
+        search_direction_position: probe_job.search_direction_position,
+        search_direction_label: probe_job.search_direction_label,
+        predicted_residual_objective: probe_job.predicted_residual_objective,
         elapsed_millis: evaluation_elapsed_millis,
         evaluation,
     }
 }
 
-fn next_restart_probe_job_round_robin(
+fn next_restart_probe_job_racing(
     states: &mut [RestartProbeState],
-    poll_directions: &[Vec<f64>],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     next_restart_position: &mut usize,
+    max_in_flight_per_restart: usize,
 ) -> Option<RestartProbeJob> {
     if states.is_empty() {
         return None;
     }
 
-    for _ in 0..states.len() {
-        let restart_position = *next_restart_position % states.len();
-        *next_restart_position = (*next_restart_position).saturating_add(1) % states.len();
+    let restart_positions =
+        racing_restart_positions(states, *next_restart_position, max_in_flight_per_restart);
 
-        refresh_restart_probe_state(
-            &mut states[restart_position],
-            poll_directions.len(),
-            solver_settings,
-        );
+    for restart_position in restart_positions {
+        *next_restart_position = restart_position.saturating_add(1) % states.len();
 
         loop {
-            if let Some(probe_job) =
-                next_restart_probe_job(states, restart_position, poll_directions, context)
-            {
+            refresh_restart_probe_state(
+                &mut states[restart_position],
+                context.lower_bounds.as_slice(),
+                context.upper_bounds.as_slice(),
+                solver_settings,
+            );
+
+            if let Some(probe_job) = next_restart_probe_job(states, restart_position, context) {
                 return Some(probe_job);
             }
 
-            let state_completed_poll_rounds = states[restart_position].completed_poll_rounds;
-            let state_next_poll_direction_position =
-                states[restart_position].next_poll_direction_position;
+            let state_completed_search_rounds = states[restart_position].completed_search_rounds;
+            let state_next_model_probe_position =
+                states[restart_position].next_model_probe_position;
+            let state_next_trust_region_proposal_position =
+                states[restart_position].next_trust_region_proposal_position;
 
             refresh_restart_probe_state(
                 &mut states[restart_position],
-                poll_directions.len(),
+                context.lower_bounds.as_slice(),
+                context.upper_bounds.as_slice(),
                 solver_settings,
             );
 
             let state = &states[restart_position];
             if state.completed
                 || state.in_flight_count > 0
-                || (state.completed_poll_rounds == state_completed_poll_rounds
-                    && state.next_poll_direction_position == state_next_poll_direction_position)
+                || (state.completed_search_rounds == state_completed_search_rounds
+                    && state.next_model_probe_position == state_next_model_probe_position
+                    && state.next_trust_region_proposal_position
+                        == state_next_trust_region_proposal_position)
             {
                 break;
             }
@@ -264,7 +297,6 @@ fn next_restart_probe_job_round_robin(
 fn next_restart_probe_job(
     states: &mut [RestartProbeState],
     restart_position: usize,
-    poll_directions: &[Vec<f64>],
     context: &JointRefinementContext,
 ) -> Option<RestartProbeJob> {
     let state = states.get_mut(restart_position)?;
@@ -284,63 +316,160 @@ fn next_restart_probe_job(
     }
 
     if state.evaluation_count == 0 {
-        let candidate_evaluation_count = state
-            .evaluation_count
-            .saturating_add(state.in_flight_count)
-            .saturating_add(1);
-
-        state.in_flight_count = state.in_flight_count.saturating_add(1);
-
         // The worker job owns a candidate snapshot so Rayon never borrows mutable restart state.
-        return Some(RestartProbeJob {
+        return schedule_restart_probe_job(
+            state,
             restart_position,
-            parameter_vector: state.accepted_vector.clone(),
-            schedule_category: RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
-            candidate_evaluation_count,
-            poll_direction_position: None,
-            poll_direction_label: "initial".to_string(),
-        });
+            state.accepted_vector.clone(),
+            RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
+            None,
+            "initial".to_string(),
+            None,
+        );
     }
 
-    while let Some(poll_direction) = poll_directions.get(state.next_poll_direction_position) {
-        let poll_direction_position = state.next_poll_direction_position;
+    if let Some(probe_job) =
+        schedule_next_trust_region_proposal_job(state, restart_position, context)
+    {
+        return Some(probe_job);
+    }
 
-        let candidate_vector = mesh_poll_candidate(
-            state.accepted_vector.as_slice(),
-            poll_direction.as_slice(),
-            state.mesh_radii.as_slice(),
+    if let Some(probe_job) = schedule_next_model_probe_job(state, restart_position, context) {
+        return Some(probe_job);
+    }
+
+    schedule_next_trust_region_proposal_job(state, restart_position, context)
+}
+
+fn schedule_next_trust_region_proposal_job(
+    state: &mut RestartProbeState,
+    restart_position: usize,
+    context: &JointRefinementContext,
+) -> Option<RestartProbeJob> {
+    if !state.trust_region_proposals_prepared {
+        state.trust_region_proposal_vectors = trust_region_candidate_vectors(
+            state,
+            state.evaluated_records.as_slice(),
             context.lower_bounds.as_slice(),
             context.upper_bounds.as_slice(),
         );
+        state.trust_region_proposals_prepared = true;
+        state.next_trust_region_proposal_position = 0;
+    }
 
-        state.next_poll_direction_position = state.next_poll_direction_position.saturating_add(1);
+    while let Some(candidate) = state
+        .trust_region_proposal_vectors
+        .get(state.next_trust_region_proposal_position)
+        .cloned()
+    {
+        let proposal_position = state.next_trust_region_proposal_position;
+        state.next_trust_region_proposal_position =
+            state.next_trust_region_proposal_position.saturating_add(1);
 
-        if candidate_vector == state.accepted_vector {
-            continue;
-        }
-
-        let candidate_evaluation_count = state
-            .evaluation_count
-            .saturating_add(state.in_flight_count)
-            .saturating_add(1);
-
-        state.in_flight_count = state.in_flight_count.saturating_add(1);
-
-        return Some(RestartProbeJob {
+        let Some(probe_job) = schedule_restart_probe_job(
+            state,
             restart_position,
-            parameter_vector: candidate_vector,
-            schedule_category: RESTART_PROBE_SCHEDULE_CATEGORY_POLL,
-            candidate_evaluation_count,
-            poll_direction_position: Some(poll_direction_position),
-            poll_direction_label: restart_poll_direction_label(
-                poll_direction_position,
-                state.accepted_vector.len(),
-                &context.active_parameter_layout,
-            ),
-        });
+            candidate.parameter_vector,
+            RESTART_PROBE_SCHEDULE_CATEGORY_TRUST_REGION_PROPOSAL,
+            Some(proposal_position),
+            format!("trust_region.{}", candidate.label),
+            candidate.predicted_residual_objective,
+        ) else {
+            continue;
+        };
+
+        return Some(probe_job);
     }
 
     None
+}
+
+fn schedule_next_model_probe_job(
+    state: &mut RestartProbeState,
+    restart_position: usize,
+    context: &JointRefinementContext,
+) -> Option<RestartProbeJob> {
+    if !state.model_probes_prepared {
+        state.model_probe_vectors = trust_region_model_probe_vectors(
+            state,
+            context.lower_bounds.as_slice(),
+            context.upper_bounds.as_slice(),
+            &context.active_parameter_layout,
+        );
+        state.model_probes_prepared = true;
+        state.next_model_probe_position = 0;
+    }
+
+    while let Some(candidate) = state
+        .model_probe_vectors
+        .get(state.next_model_probe_position)
+        .cloned()
+    {
+        let model_probe_position = state.next_model_probe_position;
+        state.next_model_probe_position = state.next_model_probe_position.saturating_add(1);
+
+        let Some(probe_job) = schedule_restart_probe_job(
+            state,
+            restart_position,
+            candidate.parameter_vector,
+            RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE,
+            Some(model_probe_position),
+            candidate.label,
+            candidate.predicted_residual_objective,
+        ) else {
+            continue;
+        };
+
+        return Some(probe_job);
+    }
+
+    None
+}
+
+fn schedule_restart_probe_job(
+    state: &mut RestartProbeState,
+    restart_position: usize,
+    parameter_vector: Vec<f64>,
+    schedule_category: &'static str,
+    search_direction_position: Option<usize>,
+    search_direction_label: String,
+    predicted_residual_objective: Option<f64>,
+) -> Option<RestartProbeJob> {
+    if restart_parameter_vector_was_scheduled(state, parameter_vector.as_slice()) {
+        return None;
+    }
+
+    let candidate_evaluation_count = state
+        .evaluation_count
+        .saturating_add(state.in_flight_count)
+        .saturating_add(1);
+
+    state
+        .scheduled_parameter_bits
+        .push(ordered_parameter_bits(parameter_vector.as_slice()));
+    state.in_flight_count = state.in_flight_count.saturating_add(1);
+
+    Some(RestartProbeJob {
+        restart_position,
+        parameter_vector,
+        schedule_category,
+        candidate_evaluation_count,
+        search_direction_position,
+        search_direction_label,
+        predicted_residual_objective,
+    })
+}
+
+fn restart_parameter_vector_was_scheduled(
+    state: &RestartProbeState,
+    parameter_vector: &[f64],
+) -> bool {
+    let parameter_bits = ordered_parameter_bits(parameter_vector);
+
+    state
+        .scheduled_parameter_bits
+        .iter()
+        .any(|scheduled_bits| scheduled_bits == &parameter_bits)
 }
 
 fn restart_probe_state_has_remaining_budget(state: &RestartProbeState) -> bool {
@@ -349,16 +478,19 @@ fn restart_probe_state_has_remaining_budget(state: &RestartProbeState) -> bool {
 
 fn refresh_restart_probe_state(
     state: &mut RestartProbeState,
-    poll_direction_count: usize,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
     solver_settings: &CalibrationOptimizerSettings,
 ) {
     if state.completed || state.evaluation_count == 0 || state.in_flight_count > 0 {
         return;
     }
 
-    if mesh_is_at_tolerance(
-        state.mesh_radii.as_slice(),
+    if trust_region_radius_is_at_tolerance(
+        state.trust_region_radius,
         state.accepted_vector.as_slice(),
+        lower_bounds,
+        upper_bounds,
         solver_settings.absolute_tolerance,
         solver_settings.relative_tolerance,
     ) {
@@ -367,13 +499,13 @@ fn refresh_restart_probe_state(
         return;
     }
 
-    if state.next_poll_direction_position < poll_direction_count {
+    if restart_probe_round_has_pending_candidates(state) {
         return;
     }
 
-    let poll_improved = match (state.poll_best_objective, state.accepted_objective) {
-        (Some(poll_best), Some(accepted)) => objective_improves(
-            poll_best,
+    let round_improved = match (state.round_best_objective, state.accepted_objective) {
+        (Some(round_best), Some(accepted)) => objective_improves(
+            round_best,
             accepted,
             solver_settings.absolute_tolerance,
             solver_settings.relative_tolerance,
@@ -382,35 +514,50 @@ fn refresh_restart_probe_state(
         _ => false,
     };
 
-    if poll_improved {
-        if let Some(poll_best_vector) = state.poll_best_vector.take() {
-            state.accepted_vector = poll_best_vector;
+    if round_improved {
+        update_trust_region_radius_after_round_improvement(state, lower_bounds, upper_bounds);
+
+        if let Some(round_best_vector) = state.round_best_vector.take() {
+            state.accepted_vector = round_best_vector;
         }
 
-        state.accepted_objective = state.poll_best_objective;
-        state.stop_reason = "poll_improved".to_string();
+        state.accepted_objective = state.round_best_objective;
+        if let Some(round_best_residuals) = state.round_best_residuals.take() {
+            state.accepted_residuals = Some(round_best_residuals);
+        }
+
+        state.stop_reason = "trust_region_improved".to_string();
     } else {
-        if !refine_mesh_radii(
-            state.mesh_radii.as_mut_slice(),
-            JOINT_REFINEMENT_DIRECT_SEARCH_FAILED_POLL_REFINEMENT_DIVISOR,
-            solver_settings.absolute_tolerance,
-        ) {
+        let Some(refined_radius) = refined_trust_region_radius(
+            state.trust_region_radius,
+            JOINT_REFINEMENT_RESTART_FAILED_SEARCH_REFINEMENT_DIVISOR,
+        ) else {
             state.completed = true;
             state.stop_reason = "invalid_step".to_string();
 
             return;
-        }
+        };
 
-        state.stop_reason = "mesh_refined".to_string();
+        state.trust_region_radius = refined_radius;
+        state.stop_reason = "trust_region_refined".to_string();
     }
 
-    state.poll_best_objective = None;
-    state.next_poll_direction_position = 0;
-    state.completed_poll_rounds = state.completed_poll_rounds.saturating_add(1);
+    state.round_best_objective = None;
+    state.round_best_residuals = None;
+    state.round_best_predicted_residual_objective = None;
+    state.model_probe_vectors.clear();
+    state.next_model_probe_position = 0;
+    state.model_probes_prepared = false;
+    state.trust_region_proposal_vectors.clear();
+    state.next_trust_region_proposal_position = 0;
+    state.trust_region_proposals_prepared = false;
+    state.completed_search_rounds = state.completed_search_rounds.saturating_add(1);
 
-    if mesh_is_at_tolerance(
-        state.mesh_radii.as_slice(),
+    if trust_region_radius_is_at_tolerance(
+        state.trust_region_radius,
         state.accepted_vector.as_slice(),
+        lower_bounds,
+        upper_bounds,
         solver_settings.absolute_tolerance,
         solver_settings.relative_tolerance,
     ) {
@@ -419,29 +566,41 @@ fn refresh_restart_probe_state(
     }
 }
 
-fn restart_poll_direction_label(
-    poll_direction_position: usize,
-    active_parameter_dimension: usize,
-    active_parameter_layout: &JointRefinementActiveParameterLayout,
-) -> String {
-    let coordinate_direction_count = active_parameter_dimension.saturating_mul(2);
-    if poll_direction_position < coordinate_direction_count {
-        let parameter_index = poll_direction_position / 2;
+fn restart_probe_round_has_pending_candidates(state: &RestartProbeState) -> bool {
+    !state.model_probes_prepared
+        || state.next_model_probe_position < state.model_probe_vectors.len()
+        || !state.trust_region_proposals_prepared
+        || state.next_trust_region_proposal_position < state.trust_region_proposal_vectors.len()
+}
 
-        let direction_label = if poll_direction_position.is_multiple_of(2) {
-            "positive"
-        } else {
-            "negative"
-        };
+fn update_trust_region_radius_after_round_improvement(
+    state: &mut RestartProbeState,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+) {
+    let Some(accepted_residuals) = state.accepted_residuals.as_ref() else {
+        return;
+    };
+    let Some(round_best_residuals) = state.round_best_residuals.as_ref() else {
+        return;
+    };
+    let Some(predicted_residual_objective) = state.round_best_predicted_residual_objective else {
+        return;
+    };
 
-        let parameter_label =
-            joint_parameter_name_by_index(parameter_index, active_parameter_layout)
-                .unwrap_or_else(|| format!("parameter_{parameter_index}"));
+    let accepted_residual_objective = residual_squared_objective(accepted_residuals.as_slice());
+    let round_best_residual_objective = residual_squared_objective(round_best_residuals.as_slice());
 
-        return format!("{direction_label}.{parameter_label}");
+    if let Some(updated_radius) = trust_region_radius_after_prediction(
+        state.trust_region_radius,
+        accepted_residual_objective,
+        predicted_residual_objective,
+        round_best_residual_objective,
+        lower_bounds,
+        upper_bounds,
+    ) {
+        state.trust_region_radius = updated_radius;
     }
-
-    format!("direction_{poll_direction_position}")
 }
 
 fn record_restart_probe_result(
@@ -462,46 +621,84 @@ fn record_restart_probe_result(
         return;
     };
 
-    state.exact_likelihood_evaluator_counts = evaluation.exact_likelihood_evaluator_counts;
+    let RestartObjectiveEvaluation {
+        objective,
+        exact_likelihood_evaluator_counts,
+        residuals,
+        ..
+    } = evaluation;
 
-    if result.poll_direction_position.is_none() {
-        state.accepted_objective = Some(evaluation.objective);
+    state.exact_likelihood_evaluator_counts = exact_likelihood_evaluator_counts;
+
+    // Probe history, round winner, and all-time best state keep independent
+    // snapshots because each role can survive a different search-round boundary.
+    state.evaluated_records.push(RestartProbeRecord {
+        parameter_vector: result.parameter_vector.clone(),
+        residuals: residuals.clone(),
+    });
+
+    if result.schedule_category == RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL {
+        state.initial_objective = Some(objective);
+        state.accepted_objective = Some(objective);
+        state.accepted_residuals = Some(residuals);
     } else {
-        // Poll winner storage is independent from all-time best storage because this
+        if result.schedule_category == RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE {
+            state.trust_region_proposals_prepared = false;
+        }
+
+        // Round winner storage is independent from all-time best storage because this
         // same evaluated candidate may need to update both roles below.
-        match state.poll_best_objective.or(state.accepted_objective) {
-            Some(poll_incumbent_objective)
-                if objective_improves(
-                    evaluation.objective,
-                    poll_incumbent_objective,
-                    solver_settings.absolute_tolerance,
-                    solver_settings.relative_tolerance,
-                ) =>
-            {
-                state.poll_best_objective = Some(evaluation.objective);
-                state.poll_best_vector = Some(result.parameter_vector.clone());
-            }
-            None if evaluation.objective.is_finite() => {
-                state.poll_best_objective = Some(evaluation.objective);
-                state.poll_best_vector = Some(result.parameter_vector.clone());
-            }
-            _ => {}
+        let round_improved = objective_improves_incumbent(
+            objective,
+            state.round_best_objective.or(state.accepted_objective),
+            solver_settings,
+        ) && objective.is_finite();
+
+        if round_improved {
+            state.round_best_objective = Some(objective);
+            state.round_best_vector = Some(result.parameter_vector.clone());
+            state.round_best_residuals = Some(residuals);
+            state.round_best_predicted_residual_objective = result.predicted_residual_objective;
         }
     }
 
-    if evaluation.objective.is_finite()
+    if objective.is_finite()
         && state
             .best_objective
-            .map(|best_objective| evaluation.objective < best_objective)
+            .map(|best_objective| objective < best_objective)
             .unwrap_or(true)
     {
-        state.best_objective = Some(evaluation.objective);
+        state.best_objective = Some(objective);
         state.best_vector = result.parameter_vector;
     }
 
     if state.evaluation_count >= state.max_evaluation_count {
         state.completed = true;
         state.stop_reason = RESTART_STOP_REASON_POOL_BUDGET.to_string();
+    }
+}
+
+fn initial_restart_trust_region_radius(lower_bounds: &[f64], upper_bounds: &[f64]) -> f64 {
+    let active_parameter_count =
+        super::parameter_space::movable_parameter_count(lower_bounds, upper_bounds).max(1);
+
+    (joint_refinement_restart_full_vector_initial_mesh_divisor(active_parameter_count) as f64)
+        .recip()
+}
+
+fn objective_improves_incumbent(
+    candidate_objective: f64,
+    incumbent_objective: Option<f64>,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> bool {
+    match incumbent_objective {
+        Some(incumbent) => objective_improves(
+            candidate_objective,
+            incumbent,
+            solver_settings.absolute_tolerance,
+            solver_settings.relative_tolerance,
+        ),
+        None => candidate_objective.is_finite(),
     }
 }
 
@@ -532,8 +729,10 @@ mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
     use super::{
-        RESTART_PROBE_SCHEDULE_CATEGORY_POLL, RestartObjectiveEvaluation, RestartProbeResult,
-        RestartProbeState, record_restart_probe_result, refresh_restart_probe_state,
+        RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL, RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE,
+        RESTART_PROBE_SCHEDULE_CATEGORY_TRUST_REGION_PROPOSAL, RestartObjectiveEvaluation,
+        RestartProbeResult, RestartProbeState, record_restart_probe_result,
+        refresh_restart_probe_state, schedule_restart_probe_job,
     };
 
     fn test_solver_settings() -> CalibrationOptimizerSettings {
@@ -541,19 +740,30 @@ mod tests {
             .expect("test optimizer settings should be valid")
     }
 
-    fn running_poll_state() -> RestartProbeState {
+    fn running_search_state() -> RestartProbeState {
         RestartProbeState {
             restart_id: "restart_0".to_string(),
             seed_vector: vec![0.0],
             accepted_vector: vec![0.0],
             best_vector: vec![0.0],
+            initial_objective: Some(10.0),
             accepted_objective: Some(10.0),
             best_objective: Some(10.0),
-            poll_best_vector: None,
-            poll_best_objective: None,
-            mesh_radii: vec![1.0],
-            next_poll_direction_position: 1,
-            completed_poll_rounds: 0,
+            round_best_vector: None,
+            round_best_objective: None,
+            round_best_residuals: None,
+            round_best_predicted_residual_objective: None,
+            accepted_residuals: None,
+            evaluated_records: Vec::new(),
+            scheduled_parameter_bits: Vec::new(),
+            model_probe_vectors: Vec::new(),
+            next_model_probe_position: 1,
+            model_probes_prepared: true,
+            trust_region_proposal_vectors: Vec::new(),
+            next_trust_region_proposal_position: 0,
+            trust_region_proposals_prepared: true,
+            trust_region_radius: 1.0,
+            completed_search_rounds: 0,
             evaluation_count: 1,
             max_evaluation_count: 16,
             in_flight_count: 1,
@@ -563,55 +773,152 @@ mod tests {
         }
     }
 
-    fn poll_result(objective: f64) -> RestartProbeResult {
+    fn model_probe_result(objective: f64) -> RestartProbeResult {
         RestartProbeResult {
             restart_position: 0,
             parameter_vector: vec![1.0],
-            schedule_category: RESTART_PROBE_SCHEDULE_CATEGORY_POLL,
+            schedule_category: RESTART_PROBE_SCHEDULE_CATEGORY_MODEL_PROBE,
             candidate_evaluation_count: 2,
-            poll_direction_position: Some(0),
-            poll_direction_label: "positive.parameter_0".to_string(),
+            search_direction_position: Some(0),
+            search_direction_label: "model_probe.all_movable.positive".to_string(),
+            predicted_residual_objective: None,
             elapsed_millis: 1,
             evaluation: Some(RestartObjectiveEvaluation {
                 objective,
                 admissibility_blocker_count: 0,
                 max_standardized_residual: Some(0.0),
                 exact_likelihood_evaluator_counts: None,
+                residuals: Vec::new(),
+            }),
+        }
+    }
+
+    fn trust_region_proposal_result(objective: f64) -> RestartProbeResult {
+        RestartProbeResult {
+            restart_position: 0,
+            parameter_vector: vec![1.0],
+            schedule_category: RESTART_PROBE_SCHEDULE_CATEGORY_TRUST_REGION_PROPOSAL,
+            candidate_evaluation_count: 2,
+            search_direction_position: Some(1),
+            search_direction_label: "trust_region.gauss_newton".to_string(),
+            predicted_residual_objective: Some(8.0),
+            elapsed_millis: 1,
+            evaluation: Some(RestartObjectiveEvaluation {
+                objective,
+                admissibility_blocker_count: 0,
+                max_standardized_residual: Some(0.0),
+                exact_likelihood_evaluator_counts: None,
+                residuals: Vec::new(),
             }),
         }
     }
 
     #[test]
-    fn poll_candidate_requires_tolerance_improvement_for_acceptance() {
+    fn model_probe_candidate_requires_tolerance_improvement_for_acceptance() {
         let solver_settings = test_solver_settings();
 
-        let mut state = running_poll_state();
+        let mut state = running_search_state();
 
-        record_restart_probe_result(&mut state, poll_result(9.95), &solver_settings);
-        refresh_restart_probe_state(&mut state, 1, &solver_settings);
+        record_restart_probe_result(&mut state, model_probe_result(9.95), &solver_settings);
+        state.trust_region_proposals_prepared = true;
+        refresh_restart_probe_state(&mut state, &[0.0], &[1.0], &solver_settings);
 
         assert_eq!(state.accepted_vector, vec![0.0]);
         assert_eq!(state.accepted_objective, Some(10.0));
         assert_eq!(state.best_vector, vec![1.0]);
         assert_eq!(state.best_objective, Some(9.95));
-        assert_eq!(state.poll_best_objective, None);
-        assert_eq!(state.stop_reason, "mesh_refined");
+        assert_eq!(state.round_best_objective, None);
+        assert_eq!(state.stop_reason, "trust_region_refined");
     }
 
     #[test]
-    fn poll_candidate_with_tolerance_improvement_is_accepted() {
+    fn model_probe_candidate_with_tolerance_improvement_is_accepted() {
         let solver_settings = test_solver_settings();
 
-        let mut state = running_poll_state();
+        let mut state = running_search_state();
 
-        record_restart_probe_result(&mut state, poll_result(9.8), &solver_settings);
-        refresh_restart_probe_state(&mut state, 1, &solver_settings);
+        record_restart_probe_result(&mut state, model_probe_result(9.8), &solver_settings);
+        state.trust_region_proposals_prepared = true;
+        refresh_restart_probe_state(&mut state, &[0.0], &[1.0], &solver_settings);
 
         assert_eq!(state.accepted_vector, vec![1.0]);
         assert_eq!(state.accepted_objective, Some(9.8));
         assert_eq!(state.best_vector, vec![1.0]);
         assert_eq!(state.best_objective, Some(9.8));
-        assert_eq!(state.poll_best_objective, None);
-        assert_eq!(state.stop_reason, "poll_improved");
+        assert_eq!(state.round_best_objective, None);
+        assert_eq!(state.stop_reason, "trust_region_improved");
+    }
+
+    #[test]
+    fn trust_region_proposal_with_tolerance_improvement_is_accepted_after_round_refresh() {
+        let solver_settings = test_solver_settings();
+
+        let mut state = running_search_state();
+
+        record_restart_probe_result(
+            &mut state,
+            trust_region_proposal_result(9.8),
+            &solver_settings,
+        );
+
+        assert_eq!(state.accepted_vector, vec![0.0]);
+        assert_eq!(state.round_best_vector, Some(vec![1.0]));
+
+        refresh_restart_probe_state(&mut state, &[0.0], &[1.0], &solver_settings);
+
+        assert_eq!(state.accepted_vector, vec![1.0]);
+        assert_eq!(state.accepted_objective, Some(9.8));
+        assert_eq!(state.best_vector, vec![1.0]);
+        assert_eq!(state.best_objective, Some(9.8));
+        assert_eq!(state.next_model_probe_position, 0);
+        assert_eq!(state.stop_reason, "trust_region_improved");
+    }
+
+    #[test]
+    fn duplicate_probe_vectors_are_not_scheduled_again() {
+        let mut state = running_search_state();
+        state.in_flight_count = 0;
+        state.evaluation_count = 0;
+        state.scheduled_parameter_bits = vec![vec![0.0f64.to_bits()]];
+
+        let probe_job = schedule_restart_probe_job(
+            &mut state,
+            0,
+            vec![0.0],
+            RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
+            None,
+            "initial".to_string(),
+            None,
+        );
+
+        assert!(probe_job.is_none());
+        assert_eq!(state.in_flight_count, 0);
+        assert_eq!(state.scheduled_parameter_bits, vec![vec![0.0f64.to_bits()]]);
+    }
+
+    #[test]
+    fn first_probe_schedules_initial_vector_once() {
+        let mut state = running_search_state();
+        state.in_flight_count = 0;
+        state.evaluation_count = 0;
+
+        let probe_job = schedule_restart_probe_job(
+            &mut state,
+            0,
+            vec![0.0],
+            RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL,
+            None,
+            "initial".to_string(),
+            None,
+        )
+        .expect("first probe should schedule the initial vector");
+
+        assert_eq!(
+            probe_job.schedule_category,
+            RESTART_PROBE_SCHEDULE_CATEGORY_INITIAL
+        );
+        assert_eq!(probe_job.parameter_vector, vec![0.0]);
+        assert_eq!(state.in_flight_count, 1);
+        assert_eq!(state.scheduled_parameter_bits, vec![vec![0.0f64.to_bits()]]);
     }
 }

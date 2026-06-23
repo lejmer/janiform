@@ -1,8 +1,9 @@
 use janiform::model::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform::model::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform::model::news::NewsProcessConfiguration;
 use janiform::model::return_clock::ReturnClockExposureParameters;
 use janiform::model::sufficient_statistics::SufficientStatisticsIntervalFactors;
-use janiform::model::timestamp_observation::TimestampBatchingObservationModel;
+use janiform::model::timestamp_batching_surface::TimestampBatchingSurface;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
@@ -223,6 +224,8 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
                 initial_mean_reversion_boundary_state: self
                     .model_inputs
                     .initial_mean_reversion_boundary_state,
+                market_pressure_parameters: self.model_inputs.market_pressure_parameters,
+                initial_market_pressure_state: self.model_inputs.initial_market_pressure_state,
                 // Intentional copy because the run config owns the factor
                 // contract while the PyRef remains borrowed from Python.
                 interval_factor_grid: self.interval_factor_grid.output.clone(),
@@ -232,9 +235,7 @@ impl<'py> SeededTickSimulationRunConfigPayload<'py> {
                 long_variance_parameters: self.model_inputs.long_variance_parameters,
                 initial_long_variance_state: self.model_inputs.initial_long_variance_state,
                 observed_price_tick_size: self.model_inputs.observed_price_tick_size,
-                timestamp_batching_observation_model: self
-                    .model_inputs
-                    .timestamp_batching_observation_model,
+                timestamp_batching_surface: self.model_inputs.timestamp_batching_surface,
                 calendar_registry,
             },
             Some(self.run_options),
@@ -252,11 +253,13 @@ struct SeededTickSimulationModelInputsPayload {
     mean_reversion_runtime_interval_anchors:
         janiform::simulation::MeanReversionRuntimeIntervalAnchors,
     initial_mean_reversion_boundary_state: janiform::simulation::MeanReversionBoundaryState,
+    market_pressure_parameters: MarketPressureParameters,
+    initial_market_pressure_state: MarketPressureState,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     observed_price_tick_size: Option<f64>,
-    timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    timestamp_batching_surface: TimestampBatchingSurface,
 }
 
 impl SeededTickSimulationModelInputsPayload {
@@ -305,6 +308,16 @@ impl SeededTickSimulationModelInputsPayload {
                     "seeded_tick_simulation_request",
                     "initial_mean_reversion_boundary_state",
                 )?)?,
+            market_pressure_parameters: parse_required_json_field(
+                request,
+                "seeded_tick_simulation_request",
+                "market_pressure_parameters",
+            )?,
+            initial_market_pressure_state: parse_required_json_field(
+                request,
+                "seeded_tick_simulation_request",
+                "initial_market_pressure_state",
+            )?,
             return_clock_exposure_parameters: parse_required_json_field(
                 request,
                 "seeded_tick_simulation_request",
@@ -325,10 +338,10 @@ impl SeededTickSimulationModelInputsPayload {
                 "seeded_tick_simulation_request",
                 "observed_price_tick_size",
             )?,
-            timestamp_batching_observation_model: parse_required_json_field(
+            timestamp_batching_surface: parse_required_json_field(
                 request,
                 "seeded_tick_simulation_request",
-                "timestamp_batching_observation_model",
+                "timestamp_batching_surface",
             )?,
         })
     }

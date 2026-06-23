@@ -1,10 +1,10 @@
 //! Re-exports for market-data calibration preparation.
 
 pub use janiform_calibration_runtime::{
-    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
-    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
-    CalibrationTickObjectiveDataUsagePolicy, CalibrationTimestampBatchingObservationDiagnostic,
-    CalibrationTimestampBatchingObservationDiagnosticState, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
+    CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY,
+    CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION,
+    CalibrationTickObjectiveDataUsagePolicy, CalibrationTimestampBatchingSurfaceDiagnostic,
+    CalibrationTimestampBatchingSurfaceDiagnosticState, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
     DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD, MarketDataCoarseDataColumnMapping,
     MarketDataCoarseDataKind, MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
     MarketDataCoarseDataTimestampSemantics, MarketDataColumnAliasHint,

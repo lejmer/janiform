@@ -51,8 +51,8 @@ use crate::stages::return_components::{
 };
 use janiform_calibration_artifacts::{
     CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermKind,
-    CalibrationObjectivePolicy, CalibrationOptimizerSettings,
-    JointRefinementStageObjectiveBreakdown, SurpriseNewsDeterministicIntensityProfile,
+    CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
+    SurpriseNewsDeterministicIntensityProfile,
 };
 
 fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
@@ -65,8 +65,8 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         hawkes_block: vec![0, 1, 2, 3],
         nig_block: vec![4, 5, 6, 7],
         return_clock_block: vec![11, 12],
-        long_variance_block: vec![13, 14, 15, 16],
-        option_pricing_kernel_block: vec![17, 18],
+        long_variance_block: vec![13, 14, 15, 16, 17],
+        option_pricing_kernel_block: vec![18, 19, 20],
         coupling_block: vec![8, 9, 10],
         log_stationary_event_rate_scale_index: 0,
         log_beta_scale_index: 1,
@@ -76,10 +76,12 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         log_sell_excitation_return_clock_scale_index: 12,
         log_long_variance_mean_reversion_rate_scale_index: 13,
         long_variance_vol_of_vol_index: 14,
-        long_variance_buy_event_loading_index: 15,
-        long_variance_sell_event_loading_index: 16,
-        option_pricing_log_buy_activity_premium_index: 17,
-        option_pricing_log_sell_activity_premium_index: 18,
+        long_variance_return_energy_loading_index: 15,
+        long_variance_buy_event_loading_index: 16,
+        long_variance_sell_event_loading_index: 17,
+        option_pricing_log_buy_activity_premium_index: 18,
+        option_pricing_log_sell_activity_premium_index: 19,
+        option_pricing_pressure_signed_imbalance_exposure_risk_price_index: 20,
         known_activity_scale_index: Some(8),
         surprise_activity_scale_index: Some(9),
         surprise_baseline_scale_index: Some(10),
@@ -177,8 +179,11 @@ fn build_test_observed_data() -> JointRefinementObservedData {
         observed_1d_intervals: vec![build_test_interval_observation(0, 86_400, 0.006, 11, 0.5)],
         observed_tick_intraday_mean_absolute_returns: vec![0.01; 24],
         observed_tick_shape_returns: vec![0.012, -0.009, 0.006, -0.004, 0.011, -0.007],
+        observed_5m_shape_returns: vec![0.012, -0.009],
+        observed_15m_shape_returns: vec![0.018, -0.012],
         observed_1h_shape_returns: vec![0.018, -0.012],
         observed_1d_shape_returns: vec![0.006],
+        observed_1w_shape_returns: vec![0.006],
         observed_tick_return_scale_summary,
         observed_1h_return_scale_summary: observed_15m_return_scale_summary,
         observed_1d_return_scale_summary: JointRefinementReturnScaleSummary {
@@ -269,13 +274,14 @@ fn build_test_objective_term(
     JointRefinementStageObjectiveTermDiagnostic {
         term_id: metric_id.to_string(),
         family_id: "return_scale".to_string(),
-        term_kind: CalibrationLossTermKind::StylizedFact,
+        term_kind: CalibrationLossTermKind::DiagnosticCoordinate,
         observed_value: Some(observed_value),
         model_value: Some(simulated_value),
         observed_standard_error: Some(observed_value.abs()),
         model_standard_error: Some(0.0),
         uncertainty_scale: Some(observed_value.abs()),
         standardized_residual: Some(0.0),
+        covariance_diagonal: Some(observed_value * observed_value),
         loss: 0.0,
         admissibility_blocker: false,
     }
@@ -303,15 +309,17 @@ fn build_test_joint_breakdown(
     .into_iter()
     .map(|(family_id, loss)| CalibrationLossFamilyDiagnostic {
         family_id: family_id.to_string(),
-        term_count: 1,
+        coordinate_count: 1,
+        rank: 1,
+        whitened_coordinates: vec![loss.sqrt()],
         loss,
         max_standardized_residual: loss,
         worst_term_id: Some(family_id.to_string()),
+        unidentified: false,
     })
     .collect::<Vec<_>>();
 
     JointRefinementStageObjectiveBreakdown {
-        policy: CalibrationObjectivePolicy::default(),
         global_loss,
         family_losses,
         term_diagnostics: Vec::new(),
@@ -434,6 +442,7 @@ fn build_test_seed_summary(
         simulated_15m_shape_returns: vec![0.03, -0.03],
         simulated_1h_shape_returns: vec![0.03, -0.03],
         simulated_1d_shape_returns: vec![0.0],
+        simulated_1w_shape_returns: vec![0.0],
         simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary {
             mean_absolute_return: 0.01,
             realized_variance: 0.0001,
@@ -510,15 +519,20 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
 fn joint_refinement_restart_full_vector_budget_is_dimension_minimal() {
     let solver_settings = build_test_solver_settings(64);
 
-    let four_dimensional_settings =
-        joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 4);
+    let four_dimensional_lower_bounds = vec![-1.0, -1.0, -1.0, -1.0];
+    let four_dimensional_upper_bounds = vec![1.0, 1.0, 1.0, 1.0];
+    let four_dimensional_settings = joint_refinement_restart_full_vector_direct_search_settings(
+        &solver_settings,
+        four_dimensional_lower_bounds.as_slice(),
+        four_dimensional_upper_bounds.as_slice(),
+    );
 
     assert_eq!(four_dimensional_settings.initial_mesh_divisor, 5);
     assert_eq!(
         four_dimensional_settings.failed_poll_mesh_refinement_divisor,
         2
     );
-    assert_eq!(four_dimensional_settings.evaluation_budget, 17);
+    assert_eq!(four_dimensional_settings.evaluation_budget, 29);
     assert_eq!(
         four_dimensional_settings.absolute_tolerance,
         solver_settings.absolute_tolerance
@@ -527,6 +541,18 @@ fn joint_refinement_restart_full_vector_budget_is_dimension_minimal() {
         four_dimensional_settings.relative_tolerance,
         solver_settings.relative_tolerance
     );
+
+    let one_movable_dimension_lower_bounds = vec![-1.0, 0.0, 0.0];
+    let one_movable_dimension_upper_bounds = vec![1.0, 0.0, 0.0];
+    let one_movable_dimension_settings =
+        joint_refinement_restart_full_vector_direct_search_settings(
+            &solver_settings,
+            one_movable_dimension_lower_bounds.as_slice(),
+            one_movable_dimension_upper_bounds.as_slice(),
+        );
+
+    assert_eq!(one_movable_dimension_settings.initial_mesh_divisor, 2);
+    assert_eq!(one_movable_dimension_settings.evaluation_budget, 13);
 }
 
 #[test]
@@ -695,12 +721,13 @@ fn joint_refinement_active_layout_includes_long_variance_coordinates() {
         &test_joint_fitted_parameters().return_components_fitted_parameters,
     );
 
-    assert_eq!(active_parameter_layout.long_variance_block.len(), 4);
+    assert_eq!(active_parameter_layout.long_variance_block.len(), 5);
     assert_eq!(
         active_parameter_layout.long_variance_block,
         vec![
             active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index,
             active_parameter_layout.long_variance_vol_of_vol_index,
+            active_parameter_layout.long_variance_return_energy_loading_index,
             active_parameter_layout.long_variance_buy_event_loading_index,
             active_parameter_layout.long_variance_sell_event_loading_index,
         ]
@@ -717,7 +744,7 @@ fn joint_refinement_baseline_parameter_vector_encodes_long_variance_parameters()
 
     fitted_parameters.long_variance_parameters =
         janiform_model_kernels::long_variance::LongVarianceParameters::try_new(
-            2.0, 0.4, 0.01, 0.02,
+            2.0, 0.4, 0.03, 0.04, 0.01, 0.02,
         )
         .expect("test long variance parameters should construct");
 
@@ -737,6 +764,11 @@ fn joint_refinement_baseline_parameter_vector_encodes_long_variance_parameters()
     assert_eq!(
         baseline_parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index],
         0.4
+    );
+    assert_eq!(
+        baseline_parameter_vector
+            [active_parameter_layout.long_variance_return_energy_loading_index],
+        0.04
     );
     assert_eq!(
         baseline_parameter_vector[active_parameter_layout.long_variance_buy_event_loading_index],
@@ -916,7 +948,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     let mean_absolute_return_delta_shift = 0.5f64.ln();
     let tick_realized_variance_delta_shift = 0.4f64.ln();
 
-    assert_eq!(restart_seeds.len(), 13);
+    assert_eq!(restart_seeds.len(), 14);
 
     let mean_absolute_return_seed = restart_seed_by_id(
         restart_seeds.as_slice(),
@@ -1032,7 +1064,7 @@ fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_b
             }),
         });
 
-    assert_eq!(restart_seeds.len(), 9);
+    assert_eq!(restart_seeds.len(), 10);
     assert_eq!(score_call_count, 12);
 
     let restart_seed_ids = restart_seed_ids(restart_seeds.as_slice());
@@ -1472,6 +1504,22 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
 }
 
 #[test]
+fn option_refinement_frontier_is_empty_without_admissible_restart_outcomes() {
+    let fallback_restart = build_test_restart_outcome(
+        "fallback_restart",
+        build_test_inadmissible_joint_breakdown(0.8, 0.8, 0.7, "activity_level_fit"),
+    );
+
+    let selected_restart_outcomes = vec![&fallback_restart];
+
+    let option_frontier = option_refinement_candidate_frontier_from_selected_outcomes(
+        selected_restart_outcomes.as_slice(),
+    );
+
+    assert!(option_frontier.is_empty());
+}
+
+#[test]
 fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
     let tick_summary = build_test_seed_summary(
         vec![
@@ -1532,11 +1580,11 @@ fn selected_restart_validation_rejects_inadmissible_candidate() {
     match failure {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message } => {
             assert!(
-                error_message.contains("selected the best valid candidate"),
+                error_message.contains("did not identify an admissible replacement"),
                 "unexpected failure message: {error_message}"
             );
             assert!(
-                error_message.contains("selected_restart=joint_refinement_midpoint"),
+                error_message.contains("rejected_restart=joint_refinement_midpoint"),
                 "unexpected failure message: {error_message}"
             );
         }

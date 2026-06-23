@@ -1,11 +1,6 @@
+mod parameter_space;
 mod restart_probe_pool;
-mod sensitivity_repair;
 mod workflow;
-
-pub(crate) use sensitivity_repair::{
-    SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
-    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
-};
 
 pub(crate) use workflow::{
     JointRefinementBudgetSchedule, JointRefinementRestartOptimizationOutput,

@@ -10,6 +10,7 @@ import janiform._native_api as native_api_module
 import janiform.forecast.result as forecast_result_module
 import janiform.calibration.fit._runtime.option_pricing.support as pricing_support_module
 import janiform.calibration.fit._runtime.payloads as runtime_payloads_module
+from janiform.market_pressure import MarketPressureState
 from janiform.calibration.fit.state import CurrentStateEstimationResult
 from janiform.calibration.market_data import CalibrationTickDataColumnMapping
 from janiform.forecast import ForecastTableFormat, JaniformForecast
@@ -17,6 +18,7 @@ from janiform.long_variance import LongVarianceState
 from janiform.mean_reversion import MeanReversionBoundaryState
 from janiform.model import JaniformModel
 from janiform.simulation import HawkesExcitationState
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 
 
 def test_model_forecast_builds_native_request_with_defaults_and_cpu_count(
@@ -121,7 +123,12 @@ def test_model_state_tracker_updates_native_state_and_forecasts_from_snapshot(
     monkeypatch.setattr(
         runtime_payloads_module,
         "mean_reversion_fitted_parameters_for_model",
-        lambda model: _Payload({"anchor_model": {"kind": "zero"}, "pressure_rate": 1.0}),
+        lambda model: _Payload({"kappa": 0.0}),
+    )
+    monkeypatch.setattr(
+        runtime_payloads_module,
+        "market_pressure_parameters_for_model",
+        lambda model: _Payload(build_no_anchor_impact_market_pressure_parameters_payload()),
     )
 
     model = _forecast_model()
@@ -204,6 +211,7 @@ class _ForecastNativeStub:
         kernel_parameters: dict[str, Any],
         long_variance_parameters: dict[str, Any],
         mean_reversion_fitted_parameters: dict[str, Any],
+        market_pressure_parameters: dict[str, Any],
         reference_price: float,
         previous_snapshot: Any,
         state_time_utc_nanos: int,
@@ -217,6 +225,7 @@ class _ForecastNativeStub:
                 "kernel_parameters": kernel_parameters,
                 "long_variance_parameters": long_variance_parameters,
                 "mean_reversion_fitted_parameters": mean_reversion_fitted_parameters,
+                "market_pressure_parameters": market_pressure_parameters,
                 "reference_price": reference_price,
                 "previous_snapshot": previous_snapshot,
                 "state_time_utc_nanos": state_time_utc_nanos,
@@ -274,9 +283,9 @@ def _current_state() -> CurrentStateEstimationResult:
         mean_reversion_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.02,
             anchor_value=0.015,
-            pressure_state=0.1,
             deviation=0.005,
         ),
+        market_pressure_state=MarketPressureState(state_weights=[0.9, 0.1]),
     )
 
 

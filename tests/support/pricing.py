@@ -1,10 +1,10 @@
 from math import log
 
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
@@ -32,6 +32,7 @@ from janiform.simulation.coarse import (
     SurpriseNewsArrivalConfiguration,
 )
 from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 TEST_REFERENCE_PRICE = 100.0
@@ -57,15 +58,12 @@ def build_anchored_request_model() -> VanillaOptionPricingRequest:
                 y_minus_minus=0.0,
             ),
             long_variance_boundary_state=LongVarianceState.unit(),
-            mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-                kappa=0.35,
-                anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-            ),
+            mean_reversion_fitted_parameters=MeanReversionFittedParameters(kappa=0.35),
+            market_pressure_boundary_state=MarketPressureState(state_weights=[1.0]),
             interval_delta=1.0,
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.4,
                 anchor_value=0.25,
-                pressure_state=0.0,
                 deviation=0.15,
             ),
         ),
@@ -90,15 +88,12 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
                     y_minus_minus=0.0,
                 ),
                 long_variance_boundary_state=LongVarianceState.unit(),
-                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-                    kappa=0.35,
-                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-                ),
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters(kappa=0.35),
+                market_pressure_boundary_state=MarketPressureState(state_weights=[1.0]),
                 interval_delta=1.0,
                 observed_boundary_state=MeanReversionBoundaryState(
                     observed_log_price=_normalized_observed_log_price(TEST_SPOT_PRICE),
                     anchor_value=_normalized_observed_log_price(TEST_SPOT_PRICE),
-                    pressure_state=0.0,
                     deviation=0.0,
                 ),
             ),
@@ -208,6 +203,9 @@ def _build_model_parameters() -> VanillaOptionPricingModelParameters:
         ),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload(),
+        ),
         pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
     )
 
@@ -221,15 +219,12 @@ def _disabled_boundary_input(
         interval_index=0,
         hawkes_boundary_state=hawkes_boundary_state,
         long_variance_boundary_state=LongVarianceState.unit(),
-        mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-            kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-        ),
+        mean_reversion_fitted_parameters=MeanReversionFittedParameters(kappa=0.0),
+        market_pressure_boundary_state=MarketPressureState(state_weights=[1.0]),
         interval_delta=interval_delta,
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
-            pressure_state=0.0,
             deviation=0.0,
         ),
     )

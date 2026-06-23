@@ -11,6 +11,7 @@ import janiform.simulation as simulation_module
 import janiform.simulation.coarse.runtime as simulation_coarse_runtime_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._timestamps import NANOS_PER_HOUR
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import run_staged_calibration
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
@@ -21,11 +22,7 @@ from janiform.interval_factor_grids import (
     provide_interval_factor_grid,
 )
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
-from janiform.mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-)
+from janiform.mean_reversion import MeanReversionBoundaryState, MeanReversionFittedParameters
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
@@ -61,7 +58,7 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
-    TimestampBatchingObservationModel,
+    TimestampBatchingSurface,
 )
 from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
@@ -72,7 +69,8 @@ from janiform.simulation.shared import (
     HawkesKernelParameters,
 )
 from tests.support.calibration import (
-    build_disabled_timestamp_batching_observation_model_payload,
+    build_disabled_timestamp_batching_surface_payload,
+    build_no_anchor_impact_market_pressure_parameters_payload,
     build_valid_execution_input_model,
 )
 from tests.support.pricing import (
@@ -98,8 +96,8 @@ def _seeded_fine_path_metadata_json() -> str:
             "timestamp_representation_policy": (
                 "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             ),
-            "timestamp_batching_observation_model": (
-                build_disabled_timestamp_batching_observation_model_payload()
+            "timestamp_batching_surface": (
+                build_disabled_timestamp_batching_surface_payload()
             ),
             "side_encoding_policy": "snake_case",
             "state_snapshot_capture": "disabled",
@@ -118,8 +116,8 @@ def _seeded_event_tape_metadata_json() -> str:
             "timestamp_representation_policy": (
                 "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             ),
-            "timestamp_batching_observation_model": (
-                build_disabled_timestamp_batching_observation_model_payload()
+            "timestamp_batching_surface": (
+                build_disabled_timestamp_batching_surface_payload()
             ),
             "side_encoding_policy": "snake_case",
             "state_snapshot_capture": "disabled",
@@ -182,9 +180,13 @@ def test_validation_error_string_format_is_stable() -> None:
             initial_excitation_state=_valid_excitation_state(),
             long_variance_parameters=LongVarianceParameters.neutral(),
             initial_long_variance_state=LongVarianceState.unit(),
+            initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+            market_pressure_parameters=MarketPressureParameters.from_mapping(
+                build_no_anchor_impact_market_pressure_parameters_payload(),
+            ),
             interval_factor_grid_summary=simulation_module.SeededTickSimulationIntervalFactorGridSummary(
                 schema_version="seasonality.interval_factor_grid.contract.v1",
                 exchange_code="XNYS",
@@ -196,7 +198,7 @@ def test_validation_error_string_format_is_stable() -> None:
                 news_intensity=(0.2, 0.1),
             ),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
-            timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+            timestamp_batching_surface=TimestampBatchingSurface.disabled(),
             sample_every_nth_transition=0,
         )
 
@@ -707,11 +709,15 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
             ),
         ),
         initial_excitation_state=_valid_excitation_state(),
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload(),
+        ),
+        initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
         interval_factor_grid=interval_factor_grid_contract,
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -740,6 +746,9 @@ def _valid_coarse_simulation_request(
                     shape_k=1.5,
                 ),
                 long_variance_parameters=LongVarianceParameters.neutral(),
+                market_pressure_parameters=MarketPressureParameters.from_mapping(
+                    build_no_anchor_impact_market_pressure_parameters_payload(),
+                ),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
@@ -751,6 +760,7 @@ def _valid_coarse_simulation_request(
             initial_excitation_state=_valid_excitation_state(),
             long_variance_parameters=LongVarianceParameters.neutral(),
             initial_long_variance_state=LongVarianceState.unit(),
+            initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -760,7 +770,7 @@ def _valid_coarse_simulation_request(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
         observed_price_tick_size=None,
         calendar_registry=calendar_registry,
         exchange_code="XNYS",

@@ -1,20 +1,17 @@
 //! Simulation-side interval factor grid loading through the shared provider interface.
 
-mod api;
 mod artifacts;
 mod coarse;
-mod coarse_runtime;
 mod config;
 mod constants;
+mod core;
 mod error;
+mod hawkes;
 mod long_variance;
 mod progress;
-mod runtime;
+mod returns;
+mod seeded;
 
-pub use api::{
-    evolve_hawkes_state, load_interval_factor_grid, project_hawkes_intensities_simulation_interval,
-    sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
-};
 pub use artifacts::{
     SeededFinePathMetadata, SeededFinePathOutput, SeededFinePathRecord,
     SeededFinePathTransitionKind, SeededTickEventDebugTraceChunk,
@@ -40,12 +37,9 @@ pub use coarse::{
     CoarseSimulationModelInputs, CoarseSimulationModelInputsError, CoarseSimulationPath,
     CoarseSimulationPathDiagnostics, CoarseSimulationPathError,
     CoarseSimulationPathOutputSchemaMetadata, CoarseSimulationPathProvenance,
-    CoarseSimulationPathRecord, CoarseSimulationPathRecordError, CoarseSimulationRunRequest,
-    CoarseSimulationRunRequestError,
-};
-pub use coarse_runtime::{
-    CoarseSimulationRunError, run_coarse_simulation, run_coarse_simulation_with_observer,
-    run_coarse_simulation_with_randomness_factory,
+    CoarseSimulationPathRecord, CoarseSimulationPathRecordError, CoarseSimulationRunError,
+    CoarseSimulationRunRequest, CoarseSimulationRunRequestError, run_coarse_simulation,
+    run_coarse_simulation_with_observer, run_coarse_simulation_with_randomness_factory,
     run_coarse_simulation_with_randomness_factory_and_observer,
 };
 pub use config::{
@@ -74,24 +68,27 @@ pub use constants::{
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
     SEEDED_TICK_EVENT_TIMING_DIAGNOSTICS_SCHEMA_VERSION,
 };
+pub use core::project_core_increment_sequence_to_tick_grid;
 pub use error::SeededTickSimulationRunError;
+pub use hawkes::project_hawkes_intensities_simulation_interval;
+pub use janiform_market_time::interval_factor_grids::provide_interval_factor_grid as load_interval_factor_grid;
+pub use janiform_model_kernels::hawkes::evolve_hawkes_state;
 pub use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionAnchorPathMaterializationError,
-    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
-    evolve_mean_reversion_pressure_state,
-    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
+    MeanReversionAnchorPathMaterializationError, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    materialize_mean_reversion_runtime_interval_anchors_from_anchor_increments,
 };
 pub use long_variance::LongVarianceTransitionSamplingError;
 pub use progress::{SimulationProgressEvent, SimulationProgressPhase};
-pub use runtime::{
-    estimate_seeded_result_capacities, project_core_increment_sequence_to_tick_grid,
-    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_observer,
+pub use returns::{
+    sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
+};
+pub use seeded::{
+    estimate_seeded_result_capacities, run_seeded_tick_event_simulation,
+    run_seeded_tick_event_simulation_with_observer,
     run_seeded_tick_event_simulation_with_randomness_factory,
     run_seeded_tick_event_simulation_with_randomness_factory_and_observer,
     stream_seeded_tick_event_simulation, stream_seeded_tick_event_simulation_with_observer,
     stream_seeded_tick_event_simulation_with_randomness_factory,
     stream_seeded_tick_event_simulation_with_randomness_factory_and_observer,
 };
-
-#[cfg(test)]
-mod tests;

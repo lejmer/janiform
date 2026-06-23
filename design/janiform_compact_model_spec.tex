@@ -9,75 +9,104 @@
 \begin{document}
     \maketitle
 
-    \section*{1. Return Process}
+    \section*{1. Log-Price Process}
+    Janiform models \(S_t\) through its log price.
+    The log price is decomposed into an anchor and a residual log-price
+    component:
     \[
-        X_t^{\mathrm{JF}}
-        =
-        L^+_{A_{\mathrm{return},t}^+}
-        -
-        L^-_{A_{\mathrm{return},t}^-}
-        + M_t + G_t.
+        \log S_t=\log S_0+A_t^\Omega+D_t.
     \]
     The return clocks \(A_{\mathrm{return},t}^\pm\) are continuous activity
     exposures built from baseline event opportunity, Hawkes excitation, and
     long-variance scaling.
 
-    \section*{2. Observed-State Mean Reversion Layer}
-    Let \(\Sigma_k\) denote the structural Janiform boundary state on interval \(k\), and let
-    \[
-        K_k^P(u \mid \Sigma_k)
-        =
-        \log \mathbb E^P[e^{u R_k}\mid \Sigma_k]
-    \]
-    be the one-interval physical log-moment-generating function of the Janiform core contribution \(R_k\).
+    \section*{2. Residual Log-Price Component and Market Pressure State}
+    The parameter \(\kappa\) controls the residual component \(D_t\).
+    Anchor movement from persistent signed imbalance is specified by the
+    finite-state dynamics for \(\Omega_t\), the signed-balance support
+    \(b_k\), and the drift loading \(\gamma_\Omega\).
 
-    Define the physical expected core increment
+    The universal market pressure state \(\Omega_t\) is a birth-death CTMC on
+    ordered support \(\{1,\ldots,K_\Omega\}\).
+    Each support point has fitted side-balance level \(b_k\in[-1,1]\), and
+    conditional on an open event,
     \[
-        \mu_k^P(\Sigma_k)
+        \mathbb P(dN_t^+\mid dN_t^++dN_t^->0,\Omega_t=k)
         =
-        \partial_u K_k^P(u \mid \Sigma_k)\big|_{u=0}
+        \frac{1+b_k}{2},
+        \qquad
+        \mathbb P(dN_t^-\mid dN_t^++dN_t^->0,\Omega_t=k)
         =
-        \mathbb E^P[R_k \mid \Sigma_k].
+        \frac{1-b_k}{2}.
     \]
+    The pressure state changes side composition without changing total
+    event-arrival activity.
+    Its physical generator is learned from side-composition evidence and
+    coarse-return evidence.
 
-    Let \(\Delta_{\mathrm{ref}} > 0\) be the persisted reference interval, let
-    \(\psi_{\mathrm{ref}} \in [0,1]\) be the persisted pressure persistence per
-    reference interval, let \(c \in [0,1]\) be the persisted pressure-to-level
-    gain, and define
+    The anchor drift driven by market pressure is
     \[
-        \psi_k = \psi_{\mathrm{ref}}^{\Delta_k / \Delta_{\mathrm{ref}}}.
+        dA_t^\Omega
+        =
+        \gamma_\Omega b_{\Omega_t}\,dE_t^\Omega,
+        \qquad
+        \gamma_\Omega\in\mathbb R,
     \]
-
-    Let the observed state satisfy
+    where \(E^\Omega\) is the non-negative signed-balance exposure clock.
+    The residual component satisfies
     \[
-        X_k = A_k^P + D_k^P,
+        dD_t
+        =
+        -\kappa D_t\,dt
+        +dL^+_{A_{\mathrm{return},t}^+}
+        -dL^-_{A_{\mathrm{return},t}^-}
+        +dM_t
+        +dG_t,
         \qquad
-        A_k^P = a_0^P + c\,p_k^P,
-        \qquad
-        p_0^P = 0,
-        \qquad
-        \phi_k=e^{-\kappa \Delta_k},
-        \qquad
-        \kappa \ge 0.
+        \kappa\ge0,
     \]
-
-    Then the endogenous pressure-to-level recursions are
-    \begin{gather*}
-        p_{k+1}^P = \psi_k p_k^P + (1-\psi_k)\mu_k^P(\Sigma_k),\\
-        A_{k+1}^P = A_k^P + c\big(p_{k+1}^P - p_k^P\big),\\
-        D_{k+1}^P
-        =
-        \phi_k D_k^P + R_k + A_k^P - A_{k+1}^P
-        =
-        \phi_k D_k^P + R_k - c\big(p_{k+1}^P - p_k^P\big),\\
-    \end{gather*}
     and therefore
     \[
-        X_{k+1}
+        d\log S_t
         =
-        A_{k+1}^P + D_{k+1}^P
+        dA_t^\Omega
+        -\kappa D_t\,dt
+        +dL^+_{A_{\mathrm{return},t}^+}
+        -dL^-_{A_{\mathrm{return},t}^-}
+        +dM_t
+        +dG_t.
+    \]
+    When \(\kappa>0\), \(D_t\) decays toward zero.
+    When \(\kappa=0\), \(D_t\) carries the integrated core contribution without
+    relaxation.
+    For an implementation interval \(I_k=[t_k,t_{k+1})\), let
+    \(r_k^{\mathrm{core}}\) denote the core log-return contribution from
+    \(L^\pm\), \(M\), and \(G\),
+    \(\phi_k=e^{-\kappa\Delta_k}\), and
+    \[
+        \Delta A_k^\Omega
         =
-        X_k + (\phi_k - 1)D_k^P + R_k.
+        \gamma_\Omega
+        \int_{I_k} b_{\Omega_u}\,dE_u^\Omega.
+    \]
+    Then
+    \[
+        A_{k+1}^\Omega=A_k^\Omega+\Delta A_k^\Omega,
+        \qquad
+        D_{k+1}=\phi_kD_k+r_k^{\mathrm{core}},
+    \]
+    and therefore
+    \[
+        \log S_{t_{k+1}}
+        =
+        \log S_{t_k}
+        +\Delta A_k^\Omega+(\phi_k-1)D_k+r_k^{\mathrm{core}}.
+    \]
+    Equivalently, the interval log return is
+    \[
+        \log\frac{S_{t_{k+1}}}{S_{t_k}}
+        =
+        \Delta A_k^\Omega+(\phi_k-1)D_k+r_k^{\mathrm{core}}.
     \]
 
     \section*{3. Trade Intensities and Hawkes State}
@@ -105,6 +134,8 @@
     only scheduled in open-market windows.
     The long-variance state in Section 6 scales baseline return clocks, not
     baseline event-arrival intensities.
+    The market pressure state \(\Omega_t\) governs persistent baseline side
+    composition while preserving total event-arrival activity.
 
     \section*{4. Deterministic Seasonality and News Intensity}
     Let the recurring axes be
@@ -117,11 +148,11 @@
     exchange-local phase and \(K_a\) the harmonic order.
     The source deterministic clock is
     \[
-        s_\star(t)=\exp(\ell(t)),
+        s_\star(t)=\exp(g_\star(t)),
     \]
     where
     \[
-        \ell(t)
+        g_\star(t)
         =
         c_0
         +
@@ -394,7 +425,7 @@
     drive Hawkes excitation, long-variance jumps, and activity-premium pricing counts.
     The simulated trading-time increment is
     \[
-        X_{\mathrm{trading}}
+        r_{\mathrm{trading}}
         =
         (L^+_{A_{\mathrm{return}}^+}-A_{\mathrm{return}}^+m_+)
         -
@@ -404,13 +435,17 @@
     decomposed activity:
     \[
         \mathbb{E}\!\left[
-            X_{\mathrm{trading}}
+            r_{\mathrm{trading}}
             \mid B_Z^+,E^+,B_Z^-,E^-
         \right]=0.
     \]
-    Conditional characteristic function of \(\Delta X_t=X_{t+\Delta}-X_t\):
+    Conditional characteristic function of the core log-return increment
+    \(\Delta r_t^{\mathrm{core}}\):
     \[
-        \mathbb{E}\!\left[e^{iu\Delta X_t}\mid B_Z^+,E^+,B_Z^-,E^-\right]
+        \mathbb{E}\!\left[
+            e^{iu\Delta r_t^{\mathrm{core}}}
+            \mid B_Z^+,E^+,B_Z^-,E^-
+        \right]
         =
         \exp\!\Big(
             A_{\mathrm{return}}^+(\psi_+(u)-ium_+)
@@ -472,31 +507,46 @@
     baseline return clocks.
 
     \section*{9. Affine Schedule Transform}
-    The single-interval affine solver evolves only the Hawkes loading
-    \(\mathbf{D}\) and scalar cumulant \(C\).
+    The single-interval affine solver evolves the Hawkes loading
+    \(\mathbf{D}\), the finite-state market-pressure value vector
+    \(\mathbf f^\Omega\), and scalar cumulant \(C\).
     The schedule-level cumulant solver composes intervals backward and additionally
     carries the long-variance loading \(V\), so the schedule exponent is evaluated at
-    both the initial Hawkes state and the initial long-variance state.
+    the initial Hawkes state, the initial long-variance state, and the initial
+    market pressure boundary distribution.
     For interval-grid inputs \(s_k,\nu_k\) on one schedule interval \([0,\Delta]\),
     with \(\nu_k=\nu_k^{\mathrm{known}}+\nu_k^{\mathrm{surprise}}\), define the
-    interval recursion with terminal loading \(V(0)=\xi\), where \(\xi=0\) for
-    the last interval and is inherited from later intervals otherwise:
+    interval recursion with terminal long-variance loading \(V(0)=\xi\) and
+    terminal pressure values \(\mathbf f^\Omega(0)\):
     \[
-        F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q\mid \mathbf{Y}_0,Z_0)
+        F(
+            u_+^B,u_+^E,u_-^B,u_-^E,
+            z_+,z_-,
+            \xi,\mathbf f^\Omega(0),r_\Omega,\rho_\Omega,q
+            \mid \mathbf{Y}_0,Z_0,\mathbf p^\Omega_0
+        )
         =
         \mathbb{E}\!\left[
             e^{-u_+^B B_Z^+-u_+^E E^+-u_-^B B_Z^--u_-^E E^-+\xi Z_\Delta}\,
+            e^{\int_0^\Delta (r_\Omega\gamma_\Omega-\rho_\Omega)b_{\Omega_s}\,dE_s^\Omega}
+            f^\Omega_{\Omega_\Delta}(0)
             z_+^{N^+}z_-^{N^-}
             e^{q(M_\Delta+G_\Delta)}
-            \mid \mathbf{Y}_0,Z_0
+            \mid \mathbf{Y}_0,Z_0,\mathbf p^\Omega_0
         \right]
         =
-        \exp\!\big(C(\Delta)+\mathbf{D}(\Delta)\cdot\mathbf{y}_0+V(\Delta)Z_0\big),
+        \exp\!\big(
+            C(\Delta)
+            +\mathbf{D}(\Delta)\cdot\mathbf{y}_0
+            +V(\Delta)Z_0
+        \big)
+        \mathbf p^\Omega_0\cdot\mathbf f^\Omega(\Delta),
     \]
     with \(C(0)=0,\ \mathbf{D}(0)\) equal to the inherited terminal Hawkes
-    loading, and \(V(0)=\xi\).
+    loading and \(V(0)=\xi\).
     For a standalone terminal interval,
-    \(\mathbf{D}(0)=\mathbf{0}\) and \(V(0)=0\).
+    \(\mathbf{D}(0)=\mathbf{0}\), \(V(0)=0\), and
+    \(\mathbf f^\Omega(0)=\mathbf 1\).
     Let
     \begin{gather*}
         \mathbf{y}_t=(Y_t^{++},Y_t^{+-},Y_t^{-+},Y_t^{--}),
@@ -528,6 +578,10 @@
         -\kappa_z V(\tau)
         +\frac{1}{2}\sigma_z^2 V(\tau)^2
         -s_k\bar{\lambda}\big(u_+^B+u_-^B\big),\\
+        \partial_\tau\mathbf f^\Omega(\tau)
+        =
+        \left(A^\Omega+\operatorname{diag}((r_\Omega\gamma_\Omega-\rho_\Omega)e_k^\Omega b_k)\right)
+        \mathbf f^\Omega(\tau),\\
         C'(\tau)
         =
         \kappa_z\bar z V(\tau)
@@ -539,6 +593,10 @@
         +\nu_k^{\mathrm{surprise}}\Big(M_{\mathrm{surprise}}(q,\mathbf{D}(\tau)\cdot\mathbf{r})-1\Big),\\
     \end{gather*}
     where \(\nu_k=\nu_k^{\mathrm{known}}+\nu_k^{\mathrm{surprise}}\).
+    \(A^\Omega\) is the physical pressure generator, \(e_k^\Omega\) is the
+    interval exposure scale applied to signed balance, \(b_k\) is the
+    state-\(k\) side-balance support value, and \(\rho_\Omega\) is the
+    signed-imbalance exposure risk price.
     The known-news term is deterministic-arrival random-mark.
     Scheduled timestamps are applied at their persisted event times, and \(\nu_k^{\mathrm{known}}\)
     is the equivalent interval-rate representation used by the affine transform.
@@ -552,66 +610,93 @@
             (\mathbf{D}(\tau)\cdot\mathbf{r})a_c+qm_c+\frac{1}{2}q^2\sigma_c^2
         \right)<\frac{1}{\theta_U}\quad\forall c,\tau\in[0,\Delta],
     \]
-    together with the long-variance Riccati domain needed to keep \(V(\tau)\) finite.
+    together with the long-variance Riccati domain needed to keep \(V(\tau)\)
+    finite and the finite-state pressure transform domain needed to keep
+    \(\mathbf f^\Omega(\tau)\) finite.
 
     The terminal cumulant adapter maps the mathematical moment argument \(v\)
-    into affine activity loadings via the side cumulants:
+    into interval weighted core arguments \(\tilde v_h=w_hv\), affine activity
+    loadings via the side cumulants, and the unweighted market-pressure
+    anchor loading:
     \[
-        a_+(v)=\log\mathbb E[e^{v(L_1^+-m_+)}],
+        a_+(\tilde v_h)=\log\mathbb E[e^{\tilde v_h(L_1^+-m_+)}],
         \qquad
-        a_-(v)=\log\mathbb E[e^{-v(L_1^--m_-)}].
+        a_-(\tilde v_h)=\log\mathbb E[e^{-\tilde v_h(L_1^--m_-)}].
     \]
     With return-clock exposures \(\eta_+,\eta_-\) and strictly positive
     activity-premium multipliers \(\pi_+,\pi_-\), the affine query receives
     \[
-        u_+^B=-a_+(v),\qquad
-        u_+^E=-\eta_+a_+(v),\qquad
-        u_-^B=-a_-(v),\qquad
-        u_-^E=-\eta_-a_-(v),\qquad
+        u_+^B=-a_+(\tilde v_h),\qquad
+        u_+^E=-\eta_+a_+(\tilde v_h),\qquad
+        u_-^B=-a_-(\tilde v_h),\qquad
+        u_-^E=-\eta_-a_-(\tilde v_h),\qquad
         z_+=\pi_+,\qquad
         z_-=\pi_-,\qquad
-        q=v.
+        r_\Omega=v,\qquad
+        \rho_{\Omega,h}=\rho_\Omega,\qquad
+        q=\tilde v_h.
     \]
 
     \section*{10. Terminal Affine Pricing Measure}
-    For valuation time \(t\), expiry \(T\), and deterministic anchor component \(d_{t,T}\), write
+    For valuation time \(t\), expiry \(T\), and deterministic contribution
+    from the initial residual component \(d_{t,T}\), write
     \[
-        R_{t,T}=d_{t,T}+X_{t,T}.
+        \log\frac{S_T}{S_t}
+        =
+        d_{t,T}
+        +A_{t,T}^\Omega
+        +r_{t,T}^{\mathrm{core}},
+        \qquad
+        A_{t,T}^\Omega
+        =
+        \gamma_\Omega
+        \int_t^T b_{\Omega_u}\,dE_u^\Omega.
     \]
+    The anchor-pressure movement \(A_{t,T}^\Omega\) is not multiplied by
+    mean-reversion terminal weights.
+    The stochastic core component \(r_{t,T}^{\mathrm{core}}\) is the sum of
+    mean-reversion-weighted interval core shocks.
     Let the public pricing-kernel coordinates be the strictly positive
-    activity-premium multipliers \(\pi_+,\pi_->0\), and write
-    \(\gamma_\pm=\log \pi_\pm\) when expressing the normalized density in
-    exponential-count form.
+    activity-premium multipliers \(\pi_+,\pi_->0\) and the finite signed
+    imbalance exposure risk price \(\rho_\Omega\).
+    Write \(\gamma_\pm=\log \pi_\pm\) when expressing the normalized density in
+    exponential-count form, and let
+    \(B_{t,T}^\Omega=\int_t^T b_{\Omega_u}\,dE_u^\Omega\).
     Let the terminal physical cumulant be
     \[
-        K_{t,T}(v,\gamma_+,\gamma_-)
+        K_{t,T}(v,\gamma_+,\gamma_-,\rho_\Omega)
         =
         \log\mathbb E^P\!\left[
             \exp\!\left(
-                vX_{t,T}
+                vA_{t,T}^\Omega
+                +v r_{t,T}^{\mathrm{core}}
                 +\gamma_+N_{t,T}^+
                 +\gamma_-N_{t,T}^-
+                -\rho_\Omega B_{t,T}^\Omega
             \right)
             \mid\mathcal F_t
         \right],
     \]
-    evaluated by the affine schedule oracle over the full Hawkes, long-variance, and coupled news state.
+    evaluated by the affine schedule oracle over the full Hawkes,
+    long-variance, market pressure, and coupled news state.
     The pricing-measure density is
     \[
-        M_T(\theta,\pi_+,\pi_-)
+        M_T(\theta,\pi_+,\pi_-,\rho_\Omega)
         =
         \exp\!\left(
-            \theta X_{t,T}
+            \theta A_{t,T}^\Omega
+            +\theta r_{t,T}^{\mathrm{core}}
             +\log(\pi_+)N_{t,T}^+
             +\log(\pi_-)N_{t,T}^-
-            -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+            -\rho_\Omega B_{t,T}^\Omega
+            -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
         \right).
     \]
     The scalar \(\theta\) is solved per valuation state and expiry from
     \[
         d_{t,T}
-        +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-)
-        -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+        +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
         =
         (r-q)\tau.
     \]
@@ -621,12 +706,12 @@
         =
         \exp\!\left(
             iu\,d_{t,T}
-            +K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-)
-            -K_{t,T}(\theta,\log\pi_+,\log\pi_-)
+            +K_{t,T}(\theta+iu,\log\pi_+,\log\pi_-,\rho_\Omega)
+            -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
         \right).
     \]
     The option-refinement coordinates are the activity-risk premiums
-    \(\pi_+\) and \(\pi_-\).
+    \(\pi_+\), \(\pi_-\), and \(\rho_\Omega\).
     The martingale tilt \(\theta\) is derived,
     not fitted.
 
@@ -635,20 +720,20 @@
     and affine pricing use the same decomposition
     \[
         (B_Z^+,E^+,B_Z^-,E^-,
-        N^+,N^-,Z_T).
+        N^+,N^-,\mathbf Y_T,\Omega_T,\Delta A^\Omega).
     \]
     \(N^\pm\) are total side event counts, while the activity terms are total
     return-clock exposures.
+    \(\mathbf Y_T\) is the explicit terminal Hawkes excitation state and is not
+    reconstructed from counts alone.
+    \(\Omega_T\) carries market pressure memory into the next interval,
+    and \(\Delta A^\Omega\) is the unweighted anchor-pressure movement induced
+    by that memory.
     Direct coarse generation and aggregation of seeded ticks are therefore two
     views of the same transition law, not independent approximations with
     different return-clock definitions.
 
-    \section*{12. Final Price Process}
-    \[
-        X_t=\log\!\left(\frac{S_t}{S_0}\right),
-        \qquad
-        S_t=S_0\,e^{X_t}.
-    \]
+    \section*{12. Final Log-Price Observation Layer}
     When an observed price tick size \(\delta_S>0\) is supplied or inferred, the
     simulation observation layer projects latent prices to the tick grid by
     nearest-tick rounding from the previous observed price anchor:
@@ -662,17 +747,9 @@
             \frac{S_t^{\mathrm{latent}}-S_{t^-}^{\mathrm{obs}}}{\delta_S}
         \right),
         \qquad
-        X_t^{\mathrm{obs}}=\log(S_t^{\mathrm{obs}}/S_0).
+        \log S_t^{\mathrm{obs}}=\log(S_t^{\mathrm{obs}}).
     \]
     If no tick size is available, the observation layer uses the latent log-price
     path directly.
-    \begin{gather*}
-        dS_t
-        =
-        S_{t-}\,dX_t
-        +\frac{1}{2}S_{t-}\,d[X^c]_t
-        +S_{t-}\!\int_{\mathbb{R}}\!\big(e^{z}-1-z\big)\,\mu^X(dt,dz),\\
-        \Delta S_t = S_{t-}\big(e^{\Delta X_t}-1\big).\\
-    \end{gather*}
 
 \end{document}

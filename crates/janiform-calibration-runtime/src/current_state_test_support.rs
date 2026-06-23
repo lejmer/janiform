@@ -2,9 +2,10 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
-use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionFittedParameters,
+use janiform_model_kernels::market_pressure::{
+    MarketPressureMeasureParameters, MarketPressureParameters, MarketPressureTransitionRates,
 };
+use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 
 use crate::current_state::CurrentStateEstimationBatchInput;
 
@@ -32,11 +33,9 @@ pub(crate) fn batch_input_fixture(
         )
         .expect("test kernel parameters should validate"),
         long_variance_parameters: LongVarianceParameters::neutral(),
-        mean_reversion_fitted_parameters: MeanReversionFittedParameters::try_new(
-            0.25,
-            MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
-        )
-        .expect("test mean-reversion parameters should validate"),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::try_new(0.25)
+            .expect("test mean-reversion parameters should validate"),
+        market_pressure_parameters: test_market_pressure_parameters(),
         reference_price: 100.0,
         state_times_utc_nanos,
         observation_timestamp_utc_nanos: vec![
@@ -55,4 +54,14 @@ pub(crate) fn batch_input_fixture(
             HawkesEventSide::Buy,
         ],
     }
+}
+
+fn test_market_pressure_parameters() -> MarketPressureParameters {
+    let measure_parameters = MarketPressureMeasureParameters::new(
+        MarketPressureTransitionRates::new(vec![0.25], vec![0.25]),
+        0.01,
+    );
+
+    MarketPressureParameters::try_new(vec![-0.5, 0.5], measure_parameters)
+        .expect("test market-pressure parameters should validate")
 }

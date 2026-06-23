@@ -115,7 +115,7 @@ def simulation_output_columns(
         (
             "observed_log_price",
             "anchor_value",
-            "pressure_state",
+            "market_pressure_state",
             "deviation_from_anchor",
         )
     )
@@ -172,7 +172,7 @@ def persist_seeded_tick_simulation(
                 side_value=None if record.side is None else record.side.value,
                 observed_log_price=record.observed_log_price,
                 anchor_value=record.anchor_value,
-                pressure_state=record.pressure_state,
+                market_pressure_state=record.market_pressure_state,
                 deviation_from_anchor=record.deviation_from_anchor,
                 preferences=preferences,
                 side_column=side_column,
@@ -246,7 +246,7 @@ def persist_coarse_simulation(
                     side_value=None,
                     observed_log_price=record.observed_log_price_end,
                     anchor_value=record.anchor_value_end,
-                    pressure_state=record.pressure_state_end,
+                    market_pressure_state=record.market_pressure_state_end,
                     deviation_from_anchor=record.deviation_from_anchor_end,
                     preferences=preferences,
                     side_column=None,
@@ -299,7 +299,7 @@ def _seeded_tick_output_row(
     side_value: Optional[str],
     observed_log_price: float,
     anchor_value: float,
-    pressure_state: float,
+    market_pressure_state: float,
     deviation_from_anchor: float,
     preferences: SimulationOutputPreferences,
     side_column: Optional[str],
@@ -314,7 +314,7 @@ def _seeded_tick_output_row(
 
     output_row["observed_log_price"] = observed_log_price
     output_row["anchor_value"] = anchor_value
-    output_row["pressure_state"] = pressure_state
+    output_row["market_pressure_state"] = market_pressure_state
     output_row["deviation_from_anchor"] = deviation_from_anchor
 
     return output_row

@@ -9,11 +9,6 @@ use janiform_affine_oracle::affine_oracle::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
-use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
-use janiform_model_kernels::hawkes::{
-    HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
-    HawkesSeasonalityIntervalError,
-};
 use janiform_model_kernels::nig::{
     NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
 };
@@ -340,23 +335,6 @@ enum LocalTiltSearchSide {
     Upper,
 }
 
-/// Resolve interval-aligned interval factor grids for the pricing path.
-pub use janiform_market_time::interval_factor_grids::provide_interval_factor_grid as load_interval_factor_grid;
-
-/// Project state to interval intensities for coarse-time sufficient-statistics paths.
-pub fn project_hawkes_intensities_coarse_interval(
-    state: HawkesExcitationState,
-    parameters: HawkesKernelParameters,
-    interval_factor_grid: &IntervalFactorGrid,
-    interval_index: usize,
-) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
-    state.project_intensities_for_interval_factor(
-        parameters.lambda_bar,
-        &interval_factor_grid.seasonality_factor,
-        interval_index,
-    )
-}
-
 pub(crate) fn anchored_boundary_state_summary(
     pricing_request: &VanillaOptionPricingRequest,
 ) -> Result<AnchoredLocalTiltBoundaryStateSummary, AnchoredLocalTiltSolveError> {
@@ -391,7 +369,7 @@ pub(crate) fn anchored_boundary_state_summary(
     Ok(AnchoredLocalTiltBoundaryStateSummary {
         interval_index: boundary_input.interval_index,
         hawkes_boundary_state: boundary_input.hawkes_boundary_state,
-        observed_boundary_state: boundary_input.observed_boundary_state.clone(),
+        observed_boundary_state: boundary_input.observed_boundary_state,
         current_anchor_value,
         interval_delta,
         kappa: boundary_input.mean_reversion_fitted_parameters.kappa,
@@ -1273,6 +1251,11 @@ pub(crate) fn build_pricing_equation_specification(
             .shared_mark_law
             .gamma_severity_marks,
         pricing_request.model_parameters.long_variance_parameters,
+        // The affine equation spec owns the pressure contract independently from pricing input.
+        pricing_request
+            .model_parameters
+            .market_pressure_parameters
+            .clone(),
     )
 }
 
@@ -1300,6 +1283,11 @@ pub fn build_pricing_transform_input(
         z_plus,
         z_minus,
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        pricing_request
+            .model_parameters
+            .pricing_kernel_parameters
+            .pressure_signed_imbalance_exposure_risk_price,
         seasonality_factor,
         news_intensity,
         pricing_request
@@ -1312,6 +1300,10 @@ pub fn build_pricing_transform_input(
             .surprise_component_mark_scales,
         pricing_request.interval_delta,
         pricing_request.boundary_input.hawkes_boundary_state,
+        pricing_request
+            .boundary_input
+            .market_pressure_boundary_state
+            .clone(),
     )
     .map_err(|source| PricingTransformInputBuildError::InvalidTransformInput { source })
 }
@@ -1395,8 +1387,6 @@ pub fn compose_total_return_characteristic_function(
     )
 }
 
-/// Apply one coarse-time transform-path Hawkes state transition using canonical call order.
-pub use janiform_model_kernels::hawkes::evolve_hawkes_state;
 pub fn compose_total_return_characteristic_function_with_edge_mode(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,

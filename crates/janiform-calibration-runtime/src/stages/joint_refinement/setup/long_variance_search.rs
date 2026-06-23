@@ -35,6 +35,11 @@ pub(super) fn apply_long_variance_parameter_bounds(
     upper_bounds[active_parameter_layout.long_variance_vol_of_vol_index] =
         long_variance_vol_of_vol_upper_bound(baseline_long_variance_parameters)?;
 
+    lower_bounds[active_parameter_layout.long_variance_return_energy_loading_index] = 0.0;
+    upper_bounds[active_parameter_layout.long_variance_return_energy_loading_index] =
+        long_variance_return_energy_loading_upper_bound(baseline_long_variance_parameters)?
+            .max(baseline_long_variance_parameters.return_energy_loading);
+
     let (buy_event_loading_upper_bound, sell_event_loading_upper_bound) =
         long_variance_event_loading_upper_bounds(
             baseline_hawkes_kernel_parameters,
@@ -50,6 +55,28 @@ pub(super) fn apply_long_variance_parameter_bounds(
         sell_event_loading_upper_bound.max(baseline_long_variance_parameters.sell_event_loading);
 
     Ok(())
+}
+
+fn long_variance_return_energy_loading_upper_bound(
+    baseline_long_variance_parameters: LongVarianceParameters,
+) -> Result<f64, String> {
+    let maximum_mean_reversion_rate =
+        long_variance_maximum_calibration_mean_reversion_rate(baseline_long_variance_parameters)?;
+
+    let feedback_drift_budget =
+        long_variance_side_event_feedback_drift_budget(maximum_mean_reversion_rate).ok_or_else(
+            || {
+                format!(
+                    "invalid long variance return-energy drift budget maximum_mean_reversion_rate={maximum_mean_reversion_rate}"
+                )
+            },
+        )?;
+
+    long_variance_feedback_loading_upper_bound(
+        feedback_drift_budget,
+        baseline_long_variance_parameters.stationary_return_energy_rate_per_hour,
+        "stationary_return_energy_rate_per_hour",
+    )
 }
 
 fn long_variance_vol_of_vol_upper_bound(
@@ -137,12 +164,12 @@ fn long_variance_event_loading_upper_bounds(
     })?;
 
     Ok((
-        long_variance_event_loading_upper_bound(
+        long_variance_feedback_loading_upper_bound(
             side_event_drift_budget,
             stationary_event_rates.buy_event_rate_per_hour,
             "stationary_buy_event_rate",
         )?,
-        long_variance_event_loading_upper_bound(
+        long_variance_feedback_loading_upper_bound(
             side_event_drift_budget,
             stationary_event_rates.sell_event_rate_per_hour,
             "stationary_sell_event_rate",
@@ -150,31 +177,31 @@ fn long_variance_event_loading_upper_bounds(
     ))
 }
 
-fn long_variance_event_loading_upper_bound(
-    side_event_drift_budget: f64,
-    stationary_event_rate: f64,
-    stationary_event_rate_label: &str,
+fn long_variance_feedback_loading_upper_bound(
+    feedback_drift_budget: f64,
+    stationary_feedback_rate: f64,
+    stationary_feedback_rate_label: &str,
 ) -> Result<f64, String> {
-    if !side_event_drift_budget.is_finite() || side_event_drift_budget <= 0.0 {
+    if !feedback_drift_budget.is_finite() || feedback_drift_budget <= 0.0 {
         return Err(format!(
-            "long variance event-loading drift budget must be finite positive, found {side_event_drift_budget}"
+            "long variance feedback-loading drift budget must be finite positive, found {feedback_drift_budget}"
         ));
     }
 
-    if !stationary_event_rate.is_finite() || stationary_event_rate < 0.0 {
+    if !stationary_feedback_rate.is_finite() || stationary_feedback_rate < 0.0 {
         return Err(format!(
-            "{stationary_event_rate_label} must be finite non-negative, found {stationary_event_rate}"
+            "{stationary_feedback_rate_label} must be finite non-negative, found {stationary_feedback_rate}"
         ));
     }
 
-    if stationary_event_rate == 0.0 {
+    if stationary_feedback_rate == 0.0 {
         return Ok(0.0);
     }
 
-    let upper_bound = side_event_drift_budget / stationary_event_rate;
+    let upper_bound = feedback_drift_budget / stationary_feedback_rate;
     if !upper_bound.is_finite() {
         return Err(format!(
-            "long variance event-loading bound must be finite for {stationary_event_rate_label}={stationary_event_rate}"
+            "long variance feedback-loading bound must be finite for {stationary_feedback_rate_label}={stationary_feedback_rate}"
         ));
     }
 
@@ -201,6 +228,11 @@ pub(super) fn joint_long_variance_restart_seeds(
         (
             "long_variance_vol_of_vol_up",
             active_parameter_layout.long_variance_vol_of_vol_index,
+            LongVarianceRestartSeedDirection::Upper,
+        ),
+        (
+            "long_variance_return_energy_loading_up",
+            active_parameter_layout.long_variance_return_energy_loading_index,
             LongVarianceRestartSeedDirection::Upper,
         ),
         (
@@ -237,6 +269,14 @@ pub(super) fn joint_long_variance_restart_seeds(
         symmetric_event_loading_seed.as_mut_slice(),
         lower_bounds,
         upper_bounds,
+        active_parameter_layout.long_variance_return_energy_loading_index,
+        LongVarianceRestartSeedDirection::Upper,
+    );
+
+    set_coordinate_midpoint_toward_bound(
+        symmetric_event_loading_seed.as_mut_slice(),
+        lower_bounds,
+        upper_bounds,
         active_parameter_layout.long_variance_buy_event_loading_index,
         LongVarianceRestartSeedDirection::Upper,
     );
@@ -256,7 +296,7 @@ pub(super) fn joint_long_variance_restart_seeds(
     );
 
     seeds.push((
-        "long_variance_event_loading_symmetric_up".to_string(),
+        "long_variance_feedback_loading_symmetric_up".to_string(),
         symmetric_event_loading_seed,
     ));
 
@@ -332,8 +372,8 @@ mod tests {
             hawkes_block: vec![0, 1, 2, 3],
             nig_block: vec![4, 5, 6, 7],
             return_clock_block: vec![8, 9],
-            long_variance_block: vec![10, 11, 12, 13],
-            option_pricing_kernel_block: vec![14, 15],
+            long_variance_block: vec![10, 11, 12, 13, 14],
+            option_pricing_kernel_block: vec![15, 16, 17],
             coupling_block: Vec::new(),
             log_stationary_event_rate_scale_index: 0,
             log_beta_scale_index: 1,
@@ -343,10 +383,12 @@ mod tests {
             log_sell_excitation_return_clock_scale_index: 9,
             log_long_variance_mean_reversion_rate_scale_index: 10,
             long_variance_vol_of_vol_index: 11,
-            long_variance_buy_event_loading_index: 12,
-            long_variance_sell_event_loading_index: 13,
-            option_pricing_log_buy_activity_premium_index: 14,
-            option_pricing_log_sell_activity_premium_index: 15,
+            long_variance_return_energy_loading_index: 12,
+            long_variance_buy_event_loading_index: 13,
+            long_variance_sell_event_loading_index: 14,
+            option_pricing_log_buy_activity_premium_index: 15,
+            option_pricing_log_sell_activity_premium_index: 16,
+            option_pricing_pressure_signed_imbalance_exposure_risk_price_index: 17,
             known_activity_scale_index: None,
             surprise_activity_scale_index: None,
             surprise_baseline_scale_index: None,
@@ -398,6 +440,8 @@ mod tests {
         let corner_parameters = LongVarianceParameters::try_new(
             mean_reversion_rate_upper_bound,
             0.0,
+            baseline_long_variance_parameters.stationary_return_energy_rate_per_hour,
+            upper_bounds[active_parameter_layout.long_variance_return_energy_loading_index],
             upper_bounds[active_parameter_layout.long_variance_buy_event_loading_index],
             upper_bounds[active_parameter_layout.long_variance_sell_event_loading_index],
         )
@@ -439,9 +483,10 @@ mod tests {
                 "long_variance_mean_reversion_up",
                 "long_variance_mean_reversion_down",
                 "long_variance_vol_of_vol_up",
+                "long_variance_return_energy_loading_up",
                 "long_variance_buy_event_loading_up",
                 "long_variance_sell_event_loading_up",
-                "long_variance_event_loading_symmetric_up",
+                "long_variance_feedback_loading_symmetric_up",
             ]
         );
 

@@ -5,16 +5,16 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_engine_sufficient_statistics::{
-    SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsRunRequest,
-    SufficientStatisticsRunRequestError, SufficientStatisticsTransformSliceContext,
-    SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
-    SufficientStatisticsTransformSliceSolveError, SufficientStatisticsTransformSlices,
-    derive_sufficient_statistics_batch_path_seed, sample_interval_statistics_from_transform_slices,
-    solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
+    SufficientStatisticsBoundaryState, SufficientStatisticsBoundaryStateUpdateError,
+    SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsIntervalStatistics,
+    SufficientStatisticsRunRequest, SufficientStatisticsRunRequestError,
+    SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
+    SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSliceSolveError,
+    SufficientStatisticsTransformSlices, derive_sufficient_statistics_batch_path_seed,
+    sample_interval_statistics_from_transform_slices, solve_sufficient_statistics_transform_slices,
+    update_boundary_state_from_interval_statistics,
 };
 use janiform_foundations::numeric::validate_non_negative_number;
-use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde::Serialize;
 
 use super::contracts::RegressionCaseStatus;
@@ -571,7 +571,7 @@ fn validate_multi_interval_scenario_coverage(
 #[derive(Debug, Clone, PartialEq)]
 struct SufficientStatisticsValidationPathArtifacts {
     sampled_statistics: Vec<SufficientStatisticsIntervalStatistics>,
-    state_after_interval: Vec<HawkesExcitationState>,
+    state_after_interval: Vec<SufficientStatisticsBoundaryState>,
     solved_slices: Vec<SufficientStatisticsTransformSlices>,
 }
 
@@ -583,16 +583,15 @@ fn execute_sufficient_statistics_validation_path(
 > {
     let run_request = &validation_scenario.run_request;
 
-    let mut current_state = run_request.model_inputs.initial_excitation_state;
+    let mut current_state = initial_boundary_state_from_run_request(run_request);
 
-    let equation_specification = run_request.model_inputs.equation_specification;
-    let kernel_parameters = equation_specification.hawkes_kernel_parameters;
+    let equation_specification = &run_request.model_inputs.equation_specification;
     let slice_settings = SufficientStatisticsTransformSliceSettings::default();
 
     let mut sampled_statistics: Vec<SufficientStatisticsIntervalStatistics> =
         Vec::with_capacity(run_request.horizon_interval_count);
 
-    let mut state_after_interval: Vec<HawkesExcitationState> =
+    let mut state_after_interval: Vec<SufficientStatisticsBoundaryState> =
         Vec::with_capacity(run_request.horizon_interval_count);
 
     let mut solved_slices: Vec<SufficientStatisticsTransformSlices> =
@@ -606,7 +605,9 @@ fn execute_sufficient_statistics_validation_path(
                 .interval_factor_grids
                 .news_intensity_input_at(interval_index),
             run_request.interval_delta,
-            current_state,
+            current_state.excitation_state,
+            // The pressure state is also carried into the update snapshot below.
+            current_state.market_pressure_state.clone(),
         )
         .map_err(|source| {
             SufficientStatisticsMultiIntervalValidationError::TransformSliceSolveFailure {
@@ -619,7 +620,8 @@ fn execute_sufficient_statistics_validation_path(
         })?;
 
         let slices = solve_sufficient_statistics_transform_slices(
-            equation_specification,
+            // Each slice solve owns the affine equation specification for the interval.
+            equation_specification.clone(),
             slice_context,
             slice_settings,
         )
@@ -633,7 +635,8 @@ fn execute_sufficient_statistics_validation_path(
 
         let sampled_interval_statistics = sample_interval_statistics_from_transform_slices(
             run_request.seed,
-            slices,
+            // Sampling consumes solved slices while the validation path also keeps them.
+            slices.clone(),
         )
         .map_err(|source| {
             SufficientStatisticsMultiIntervalValidationError::TransformSliceSamplingFailure {
@@ -647,24 +650,24 @@ fn execute_sufficient_statistics_validation_path(
             interval_index,
             run_request.interval_delta,
             current_state,
-            sampled_interval_statistics,
+            // Boundary updates own sampled statistics while the path also records them.
+            sampled_interval_statistics.clone(),
         );
 
-        let updated_state =
-            update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
-                .map_err(|source| {
-                    SufficientStatisticsMultiIntervalValidationError::BoundaryStateUpdateFailure {
-                        scenario_id: validation_scenario.scenario_id.clone(),
-                        interval_index,
-                        source: Box::new(source),
-                    }
-                })?;
+        let updated_state = update_boundary_state_from_interval_statistics(update_snapshot)
+            .map_err(|source| {
+                SufficientStatisticsMultiIntervalValidationError::BoundaryStateUpdateFailure {
+                    scenario_id: validation_scenario.scenario_id.clone(),
+                    interval_index,
+                    source: Box::new(source),
+                }
+            })?;
 
         sampled_statistics.push(sampled_interval_statistics);
+        current_state = updated_state.clone();
+
         state_after_interval.push(updated_state);
         solved_slices.push(slices);
-
-        current_state = updated_state;
     }
 
     Ok(SufficientStatisticsValidationPathArtifacts {
@@ -683,33 +686,21 @@ fn build_deterministic_invariant_checks(
         && first_path.state_after_interval == second_path.state_after_interval
         && first_path.solved_slices == second_path.solved_slices;
 
-    let mut replay_state = validation_scenario
-        .run_request
-        .model_inputs
-        .initial_excitation_state;
-
-    let kernel_parameters = validation_scenario
-        .run_request
-        .model_inputs
-        .equation_specification
-        .hawkes_kernel_parameters;
+    let mut replay_state =
+        initial_boundary_state_from_run_request(&validation_scenario.run_request);
 
     let mut state_transition_replay_matches = true;
 
-    for (interval_index, sampled_statistics) in
-        first_path.sampled_statistics.iter().copied().enumerate()
-    {
+    for (interval_index, sampled_statistics) in first_path.sampled_statistics.iter().enumerate() {
         let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
             interval_index,
             validation_scenario.run_request.interval_delta,
             replay_state,
-            sampled_statistics,
+            // Replay owns the interval statistics copied from the recorded path.
+            sampled_statistics.clone(),
         );
 
-        let replayed_state = match update_boundary_state_from_interval_statistics(
-            kernel_parameters,
-            update_snapshot,
-        ) {
+        let replayed_state = match update_boundary_state_from_interval_statistics(update_snapshot) {
             Ok(value) => value,
             Err(_source) => {
                 state_transition_replay_matches = false;
@@ -717,7 +708,12 @@ fn build_deterministic_invariant_checks(
             }
         };
 
-        if replayed_state != first_path.state_after_interval[interval_index] {
+        let Some(expected_state) = first_path.state_after_interval.get(interval_index) else {
+            state_transition_replay_matches = false;
+            break;
+        };
+
+        if &replayed_state != expected_state {
             state_transition_replay_matches = false;
             break;
         }
@@ -741,6 +737,19 @@ fn build_deterministic_invariant_checks(
     ]
 }
 
+fn initial_boundary_state_from_run_request(
+    run_request: &SufficientStatisticsRunRequest,
+) -> SufficientStatisticsBoundaryState {
+    SufficientStatisticsBoundaryState::new(
+        run_request.model_inputs.initial_excitation_state,
+        // The run request is shared by validation passes while replay owns mutable carry state.
+        run_request
+            .model_inputs
+            .initial_market_pressure_state
+            .clone(),
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SufficientStatisticsExpectedMeans {
     a_plus_mean: f64,
@@ -762,7 +771,7 @@ fn build_distributional_checks(
     let mut statistical_checks: Vec<SufficientStatisticsDistributionalCheck> =
         Vec::with_capacity(path_artifacts.solved_slices.len() * 4);
 
-    for (interval_index, slices) in path_artifacts.solved_slices.iter().copied().enumerate() {
+    for (interval_index, slices) in path_artifacts.solved_slices.iter().enumerate() {
         let expected_means =
             derive_expected_means_from_slices(validation_scenario, interval_index, slices)?;
 
@@ -779,7 +788,8 @@ fn build_distributional_checks(
 
             let sampled_statistics = sample_interval_statistics_from_transform_slices(
                 sample_seed,
-                slices,
+                // Each distributional sample consumes the solved slices for this interval.
+                slices.clone(),
             )
             .map_err(|source| {
                 SufficientStatisticsMultiIntervalValidationError::TransformSliceSamplingFailure {
@@ -843,7 +853,7 @@ fn build_distributional_checks(
 fn derive_expected_means_from_slices(
     validation_scenario: &SufficientStatisticsMultiIntervalValidationScenario,
     interval_index: usize,
-    slices: SufficientStatisticsTransformSlices,
+    slices: &SufficientStatisticsTransformSlices,
 ) -> Result<SufficientStatisticsExpectedMeans, SufficientStatisticsMultiIntervalValidationError> {
     let baseline_transform = extract_real_transform_component(
         validation_scenario,

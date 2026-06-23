@@ -4,13 +4,14 @@ use std::mem::size_of;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::adapters::load_interval_factor_grid_for_calibration;
+use crate::load_interval_factor_grid_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
     JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY, JointRefinementAggregatedIntervalObservation,
     JointRefinementBusinessTimeBucketThresholds, JointRefinementIntervalObservationCursor,
     accumulate_return_into_intervals_with_cursor, finalize_sell_share_proxies,
-    mean_absolute_return_by_utc_hour, mean_absolute_return_profile_from_hourly_totals,
+    interval_log_returns, mean_absolute_return_by_utc_hour,
+    mean_absolute_return_profile_from_hourly_totals,
     return_scale_summaries_by_business_time_bucket, return_scale_summary,
     return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
     scale_normalized_returns, tick_count_series,
@@ -27,7 +28,7 @@ use janiform_engine_simulation::{
     estimate_seeded_result_capacities, stream_seeded_tick_event_simulation,
 };
 use janiform_foundations::cancellation::CancellationToken;
-use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR};
+use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR, NANOS_PER_WEEK};
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform_market_time::interval_factor_grids::{
     IntervalFactorGrid, IntervalFactorGridProviderRequest, IntervalNewsIntensityFactorSource,
@@ -308,33 +309,22 @@ impl JointRefinementSummaryCollector {
             JOINT_REFINEMENT_NEUTRAL_SELL_SHARE_PROXY,
         );
 
-        let simulated_5m_log_returns = self
-            .simulated_5m_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
-
-        let simulated_15m_log_returns = self
-            .simulated_15m_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
-
-        let simulated_1h_log_returns = self
-            .simulated_hourly_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
-
         let simulated_1d_intervals = aggregate_intervals_to_fixed_duration(
             self.simulated_hourly_intervals.as_slice(),
             NANOS_PER_DAY,
         );
+        let simulated_1w_intervals = aggregate_intervals_to_fixed_duration(
+            self.simulated_hourly_intervals.as_slice(),
+            NANOS_PER_WEEK,
+        );
 
-        let simulated_1d_log_returns = simulated_1d_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
+        let simulated_5m_log_returns = interval_log_returns(self.simulated_5m_intervals.as_slice());
+        let simulated_15m_log_returns =
+            interval_log_returns(self.simulated_15m_intervals.as_slice());
+        let simulated_1h_log_returns =
+            interval_log_returns(self.simulated_hourly_intervals.as_slice());
+        let simulated_1d_log_returns = interval_log_returns(simulated_1d_intervals.as_slice());
+        let simulated_1w_log_returns = interval_log_returns(simulated_1w_intervals.as_slice());
 
         let simulated_tick_returns = sampled_return_values(
             self.tick_shape_return_sampler.retained_returns(),
@@ -407,6 +397,9 @@ impl JointRefinementSummaryCollector {
             ),
             simulated_1d_shape_returns: scale_normalized_returns(
                 simulated_1d_log_returns.as_slice(),
+            ),
+            simulated_1w_shape_returns: scale_normalized_returns(
+                simulated_1w_log_returns.as_slice(),
             ),
             simulated_tick_return_scale_summary: return_scale_summary_from_returns(
                 simulated_tick_returns.as_slice(),
@@ -784,6 +777,14 @@ fn build_seeded_summary_simulation_run_config(
             endogenous_interval_factor_grids.as_slice(),
         )?;
 
+    let initial_market_pressure_state =
+        janiform_model_kernels::market_pressure::MarketPressureState::neutral_for_parameters(
+            &fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters,
+        )
+        .map_err(|source| format!("invalid initial market-pressure state: {source}"))?;
+
     janiform_engine_simulation::SeededTickSimulationRunConfig::try_new(
         simulation_seed,
         session_state.hourly_simulation_start_utc,
@@ -800,10 +801,15 @@ fn build_seeded_summary_simulation_run_config(
             initial_excitation_state,
             mean_reversion_fitted_parameters: fitted_parameters
                 .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .clone(),
+                .mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
+            // Simulation model inputs own the pressure contract for seeded evolution.
+            market_pressure_parameters: fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters
+                .clone(),
+            initial_market_pressure_state,
             interval_factor_grid,
             return_clock_exposure_parameters: fitted_parameters
                 .return_components_fitted_parameters
@@ -813,13 +819,12 @@ fn build_seeded_summary_simulation_run_config(
                 .long_variance_parameters,
             initial_long_variance_state:
                 janiform_model_kernels::long_variance::LongVarianceState::unit(),
-            observed_price_tick_size: fitted_parameters
+            // Joint refinement scores latent return dynamics. Price discretization belongs to
+            // observation output workflows.
+            observed_price_tick_size: None,
+            timestamp_batching_surface: fitted_parameters
                 .return_components_fitted_parameters
-                .tick_grid_observation_model
-                .tick_size,
-            timestamp_batching_observation_model: fitted_parameters
-                .return_components_fitted_parameters
-                .timestamp_batching_observation_model
+                .timestamp_batching_surface
                 .clone(),
             calendar_registry: session_state.calendar_registry.clone(),
         },
@@ -914,14 +919,12 @@ pub(crate) mod tests {
         run_hawkes_calibration_stage,
     };
     use crate::stages::joint_metrics::{
-        aggregate_simulated_path_to_interval_template, mean_absolute_trade_return_by_utc_hour,
-        return_scale_summaries_by_business_time_bucket, return_scale_summary,
-        return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_trade_returns,
-        scale_normalized_returns, tick_count_series,
+        aggregate_simulated_path_to_interval_template, interval_log_returns,
+        mean_absolute_trade_return_by_utc_hour, return_scale_summaries_by_business_time_bucket,
+        return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
+        sampled_trade_returns, scale_normalized_returns, tick_count_series,
     };
-    use crate::stages::joint_refinement::{
-        JointRefinementSeedSummary, build_surprise_multipliers_for_interval_grid,
-    };
+    use crate::stages::joint_refinement::JointRefinementSeedSummary;
     use crate::stages::long_variance::metrics::{
         LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
         long_variance_horizon_summaries,
@@ -948,7 +951,10 @@ pub(crate) mod tests {
             JointRefinementObservedDataBuildInput, build_exchange_calendar_registry_artifact,
             build_observed_data,
         },
-        joint_refinement::setup::selected_hawkes_observed_open_event_rate_per_hour,
+        joint_refinement::setup::{
+            build_surprise_multipliers_for_interval_grid,
+            selected_hawkes_observed_open_event_rate_per_hour,
+        },
     };
     use janiform_calibration_artifacts::{
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
@@ -957,7 +963,7 @@ pub(crate) mod tests {
         JointRefinementStageFittedParameters,
     };
     use janiform_engine_simulation::run_seeded_tick_event_simulation;
-    use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR, utc_nanos};
+    use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_HOUR, NANOS_PER_WEEK, utc_nanos};
     use janiform_market_time::calendar::{
         ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
     };
@@ -1208,13 +1214,12 @@ pub(crate) mod tests {
     fn run_config_preserves_candidate_mean_reversion_parameters() {
         let mut fixture = joint_refinement_summary_fixture();
 
-        let mean_reversion_fitted_parameters =
-            MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 0.75)
-                .expect("mean-reversion fixture parameters should validate");
+        let mean_reversion_fitted_parameters = MeanReversionFittedParameters::try_new(0.25)
+            .expect("mean-reversion fixture parameters should validate");
         fixture
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters = mean_reversion_fitted_parameters.clone();
+            .mean_reversion_fitted_parameters = mean_reversion_fitted_parameters;
 
         let session_state =
             initialize_joint_refinement_summary_simulation_session(&fixture.session_context)
@@ -1420,30 +1425,20 @@ pub(crate) mod tests {
             NANOS_PER_HOUR,
         );
 
-        let simulated_5m_log_returns = simulated_5m_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
-
-        let simulated_15m_log_returns = simulated_15m_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
-
-        let simulated_1h_log_returns = simulated_hourly_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
-
         let simulated_1d_intervals = aggregate_intervals_to_fixed_duration(
             simulated_hourly_intervals.as_slice(),
             NANOS_PER_DAY,
         );
+        let simulated_1w_intervals = aggregate_intervals_to_fixed_duration(
+            simulated_hourly_intervals.as_slice(),
+            NANOS_PER_WEEK,
+        );
 
-        let simulated_1d_log_returns = simulated_1d_intervals
-            .iter()
-            .map(|interval| interval.log_return)
-            .collect::<Vec<_>>();
+        let simulated_5m_log_returns = interval_log_returns(simulated_5m_intervals.as_slice());
+        let simulated_15m_log_returns = interval_log_returns(simulated_15m_intervals.as_slice());
+        let simulated_1h_log_returns = interval_log_returns(simulated_hourly_intervals.as_slice());
+        let simulated_1d_log_returns = interval_log_returns(simulated_1d_intervals.as_slice());
+        let simulated_1w_log_returns = interval_log_returns(simulated_1w_intervals.as_slice());
 
         let simulated_tick_returns = sampled_trade_returns(
             run_result.fine_path.as_slice(),
@@ -1468,6 +1463,9 @@ pub(crate) mod tests {
                 ),
                 simulated_1d_shape_returns: scale_normalized_returns(
                     simulated_1d_log_returns.as_slice(),
+                ),
+                simulated_1w_shape_returns: scale_normalized_returns(
+                    simulated_1w_log_returns.as_slice(),
                 ),
                 simulated_tick_return_scale_summary: return_scale_summary_from_returns(
                     simulated_tick_returns.as_slice(),
@@ -1825,6 +1823,7 @@ pub(crate) mod tests {
             workspace_root.join("crates/janiform-calibration-artifacts/src"),
             workspace_root.join("crates/janiform-calibration-runtime/Cargo.toml"),
             workspace_root.join("crates/janiform-calibration-runtime/src/stages/joint_refinement"),
+            workspace_root.join("crates/janiform-calibration-runtime/src/stages/return_components"),
             workspace_root.join("crates/janiform-engine-simulation/Cargo.toml"),
             workspace_root.join("crates/janiform-engine-simulation/src"),
             workspace_root.join("crates/janiform-model-kernels/Cargo.toml"),
@@ -1909,11 +1908,17 @@ pub(crate) mod tests {
                 &calibration_stage_test_registry(),
                 ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                     hawkes_stage_success_payload(),
+                    None,
                     return_components_stage_candidate_generation_fixture(),
                 ),
             );
 
-            assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+            assert_eq!(
+                report.status,
+                CalibrationStageExecutionStatus::Success,
+                "return-components stage fixture failed: {:?}",
+                report.failure,
+            );
 
             report
                 .fitted_stage_payload
@@ -2302,14 +2307,14 @@ pub(crate) mod tests {
             },
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-            tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
+            price_discretization_surface: janiform_calibration_artifacts::PriceDiscretizationSurface {
                 tick_size: None,
                 tick_size_source: "test".to_string(),
                 inference_policy: "test".to_string(),
                 observation_policy: "test".to_string(),
             },
-            timestamp_batching_observation_model:
-                janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+            timestamp_batching_surface:
+                janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
                 ),
             objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,

@@ -2,7 +2,6 @@
 
 #![forbid(unsafe_code)]
 
-mod adapters;
 mod checkpointing;
 mod current_state;
 #[cfg(test)]
@@ -10,9 +9,13 @@ mod current_state_test_support;
 mod current_state_tracker;
 mod diagnostics;
 mod execution_bridge;
+mod hawkes;
 mod market_data;
+mod market_pressure;
 mod objective;
+mod objective_families;
 mod optimizer_adapter;
+mod option_surface;
 mod runtime_seasonality;
 mod shock_mark_fitting;
 mod staged_runner;
@@ -20,15 +23,6 @@ mod stages;
 mod surprise_profile;
 mod temporal;
 
-pub use adapters::{
-    OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
-    build_option_surface_calibration_observation_from_pricing_hooks,
-    evaluate_calibration_martingale_condition_under_esscher_tilt,
-    evolve_hawkes_state_for_calibration_step, load_interval_factor_grid_for_calibration,
-    precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
-    project_hawkes_intensities_for_calibration_interval,
-    transform_nig_exponent_for_calibration_under_esscher_tilt,
-};
 pub use checkpointing::CalibrationMemoryCheckpointStore;
 pub use current_state::{
     CurrentStateEstimationBatchInput, CurrentStateEstimationBatchItem,
@@ -48,8 +42,6 @@ pub use execution_bridge::{
     CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageGridCandidate,
     CalibrationMeanReversionStageObservation,
-    CalibrationObservationModelsOpenSessionTimestampTransition,
-    CalibrationObservationModelsStageExecutionInput,
     CalibrationReturnComponentsActivityContextCandidateDiagnostic,
     CalibrationReturnComponentsActivityContextImpliedMetrics,
     CalibrationReturnComponentsActivityContextPayload,
@@ -70,17 +62,27 @@ pub use execution_bridge::{
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
+pub use hawkes::{
+    precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
+    project_hawkes_intensities_for_calibration_interval,
+};
+pub use janiform_market_time::interval_factor_grids::provide_interval_factor_grid as load_interval_factor_grid_for_calibration;
+pub use janiform_model_kernels::hawkes::evolve_hawkes_state as evolve_hawkes_state_for_calibration_step;
+pub use janiform_model_kernels::risk_neutral::{
+    evaluate_esscher_martingale_condition as evaluate_calibration_martingale_condition_under_esscher_tilt,
+    transform_nig_characteristic_exponent_under_esscher_tilt as transform_nig_exponent_for_calibration_under_esscher_tilt,
+};
 pub use market_data::{
-    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
-    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
+    CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY,
+    CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION,
     CalibrationDirectionalLabelDiagnosticsPayload, CalibrationMarketDataCarryInput,
     CalibrationMarketDataColumnMapping, CalibrationMarketDataKnownNewsInput,
     CalibrationMarketDataMeanReversionConfiguration, CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataPreparationDiagnostics, CalibrationMarketDataPreparationError,
     CalibrationMarketDataPreparationProvenance, CalibrationMarketDataPreparationRequest,
     CalibrationMarketDataWorkflowScope, CalibrationTickObjectiveDataUsagePolicy,
-    CalibrationTimestampBatchingObservationDiagnostic,
-    CalibrationTimestampBatchingObservationDiagnosticState, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
+    CalibrationTimestampBatchingSurfaceDiagnostic,
+    CalibrationTimestampBatchingSurfaceDiagnosticState, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
     DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD, MarketDataCoarseDataColumnMapping,
     MarketDataCoarseDataKind, MarketDataCoarseDataLoadingInput, MarketDataCoarseDataSummary,
     MarketDataCoarseDataTimestampSemantics, MarketDataColumnAliasHint,
@@ -150,6 +152,10 @@ pub use optimizer_adapter::{
     CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
     CalibrationOptimizerParameterBoundError, run_constrained_optimizer_adapter,
 };
+pub use option_surface::{
+    OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
+    build_option_surface_calibration_observation_from_pricing_hooks,
+};
 pub use runtime_seasonality::{
     RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD,
     RuntimeStructuralSeasonalityMaterializationError,
@@ -214,17 +220,11 @@ pub use stages::news_shocks::{
     NewsShocksStageExecutionMetadata, NewsShocksStageExecutionReport, NewsShocksStageFittedPayload,
     run_news_shocks_calibration_stage,
 };
-pub use stages::observation_models::{
-    ObservationModelsOpenSessionTimestampTransition, ObservationModelsStageExecutionFailure,
-    ObservationModelsStageExecutionInput, ObservationModelsStageExecutionMetadata,
-    ObservationModelsStageExecutionReport, ObservationModelsStageFittedPayload,
-    ObservationModelsStageProgressPhase, ObservationModelsStageProgressUpdate,
-    run_observation_models_calibration_stage,
-};
 pub use stages::return_backfit::{
     ReturnBackfitStageExecutionFailure, ReturnBackfitStageExecutionInput,
     ReturnBackfitStageExecutionMetadata, ReturnBackfitStageExecutionReport,
-    ReturnBackfitStageFittedPayload, run_return_backfit_calibration_stage,
+    ReturnBackfitStageFittedPayload, ReturnBackfitStageProgressPhase,
+    ReturnBackfitStageProgressUpdate, run_return_backfit_calibration_stage,
 };
 pub use stages::return_components::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,

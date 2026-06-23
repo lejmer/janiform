@@ -22,8 +22,9 @@ use janiform_affine_oracle::affine_oracle::{
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::LongVarianceState;
+use janiform_model_kernels::market_pressure::MarketPressureState;
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_decomposition::{
@@ -317,6 +318,7 @@ fn oracle_output_cf_assembly_rejects_invalid_output_payload() {
                 ComplexScalar::new(0.0, 0.0),
                 ComplexScalar::new(0.0, 0.0),
             ),
+            market_pressure_loading_at_delta: ComplexScalar::new(0.0, 0.0),
             transform_value: ComplexScalar::new(1.0, 0.0),
         },
         ComplexScalar::new(1.0, 0.0),
@@ -752,13 +754,11 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_zero_deviation() {
             y_minus_minus: 0.0,
         },
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::try_new(
-            0.7,
-            MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-        )
-        .expect("mean reversion parameters should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::try_new(0.7)
+            .expect("mean reversion parameters should construct"),
         0.5,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("observed boundary state should construct"),
     )
     .expect("anchored pricing boundary input should construct");
@@ -813,13 +813,11 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
                 y_minus_minus: 0.1,
             },
             LongVarianceState::unit(),
-            MeanReversionFittedParameters::try_new(
-                kappa,
-                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-            )
-            .expect("mean reversion parameters should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::try_new(kappa)
+                .expect("mean reversion parameters should construct"),
             interval_delta,
-            MeanReversionBoundaryState::try_new(deviation, 0.0, 0.0, deviation)
+            MeanReversionBoundaryState::try_new(deviation, 0.0, deviation)
                 .expect("observed boundary state should construct"),
         )
         .expect("anchored pricing boundary input should construct"),
@@ -905,13 +903,11 @@ fn anchored_local_tilt_implicit_root_sensitivity_matches_finite_difference() {
                 y_minus_minus: 0.1,
             },
             LongVarianceState::unit(),
-            MeanReversionFittedParameters::try_new(
-                0.8,
-                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-            )
-            .expect("mean reversion parameters should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::try_new(0.8)
+                .expect("mean reversion parameters should construct"),
             0.5,
-            MeanReversionBoundaryState::try_new(0.15, 0.0, 0.0, 0.15)
+            MeanReversionBoundaryState::try_new(0.15, 0.0, 0.15)
                 .expect("observed boundary state should construct"),
         )
         .expect("anchored pricing boundary input should construct"),

@@ -17,6 +17,10 @@ use janiform_model_kernels::hawkes::{
 use janiform_model_kernels::long_variance::{
     LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
 };
+use janiform_model_kernels::market_pressure::{
+    MarketPressureParameters, MarketPressureParametersValidationError, MarketPressureState,
+    MarketPressureStateValidationError,
+};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
     MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
@@ -455,6 +459,7 @@ pub struct VanillaOptionPricingModelParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
     pub long_variance_parameters: LongVarianceParameters,
+    pub market_pressure_parameters: MarketPressureParameters,
     pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
@@ -465,6 +470,7 @@ impl VanillaOptionPricingModelParameters {
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
+        market_pressure_parameters: MarketPressureParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Self {
         Self {
@@ -473,6 +479,7 @@ impl VanillaOptionPricingModelParameters {
             nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters,
             long_variance_parameters,
+            market_pressure_parameters,
             pricing_kernel_parameters,
         }
     }
@@ -483,6 +490,7 @@ impl VanillaOptionPricingModelParameters {
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
+        market_pressure_parameters: MarketPressureParameters,
         pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
         let model_parameters = Self::new(
@@ -491,6 +499,7 @@ impl VanillaOptionPricingModelParameters {
             nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters,
             long_variance_parameters,
+            market_pressure_parameters,
             pricing_kernel_parameters,
         );
 
@@ -536,6 +545,12 @@ impl VanillaOptionPricingModelParameters {
             VanillaOptionPricingModelParametersError::InvalidLongVarianceParameters { source }
         })?;
 
+        self.market_pressure_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidMarketPressureParameters { source }
+            })?;
+
         self.pricing_kernel_parameters
             .validate()
             .map_err(|source| {
@@ -563,6 +578,9 @@ pub enum VanillaOptionPricingModelParametersError {
     },
     InvalidLongVarianceParameters {
         source: LongVarianceParametersError,
+    },
+    InvalidMarketPressureParameters {
+        source: MarketPressureParametersValidationError,
     },
     InvalidPricingKernelParameters {
         source: VanillaOptionPricingKernelParametersError,
@@ -592,6 +610,10 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.long_variance_parameters are invalid: {source}"
             ),
+            Self::InvalidMarketPressureParameters { source } => write!(
+                formatter,
+                "model_parameters.market_pressure_parameters are invalid: {source}"
+            ),
             Self::InvalidPricingKernelParameters { source } => write!(
                 formatter,
                 "model_parameters.pricing_kernel_parameters is invalid: {source}"
@@ -608,6 +630,7 @@ impl Error for VanillaOptionPricingModelParametersError {
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidReturnClockExposureParameters { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidMarketPressureParameters { source } => Some(source),
             Self::InvalidPricingKernelParameters { source } => Some(source),
         }
     }
@@ -619,6 +642,7 @@ pub struct AnchoredVanillaOptionPricingBoundaryInput {
     pub interval_index: usize,
     pub hawkes_boundary_state: HawkesExcitationState,
     pub long_variance_boundary_state: LongVarianceState,
+    pub market_pressure_boundary_state: MarketPressureState,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub interval_delta: f64,
     pub observed_boundary_state: MeanReversionBoundaryState,
@@ -629,6 +653,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         interval_index: usize,
         hawkes_boundary_state: HawkesExcitationState,
         long_variance_boundary_state: LongVarianceState,
+        market_pressure_boundary_state: MarketPressureState,
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         interval_delta: f64,
         observed_boundary_state: MeanReversionBoundaryState,
@@ -637,6 +662,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
             interval_index,
             hawkes_boundary_state,
             long_variance_boundary_state,
+            market_pressure_boundary_state,
             mean_reversion_fitted_parameters,
             interval_delta,
             observed_boundary_state,
@@ -647,6 +673,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         interval_index: usize,
         hawkes_boundary_state: HawkesExcitationState,
         long_variance_boundary_state: LongVarianceState,
+        market_pressure_boundary_state: MarketPressureState,
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         interval_delta: f64,
         observed_boundary_state: MeanReversionBoundaryState,
@@ -655,6 +682,7 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
             interval_index,
             hawkes_boundary_state,
             long_variance_boundary_state,
+            market_pressure_boundary_state,
             mean_reversion_fitted_parameters,
             interval_delta,
             observed_boundary_state,
@@ -677,6 +705,14 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
             .validate()
             .map_err(|source| {
                 AnchoredVanillaOptionPricingBoundaryInputError::InvalidLongVarianceBoundaryState {
+                    source,
+                }
+            })?;
+
+        self.market_pressure_boundary_state
+            .validate()
+            .map_err(|source| {
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidMarketPressureBoundaryState {
                     source,
                 }
             })?;
@@ -747,6 +783,9 @@ pub enum AnchoredVanillaOptionPricingBoundaryInputError {
     InvalidLongVarianceBoundaryState {
         source: LongVarianceStateError,
     },
+    InvalidMarketPressureBoundaryState {
+        source: MarketPressureStateValidationError,
+    },
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
@@ -769,6 +808,10 @@ impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
                 formatter,
                 "boundary_input.long_variance_boundary_state is invalid: {source}"
             ),
+            Self::InvalidMarketPressureBoundaryState { source } => write!(
+                formatter,
+                "boundary_input.market_pressure_boundary_state is invalid: {source}"
+            ),
             Self::InvalidMeanReversionFittedParameters { source } => write!(
                 formatter,
                 "boundary_input.mean_reversion_fitted_parameters is invalid: {source}"
@@ -789,6 +832,7 @@ impl Error for AnchoredVanillaOptionPricingBoundaryInputError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidLongVarianceBoundaryState { source } => Some(source),
+            Self::InvalidMarketPressureBoundaryState { source } => Some(source),
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
             Self::InvalidObservedBoundaryState { source } => Some(source),
             _ => None,
@@ -1312,6 +1356,16 @@ impl VanillaOptionPricingRequest {
         self.model_parameters.validate().map_err(|source| {
             VanillaOptionPricingRequestError::InvalidModelParameters { source }
         })?;
+
+        self.boundary_input
+            .market_pressure_boundary_state
+            .validate_for_parameters(&self.model_parameters.market_pressure_parameters)
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidBoundaryInput {
+                source:
+                    AnchoredVanillaOptionPricingBoundaryInputError::InvalidMarketPressureBoundaryState {
+                        source,
+                    },
+            })?;
 
         Ok(())
     }
@@ -2529,6 +2583,7 @@ struct VanillaOptionPricingModelParametersPayload {
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     return_clock_exposure_parameters: ReturnClockExposureParameters,
     long_variance_parameters: LongVarianceParameters,
+    market_pressure_parameters: MarketPressureParameters,
     pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
 }
 
@@ -2545,6 +2600,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
             payload.nig_shared_plus_shift_configuration,
             payload.return_clock_exposure_parameters,
             payload.long_variance_parameters,
+            payload.market_pressure_parameters,
             payload.pricing_kernel_parameters,
         )
         .map_err(serde::de::Error::custom)
@@ -2557,6 +2613,7 @@ struct AnchoredVanillaOptionPricingBoundaryInputPayload {
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
     long_variance_boundary_state: LongVarianceState,
+    market_pressure_boundary_state: MarketPressureState,
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     interval_delta: f64,
     observed_boundary_state: MeanReversionBoundaryState,
@@ -2573,6 +2630,7 @@ impl<'de> Deserialize<'de> for AnchoredVanillaOptionPricingBoundaryInput {
             payload.interval_index,
             payload.hawkes_boundary_state,
             payload.long_variance_boundary_state,
+            payload.market_pressure_boundary_state,
             payload.mean_reversion_fitted_parameters,
             payload.interval_delta,
             payload.observed_boundary_state,

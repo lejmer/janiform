@@ -30,12 +30,12 @@ from .seeded import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
     run_seeded_tick_event_simulation,
 )
-from .timestamp_observation import (
-    TimestampBatchingObservationMode,
-    TimestampBatchingObservationModel,
+from .timestamp_batching_surface import (
+    TimestampBatchingMode,
+    TimestampBatchingSurface,
 )
+from ..market_pressure import MarketPressureParameters, MarketPressureState
 from ..mean_reversion import (
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -43,6 +43,8 @@ from ..mean_reversion import (
 
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "CoarseSimulationModelInputs",
     "CoarseSimulationPath",
     "CoarseSimulationRunRequest",
@@ -52,7 +54,6 @@ __all__ = [
     "JaniformSimulationResult",
     "LongVarianceParameters",
     "LongVarianceState",
-    "MeanReversionAnchorModel",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",
@@ -64,8 +65,8 @@ __all__ = [
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",
     "SimulationKind",
-    "TimestampBatchingObservationMode",
-    "TimestampBatchingObservationModel",
+    "TimestampBatchingMode",
+    "TimestampBatchingSurface",
     "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "run_coarse_simulation",
     "run_seeded_tick_event_simulation",

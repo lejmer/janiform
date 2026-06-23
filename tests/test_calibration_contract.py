@@ -51,10 +51,7 @@ from janiform.calibration.staged import (
     validate_staged_calibration_request,
     validate_staged_calibration_response,
 )
-from janiform.mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionFittedParameters,
-)
+from janiform.mean_reversion import MeanReversionFittedParameters
 from janiform.pricing import AutoActivityCompressedPricingIntervalSchedulePolicy
 from janiform.seasonality import SessionFilter
 from tests.support.calibration import (
@@ -266,29 +263,16 @@ def test_market_data_calibration_request_rejects_unsupported_tick_data_file_form
 
 def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_configuration() -> None:
     request_payload = _valid_market_data_request_payload()
-    request_payload["mean_reversion"]["predictive_evidence_alpha"] = 0.025
 
     request = validate_market_data_calibration_request(request_payload)
 
     assert request.mean_reversion is not None
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
-    assert request.mean_reversion.predictive_evidence_alpha == pytest.approx(0.025)
 
     serialized_request = serialize_market_data_calibration_request(request)
     deserialized_request = deserialize_market_data_calibration_request(serialized_request)
 
     assert deserialized_request == request
-
-
-def test_market_data_calibration_request_rejects_out_of_range_predictive_evidence_alpha() -> None:
-    request_payload = _valid_market_data_request_payload()
-    request_payload["mean_reversion"]["predictive_evidence_alpha"] = 1.1
-
-    with pytest.raises(CalibrationValidationError) as captured_error:
-        validate_market_data_calibration_request(request_payload)
-
-    assert captured_error.value.failure.field_path == "predictive_evidence_alpha"
-    assert captured_error.value.failure.message == "must be in (0, 1] when provided"
 
 
 def test_market_data_calibration_request_roundtrip_preserves_optimizer_settings_by_stage() -> None:
@@ -448,38 +432,18 @@ def test_staged_calibration_execution_input_roundtrip_serialization_is_determini
 
 
 def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_deterministic() -> None:
-    fitted_parameters = MeanReversionFittedParameters(
-        kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-    )
+    fitted_parameters = MeanReversionFittedParameters(kappa=0.25)
 
     serialized = fitted_parameters.to_json()
     deserialized = MeanReversionFittedParameters.from_mapping(json.loads(serialized))
-    serialized_anchor_model = json.loads(serialized)["anchor_model"]
 
     assert deserialized == fitted_parameters
-    assert serialized_anchor_model == {
-        "reference_interval_hours": 1.0,
-        "pressure_persistence_per_reference_interval": 0.0,
-        "pressure_level_gain": 0.0,
-    }
+    assert json.loads(serialized) == {"kappa": 0.25}
 
 
 def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
     with pytest.raises(ValueError, match="kappa: must be non-negative"):
-        MeanReversionFittedParameters(
-            kappa=-0.01,
-            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-        )
-
-
-def test_endogenous_mean_reversion_anchor_model_from_mapping_rejects_unknown_fields() -> None:
-    with pytest.raises(ValueError, match="unsupported field 'anchor_value'"):
-        MeanReversionAnchorModel.from_mapping(
-            {
-                "anchor_value": 0.0,
-            }
-        )
+        MeanReversionFittedParameters(kappa=-0.01)
 
 
 def test_staged_calibration_execution_input_requires_explicit_selected_stage_inputs() -> None:

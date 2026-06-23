@@ -7,8 +7,6 @@ pub(crate) use std::process::Command;
 pub(crate) use std::sync::LazyLock;
 pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
-const TEST_PREDICTIVE_EVIDENCE_ALPHA: f64 = 0.05;
-
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::{
     CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY, CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_FAMILY,
@@ -117,14 +115,13 @@ pub(crate) use janiform_calibration_artifacts::{
     MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
     MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
     MeanReversionStageParameterPayload, MeanReversionStageSeriesSummary,
-    NewsShocksStageParameterArtifactInput, ObservationModelsStageParameterArtifactInput,
-    ReturnBackfitStageParameterArtifactInput, ReturnComponentsStageFittedParameters,
-    ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
-    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
-    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
-    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
-    calibration_committed_artifact_run_directory,
+    NewsShocksStageParameterArtifactInput, ReturnBackfitStageParameterArtifactInput,
+    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
+    ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
+    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -233,7 +230,6 @@ pub(crate) use janiform_calibration_runtime::{
     MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
     MeanReversionStageFittedPayload, MeanReversionStageGridCandidate,
     MeanReversionStageObservation, MeanReversionStageSeasonalityInput,
-    ObservationModelsOpenSessionTimestampTransition, ObservationModelsStageExecutionInput,
     OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError,
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
@@ -372,10 +368,6 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
     expected_breakdown: &JointRefinementStageObjectiveBreakdown,
     context: &str,
 ) {
-    assert_eq!(
-        actual_breakdown.policy, expected_breakdown.policy,
-        "{context} objective policy"
-    );
     assert_f64_within_one_ulp(
         actual_breakdown.global_loss,
         expected_breakdown.global_loss,
@@ -399,8 +391,12 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
             "{context} family id at {family_index}"
         );
         assert_eq!(
-            actual_family.term_count, expected_family.term_count,
-            "{context} family term count at {family_index}"
+            actual_family.coordinate_count, expected_family.coordinate_count,
+            "{context} family coordinate count at {family_index}"
+        );
+        assert_eq!(
+            actual_family.rank, expected_family.rank,
+            "{context} family rank at {family_index}"
         );
         assert_f64_within_one_ulp(
             actual_family.loss,
@@ -415,6 +411,10 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
         assert_eq!(
             actual_family.worst_term_id, expected_family.worst_term_id,
             "{context} family worst term at {family_index}"
+        );
+        assert_eq!(
+            actual_family.unidentified, expected_family.unidentified,
+            "{context} family unidentified flag at {family_index}"
         );
     }
 
@@ -1196,10 +1196,6 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
-            stage: CalibrationStage::ObservationModels,
-            optimizer_settings: build_solver_settings(),
-        },
-        CalibrationStageSolverSettings {
             stage: CalibrationStage::ReturnComponents,
             optimizer_settings: build_solver_settings(),
         },
@@ -1242,10 +1238,6 @@ pub(crate) fn build_solver_settings_for_pre_joint_pipeline() -> Vec<CalibrationS
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
-            stage: CalibrationStage::ObservationModels,
-            optimizer_settings: build_solver_settings(),
-        },
-        CalibrationStageSolverSettings {
             stage: CalibrationStage::ReturnComponents,
             optimizer_settings: build_solver_settings(),
         },
@@ -1266,7 +1258,6 @@ pub(crate) fn build_valid_run_spec_with_mode(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
@@ -1659,38 +1650,6 @@ fn stage_parameter_artifact_input(
                 seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
             }))
         }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
-            let payload = report.fitted_stage_payload.as_ref().ok_or(
-                CalibrationStageParameterArtifactBuildError::ValidationFailed {
-                    stage: CalibrationStage::ObservationModels,
-                    error_message: "successful observation-models stage is missing its payload"
-                        .to_string(),
-                },
-            )?;
-
-            let metadata = report.metadata.as_ref().ok_or(
-                CalibrationStageParameterArtifactBuildError::ValidationFailed {
-                    stage: CalibrationStage::ObservationModels,
-                    error_message: "successful observation-models stage is missing metadata"
-                        .to_string(),
-                },
-            )?;
-
-            Ok(Box::new(ObservationModelsStageParameterArtifactInput {
-                metadata: CalibrationStageParameterBuildMetadata {
-                    stage_output_schema_version: metadata.stage_output_schema_version.to_string(),
-                    run_global_seed: metadata.run_global_seed,
-                    stage_seed: metadata.stage_seed,
-                    stage_seed_source: metadata.stage_seed_source,
-                    stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
-                    solver_settings: metadata.solver_settings.clone(),
-                },
-                timestamp_batching_observation_model: payload
-                    .timestamp_batching_observation_model
-                    .clone(),
-                diagnostics: payload.diagnostics.clone(),
-            }))
-        }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or(
                 CalibrationStageParameterArtifactBuildError::ValidationFailed {
@@ -1740,6 +1699,7 @@ fn stage_parameter_artifact_input(
                         .selected_candidate_penalized_objective,
                 },
                 selected_candidate_id: payload.selected_candidate_id.clone(),
+                source_window_open_exposure_hours: payload.source_window_open_exposure_hours,
                 fitted_parameters: payload.fitted_parameters.clone(),
                 candidate_generation_policy: payload.candidate_generation_policy.to_string(),
                 objective_weighting_policy: payload.objective_weighting_policy.to_string(),
@@ -1857,6 +1817,9 @@ fn stage_parameter_artifact_input(
                     .effective_return_components_payload
                     .selected_candidate_id
                     .clone(),
+                source_window_open_exposure_hours: payload
+                    .effective_return_components_payload
+                    .source_window_open_exposure_hours,
                 effective_fitted_parameters: payload
                     .effective_return_components_payload
                     .fitted_parameters
@@ -2019,7 +1982,6 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -2044,7 +2006,6 @@ pub(crate) fn build_pre_joint_run_contract_with_mode_and_resume(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
         ],
         build_solver_settings_for_pre_joint_pipeline(),
@@ -2063,7 +2024,6 @@ pub(crate) fn build_through_mean_reversion_run_contract_with_mode_and_resume(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -2122,7 +2082,6 @@ pub(crate) fn build_run_contract_for_caller_surface(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -2147,7 +2106,6 @@ pub(crate) fn build_pre_joint_run_contract_for_caller_surface(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
         ],
         build_solver_settings_for_pre_joint_pipeline(),
@@ -2166,7 +2124,6 @@ pub(crate) fn build_through_mean_reversion_run_contract_for_caller_surface(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::MeanReversion,
@@ -2248,7 +2205,6 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
     stage_graph_for_selected_stages(&[
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
-        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
         CalibrationStage::LongVariance,
         CalibrationStage::NewsShocks,
@@ -2268,10 +2224,6 @@ fn build_solver_settings_for_through_mean_reversion_pipeline() -> Vec<Calibratio
         },
         CalibrationStageSolverSettings {
             stage: CalibrationStage::Hawkes,
-            optimizer_settings: build_solver_settings(),
-        },
-        CalibrationStageSolverSettings {
-            stage: CalibrationStage::ObservationModels,
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
@@ -2309,12 +2261,8 @@ pub(crate) fn stage_graph_for_selected_stages(
                 depends_on: CalibrationStage::Seasonality,
             },
             CalibrationStageDependency {
-                stage: CalibrationStage::ObservationModels,
-                depends_on: CalibrationStage::Hawkes,
-            },
-            CalibrationStageDependency {
                 stage: CalibrationStage::ReturnComponents,
-                depends_on: CalibrationStage::ObservationModels,
+                depends_on: CalibrationStage::Hawkes,
             },
             CalibrationStageDependency {
                 stage: CalibrationStage::LongVariance,
@@ -2428,11 +2376,6 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
-        observation_models_stage_input: if include_return_candidate_generation_input {
-            Some(observation_models_stage_execution_fixture())
-        } else {
-            None
-        },
         return_components_candidate_generation_input: if include_return_candidate_generation_input {
             Some(return_components_stage_candidate_generation_fixture())
         } else {
@@ -2497,7 +2440,6 @@ pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExec
         seasonality_stage_input: None,
         hawkes_stage_payload: None,
         return_components_stage_payload: None,
-        predictive_evidence_alpha: TEST_PREDICTIVE_EVIDENCE_ALPHA,
         grid_candidates: vec![MeanReversionStageGridCandidate {
             calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
             calibration_grid_interval_hours: 24.0,
@@ -2690,16 +2632,9 @@ pub(crate) fn build_hawkes_stage_run_spec(
 
     let hawkes_handoff = build_mode_aware_stage_handoff(
         CalibrationStage::Hawkes,
-        CalibrationStage::ObservationModels,
-        execution_mode,
-        "artifact://hawkes/run-001",
-    );
-
-    let observation_models_handoff = build_mode_aware_stage_handoff(
-        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
         execution_mode,
-        "artifact://observation_models/run-001",
+        "artifact://hawkes/run-001",
     );
 
     CalibrationRunSpec::builder(
@@ -2709,17 +2644,12 @@ pub(crate) fn build_hawkes_stage_run_spec(
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
         ],
         build_seed_settings(),
         build_solver_settings_for_pre_joint_pipeline(),
     )
-    .with_stage_handoffs(vec![
-        seasonality_handoff,
-        hawkes_handoff,
-        observation_models_handoff,
-    ])
+    .with_stage_handoffs(vec![seasonality_handoff, hawkes_handoff])
     .build()
     .expect("hawkes stage run spec should validate")
 }
@@ -2807,6 +2737,7 @@ pub(crate) fn build_return_components_stage_success_payload() -> ReturnComponent
                 &calendar_registry,
                 ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                     build_hawkes_stage_success_payload(),
+                    None,
                     return_components_stage_candidate_generation_fixture(),
                 ),
             );
@@ -3006,28 +2937,6 @@ pub(crate) fn hawkes_directional_label_diagnostics_fixture()
     }
 }
 
-pub(crate) fn observation_models_stage_execution_fixture() -> ObservationModelsStageExecutionInput {
-    ObservationModelsStageExecutionInput {
-        observed_open_session_returns: return_components_stage_candidate_generation_fixture()
-            .observed_open_session_returns,
-        open_session_timestamp_transitions: vec![
-            ObservationModelsOpenSessionTimestampTransition {
-                previous_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
-                current_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
-            },
-            ObservationModelsOpenSessionTimestampTransition {
-                previous_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
-                current_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
-            },
-            ObservationModelsOpenSessionTimestampTransition {
-                previous_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
-                current_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
-            },
-        ],
-        source_responsibility_input: None,
-    }
-}
-
 pub(crate) fn return_components_stage_candidate_generation_fixture()
 -> ReturnComponentsStageCandidateGenerationInput {
     let source_window = ReturnComponentsStageSignalSourceWindow {
@@ -3150,15 +3059,14 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         },
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
-        tick_grid_observation_model: janiform_calibration_artifacts::TickGridObservationModel {
+        price_discretization_surface: janiform_calibration_artifacts::PriceDiscretizationSurface {
             tick_size: None,
             tick_size_source: "test".to_string(),
             inference_policy: "test".to_string(),
             observation_policy: "test".to_string(),
         },
-        timestamp_batching_observation_model:
-            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
-            ),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         ),

@@ -30,6 +30,19 @@ pub(crate) struct ContinuousLikelihoodObjective {
     pub(crate) log_likelihood_shift: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ContinuousLikelihoodBlockScore {
+    pub(crate) shifted_negative_log_likelihood: f64,
+    pub(crate) member_weight: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ContinuousLikelihoodObjectiveEvaluation {
+    pub(crate) objective: ContinuousLikelihoodObjective,
+    pub(crate) evaluator_counts: ContinuousLikelihoodEvaluatorCounts,
+    pub(crate) global_block_scores: Vec<ContinuousLikelihoodBlockScore>,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ContinuousLikelihoodEvaluatorCounts {
     pub(crate) closed_form_buy: usize,

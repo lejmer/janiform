@@ -11,7 +11,7 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::SideSourceActivityDecomposition;
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 use super::super::contracts::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
@@ -45,8 +45,8 @@ use super::signals::{
 use super::{
     ReturnComponentsStageSortedSignalInputs, build_activity_coupling_diagnostic,
     build_gap_diagnostic, build_jump_diagnostic, build_price_range_sanity_diagnostic,
-    build_surprise_arrival_diagnostic, default_return_clock_exposure_parameters,
-    default_surprise_deterministic_intensity_profile, default_tick_grid_observation_model,
+    build_surprise_arrival_diagnostic, default_price_discretization_surface,
+    default_return_clock_exposure_parameters, default_surprise_deterministic_intensity_profile,
     derive_close_open_gap_candidates, evaluate_return_components_exact_candidate,
     sort_candidate_generation_signals, summarize_candidate_generation_signals,
     summarize_return_distribution,
@@ -137,6 +137,10 @@ fn exact_likelihood_structural_failures_are_treated_as_constraint_violations() {
         exact_uncertified_scope_count: 0,
         exact_global_average_log_likelihood_error_upper_bound: None,
         exact_conditional_average_log_likelihood_error_upper_bound: None,
+        location_fit: 0.0,
+        scale_fit: 0.0,
+        tail_shape_fit: 0.0,
+        asymmetry_shape_fit: 0.0,
         mean_return_fit: 0.0,
         volatility_fit: 1.0,
         median_return_fit: 0.0,
@@ -149,6 +153,7 @@ fn exact_likelihood_structural_failures_are_treated_as_constraint_violations() {
         mean_abs_return_fit: 0.0,
         median_abs_return_fit: 0.0,
         abs_quantile_ratio_fit: 0.0,
+        excess_kurtosis_fit: 0.0,
         bowley_skewness_fit: 0.0,
         l_moment_lambda2_fit: 0.0,
         l_moment_tau3_fit: 0.0,
@@ -495,8 +500,8 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        tick_grid_observation_model: default_tick_grid_observation_model(),
-        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
+        price_discretization_surface: default_price_discretization_surface(),
+        timestamp_batching_surface: TimestampBatchingSurface::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -517,7 +522,7 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
-        &candidate_generation_input.tick_grid_observation_model,
+        &candidate_generation_input.price_discretization_surface,
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -616,8 +621,8 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        tick_grid_observation_model: default_tick_grid_observation_model(),
-        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
+        price_discretization_surface: default_price_discretization_surface(),
+        timestamp_batching_surface: TimestampBatchingSurface::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -639,6 +644,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
             source_window_open_exposure_hours: 1.0,
             source_window_closed_exposure_hours: 1.0,
             activity_calibration_context: None,
+            coarse_data_records: None,
             stage_seed: 17,
             stage_solver_settings: &solver_settings,
             progress_sender: None,
@@ -646,11 +652,17 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
     )
     .expect("candidate generation should succeed");
 
+    let candidate_family_counts = &generated_candidates.candidate_family_counts;
+    let expected_candidate_count = candidate_family_counts.nig_candidate_count
+        * candidate_family_counts.known_news_arrival_family_count
+        * candidate_family_counts.surprise_news_arrival_family_count
+        * candidate_family_counts.return_jump_mark_scale_family_count
+        * candidate_family_counts.activity_coupling_family_count
+        * candidate_family_counts.market_pressure_family_count;
+
     assert_eq!(
         generated_candidates.candidate_inputs.len(),
-        generated_candidates
-            .candidate_family_counts
-            .nig_candidate_count
+        expected_candidate_count
     );
     assert!(generated_candidates.candidate_inputs.len() > 1);
 }
@@ -704,8 +716,8 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        tick_grid_observation_model: default_tick_grid_observation_model(),
-        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
+        price_discretization_surface: default_price_discretization_surface(),
+        timestamp_batching_surface: TimestampBatchingSurface::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -726,7 +738,7 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
-        &candidate_generation_input.tick_grid_observation_model,
+        &candidate_generation_input.price_discretization_surface,
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -833,8 +845,8 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
                 .expect("gamma severity fixture should validate"),
         },
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
-        tick_grid_observation_model: default_tick_grid_observation_model(),
-        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
+        price_discretization_surface: default_price_discretization_surface(),
+        timestamp_batching_surface: TimestampBatchingSurface::disabled(),
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -873,11 +885,11 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         return_clock_exposure_parameters: default_return_clock_exposure_parameters(),
         long_variance_parameters:
             janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
-        tick_grid_observation_model: default_tick_grid_observation_model(),
-        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion should validate"),
+        market_pressure_parameters:
+            janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(),
+        price_discretization_surface: default_price_discretization_surface(),
+        timestamp_batching_surface: TimestampBatchingSurface::disabled(),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
     };
 
     let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
@@ -890,7 +902,7 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         candidate_generation_input
             .detected_intraday_jump_candidates
             .as_slice(),
-        &candidate_generation_input.tick_grid_observation_model,
+        &candidate_generation_input.price_discretization_surface,
     );
 
     let fitted_surprise_episode_selection_layer =

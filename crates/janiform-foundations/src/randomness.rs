@@ -31,6 +31,7 @@ pub enum SimulationRandomnessSubstreamDomain {
     StylizedFactsValidationSimulationPath = 13,
     LongVarianceDiffusion = 15,
     TimestampBatchingObservation = 16,
+    MarketPressureDiffusion = 17,
 }
 
 impl SimulationRandomnessSubstreamDomain {

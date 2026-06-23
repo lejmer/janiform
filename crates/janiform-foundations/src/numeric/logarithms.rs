@@ -1,3 +1,32 @@
+use super::domain::strictly_positive_machine_value;
+
+/// Computes the absolute natural-log distance between two positive magnitudes.
+pub fn log_ratio_distance(candidate_value: f64, observed_value: f64, floor: f64) -> f64 {
+    log_ratio_distance_with_minimum_floor(
+        candidate_value,
+        observed_value,
+        floor,
+        strictly_positive_machine_value(),
+    )
+}
+
+/// Computes the absolute natural-log distance with an explicit positive floor policy.
+pub fn log_ratio_distance_with_minimum_floor(
+    candidate_value: f64,
+    observed_value: f64,
+    floor: f64,
+    minimum_floor: f64,
+) -> f64 {
+    let safe_floor = floor
+        .abs()
+        .max(minimum_floor.abs())
+        .max(strictly_positive_machine_value());
+    let candidate = candidate_value.abs().max(safe_floor);
+    let observed = observed_value.abs().max(safe_floor);
+
+    (candidate / observed).ln().abs()
+}
+
 /// Computes `ln(sum(exp(x)))` for finite log terms.
 ///
 /// Non-finite terms are ignored. When no finite terms are provided, the result
@@ -40,7 +69,15 @@ pub fn log_sum_exp_pair(left: f64, right: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{log_sum_exp, log_sum_exp_pair};
+    use super::{log_ratio_distance, log_sum_exp, log_sum_exp_pair};
+
+    #[test]
+    fn log_ratio_distance_matches_absolute_natural_log_ratio_for_positive_values() {
+        assert_eq!(
+            log_ratio_distance(4.0, 2.0, f64::MIN_POSITIVE),
+            2.0_f64.ln()
+        );
+    }
 
     #[test]
     fn log_sum_exp_matches_direct_sum_for_finite_terms() {

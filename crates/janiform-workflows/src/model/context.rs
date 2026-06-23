@@ -228,12 +228,15 @@ pub(crate) fn estimate_current_state_from_observation_data(
             .fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
-        // Intentional copy because current-state estimation owns the fitted
-        // payload while the runtime context remains available to request builders.
         mean_reversion_fitted_parameters: context
             .fitted_parameters
             .return_components_fitted_parameters
-            .mean_reversion_fitted_parameters
+            .mean_reversion_fitted_parameters,
+        // Current-state estimation owns the pressure contract during tape replay.
+        market_pressure_parameters: context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .market_pressure_parameters
             .clone(),
         reference_price,
         state_time_utc_nanos,
