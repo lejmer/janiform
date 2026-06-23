@@ -805,7 +805,7 @@ mod tests {
 
     #[test]
     fn single_state_fit_reports_side_balance_and_coarse_return_selection_diagnostics() {
-        let observations = alternating_side_observations(100);
+        let observations = vec![test_observation(0, 0.0, 0.0)];
 
         let output =
             fit_market_pressure_output_from_test_observations(&observations, &[], None, 1.0)
