@@ -824,6 +824,8 @@ fn build_return_components_stage_success_report(
             &generated_candidates.market_pressure_runtime_state,
         )),
         candidate_diagnostics: selection.candidate_diagnostics,
+        market_pressure_selection_diagnostics: generated_candidates
+            .market_pressure_selection_diagnostics,
         candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
         objective_weighting_policy: CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
         objective_metric_bucket_policy: RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,

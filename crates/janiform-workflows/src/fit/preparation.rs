@@ -126,7 +126,7 @@ pub struct FitPreparationConfiguration {
     /// Calibration search effort policy.
     #[serde(default)]
     pub calibration_effort: Option<CalibrationEffortOptions>,
-    /// Treat admissibility warnings as hard fit errors.
+    /// Treat invalid restart fallback warnings as hard fit errors.
     #[serde(default)]
     pub treat_calibration_warnings_as_errors: bool,
     /// Optional joint option-refinement candidate count override.

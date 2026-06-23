@@ -24,10 +24,11 @@ use super::super::super::objective::{evaluate_joint_candidate, invalid_candidate
 use super::super::super::setup::parameter_vector_to_fitted_parameters;
 use super::super::selection::admissibility_threshold_from_sample_count;
 use super::super::{
-    JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT, JointRefinementContext, JointRefinementFidelityTier,
-    JointRefinementRestartOutcome, JointRefinementResumeStore,
-    joint_refinement_has_parallel_worker_capacity, option_pricing_execution_failure_message,
-    planned_restart_work_item_labels, simulation_infrastructure_failure_message,
+    JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT, JointRefinementCandidateEvaluation,
+    JointRefinementContext, JointRefinementFidelityTier, JointRefinementRestartOutcome,
+    JointRefinementResumeStore, joint_refinement_has_parallel_worker_capacity,
+    option_pricing_execution_failure_message, select_best_joint_restart_outcome,
+    simulation_infrastructure_failure_message,
 };
 use super::parameter_space::movable_parameter_count;
 
@@ -92,10 +93,15 @@ pub(super) struct RestartObjectiveResidual {
 #[derive(Debug, Clone)]
 pub(super) struct RestartObjectiveEvaluation {
     pub(super) objective: f64,
-    pub(super) admissibility_blocker_count: usize,
+    pub(super) admissibility_warning_count: usize,
     pub(super) max_standardized_residual: Option<f64>,
     pub(super) exact_likelihood_evaluator_counts: Option<ContinuousLikelihoodEvaluatorCounts>,
     pub(super) residuals: Vec<RestartObjectiveResidual>,
+}
+
+pub(super) struct RefreshedFullVectorCandidate {
+    parameter_vector: Vec<f64>,
+    local_evaluation: JointRefinementCandidateEvaluation,
 }
 
 pub(crate) struct JointRefinementRestartOptimizationOutput {
@@ -117,11 +123,8 @@ pub(crate) fn optimize_restart_seeds(
     // Resume passes only pending restart seeds while retaining the original search depth.
     let total_units = restart_seeds.len();
 
-    let planned_work_item_labels = planned_restart_work_item_labels(
-        restart_seeds
-            .iter()
-            .map(|(restart_id, _)| restart_id.as_str()),
-    );
+    let planned_work_item_labels =
+        super::population_control::population_control_planned_work_item_labels();
 
     let total_evaluation_budget =
         restart_candidate_total_evaluation_budget(context, solver_settings, budget_schedule);
@@ -143,7 +146,40 @@ pub(crate) fn optimize_restart_seeds(
         },
     );
 
-    if !joint_refinement_has_parallel_worker_capacity(context) || total_units <= 1 {
+    let mut output = super::population_control::optimize_restart_seeds_population_control(
+        restart_seeds,
+        context,
+        solver_settings,
+        budget_schedule,
+        progress_sender,
+    );
+
+    if let Some(resume_store) = completed_restart_store {
+        for outcome in &output.restart_outcomes {
+            resume_store.record_restart_outcome(outcome);
+        }
+    }
+
+    output.restart_outcomes.sort_by_key(|outcome| {
+        restart_seeds
+            .iter()
+            .position(|(restart_id, _)| *restart_id == outcome.restart_id)
+            .unwrap_or(usize::MAX)
+    });
+
+    output
+}
+
+#[allow(dead_code)]
+fn optimize_restart_seeds_legacy_restart_search(
+    restart_seeds: &[(String, Vec<f64>)],
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+    budget_schedule: JointRefinementBudgetSchedule,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_restart_store: Option<&mut JointRefinementResumeStore>,
+) -> JointRefinementRestartOptimizationOutput {
+    if !joint_refinement_has_parallel_worker_capacity(context) || restart_seeds.len() <= 1 {
         optimize_restart_seeds_sequential(
             restart_seeds,
             context,
@@ -931,7 +967,7 @@ fn optimize_restart_cycle(
         };
     };
 
-    let refreshed_vector = refreshed_full_vector_candidate(
+    let refreshed_candidate = refreshed_full_vector_candidate(
         current_vector,
         optimizer_result.best_point.as_slice(),
         context,
@@ -939,7 +975,7 @@ fn optimize_restart_cycle(
     );
 
     RestartCycleResult {
-        updated_vector: refreshed_vector,
+        updated_vector: refreshed_candidate.parameter_vector,
         global_stop_reason: optimizer_result.stop_reason,
         invalid_step_stop_reason: None,
         evaluation_count: optimizer_result.evaluation_count,
@@ -951,7 +987,7 @@ pub(super) fn refreshed_full_vector_candidate(
     candidate_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Vec<f64> {
+) -> RefreshedFullVectorCandidate {
     let previous_evaluation = evaluate_joint_candidate(
         previous_vector,
         context,
@@ -967,24 +1003,126 @@ pub(super) fn refreshed_full_vector_candidate(
     );
 
     if candidate_evaluation.invalid_reason.is_some() {
-        return previous_vector.to_vec();
+        return RefreshedFullVectorCandidate {
+            parameter_vector: previous_vector.to_vec(),
+            local_evaluation: previous_evaluation,
+        };
     }
 
     if previous_evaluation.invalid_reason.is_some() {
-        return candidate_vector.to_vec();
+        return RefreshedFullVectorCandidate {
+            parameter_vector: candidate_vector.to_vec(),
+            local_evaluation: candidate_evaluation,
+        };
     }
 
     let candidate_global_loss = candidate_evaluation.breakdown.global_loss;
     if !candidate_global_loss.is_finite() {
-        return previous_vector.to_vec();
+        return RefreshedFullVectorCandidate {
+            parameter_vector: previous_vector.to_vec(),
+            local_evaluation: previous_evaluation,
+        };
     }
 
     let previous_global_loss = previous_evaluation.breakdown.global_loss;
     if previous_global_loss.is_finite() && candidate_global_loss > previous_global_loss {
-        return previous_vector.to_vec();
+        return RefreshedFullVectorCandidate {
+            parameter_vector: previous_vector.to_vec(),
+            local_evaluation: previous_evaluation,
+        };
     }
 
-    candidate_vector.to_vec()
+    RefreshedFullVectorCandidate {
+        parameter_vector: candidate_vector.to_vec(),
+        local_evaluation: candidate_evaluation,
+    }
+}
+
+pub(super) fn evaluate_finalized_restart_candidate(
+    restart_id: &str,
+    seed_vector: &[f64],
+    candidate_vector: &[f64],
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+    evaluation_count: usize,
+    stop_reason: &str,
+) -> JointRefinementRestartOutcome {
+    if let Err(precheck_failure) = precheck_restart_seed(candidate_vector, context) {
+        return build_precheck_rejected_restart_outcome(
+            restart_id,
+            candidate_vector.to_vec(),
+            context,
+            solver_settings,
+            precheck_failure.as_str(),
+        );
+    }
+
+    let refreshed_candidate =
+        refreshed_full_vector_candidate(seed_vector, candidate_vector, context, solver_settings);
+    let refreshed_vector = refreshed_candidate.parameter_vector;
+    let local_evaluation = refreshed_candidate.local_evaluation;
+
+    if local_evaluation.invalid_reason.is_some()
+        || joint_refinement_has_fatal_execution_failure(context)
+    {
+        return JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: refreshed_vector,
+            // No final pass is valid after a local failure, so the final slot mirrors local.
+            final_evaluation: local_evaluation.clone(),
+            local_evaluation,
+            local_evaluation_count: evaluation_count,
+            stop_reason: stop_reason.to_string(),
+        };
+    }
+
+    let final_evaluation = evaluate_joint_candidate(
+        refreshed_vector.as_slice(),
+        context,
+        JointRefinementFidelityTier::Final,
+        solver_settings,
+    );
+
+    JointRefinementRestartOutcome {
+        restart_id: restart_id.to_string(),
+        parameter_vector: refreshed_vector,
+        local_evaluation,
+        final_evaluation,
+        local_evaluation_count: evaluation_count,
+        stop_reason: stop_reason.to_string(),
+    }
+}
+
+pub(super) fn select_finalized_restart_candidate_outcome(
+    restart_id: &str,
+    seed_vector: &[f64],
+    candidate_outcomes: Vec<JointRefinementRestartOutcome>,
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> JointRefinementRestartOutcome {
+    select_best_joint_restart_outcome(candidate_outcomes).unwrap_or_else(|| {
+        build_precheck_rejected_restart_outcome(
+            restart_id,
+            seed_vector.to_vec(),
+            context,
+            solver_settings,
+            "empty_finalization_candidate_set",
+        )
+    })
+}
+
+pub(super) fn push_distinct_restart_finalization_candidate(
+    candidate_vectors: &mut Vec<Vec<f64>>,
+    candidate_vector: &[f64],
+) {
+    if candidate_vectors
+        .iter()
+        .any(|existing_vector| existing_vector.as_slice() == candidate_vector)
+    {
+        return;
+    }
+
+    candidate_vectors.push(candidate_vector.to_vec());
 }
 
 fn build_short_circuited_restart_outcome(
@@ -1049,10 +1187,10 @@ fn evaluate_full_parameter_vector_objective(
         .is_none()
         .then_some(RestartObjectiveEvaluation {
             objective: candidate_evaluation.breakdown.global_loss,
-            admissibility_blocker_count: candidate_evaluation
+            admissibility_warning_count: candidate_evaluation
                 .breakdown
                 .admissibility
-                .blockers
+                .warnings
                 .len(),
             max_standardized_residual: Some(
                 candidate_evaluation
@@ -1588,7 +1726,7 @@ mod tests {
     fn restart_objective_for_test(objective: f64) -> RestartObjectiveEvaluation {
         RestartObjectiveEvaluation {
             objective,
-            admissibility_blocker_count: 0,
+            admissibility_warning_count: 0,
             max_standardized_residual: None,
             exact_likelihood_evaluator_counts: None,
             residuals: Vec::new(),
@@ -1644,7 +1782,6 @@ mod tests {
                     standardized_residual: Some(100.0),
                     covariance_diagonal: Some(1.0),
                     loss: 1_666.6666666666667,
-                    admissibility_blocker: false,
                 },
                 CalibrationLossTermDiagnostic {
                     term_id: "return_shape.q99".to_string(),
@@ -1658,7 +1795,6 @@ mod tests {
                     standardized_residual: Some(0.0),
                     covariance_diagonal: Some(1.0),
                     loss: 0.0,
-                    admissibility_blocker: false,
                 },
                 CalibrationLossTermDiagnostic {
                     term_id: "activity_shape.hour_00".to_string(),
@@ -1672,7 +1808,6 @@ mod tests {
                     standardized_residual: Some(0.0),
                     covariance_diagonal: Some(1.0),
                     loss: 0.0,
-                    admissibility_blocker: false,
                 },
                 CalibrationLossTermDiagnostic {
                     term_id: "activity_shape.hour_12".to_string(),
@@ -1686,15 +1821,14 @@ mod tests {
                     standardized_residual: Some(3.0),
                     covariance_diagonal: Some(1.0),
                     loss: 9.0,
-                    admissibility_blocker: false,
                 },
             ],
-            hard_constraint_diagnostics: Vec::new(),
+            domain_margin_diagnostics: Vec::new(),
             admissibility: CalibrationLossAdmissibility {
                 admissible: true,
                 max_standardized_residual: 100.0,
                 excess_loss: 0.0,
-                blockers: Vec::new(),
+                warnings: Vec::new(),
             },
         };
 

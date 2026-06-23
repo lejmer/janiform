@@ -140,43 +140,29 @@ fn hawkes_likelihood_progress_uses_shared_work_item_table() {
 
     match progress_event {
         Some(ProgressEvent::StageProgress {
+            latest_signal,
             work_item_label,
             work_item_columns,
             work_item_metrics,
             ..
         }) => {
-            assert_eq!(work_item_label.as_deref(), Some("hawkes_candidate_07"));
             assert_eq!(
-                work_item_columns
-                    .into_iter()
-                    .map(|column| (column.key, column.label))
-                    .collect::<Vec<_>>(),
-                vec![
-                    ("eval".to_string(), "Evals".to_string()),
-                    ("current_objective".to_string(), "Cur. loss".to_string()),
-                    ("final_objective".to_string(), "Final loss".to_string()),
-                ]
+                latest_signal.as_deref(),
+                Some("hawkes_candidate_07, evals 40/100, global loss -0.125000, best -0.250000")
             );
-            assert_eq!(
-                work_item_metrics
-                    .into_iter()
-                    .map(|metric| (metric.key, metric.value))
-                    .collect::<Vec<_>>(),
-                vec![
-                    ("eval".to_string(), "40/100".to_string()),
-                    ("current_objective".to_string(), "-0.125000".to_string()),
-                ]
-            );
+            assert_eq!(work_item_label, None);
+            assert_eq!(work_item_columns, Vec::new());
+            assert_eq!(work_item_metrics, Vec::new());
         }
         _ => panic!("expected stage progress event"),
     }
 }
 
 #[test]
-fn return_backfit_delta_handoff_progress_uses_stage_signal() {
+fn return_backfit_delta_quantile_shape_progress_uses_stage_signal() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
-        Some("apply delta variance handoff"),
+        Some("evaluate delta quantile candidate"),
         None,
         None,
         None,
@@ -185,14 +171,14 @@ fn return_backfit_delta_handoff_progress_uses_stage_signal() {
 
     progress.stage = CalibrationStage::ReturnBackfit;
     progress.progress_phase = CalibrationStageProgressPhase::ReturnBackfit(
-        ReturnBackfitStageProgressPhase::DeltaVarianceHandoff,
+        ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit,
     );
     progress.aggregate_progress_percent = Some(67);
 
     let progress_event = progress_event_from_staged_event(
         &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
     )
-    .expect("return-backfit delta handoff progress should map to terminal progress");
+    .expect("return-backfit delta quantile-shape progress should map to terminal progress");
 
     match progress_event {
         Some(ProgressEvent::StageProgress {
@@ -202,12 +188,12 @@ fn return_backfit_delta_handoff_progress_uses_stage_signal() {
             latest_signal,
             ..
         }) => {
-            assert_eq!(phase, "delta variance handoff");
+            assert_eq!(phase, "delta quantile shape backfit");
             assert_eq!(measure, UiProgressMeasure::percent(67));
             assert_eq!(work_item_label, None);
             assert_eq!(
                 latest_signal.as_deref(),
-                Some("apply delta variance handoff")
+                Some("evaluate delta quantile candidate")
             );
         }
         _ => panic!("expected stage progress event"),
@@ -363,27 +349,19 @@ fn restart_progress_signal_uses_stable_global_summary_fields() {
         Some(ProgressEvent::StageProgress {
             latest_signal,
             work_item_label,
+            work_item_columns,
             work_item_metrics,
             ..
         }) => {
             assert_eq!(
                 latest_signal.as_deref(),
                 Some(
-                    "active restarts 4, cumulative evals 127, best loss 22.364253, best candidate incumbent_local_search"
+                    "active evals 4, cumulative evals 127, current loss 74.277624, best search loss 51.125000"
                 )
             );
-            assert_eq!(work_item_label.as_deref(), Some("tick_moment_08"));
-            assert_eq!(
-                work_item_metrics
-                    .iter()
-                    .map(|metric| (metric.key.as_str(), metric.value.as_str()))
-                    .collect::<Vec<_>>(),
-                vec![
-                    ("eval", "17/80"),
-                    ("current_objective", "74.277624"),
-                    ("best_objective", "51.125000"),
-                ]
-            );
+            assert_eq!(work_item_label, None);
+            assert_eq!(work_item_columns, Vec::new());
+            assert_eq!(work_item_metrics, Vec::new());
         }
         _ => panic!("expected stage progress event"),
     }
@@ -417,7 +395,9 @@ fn restart_progress_signal_uses_placeholders_for_unavailable_summary_fields() {
         Some(ProgressEvent::StageProgress { latest_signal, .. }) => {
             assert_eq!(
                 latest_signal.as_deref(),
-                Some("active restarts 4, cumulative evals -, best loss -, best candidate -")
+                Some(
+                    "active evals 4, cumulative evals -, current loss 74.277624, best search loss 51.125000"
+                )
             );
         }
         _ => panic!("expected stage progress event"),
@@ -475,12 +455,13 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
         Some(JointRefinementStageRestartEvaluationTimingDiagnostic {
             restart_id: "tick_moment_21".to_string(),
             schedule_category: "competitive".to_string(),
+            fidelity_tier: "coarse_local".to_string(),
             candidate_evaluation_count: 12,
             search_direction_position: Some(3),
             search_direction_label: "interpolation.nig.log_alpha".to_string(),
             elapsed_millis: 1234,
             objective: Some(0.5),
-            admissibility_blocker_count: Some(1),
+            admissibility_warning_count: Some(1),
             max_standardized_residual: Some(2.0),
             exact_closed_form_buy_count: Some(3),
             exact_closed_form_sell_count: Some(4),
@@ -534,7 +515,7 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
             "joint_refinement.restart_eval.elapsed_millis",
             "joint_refinement.restart_eval.search_direction_position",
             "joint_refinement.restart_eval.objective",
-            "joint_refinement.restart_eval.admissibility_blocker_count",
+            "joint_refinement.restart_eval.admissibility_warning_count",
             "joint_refinement.restart_eval.max_standardized_residual",
             "joint_refinement.restart_eval.exact_closed_form_buy_count",
             "joint_refinement.restart_eval.exact_closed_form_sell_count",

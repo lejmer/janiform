@@ -229,14 +229,33 @@ pub fn progress_event_from_staged_event(
             stage_count: *stage_count,
         }),
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
-            let work_item_metrics = work_item_table_metrics(progress);
-            let work_item_label = progress_work_item_label(progress, work_item_metrics.as_slice());
-            let planned_work_item_labels = progress.planned_work_item_labels.clone();
-            let work_item_columns = work_item_columns(progress, &work_item_label);
-            let work_item_metrics = display_work_item_metrics(work_item_metrics, &work_item_label);
+            let raw_work_item_metrics = work_item_table_metrics(progress);
+            let raw_work_item_label =
+                progress_work_item_label(progress, raw_work_item_metrics.as_slice());
 
             let latest_signal =
-                stage_progress_signal_with_metrics(progress, work_item_metrics.as_slice());
+                stage_progress_signal_with_metrics(progress, raw_work_item_metrics.as_slice());
+
+            let has_multi_row_work_table =
+                work_item_table_has_multiple_rows(progress, &raw_work_item_label);
+            let work_item_label = has_multi_row_work_table
+                .then_some(raw_work_item_label)
+                .flatten();
+            let planned_work_item_labels = if has_multi_row_work_table {
+                progress.planned_work_item_labels.clone()
+            } else {
+                Vec::new()
+            };
+            let work_item_columns = if has_multi_row_work_table {
+                work_item_columns(progress, &work_item_label)
+            } else {
+                Vec::new()
+            };
+            let work_item_metrics = if has_multi_row_work_table {
+                display_work_item_metrics(raw_work_item_metrics, &work_item_label)
+            } else {
+                Vec::new()
+            };
 
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
@@ -363,11 +382,11 @@ fn restart_evaluation_timing_measures(
         });
     }
 
-    if let Some(admissibility_blocker_count) = diagnostic.admissibility_blocker_count {
+    if let Some(admissibility_warning_count) = diagnostic.admissibility_warning_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.admissibility_blocker_count".to_string(),
-            label: Some("admissibility blockers".to_string()),
-            value: admissibility_blocker_count.to_string(),
+            metric_id: "joint_refinement.restart_eval.admissibility_warning_count".to_string(),
+            label: Some("admissibility warnings".to_string()),
+            value: admissibility_warning_count.to_string(),
         });
     }
 
@@ -546,20 +565,23 @@ fn stage_progress_signal_with_metrics(
         return Some(restart_optimization_progress_signal(progress));
     }
 
-    if progress_work_item_label(progress, work_item_metrics).is_some()
-        && let Some(signal) = parallel_stage_progress_signal(
-            progress.active_restart_count,
-            progress.valid_completed_units,
-            progress.cumulative_local_evaluation_count,
-            progress.best_global_loss,
-            progress.best_coarse_consistency_fit,
-        )
+    let work_item_label = progress_work_item_label(progress, work_item_metrics);
+    let has_multi_row_work_table = work_item_table_has_multiple_rows(progress, &work_item_label);
+
+    if let Some(signal) = parallel_stage_progress_signal(
+        progress.active_restart_count,
+        progress.valid_completed_units,
+        progress.cumulative_local_evaluation_count,
+        progress.best_global_loss,
+        progress.best_coarse_consistency_fit,
+    ) && (has_multi_row_work_table
+        || work_item_phase_uses_row_scoped_evaluations(&progress.progress_phase))
     {
         return Some(signal);
     }
 
     if work_item_phase_uses_row_scoped_evaluations(&progress.progress_phase)
-        && progress_work_item_label(progress, work_item_metrics).is_some()
+        && work_item_label.is_some()
     {
         return None;
     }
@@ -611,7 +633,7 @@ fn stage_progress_signal_with_metrics(
 fn restart_optimization_progress_signal(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> String {
-    let active_restarts = progress
+    let active_evaluations = progress
         .active_restart_count
         .map(|count| count.to_string())
         .unwrap_or_else(missing_progress_value_label);
@@ -621,19 +643,21 @@ fn restart_optimization_progress_signal(
         .map(|count| count.to_string())
         .unwrap_or_else(missing_progress_value_label);
 
-    let best_loss = progress
-        .best_global_loss
+    let best_search_loss = progress
+        .current_restart_best_global_loss
+        .or(progress.best_global_loss)
         .filter(|loss| loss.is_finite())
         .map(|loss| format!("{loss:.6}"))
         .unwrap_or_else(missing_progress_value_label);
 
-    let best_candidate = progress
-        .best_restart_id
-        .as_deref()
-        .unwrap_or(MISSING_PROGRESS_VALUE_LABEL);
+    let current_loss = progress
+        .current_global_loss
+        .filter(|loss| loss.is_finite())
+        .map(|loss| format!("{loss:.6}"))
+        .unwrap_or_else(missing_progress_value_label);
 
     format!(
-        "active restarts {active_restarts}, cumulative evals {cumulative_evaluations}, best loss {best_loss}, best candidate {best_candidate}"
+        "active evals {active_evaluations}, cumulative evals {cumulative_evaluations}, current loss {current_loss}, best search loss {best_search_loss}"
     )
 }
 
@@ -793,6 +817,20 @@ fn work_item_columns(
     }
 
     work_item_table_columns(progress)
+}
+
+fn work_item_table_has_multiple_rows(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_label: &Option<String>,
+) -> bool {
+    match (
+        progress.planned_work_item_labels.as_slice(),
+        work_item_label.as_deref(),
+    ) {
+        ([planned_label], Some(work_item_label)) => planned_label != work_item_label,
+        (planned_work_item_labels, _) if planned_work_item_labels.len() > 1 => true,
+        _ => false,
+    }
 }
 
 fn display_work_item_metrics(
@@ -1055,7 +1093,7 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
         ) => "continuous_nig_basin_optimization",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::RestartOptimization,
-        ) => "restart_optimization",
+        ) => "population_refinement",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::StageInputResolution,
         ) => "stage_input_resolution",
@@ -1096,8 +1134,8 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
             ReturnBackfitStageProgressPhase::DynamicClockReplay,
         ) => "return_backfit_dynamic_clock_replay",
         CalibrationStageProgressPhase::ReturnBackfit(
-            ReturnBackfitStageProgressPhase::DeltaVarianceHandoff,
-        ) => "return_backfit_delta_variance_handoff",
+            ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit,
+        ) => "return_backfit_delta_quantile_shape_backfit",
         CalibrationStageProgressPhase::ReturnBackfit(
             ReturnBackfitStageProgressPhase::MarketPressureRefit,
         ) => "return_backfit_market_pressure_refit",
@@ -1204,8 +1242,8 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
             ReturnBackfitStageProgressPhase::DynamicClockReplay,
         ) => "dynamic clock replay",
         CalibrationStageProgressPhase::ReturnBackfit(
-            ReturnBackfitStageProgressPhase::DeltaVarianceHandoff,
-        ) => "delta variance handoff",
+            ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit,
+        ) => "delta quantile shape backfit",
         CalibrationStageProgressPhase::ReturnBackfit(
             ReturnBackfitStageProgressPhase::MarketPressureRefit,
         ) => "market pressure refit",
@@ -1247,7 +1285,7 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         ) => "restart screening",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::RestartOptimization,
-        ) => "restart optimization",
+        ) => "population refinement",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
         ) => "coarse consistency evaluation",

@@ -176,8 +176,15 @@ impl ProgressAdapter {
                 self.snapshot.measure = Some(measure);
                 self.snapshot.latest_signal = latest_signal.clone();
 
-                self.merge_work_item_columns(work_item_columns);
-                self.seed_work_items(planned_work_item_labels);
+                let has_work_item_table = work_item_label.is_some()
+                    || !planned_work_item_labels.is_empty()
+                    || !work_item_columns.is_empty();
+                if has_work_item_table {
+                    self.merge_work_item_columns(work_item_columns);
+                    self.seed_work_items(planned_work_item_labels);
+                } else {
+                    self.clear_work_item_details();
+                }
 
                 if let Some(work_item_label) = work_item_label {
                     self.update_work_item(

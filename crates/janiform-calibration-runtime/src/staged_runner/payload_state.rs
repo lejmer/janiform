@@ -62,6 +62,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     source_window_open_exposure_hours: payload.source_window_open_exposure_hours,
                     fitted_parameters: payload.fitted_parameters.clone(),
                     candidate_diagnostics: Vec::new(),
+                    market_pressure_selection_diagnostics: Vec::new(),
                     candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
                     objective_weighting_policy:
                         CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
@@ -130,6 +131,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     source_window_open_exposure_hours: payload.source_window_open_exposure_hours,
                     fitted_parameters: payload.effective_fitted_parameters.clone(),
                     candidate_diagnostics: Vec::new(),
+                    market_pressure_selection_diagnostics: Vec::new(),
                     candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
                     objective_weighting_policy:
                         CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,

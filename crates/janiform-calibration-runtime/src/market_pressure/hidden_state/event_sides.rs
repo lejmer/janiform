@@ -104,6 +104,7 @@ pub(super) fn fit_ordered_side_balance_model(
         state_probabilities: fit.state_probabilities,
         interval_joint_probabilities: fit.interval_joint_probabilities,
         log_likelihood: fit.log_likelihood,
+        selection_diagnostics: Vec::new(),
     })
 }
 
@@ -152,6 +153,7 @@ fn forward_backward_ordered_side_model(
         interval_joint_probabilities: hidden_fit.interval_joint_probabilities,
         log_likelihood: hidden_fit.log_likelihood,
         parameter_count: ordered_side_model_parameter_count(support_levels.len()),
+        selection_diagnostics: Vec::new(),
     })
 }
 
@@ -444,6 +446,6 @@ fn weighted_log_probability(
     Ok(probability_weight * probability.ln())
 }
 
-fn ordered_side_model_parameter_count(state_count: usize) -> usize {
+pub(super) fn ordered_side_model_parameter_count(state_count: usize) -> usize {
     state_count + state_count.saturating_sub(1) * 2
 }

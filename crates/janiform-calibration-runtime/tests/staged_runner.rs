@@ -494,16 +494,16 @@ fn staged_runner_emits_return_backfit_long_variance_and_mean_reversion_progress(
                         && matches!(
                             progress.progress_phase,
                             CalibrationStageProgressPhase::ReturnBackfit(
-                                ReturnBackfitStageProgressPhase::DeltaVarianceHandoff
+                                ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit
                             )
                         )
                         && progress
                             .current_item_label
                             .as_deref()
-                            .is_some_and(|label| label == "apply delta variance handoff")
+                            .is_some_and(|label| label == "evaluate delta quantile candidate")
             )
         }),
-        "expected staged runner to forward return-backfit delta variance handoff progress"
+        "expected staged runner to forward return-backfit delta quantile-shape progress"
     );
 
     assert!(
@@ -810,28 +810,28 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                 );
                 assert_eq!(
                     payload.selected_candidate_id,
-                    "nig_delta_variance_handoff_under_dynamic_clock"
+                    "nig_delta_quantile_shape_backfit"
                 );
                 assert!(
                     payload
                         .diagnostics
-                        .scale_handoff
-                        .observed_reference_variance_scale
-                        .is_some()
+                        .delta_quantile_shape_backfit
+                        .selected_aggregation_sample_count
+                        > 0
                 );
                 assert!(
                     payload
                         .diagnostics
-                        .scale_handoff
-                        .post_handoff_nig_delta
-                        .is_some()
+                        .delta_quantile_shape_backfit
+                        .post_backfit_nig_delta
+                        > 0.0
                 );
                 assert!(
                     payload
                         .diagnostics
-                        .scale_handoff
-                        .post_handoff_dynamic_variance_scale
-                        .is_some()
+                        .delta_quantile_shape_backfit
+                        .after_quantile_shape_score
+                        .is_finite()
                 );
             }
             CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report) => {

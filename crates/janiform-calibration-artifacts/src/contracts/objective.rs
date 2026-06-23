@@ -30,7 +30,6 @@ pub struct CalibrationLossTermDiagnostic {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub covariance_diagonal: Option<f64>,
     pub loss: f64,
-    pub admissibility_blocker: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,13 +46,13 @@ pub struct CalibrationLossFamilyDiagnostic {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CalibrationHardConstraintDiagnostic {
-    pub constraint_id: String,
+pub struct CalibrationDomainMarginDiagnostic {
+    pub margin_id: String,
     pub margin: f64,
     pub target_margin: f64,
     pub standardized_violation: f64,
     pub loss: f64,
-    pub admissibility_blocker: bool,
+    pub admissibility_warning: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,7 +60,7 @@ pub struct CalibrationLossAdmissibility {
     pub admissible: bool,
     pub max_standardized_residual: f64,
     pub excess_loss: f64,
-    pub blockers: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,6 +68,6 @@ pub struct CalibrationLossEvaluation {
     pub global_loss: f64,
     pub family_losses: Vec<CalibrationLossFamilyDiagnostic>,
     pub term_diagnostics: Vec<CalibrationLossTermDiagnostic>,
-    pub hard_constraint_diagnostics: Vec<CalibrationHardConstraintDiagnostic>,
+    pub domain_margin_diagnostics: Vec<CalibrationDomainMarginDiagnostic>,
     pub admissibility: CalibrationLossAdmissibility,
 }

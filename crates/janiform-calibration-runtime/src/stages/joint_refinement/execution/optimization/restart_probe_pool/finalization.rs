@@ -2,14 +2,10 @@ use std::sync::Arc;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
-use super::super::super::super::objective::evaluate_joint_candidate;
-use super::super::super::{
-    JointRefinementContext, JointRefinementFidelityTier, JointRefinementRestartOutcome,
-    select_best_joint_restart_outcome,
-};
+use super::super::super::{JointRefinementContext, JointRefinementRestartOutcome};
 use super::super::workflow::{
-    build_precheck_rejected_restart_outcome, joint_refinement_has_fatal_execution_failure,
-    precheck_restart_seed, refreshed_full_vector_candidate,
+    evaluate_finalized_restart_candidate, push_distinct_restart_finalization_candidate,
+    select_finalized_restart_candidate_outcome,
 };
 use super::RestartProbeState;
 
@@ -44,7 +40,7 @@ pub(super) fn run_restart_probe_finalization_job(
     RestartProbeFinalizationResult {
         restart_position: job.restart_position,
         candidate_position: job.candidate_position,
-        outcome: evaluate_restart_probe_finalization_candidate(
+        outcome: evaluate_finalized_restart_candidate(
             job.restart_context.restart_id.as_str(),
             job.restart_context.seed_vector.as_slice(),
             job.candidate_vector.as_slice(),
@@ -93,104 +89,40 @@ pub(super) fn select_restart_probe_finalization_outcome(
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> JointRefinementRestartOutcome {
-    select_best_joint_restart_outcome(candidate_outcomes).unwrap_or_else(|| {
-        build_precheck_rejected_restart_outcome(
-            state.restart_id.as_str(),
-            state.seed_vector.clone(),
-            context,
-            solver_settings,
-            "empty_finalization_candidate_set",
-        )
-    })
+    select_finalized_restart_candidate_outcome(
+        state.restart_id.as_str(),
+        state.seed_vector.as_slice(),
+        candidate_outcomes,
+        context,
+        solver_settings,
+    )
 }
 
 fn restart_probe_finalization_candidate_vectors(state: &RestartProbeState) -> Vec<Vec<f64>> {
     let mut candidate_vectors = Vec::new();
 
-    push_distinct_finalization_candidate(&mut candidate_vectors, state.best_vector.as_slice());
-    push_distinct_finalization_candidate(&mut candidate_vectors, state.accepted_vector.as_slice());
+    push_distinct_restart_finalization_candidate(
+        &mut candidate_vectors,
+        state.best_vector.as_slice(),
+    );
+    push_distinct_restart_finalization_candidate(
+        &mut candidate_vectors,
+        state.accepted_vector.as_slice(),
+    );
 
     if let Some(round_best_vector) = &state.round_best_vector {
-        push_distinct_finalization_candidate(&mut candidate_vectors, round_best_vector.as_slice());
-    }
-
-    push_distinct_finalization_candidate(&mut candidate_vectors, state.seed_vector.as_slice());
-
-    candidate_vectors
-}
-
-fn push_distinct_finalization_candidate(
-    candidate_vectors: &mut Vec<Vec<f64>>,
-    candidate_vector: &[f64],
-) {
-    if candidate_vectors
-        .iter()
-        .any(|existing_vector| existing_vector.as_slice() == candidate_vector)
-    {
-        return;
-    }
-
-    candidate_vectors.push(candidate_vector.to_vec());
-}
-
-fn evaluate_restart_probe_finalization_candidate(
-    restart_id: &str,
-    seed_vector: &[f64],
-    candidate_vector: &[f64],
-    context: &JointRefinementContext,
-    solver_settings: &CalibrationOptimizerSettings,
-    evaluation_count: usize,
-    stop_reason: &str,
-) -> JointRefinementRestartOutcome {
-    if let Err(precheck_failure) = precheck_restart_seed(candidate_vector, context) {
-        return build_precheck_rejected_restart_outcome(
-            restart_id,
-            candidate_vector.to_vec(),
-            context,
-            solver_settings,
-            precheck_failure.as_str(),
+        push_distinct_restart_finalization_candidate(
+            &mut candidate_vectors,
+            round_best_vector.as_slice(),
         );
     }
 
-    let refreshed_vector =
-        refreshed_full_vector_candidate(seed_vector, candidate_vector, context, solver_settings);
-
-    let local_evaluation = evaluate_joint_candidate(
-        refreshed_vector.as_slice(),
-        context,
-        JointRefinementFidelityTier::Local,
-        solver_settings,
+    push_distinct_restart_finalization_candidate(
+        &mut candidate_vectors,
+        state.seed_vector.as_slice(),
     );
 
-    if local_evaluation.invalid_reason.is_some()
-        || joint_refinement_has_fatal_execution_failure(context)
-    {
-        return JointRefinementRestartOutcome {
-            restart_id: restart_id.to_string(),
-            parameter_vector: refreshed_vector,
-            // No final pass is valid after a local failure, so the final slot mirrors local.
-            final_evaluation: local_evaluation.clone(),
-            local_evaluation,
-            local_evaluation_count: evaluation_count,
-            stop_reason: stop_reason.to_string(),
-        };
-    }
-
-    let final_evaluation = evaluate_joint_candidate(
-        refreshed_vector.as_slice(),
-        context,
-        JointRefinementFidelityTier::Final,
-        solver_settings,
-    );
-
-    JointRefinementRestartOutcome {
-        restart_id: restart_id.to_string(),
-        parameter_vector: refreshed_vector,
-        local_evaluation,
-        final_evaluation,
-        local_evaluation_count: evaluation_count,
-        stop_reason: stop_reason.to_string(),
-    }
+    candidate_vectors
 }
 
 #[cfg(test)]

@@ -145,7 +145,7 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         "diagnostics",
         "joint_refinement_calibration_effort",
         "joint_refinement_audit_option_pricing_enabled",
-        "treat_inadmissible_calibration_warning_as_error",
+        "treat_invalid_restart_fallback_warning_as_error",
         "tick_objective_data_usage_policy",
     }
     assert (

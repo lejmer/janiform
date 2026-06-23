@@ -106,7 +106,6 @@ pub fn market_pressure_transform_values_and_derivative(
             .scale(
                 input
                     .parameters
-                    .physical_measure
                     .anchor_drift_per_signed_balance,
             )
             .subtract(ComplexScalar::new(
@@ -347,7 +346,6 @@ fn build_backward_tilted_generator(
     signed_balance_exposure_scale: f64,
 ) -> Result<DMatrix<Complex<f64>>, MarketPressureStateEvolutionError> {
     parameters
-        .physical_measure
         .transition_rates
         .validate_for_state_count(parameters.state_count())
         .map_err(|source| {
@@ -365,7 +363,6 @@ fn build_backward_tilted_generator(
 
         if state_position + 1 < state_count {
             let upward_rate = parameters
-                .physical_measure
                 .transition_rates
                 .upward_transition_rates[state_position];
 
@@ -375,7 +372,6 @@ fn build_backward_tilted_generator(
 
         if state_position > 0 {
             let downward_rate = parameters
-                .physical_measure
                 .transition_rates
                 .downward_transition_rates[state_position - 1];
 
@@ -392,7 +388,7 @@ fn build_backward_tilted_generator(
         })?;
 
         let pressure_loading = return_loading
-            .scale(parameters.physical_measure.anchor_drift_per_signed_balance)
+            .scale(parameters.anchor_drift_per_signed_balance)
             .subtract(ComplexScalar::new(
                 pressure_signed_imbalance_exposure_risk_price,
                 0.0,
@@ -480,18 +476,15 @@ mod tests {
         market_pressure_transform_values, market_pressure_transform_values_and_derivative,
     };
     use crate::market_pressure::{
-        MarketPressureMeasureParameters, MarketPressureParameters, MarketPressureState,
-        MarketPressureTransitionRates,
+        MarketPressureParameters, MarketPressureState, MarketPressureTransitionRates,
     };
 
     #[test]
     fn one_state_transform_matches_scalar_exponential() {
         let parameters = MarketPressureParameters::try_new(
             vec![0.5],
-            MarketPressureMeasureParameters::new(
-                MarketPressureTransitionRates::single_state(),
-                2.0,
-            ),
+            MarketPressureTransitionRates::single_state(),
+            2.0,
         )
         .expect("parameters should construct");
 
@@ -559,10 +552,8 @@ mod tests {
     fn transform_derivative_matches_one_state_closed_form() {
         let parameters = MarketPressureParameters::try_new(
             vec![0.5],
-            MarketPressureMeasureParameters::new(
-                MarketPressureTransitionRates::single_state(),
-                2.0,
-            ),
+            MarketPressureTransitionRates::single_state(),
+            2.0,
         )
         .expect("parameters should construct");
 
@@ -588,10 +579,8 @@ mod tests {
     fn pressure_risk_price_derivative_matches_one_state_closed_form() {
         let parameters = MarketPressureParameters::try_new(
             vec![0.5],
-            MarketPressureMeasureParameters::new(
-                MarketPressureTransitionRates::single_state(),
-                2.0,
-            ),
+            MarketPressureTransitionRates::single_state(),
+            2.0,
         )
         .expect("parameters should construct");
 
@@ -616,10 +605,8 @@ mod tests {
     fn binary_pressure_parameters() -> MarketPressureParameters {
         MarketPressureParameters::try_new(
             vec![-0.25, 0.25],
-            MarketPressureMeasureParameters::new(
-                MarketPressureTransitionRates::new(vec![0.5], vec![0.25]),
-                0.75,
-            ),
+            MarketPressureTransitionRates::new(vec![0.5], vec![0.25]),
+            0.75,
         )
         .expect("parameters should construct")
     }

@@ -423,9 +423,8 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
         "{context} term diagnostics"
     );
     assert_eq!(
-        actual_breakdown.hard_constraint_diagnostics,
-        expected_breakdown.hard_constraint_diagnostics,
-        "{context} hard constraints"
+        actual_breakdown.domain_margin_diagnostics, expected_breakdown.domain_margin_diagnostics,
+        "{context} domain margins"
     );
     assert_eq!(
         actual_breakdown.admissibility, expected_breakdown.admissibility,
@@ -2391,7 +2390,7 @@ pub(crate) fn staged_run_inputs(
         },
         joint_refinement_calibration_effort: None,
         joint_refinement_restart_candidate_budget_override: Some(1),
-        treat_inadmissible_calibration_warning_as_error: false,
+        treat_invalid_restart_fallback_warning_as_error: false,
         option_refinement_candidate_count_override: Some(1),
         option_refinement_wall_clock_budget_millis: None,
         audit_option_pricing_enabled: false,
@@ -2835,7 +2834,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
                     restart_candidate_budget_override: Some(1),
-                    treat_inadmissible_calibration_warning_as_error: false,
+                    treat_invalid_restart_fallback_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,

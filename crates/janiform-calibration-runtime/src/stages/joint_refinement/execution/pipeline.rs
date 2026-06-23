@@ -8,11 +8,11 @@ use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_JOINT_REFINEMENT_STAGE_HANDOFF_POLICY,
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationOptimizerSettings,
-    CalibrationResolvedStageSeed, CalibrationRunSpec, CalibrationStage,
-    JointRefinementStageOptimizerDiagnostics, ReturnComponentsStageFittedParameters,
-    calibration_stage_token, resolve_calibration_stage_seed_metadata,
-    stage_solver_settings_for_stage,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationLossTermKind,
+    CalibrationOptimizerSettings, CalibrationResolvedStageSeed, CalibrationRunSpec,
+    CalibrationStage, JointRefinementStageOptimizerDiagnostics,
+    ReturnComponentsStageFittedParameters, calibration_stage_token,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::splitmix64_output_mixer;
@@ -1437,30 +1437,15 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
         return Ok(None);
     }
 
-    let blocking_terms = best_restart
-        .final_evaluation
-        .breakdown
-        .admissibility
-        .blockers
-        .iter()
-        .take(3)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(",");
-
-    let blocking_terms = if blocking_terms.is_empty() {
-        "none".to_string()
-    } else {
-        blocking_terms
-    };
+    let invalid_term_ids = selected_restart_invalid_candidate_term_ids(best_restart);
 
     let warning = format!(
-        "joint refinement did not identify an admissible replacement for the baseline handoff: rejected_restart={} valid_restart_count={} admissible_restart_count={} rejected_global_loss={} blocking_terms={}",
+        "joint refinement did not identify a finite-loss replacement for the baseline handoff: rejected_restart={} valid_restart_count={} admissible_restart_count={} rejected_global_loss={} invalid_term_ids={}",
         best_restart.restart_id,
         valid_restart_count,
         admissible_restart_count,
         best_restart.final_evaluation.breakdown.global_loss,
-        blocking_terms,
+        invalid_term_ids,
     );
 
     if treat_warning_as_error {
@@ -1472,6 +1457,27 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
     }
 
     Ok(Some(warning))
+}
+
+fn selected_restart_invalid_candidate_term_ids(
+    restart_outcome: &JointRefinementRestartOutcome,
+) -> String {
+    let invalid_term_ids = restart_outcome
+        .final_evaluation
+        .breakdown
+        .term_diagnostics
+        .iter()
+        .filter(|term| term.term_kind == CalibrationLossTermKind::InvalidCandidate)
+        .take(3)
+        .map(|term| term.term_id.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    if invalid_term_ids.is_empty() {
+        "none".to_string()
+    } else {
+        invalid_term_ids
+    }
 }
 
 fn run_restart_search(
@@ -2221,7 +2227,7 @@ fn select_restart_outcome(
         &diagnostic_best_restart,
         valid_selectable_restart_outcome_refs.len(),
         count_admissible_restart_outcomes(valid_selectable_restart_outcome_refs.as_slice()),
-        stage_input.treat_inadmissible_calibration_warning_as_error,
+        stage_input.treat_invalid_restart_fallback_warning_as_error,
     )?;
 
     let best_restart = if warning.is_some() {

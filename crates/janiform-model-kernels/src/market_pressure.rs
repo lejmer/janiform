@@ -6,12 +6,10 @@ mod sampling;
 mod transform;
 
 pub use contracts::{
-    MarketPressureMeasureParameters, MarketPressureParameters, MarketPressureState,
-    MarketPressureTransitionRates,
+    MarketPressureParameters, MarketPressureState, MarketPressureTransitionRates,
 };
 pub use errors::{
-    MarketPressureCtmcTransitionError, MarketPressureMeasureParametersValidationError,
-    MarketPressureParametersValidationError, MarketPressureStateEvolutionError,
+    MarketPressureCtmcTransitionError, MarketPressureParametersValidationError, MarketPressureStateEvolutionError,
     MarketPressureStateValidationError, MarketPressureTransitionRatesValidationError,
 };
 pub use evolution::{

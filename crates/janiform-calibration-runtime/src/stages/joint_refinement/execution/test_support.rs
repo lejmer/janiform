@@ -117,12 +117,12 @@ pub(crate) fn test_joint_objective_breakdown(
             unidentified: false,
         }],
         term_diagnostics: Vec::new(),
-        hard_constraint_diagnostics: Vec::new(),
+        domain_margin_diagnostics: Vec::new(),
         admissibility: CalibrationLossAdmissibility {
             admissible: true,
             max_standardized_residual: global_loss,
             excess_loss: 0.0,
-            blockers: Vec::new(),
+            warnings: Vec::new(),
         },
     }
 }

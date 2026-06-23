@@ -252,6 +252,7 @@ pub use stages::return_components::{
     ReturnComponentsStageJumpDiagnostic, ReturnComponentsStageObjectiveMetricBuckets,
     ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageObjectiveScoringPolicy,
     ReturnComponentsStageObjectiveTermDiagnostic, ReturnComponentsStageObjectiveTermInput,
+    ReturnComponentsStageMarketPressureSelectionDiagnostic,
     ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStagePriceRangeSanityDiagnostic, ReturnComponentsStagePriceRangeSanityPolicy,
     ReturnComponentsStageProgressPhase, ReturnComponentsStageQuantileBinningPolicy,

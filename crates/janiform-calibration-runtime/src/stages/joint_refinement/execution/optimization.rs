@@ -1,5 +1,12 @@
+mod evaluation_timing;
+mod parameter_groups;
 mod parameter_space;
+mod population_control;
+#[allow(dead_code)]
+mod residual_control;
+mod residual_profile;
 mod restart_probe_pool;
+mod trust_region_policy;
 mod workflow;
 
 pub(crate) use workflow::{

@@ -27,7 +27,7 @@ pub fn market_pressure_interval_transition_moments(
 
     let (terminal_probabilities, integrated_state_probabilities) =
         evolve_probability_vector_and_integral(
-            &input.parameters.physical_measure.transition_rates,
+            &input.parameters.transition_rates,
             probabilities,
             input.interval_delta,
         )
@@ -64,11 +64,8 @@ pub fn market_pressure_interval_transition_moments(
         },
     )?;
 
-    let anchor_increment_mean = input
-        .parameters
-        .physical_measure
-        .anchor_drift_per_signed_balance
-        * signed_balance_exposure_mean;
+    let anchor_increment_mean =
+        input.parameters.anchor_drift_per_signed_balance * signed_balance_exposure_mean;
 
     validate_finite_number(anchor_increment_mean, "anchor_increment_mean").map_err(|source| {
         MarketPressureStateEvolutionError::InvalidAnchorIncrement {

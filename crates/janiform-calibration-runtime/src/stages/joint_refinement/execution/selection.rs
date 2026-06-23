@@ -850,13 +850,13 @@ mod tests {
                 unidentified: false,
             }],
             term_diagnostics: Vec::new(),
-            hard_constraint_diagnostics: Vec::new(),
+            domain_margin_diagnostics: Vec::new(),
             global_loss,
             admissibility: CalibrationLossAdmissibility {
                 admissible: false,
                 max_standardized_residual: global_loss,
                 excess_loss: global_loss,
-                blockers: vec!["test_fit".to_string()],
+                warnings: vec!["test_fit".to_string()],
             },
         }
     }

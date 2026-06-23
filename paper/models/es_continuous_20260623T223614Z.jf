@@ -17,11 +17,10 @@
     "execution_mode": "disk",
     "fit_report_summary": {
       "diagnostic_count": 7,
-      "run_id": "es_continuous_20260617T222139Z",
+      "run_id": "es_continuous_20260623T223614Z",
       "selected_stages": [
         "seasonality",
         "hawkes",
-        "observation_models",
         "return_components",
         "long_variance",
         "news_shocks",
@@ -37,10 +36,6 @@
         },
         {
           "stage": "hawkes",
-          "status": "success"
-        },
-        {
-          "stage": "observation_models",
           "status": "success"
         },
         {
@@ -65,11 +60,11 @@
         },
         {
           "stage": "joint_refinement",
-          "status": "success_with_warnings"
+          "status": "success"
         },
         {
           "stage": "finalization",
-          "status": "success_with_warnings"
+          "status": "success"
         }
       ],
       "success": true,
@@ -77,13 +72,13 @@
     },
     "fitted_parameter_summary": {
       "selected_candidate_ids": {
-        "finalization": "finalization_tick_moment_06_activity_aligned",
-        "hawkes": "market_data_fit_218_refined_2_519",
-        "joint_refinement": "joint_refinement_tick_moment_06_activity_aligned",
-        "long_variance": "generated_nig_005_known_001_surprise_001_mark_001_coupling_001",
-        "news_shocks": "generated_nig_005_known_001_surprise_001_mark_001_coupling_001",
-        "return_backfit": "long_variance_clock_residual_nig_scale",
-        "return_components": "generated_nig_005_known_001_surprise_001_mark_001_coupling_001"
+        "finalization": "finalization_return_scale_mean_absolute_return_1d",
+        "hawkes": "market_data_fit_216_refined_0_017",
+        "joint_refinement": "joint_refinement_return_scale_mean_absolute_return_1d",
+        "long_variance": "generated_nig_005_known_001_surprise_001_mark_001_coupling_001_pressure_001",
+        "news_shocks": "generated_nig_005_known_001_surprise_001_mark_001_coupling_001_pressure_001",
+        "return_backfit": "nig_delta_quantile_shape_backfit",
+        "return_components": "generated_nig_005_known_001_surprise_001_mark_001_coupling_001_pressure_001"
       },
       "stage_keys": [
         "finalization",
@@ -105,11 +100,10 @@
       "session": null
     },
     "price_coordinate_resolution": null,
-    "run_id": "es_continuous_20260617T222139Z",
+    "run_id": "es_continuous_20260623T223614Z",
     "selected_stages": [
       "seasonality",
       "hawkes",
-      "observation_models",
       "return_components",
       "long_variance",
       "news_shocks",
@@ -147,8 +141,8 @@
               "plus_minus": 15.28136134497,
               "plus_plus": 137.532252104731
             },
-            "beta": 181.48659758913718,
-            "lambda_bar": 2075.3734801965593,
+            "beta": 210.0,
+            "lambda_bar": 3584.3078170708295,
             "rho": {
               "minus_minus": 2.2250738585072014e-308,
               "minus_plus": 0.0,
@@ -176,17 +170,26 @@
         "pricing_block_fitted_parameters": null,
         "return_components_fitted_parameters": {
           "long_variance_parameters": {
-            "buy_event_loading": 0.000026054531803329257,
+            "buy_event_loading": 0.00001604546101146813,
             "mean_reversion_rate": 0.8715151212507933,
+            "return_energy_loading": 10912.672366700614,
             "sell_event_loading": 0.0,
+            "stationary_return_energy_rate_per_hour": 9.825932712977877e-6,
             "vol_of_vol": 1.3202387066366394
           },
-          "mean_reversion_fitted_parameters": {
-            "anchor_model": {
-              "pressure_level_gain": 0.0,
-              "pressure_persistence_per_reference_interval": 0.0,
-              "reference_interval_hours": 0.016666666666666666
+          "market_pressure_parameters": {
+            "physical_measure": {
+              "anchor_drift_per_signed_balance": -0.000017856171193408594,
+              "transition_rates": {
+                "downward_transition_rates": [],
+                "upward_transition_rates": []
+              }
             },
+            "side_imbalance_levels": [
+              0.00207597376845935
+            ]
+          },
+          "mean_reversion_fitted_parameters": {
             "kappa": 0.0
           },
           "news_process_configuration": {
@@ -195,8 +198,8 @@
                 "scheduled_event_timestamps_utc_nanos": []
               },
               "surprise": {
-                "closed_baseline_intensity": 0.10747678354316503,
-                "open_baseline_intensity": 0.001886802691717768
+                "closed_baseline_intensity": 0.107476635514,
+                "open_baseline_intensity": 0.001886800093
               }
             },
             "known_component_mark_scales": {
@@ -211,17 +214,23 @@
               }
             },
             "surprise_component_mark_scales": {
-              "activity_coupling_scale": 1002795.2273168458,
+              "activity_coupling_scale": 1002793.846154,
               "return_jump_drift": 0.0,
               "return_jump_volatility": 0.002748118419
             }
           },
           "nig_shared_plus_shift_configuration": {
-            "alpha": 16251.741617963497,
-            "beta_0": 824.848340006373,
-            "delta": 2.862894e-6,
-            "delta_beta": -1530.062460234102,
+            "alpha": 18906.642817161122,
+            "beta_0": 1629.081505897631,
+            "delta": 6.835434e-6,
+            "delta_beta": -91.001090017948,
             "mu": 0.0
+          },
+          "price_discretization_surface": {
+            "inference_policy": "minimum_positive_same_session_adjacent_open_price_difference_reference_price_normalized.v1",
+            "observation_policy": "nearest_reference_price_normalized_cumulative_latent_price_rounding_preserves_sub_tick_residuals.v1",
+            "tick_size": 0.00003809190215076891,
+            "tick_size_source": "user_provided_reference_price_normalized"
           },
           "return_clock_exposure_parameters": {
             "buy_excitation_return_clock_scale": 1.0279198886799426,
@@ -402,13 +411,7 @@
               0.9939710945591725
             ]
           },
-          "tick_grid_observation_model": {
-            "inference_policy": "minimum_positive_same_session_adjacent_open_price_difference_reference_price_normalized.v1",
-            "observation_policy": "nearest_reference_price_normalized_cumulative_latent_price_rounding_preserves_sub_tick_residuals.v1",
-            "tick_size": 0.00003809190215076891,
-            "tick_size_source": "user_provided_reference_price_normalized"
-          },
-          "timestamp_batching_observation_model": {
+          "timestamp_batching_surface": {
             "bucket_width_nanos": 256,
             "bucket_width_source": "training_data_inferred_same_session_timestamp_quantum",
             "coarse_interval_compatibility_policy": "observed_timestamp_ownership_constrained_to_latent_interval_for_direct_coarse_consistency.v1",
@@ -422,7 +425,7 @@
         }
       },
       "schema_version": "calibration.orchestration.stage_output.joint_refinement.v1",
-      "selected_candidate_id": "finalization_tick_moment_06_activity_aligned"
+      "selected_candidate_id": "finalization_return_scale_mean_absolute_return_1d"
     },
     "seasonality": {
       "clock_model": {
@@ -498,7 +501,7 @@
     }
   },
   "resolved_configuration": null,
-  "run_id": "es_continuous_20260617T222139Z",
+  "run_id": "es_continuous_20260623T223614Z",
   "schema_version": "calibration.high_level.model.v1",
   "session_resolution": {
     "ambiguity_warnings": [],
@@ -614,7 +617,7 @@
       }
     ],
     "resolution_kind": "automatic_inference",
-    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-06-17\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"XCME\",\"exchange_name\":\"CME Globex Futures\",\"timezone_name\":\"America/Chicago\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
+    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-06-23\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"XCME\",\"exchange_name\":\"CME Globex Futures\",\"timezone_name\":\"America/Chicago\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"},{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"00:00\",\"close_time\":\"16:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"globex\",\"open_time\":\"17:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
     "resolved_timezone_name": "America/Chicago",
     "schema_version": "calibration.market_data.session_resolution.v1",
     "selected_policy_id": "sources.sessions.XCME.v1",

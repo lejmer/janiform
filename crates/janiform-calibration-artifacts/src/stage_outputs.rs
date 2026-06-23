@@ -139,25 +139,43 @@ pub struct NewsShocksStageDiagnostics {
     pub surprise_return_jump_volatility: f64,
 }
 
-/// Scale accounting for the dynamic parameter handoff performed by return backfit.
+/// Delta and quantile-shape accounting for the return-backfit NIG adjustment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReturnBackfitStageScaleHandoffDiagnostic {
+pub struct ReturnBackfitStageDeltaQuantileShapeDiagnostic {
     /// Selected return-components NIG delta supplied to return backfit.
-    pub selected_nig_delta: Option<f64>,
-    /// NIG delta after scaling by the dynamic-clock variance handoff multiplier.
-    pub post_handoff_nig_delta: Option<f64>,
-    /// Selected return-components model variance scale supplied to return backfit.
-    pub selected_continuous_model_variance_scale: Option<f64>,
+    pub selected_nig_delta: f64,
+    /// NIG delta selected by the quantile-shape backfit.
+    pub post_backfit_nig_delta: f64,
+    /// Multiplicative NIG delta adjustment selected by return backfit.
+    pub delta_backfit_multiplier: f64,
     /// Multiplicative return-clock scale implied by the fitted long-variance and news state.
-    pub long_variance_clock_scale_multiplier: Option<f64>,
-    /// Multiplicative NIG delta adjustment applied during return backfit.
-    pub delta_handoff_multiplier: Option<f64>,
-    /// Base continuous-model variance scale after NIG delta handoff.
-    pub post_handoff_base_variance_scale: Option<f64>,
-    /// Dynamic-clock continuous-model variance scale after NIG delta handoff.
-    pub post_handoff_dynamic_variance_scale: Option<f64>,
-    /// Observed return variance used as a diagnostic reference.
-    pub observed_reference_variance_scale: Option<f64>,
+    pub long_variance_clock_scale_multiplier: f64,
+    /// Selected aggregation horizon label used for the empirical quantile comparison.
+    pub selected_aggregation_horizon: String,
+    /// Selected aggregation interval in UTC nanoseconds. Tick-level fallback has no interval.
+    pub selected_aggregation_interval_nanos: Option<i64>,
+    /// Aggregated empirical return sample count used by the quantile comparison.
+    pub selected_aggregation_sample_count: usize,
+    /// Minimum sample count required by the quantile-stability policy.
+    pub minimum_aggregation_sample_count: usize,
+    /// Number of quantiles included in the backfit score.
+    pub quantile_count: usize,
+    /// Order-of-magnitude multiplier used by the quantile-stability policy.
+    pub quantile_stability_order_multiplier: usize,
+    /// Quantile levels used by the backfit score.
+    pub quantile_levels: Vec<f64>,
+    /// Observed quantiles at the selected aggregation horizon.
+    pub observed_quantiles: Vec<f64>,
+    /// Fitted quantiles before the selected delta adjustment.
+    pub before_fitted_quantiles: Vec<f64>,
+    /// Fitted quantiles after the selected delta adjustment.
+    pub after_fitted_quantiles: Vec<f64>,
+    /// Quantile-shape score before the selected delta adjustment.
+    pub before_quantile_shape_score: f64,
+    /// Quantile-shape score after the selected delta adjustment.
+    pub after_quantile_shape_score: f64,
+    /// Number of data-derived delta multipliers evaluated.
+    pub candidate_delta_multiplier_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -171,7 +189,7 @@ pub struct ReturnBackfitStageObjectiveBlockDiagnostic {
 pub struct ReturnBackfitStageDiagnostics {
     pub estimation_policy: String,
     pub selected_candidate_id: String,
-    pub scale_handoff: ReturnBackfitStageScaleHandoffDiagnostic,
+    pub delta_quantile_shape_backfit: ReturnBackfitStageDeltaQuantileShapeDiagnostic,
     pub objective_blocks: Vec<ReturnBackfitStageObjectiveBlockDiagnostic>,
     pub warnings: Vec<String>,
 }
@@ -399,12 +417,13 @@ pub struct JointRefinementStageRuntimeProfile {
 pub struct JointRefinementStageRestartEvaluationTimingDiagnostic {
     pub restart_id: String,
     pub schedule_category: String,
+    pub fidelity_tier: String,
     pub candidate_evaluation_count: usize,
     pub search_direction_position: Option<usize>,
     pub search_direction_label: String,
     pub elapsed_millis: u64,
     pub objective: Option<f64>,
-    pub admissibility_blocker_count: Option<usize>,
+    pub admissibility_warning_count: Option<usize>,
     pub max_standardized_residual: Option<f64>,
     pub exact_closed_form_buy_count: Option<usize>,
     pub exact_closed_form_sell_count: Option<usize>,

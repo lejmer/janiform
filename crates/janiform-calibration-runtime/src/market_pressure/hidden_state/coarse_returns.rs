@@ -11,8 +11,9 @@ use super::hmm::{
 };
 use super::{
     HiddenSideBalanceFit, MarketPressureFitProgressObserver, SidePredictionFit,
-    emit_market_pressure_fit_progress, transition_rate_from_expected_count_and_exposure,
-    validate_strictly_increasing_support,
+    SelectionDiagnosticInput, emit_market_pressure_fit_progress,
+    market_pressure_selection_diagnostic, split_largest_residual_state,
+    transition_rate_from_expected_count_and_exposure, validate_strictly_increasing_support,
 };
 use crate::market_pressure::errors::MarketPressureFitError;
 use crate::market_pressure::fit::{
@@ -25,7 +26,8 @@ use crate::stages::parallelism::{
     contiguous_work_chunks,
 };
 use crate::stages::return_components::{
-    NetTradingTimeReturnLogDensityInput, log_density_net_trading_time_return,
+    NetTradingTimeReturnLogDensityInput, ReturnComponentsStageMarketPressureSelectionDiagnostic,
+    log_density_net_trading_time_return,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +72,11 @@ struct CoarseBinaryFitInput<'a> {
     solver_settings: &'a CalibrationOptimizerSettings,
 }
 
+pub(super) struct CoarseAugmentedSingleSideModelFitDecision {
+    pub(super) hidden_fit: Option<HiddenSideBalanceFit>,
+    pub(super) selection_diagnostics: Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
+}
+
 pub(super) fn fit_coarse_augmented_single_side_model(
     observations: &[MarketPressureSideBalanceObservation],
     coarse_return_observations: &[MarketPressureCoarseReturnObservation],
@@ -78,43 +85,108 @@ pub(super) fn fit_coarse_augmented_single_side_model(
     open_event_rate_per_hour: f64,
     solver_settings: &CalibrationOptimizerSettings,
     progress_observer: &mut Option<MarketPressureFitProgressObserver<'_>>,
-) -> Result<Option<HiddenSideBalanceFit>, MarketPressureFitError> {
+) -> Result<CoarseAugmentedSingleSideModelFitDecision, MarketPressureFitError> {
+    let effective_sample_count =
+        coarse_return_effective_sample_count(coarse_return_observations.len())?;
+
     let Some(coarse_return_law) = coarse_return_law else {
-        return Ok(None);
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "skipped",
+                reason: "missing_coarse_return_law",
+                candidate_support_levels: one_state_fit.support_levels.clone(),
+                effective_sample_count,
+                current_log_likelihood: None,
+                candidate_log_likelihood: None,
+                current_penalized_score: None,
+                candidate_penalized_score: None,
+            }),
+        ));
     };
 
     if coarse_return_observations.len() < 2
         || !open_event_rate_per_hour.is_finite()
         || open_event_rate_per_hour <= 0.0
     {
-        return Ok(None);
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "skipped",
+                reason: "insufficient_coarse_return_evidence",
+                candidate_support_levels: one_state_fit.support_levels.clone(),
+                effective_sample_count,
+                current_log_likelihood: None,
+                candidate_log_likelihood: None,
+                current_penalized_score: None,
+                candidate_penalized_score: None,
+            }),
+        ));
     }
 
-    let side_imbalance_level = one_state_fit.support_levels[0];
-    if side_imbalance_level == 0.0 {
-        return Ok(None);
-    }
-
-    let support_magnitude = side_imbalance_level.abs();
-    let support_levels = [-support_magnitude, support_magnitude];
+    let Some(support_levels) = coarse_augmented_support_levels(observations, one_state_fit)? else {
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "skipped",
+                reason: "no_binary_support",
+                candidate_support_levels: one_state_fit.support_levels.clone(),
+                effective_sample_count,
+                current_log_likelihood: None,
+                candidate_log_likelihood: None,
+                current_penalized_score: None,
+                candidate_penalized_score: None,
+            }),
+        ));
+    };
+    let support_magnitude = support_levels[1].abs().max(support_levels[0].abs());
 
     validate_strictly_increasing_support(&support_levels)?;
 
     let Some(initial_anchor_drift_per_signed_balance) = initial_anchor_drift_per_signed_balance(
         observations,
         coarse_return_observations,
-        side_imbalance_level,
+        one_state_fit.support_levels[0],
         support_magnitude,
         open_event_rate_per_hour,
     )?
     else {
-        return Ok(None);
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "skipped",
+                reason: "no_anchor_drift_seed",
+                candidate_support_levels: support_levels.to_vec(),
+                effective_sample_count,
+                current_log_likelihood: None,
+                candidate_log_likelihood: None,
+                current_penalized_score: None,
+                candidate_penalized_score: None,
+            }),
+        ));
     };
 
     let Some(initial_transition_rates) =
         initial_coarse_transition_rates(coarse_return_observations)?
     else {
-        return Ok(None);
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "skipped",
+                reason: "no_transition_rate_seed",
+                candidate_support_levels: support_levels.to_vec(),
+                effective_sample_count,
+                current_log_likelihood: None,
+                candidate_log_likelihood: None,
+                current_penalized_score: None,
+                candidate_penalized_score: None,
+            }),
+        ));
     };
 
     emit_market_pressure_fit_progress(
@@ -126,14 +198,30 @@ pub(super) fn fit_coarse_augmented_single_side_model(
 
     let Some(one_state_coarse_fit) = fit_one_state_coarse_return_model(
         coarse_return_observations,
-        side_imbalance_level,
+        one_state_fit.support_levels[0],
         open_event_rate_per_hour,
         coarse_return_law,
         solver_settings,
     )?
     else {
-        return Ok(None);
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "rejected",
+                reason: "one_state_coarse_fit_failed",
+                candidate_support_levels: support_levels.to_vec(),
+                effective_sample_count,
+                current_log_likelihood: None,
+                candidate_log_likelihood: None,
+                current_penalized_score: None,
+                candidate_penalized_score: None,
+            }),
+        ));
     };
+
+    let current_score =
+        penalized_one_state_coarse_return_score(&one_state_coarse_fit, effective_sample_count);
 
     emit_market_pressure_fit_progress(
         progress_observer,
@@ -155,30 +243,112 @@ pub(super) fn fit_coarse_augmented_single_side_model(
         progress_observer,
     )?
     else {
-        return Ok(None);
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "rejected",
+                reason: "binary_coarse_fit_failed",
+                candidate_support_levels: support_levels.to_vec(),
+                effective_sample_count,
+                current_log_likelihood: Some(one_state_coarse_fit.log_likelihood),
+                candidate_log_likelihood: None,
+                current_penalized_score: Some(current_score),
+                candidate_penalized_score: None,
+            }),
+        ));
     };
 
-    let effective_sample_count = usize_to_f64_exact(
-        coarse_return_observations.len(),
-        "market_pressure_coarse_return_count",
-    )
-    .map_err(|source| MarketPressureFitError::InvalidCoarseReturnObservationCount { source })?;
+    let candidate_score = penalized_coarse_return_score(&coarse_fit, effective_sample_count);
 
-    if penalized_coarse_return_score(&coarse_fit, effective_sample_count)
-        <= penalized_one_state_coarse_return_score(&one_state_coarse_fit, effective_sample_count)
-    {
-        return Ok(None);
+    if candidate_score <= current_score {
+        return Ok(coarse_augmented_fit_decision(
+            None,
+            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+                one_state_fit,
+                decision: "rejected",
+                reason: "penalized_score_not_improved",
+                candidate_support_levels: support_levels.to_vec(),
+                effective_sample_count,
+                current_log_likelihood: Some(one_state_coarse_fit.log_likelihood),
+                candidate_log_likelihood: Some(coarse_fit.log_likelihood),
+                current_penalized_score: Some(current_score),
+                candidate_penalized_score: Some(candidate_score),
+            }),
+        ));
     }
 
     let state_probabilities =
         side_state_probabilities_from_likelihood(observations, support_levels)?;
 
-    Ok(Some(HiddenSideBalanceFit {
-        support_levels: support_levels.to_vec(),
-        transition_rates: coarse_fit.transition_rates,
-        state_probabilities,
-        coarse_state_probabilities: coarse_fit.state_probabilities,
-    }))
+    Ok(coarse_augmented_fit_decision(
+        Some(HiddenSideBalanceFit {
+            support_levels: support_levels.to_vec(),
+            transition_rates: coarse_fit.transition_rates,
+            state_probabilities,
+            coarse_state_probabilities: coarse_fit.state_probabilities,
+            selection_diagnostics: Vec::new(),
+        }),
+        coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+            one_state_fit,
+            decision: "accepted",
+            reason: "penalized_score_improved",
+            candidate_support_levels: support_levels.to_vec(),
+            effective_sample_count,
+            current_log_likelihood: Some(one_state_coarse_fit.log_likelihood),
+            candidate_log_likelihood: Some(coarse_fit.log_likelihood),
+            current_penalized_score: Some(current_score),
+            candidate_penalized_score: Some(candidate_score),
+        }),
+    ))
+}
+
+struct CoarseReturnSelectionDiagnosticInput<'a> {
+    one_state_fit: &'a SidePredictionFit,
+    decision: &'static str,
+    reason: &'static str,
+    candidate_support_levels: Vec<f64>,
+    effective_sample_count: f64,
+    current_log_likelihood: Option<f64>,
+    candidate_log_likelihood: Option<f64>,
+    current_penalized_score: Option<f64>,
+    candidate_penalized_score: Option<f64>,
+}
+
+fn coarse_augmented_fit_decision(
+    hidden_fit: Option<HiddenSideBalanceFit>,
+    selection_diagnostic: ReturnComponentsStageMarketPressureSelectionDiagnostic,
+) -> CoarseAugmentedSingleSideModelFitDecision {
+    CoarseAugmentedSingleSideModelFitDecision {
+        hidden_fit,
+        selection_diagnostics: vec![selection_diagnostic],
+    }
+}
+
+fn coarse_return_selection_diagnostic(
+    input: CoarseReturnSelectionDiagnosticInput<'_>,
+) -> ReturnComponentsStageMarketPressureSelectionDiagnostic {
+    market_pressure_selection_diagnostic(SelectionDiagnosticInput {
+        evidence_source: "coarse_return",
+        decision: input.decision,
+        reason: input.reason,
+        current_state_count: input.one_state_fit.support_levels.len(),
+        candidate_state_count: input.candidate_support_levels.len(),
+        effective_sample_count: input.effective_sample_count,
+        current_log_likelihood: input.current_log_likelihood,
+        candidate_log_likelihood: input.candidate_log_likelihood,
+        current_penalized_score: input.current_penalized_score,
+        candidate_penalized_score: input.candidate_penalized_score,
+        current_support_levels: input.one_state_fit.support_levels.clone(),
+        candidate_support_levels: input.candidate_support_levels,
+    })
+}
+
+fn coarse_return_effective_sample_count(
+    observation_count: usize,
+) -> Result<f64, MarketPressureFitError> {
+    usize_to_f64_exact(observation_count, "market_pressure_coarse_return_count")
+        .map_err(|source| MarketPressureFitError::InvalidCoarseReturnObservationCount { source })
 }
 
 fn fit_binary_coarse_return_model(
@@ -266,6 +436,27 @@ fn fit_binary_coarse_return_model(
     }
 
     Ok(Some(fit))
+}
+
+fn coarse_augmented_support_levels(
+    observations: &[MarketPressureSideBalanceObservation],
+    one_state_fit: &SidePredictionFit,
+) -> Result<Option<[f64; 2]>, MarketPressureFitError> {
+    if let Some(split_support) = split_largest_residual_state(observations, one_state_fit)?
+        && split_support.len() == 2
+        && split_support[0] < 0.0
+        && split_support[1] > 0.0
+    {
+        return Ok(Some([split_support[0], split_support[1]]));
+    }
+
+    let side_imbalance_level = one_state_fit.support_levels[0];
+    let support_magnitude = side_imbalance_level.abs();
+    if support_magnitude > 0.0 {
+        return Ok(Some([-support_magnitude, support_magnitude]));
+    }
+
+    Ok(None)
 }
 
 fn coarse_return_transition_deltas(
@@ -379,31 +570,50 @@ fn initial_anchor_drift_per_signed_balance(
     support_magnitude: f64,
     open_event_rate_per_hour: f64,
 ) -> Result<Option<f64>, MarketPressureFitError> {
+    if let Some(coarse_anchor_drift_per_signed_balance) =
+        coarse_initial_anchor_drift_per_signed_balance(
+            coarse_return_observations,
+            support_magnitude,
+            open_event_rate_per_hour,
+        )?
+    {
+        return Ok(Some(coarse_anchor_drift_per_signed_balance));
+    }
+
     if let Some(side_anchor_drift_per_signed_balance) =
         side_anchor_drift_per_signed_balance(observations, side_imbalance_level)?
         && side_anchor_drift_per_signed_balance != 0.0
     {
-        return Ok(Some(side_anchor_drift_per_signed_balance));
+        return Ok(Some(side_anchor_drift_per_signed_balance.abs()));
     }
 
+    Ok(None)
+}
+
+fn coarse_initial_anchor_drift_per_signed_balance(
+    coarse_return_observations: &[MarketPressureCoarseReturnObservation],
+    support_magnitude: f64,
+    open_event_rate_per_hour: f64,
+) -> Result<Option<f64>, MarketPressureFitError> {
     let total_elapsed_hours = coarse_return_observations
         .iter()
         .map(|observation| observation.elapsed_hours)
         .sum::<f64>();
 
-    let total_log_return = coarse_return_observations
+    let total_absolute_log_return = coarse_return_observations
         .iter()
         .map(|observation| observation.log_return)
+        .map(f64::abs)
         .sum::<f64>();
 
     let signed_balance_exposure =
         support_magnitude * open_event_rate_per_hour * total_elapsed_hours;
 
-    if signed_balance_exposure == 0.0 || total_log_return == 0.0 {
+    if signed_balance_exposure == 0.0 || total_absolute_log_return == 0.0 {
         return Ok(None);
     }
 
-    let anchor_drift_per_signed_balance = total_log_return / signed_balance_exposure;
+    let anchor_drift_per_signed_balance = total_absolute_log_return / signed_balance_exposure;
     if !anchor_drift_per_signed_balance.is_finite() {
         return Err(MarketPressureFitError::InvalidAnchorDriftPerSignedBalance {
             value: anchor_drift_per_signed_balance,
@@ -470,14 +680,12 @@ fn fit_one_state_coarse_return_model(
     coarse_return_law: MarketPressureCoarseReturnLaw,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Result<Option<OneStateCoarseReturnFit>, MarketPressureFitError> {
-    let Some(anchor_drift_per_signed_balance) = one_state_anchor_drift_per_signed_balance(
+    let anchor_drift_per_signed_balance = one_state_anchor_drift_per_signed_balance(
         observations,
         side_imbalance_level,
         open_event_rate_per_hour,
     )?
-    else {
-        return Ok(None);
-    };
+    .unwrap_or(0.0);
 
     let log_likelihood = one_state_coarse_return_log_likelihood(
         observations,

@@ -61,7 +61,7 @@ pub use handoff_resume::{
     CalibrationStageSelectedCandidateSource,
 };
 pub use objective::{
-    CalibrationHardConstraintDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,
+    CalibrationDomainMarginDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,
     CalibrationLossFamilyDiagnostic, CalibrationLossTermDiagnostic, CalibrationLossTermKind,
 };
 pub use optimizer::{

@@ -1813,7 +1813,7 @@ fn prepared_market_data_plan_from_loading_output(
         joint_refinement_restart_candidate_budget_override: request
             .dynamics_search_restart_candidate_budget,
         joint_refinement_calibration_effort: request.calibration_effort,
-        treat_inadmissible_calibration_warning_as_error: request
+        treat_invalid_restart_fallback_warning_as_error: request
             .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,

@@ -810,7 +810,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 random_seed: stage_seed_metadata.stage_seed,
                 selection_policy:
                     "validity_then_weighted_objective_then_lexicographic_tie_break.v1".to_string(),
-                penalty_policy: "hard_constraint_violation_additive_penalty.v1".to_string(),
+                penalty_policy: "domain_margin_violation_additive_penalty.v1".to_string(),
                 bounds_policy: "candidate_family_cartesian_product.v1".to_string(),
                 solver_settings: solver_settings.clone(),
                 input_candidate_count: 12,

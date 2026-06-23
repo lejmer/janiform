@@ -58,7 +58,7 @@ In the report, two sections matter most:
 | `objective_breakdown.global_loss`      | What single loss did Janiform use to rank complete candidates? |
 | `objective_breakdown.family_losses`    | Which broad parts of the fit were strong or weak?              |
 | `objective_breakdown.term_diagnostics` | What observed and modeled measurements caused those losses?    |
-| `objective_breakdown.admissibility`    | Which terms, if any, blocked final acceptance?                 |
+| `objective_breakdown.admissibility`    | Is the objective finite, and which advisory warnings were recorded?    |
 
 Start with `objective_breakdown.family_losses`. If one area looks bad, use `objective_breakdown.term_diagnostics` to see the underlying observed and modeled numbers.
 
@@ -95,14 +95,14 @@ Janiform reports some terms that are useful but easy to misread.
 | Term diagnostic       | One observed-versus-modeled comparison inside a family.                                                           |
 | Standardized residual | A marginal observed-versus-modeled difference divided by its coordinate uncertainty scale.                        |
 | Covariance diagonal   | The coordinate variance used for marginal residual reporting inside a family covariance matrix.                   |
-| Admissibility blocker | A term or hard constraint that crossed the final acceptance threshold.                                            |
+| Admissibility warning | A domain-margin warning recorded alongside the objective loss.                                                    |
 | Activity              | How often market events arrive. In tick data, high activity means ticks arrive frequently.                        |
 | Return scale          | The typical size of price changes. It is related to volatility, but reported here as fitted return behavior.      |
 | Return shape          | The distributional shape of returns, including tails and how returns are spread out.                              |
 
 The global loss is not a probability, percentile, p-value, or percentage score. It is a calibration loss.
 
-The option search and selection tables use a different loss from restart optimization. During option refinement, `Cur. loss` is the best currently observed option surface loss for the active work item, and `Final loss` is the selected option surface loss after that work item completes. It is not the restart pseudo-likelihood plus an option term. A value around `1.0` means the model is around one quote scale away on average across the option tier being priced. Search-tier losses are proposal-screening losses, while selection and audit tiers use the exact pricing path as the guardrail.
+The option search and selection tables use a different loss from population refinement. During option refinement, `Cur. loss` is the best currently observed option surface loss for the active work item, and `Final loss` is the selected option surface loss after that work item completes. It is not the underlying-data pseudo-likelihood plus an option term. A value around `1.0` means the model is around one quote scale away on average across the option tier being priced. Search-tier losses are proposal-screening losses, while selection and audit tiers use the exact pricing path as the guardrail.
 
 ## How to read losses
 
@@ -131,13 +131,13 @@ Also avoid reading one number by itself. A useful fit is usually balanced: activ
 | `rv_activity_coupling`       | Does higher activity tend to come with higher price variation in the same way?  |
 | `options`                    | When options are present, do model prices match market quotes on quote scale?   |
 
-`global_loss` is the mean of available identified family losses plus domain-margin loss plus the invalid-candidate sentinel. Diagnostic families guide ranking through their family loss. Hard constraints and invalid candidates control admissibility.
+`global_loss` is the mean of available identified family losses plus domain-margin loss plus the invalid-candidate sentinel. Diagnostic families guide ranking through their family loss. Invalid-candidate sentinels make the objective non-finite.
 
 The global loss is useful for ranking candidate fits, but it is not a standalone quality grade. A model with a slightly worse global loss may still be easier to trust if its weak areas are less important for your use case.
 
-`hard_constraint_diagnostics` reports domain-margin constraints that Janiform treats as required for a usable model. Examples include Hawkes stationarity margin, NIG alpha-beta domain margin, and option/risk-neutral domain margin when options are present. A hard constraint can block admissibility even if the global loss looks low.
+`domain_margin_diagnostics` reports domain margins that Janiform treats as important for a usable model. Examples include Hawkes stationarity margin, NIG alpha-beta domain margin, and option/risk-neutral domain margin when options are present. A domain-margin violation contributes loss and records an admissibility warning.
 
-`objective_breakdown.admissibility.excess_loss` is the feasibility penalty reported by the objective contract. For diagnostic-family scoring it is `0.0`; hard constraints and invalid candidates are reported through `blockers`.
+`objective_breakdown.admissibility.excess_loss` is the feasibility penalty reported by the objective contract. For diagnostic-family scoring and domain-margin warnings it is `0.0`; invalid-candidate sentinels set it to a non-finite value.
 
 ## Detailed measurements
 
@@ -158,7 +158,6 @@ Each term has:
 | `standardized_residual`   | The signed mismatch after scaling.                                                 |
 | `covariance_diagonal`     | The coordinate variance used by the family covariance geometry.                    |
 | `loss`                    | The marginal squared standardized residual divided by the identified family rank.  |
-| `admissibility_blocker`   | Whether this term blocks final acceptance.                                         |
 
 Use these terms when a broad area looks weak.
 
@@ -194,7 +193,7 @@ During fitting, Janiform tries more than one candidate model. A candidate is one
 
 For example, one candidate might match activity very well but make returns too large. Another might match return size but lose the daily activity pattern. The selected model should be a balanced fit.
 
-Janiform therefore considers both the global loss and the shape of the family losses. Admissibility also checks individual standardized residuals and hard constraints, so a model cannot pass only because one number hides an unacceptable weakness elsewhere.
+Janiform therefore considers both the global loss and the shape of the family losses. Domain margins and individual standardized residuals remain visible in diagnostics, so a model is not judged only through one aggregate number.
 
 ## Saved runtime settings
 
@@ -212,9 +211,9 @@ Long variance is the persistent stochastic volatility state used by return clock
 
 The neutral long-variance level is `1.0`. Long-variance parameters control persistence, volatility of volatility, and buy/sell event feedback into future variance. Return-clock exposure parameters control how strongly Hawkes excitation contributes to buy-side and sell-side return clocks.
 
-The `Fit long variance` stage estimates an initial persistent variance state from multi-lag observed squared-return persistence, side activity relation to next-window squared returns, and normalized squared-return dispersion. The dispersion initializer is projected into the standard unit-stationary CIR variance boundary before restart optimization so the handoff point is inside the same parameter domain that restart search uses.
+The `Fit long variance` stage estimates an initial persistent variance state from multi-lag observed squared-return persistence, side activity relation to next-window squared returns, and normalized squared-return dispersion. The dispersion initializer is projected into the standard unit-stationary CIR variance boundary before population refinement so the handoff point is inside the same parameter domain that joint refinement uses.
 
-Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`: realized variance, variance-of-variance, return skewness, return excess kurtosis, activity/variance correlation, signed-activity relation to next-interval variance, temporal block standard errors where a coarser configured horizon is available, and delete-one jackknife standard errors for skewness and excess kurtosis. Return-only diagnostics use return intervals, while activity-aware diagnostics use tick-derived activity intervals. Joint refinement scores the horizon diagnostics with available sampling uncertainty under the `long_variance` objective family so restart optimization can move the long-variance parameters when those persistent variance targets support it.
+Its report contains observed horizon diagnostics at `5min`, `1h`, `1d`, and `1w`: realized variance, variance-of-variance, return skewness, return excess kurtosis, activity/variance correlation, signed-activity relation to next-interval variance, temporal block standard errors where a coarser configured horizon is available, and delete-one jackknife standard errors for skewness and excess kurtosis. Return-only diagnostics use return intervals, while activity-aware diagnostics use tick-derived activity intervals. Joint refinement scores the horizon diagnostics with available sampling uncertainty under the `long_variance` objective family so population refinement can move the long-variance parameters when those persistent variance targets support it.
 
 When coarse data is present, hourly long-variance return intervals keep tick-derived hourly intervals first and use directly accumulated coarse hourly return intervals only for gaps. Coarse intervals never contribute activity counts. The fields `interval_source_selection_policy`, `return_interval_tick_count`, `return_interval_coarse_candidate_count`, `return_interval_coarse_gap_fill_count`, `return_interval_tick_coarse_overlap_count`, `return_interval_count`, and `activity_interval_count` summarize that source-selection step. The fields `persistence_lag_diagnostics`, `selected_mean_reversion_rate`, `event_loading_fit_candidate_pair_count`, `event_loading_fit_pair_count`, and `event_loading_fit_coverage_ratio` summarize the parameter-estimation evidence.
 
@@ -279,39 +278,39 @@ A search restart is another starting point for calibration. Restarts are useful 
 
 Search restarts are built from the fit residuals Janiform can evaluate before the full simulation pass. Some restarts adjust return scale, some preserve the current activity model while changing return shape, and some combine return-shape changes with activity-level alignment. If the hand-built restart pool is too narrow, Janiform fills the frontier with local quasi-random points around the staged model.
 
-The restart frontier is selected from low-cost screening losses before expensive restart optimization. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
+The restart frontier is selected from low-cost screening losses before population refinement. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
 
-Before filling the frontier with quasi-random seeds, Janiform builds sensitivity repair seeds from the best screened candidates. For each anchor candidate, it perturbs each active parameter inside the validated bounds, measures how active finite standardized residuals respond, solves a small damped least-squares repair step in normalized parameter space, and adds bounded trust-region versions of that step back into the same screening and diversity selection path. This is term-driven rather than asset-specific: the active residual geometry defines the repair direction.
+Before filling the frontier with quasi-random seeds, Janiform builds sensitivity repair seeds from the best screened candidates. For each anchor candidate, it perturbs each active parameter inside the validated bounds, measures how active finite standardized residuals respond, solves a small damped least-squares repair step in normalized parameter space, and adds bounded trust-region versions of that step back into the same screening and diversity selection path. The active residual geometry defines the term-driven repair direction.
 
-During restart search, Janiform optimizes the full active parameter vector with one bounded trust-region search per restart. The search state updates return-shape, activity, and coupling parameters as one joint candidate. Each restart receives an initial objective sample, and the shared restart pool allocates later probes toward restarts with lower observed loss or stronger early improvement. Search rounds evaluate mechanism-level model probes, fit residual sensitivity models from retained probes, evaluate coupled trust-region proposals ranked by predicted residual objective, and update the trust radius from prediction accuracy. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
+During population refinement, Janiform evaluates a population of full active parameter vectors across the restart frontier. Seed candidates anchor the population, sampled candidates are drawn from an elite-refitted distribution inside the validated parameter bounds, and finalization validates distinct ranked candidates at local and final fidelity. The search state updates return-shape, activity, and coupling parameters as one joint candidate. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
 
-The Hawkes search coordinate is a stationary event-rate coordinate rather than a raw `lambda_bar` coordinate. Janiform solves `lambda_bar` from the current excitation matrix and the requested stationary open-event rate, which lets the search change clustering and decay without accidentally changing total activity on every single-coordinate probe.
+The Hawkes search coordinate is a stationary event-rate coordinate. Janiform solves `lambda_bar` from the current excitation matrix and the requested stationary open-event rate, which lets the search change clustering and decay without accidentally changing total activity on every single-coordinate probe.
 
-During restart optimization, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent full-vector probe, `Accepted loss` is the best accepted loss for the active restart, and `Final loss` is the completed restart loss when the restart has reached a final evaluation. Smaller loss is better.
+During population refinement, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent full-vector probe, `Best loss` is the best retained population candidate, and `Final loss` is the completed restart loss when the restart has reached a final evaluation. Smaller loss is better.
 
-The restart table may also show exact return-likelihood evaluator counters. `CF-Buy` is the number of return blocks evaluated by the closed-form single-side buy density, `CF-Sell` is the number evaluated by the closed-form single-side sell density, and `Mix` is the number evaluated by the tilted mixed buy/sell inversion path. High `CF-Buy` or `CF-Sell` means the return likelihood mostly used the cheaper closed-form kernels. High `Mix` means more blocks required the more expensive mixed-side tilted inversion path.
+Population refinement progress may also show exact return-likelihood evaluator counters. `CF-Buy` is the number of return blocks evaluated by the closed-form single-side buy density, `CF-Sell` is the number evaluated by the closed-form single-side sell density, and `Mix` is the number evaluated by the tilted mixed buy/sell inversion path. High `CF-Buy` or `CF-Sell` means the return likelihood mostly used the cheaper closed-form kernels. High `Mix` means more blocks required the more expensive mixed-side tilted inversion path.
 
 The report may mention these restarts because they explain how Janiform searched. You usually do not need to tune them when reading a normal fit report.
 
 ### Option refinement progress
 
-Option refinement uses option quote residual scores, not the restart optimization pseudo-likelihood loss. The option score is the maturity-weighted root-mean-square of option quote residuals after each residual has been scaled by its quote spread. A score near `1.0` means the model is typically about one quoted spread away from the observed mid-price on the tier being evaluated. Smaller is better.
+Option refinement uses option quote residual scores, not the population refinement pseudo-likelihood loss. The option score is the maturity-weighted root-mean-square of option quote residuals after each residual has been scaled by its quote spread. A score near `1.0` means the model is typically about one quoted spread away from the observed mid-price on the tier being evaluated. Smaller is better.
 
 The option search tier first prices an exact sensitivity baseline, then validates pricing-measure proposals with the same terminal-affine pricing semantics used by selection and audit. The default search budget is deterministic: one exact baseline evaluation plus one proposal evaluation per active pricing coordinate. If `joint_refinement_option_refinement_wall_clock_budget_millis` is provided, it acts as an explicit wall-clock guard around that deterministic search work.
 
-In option progress tables, `Cur. loss` is the latest option residual score known for the running candidate. During a pricing call this can be the score from the previous completed evaluation for that candidate, because the current pricing call has not produced a score yet. `Best loss` is the best option score seen inside the active option phase. `Final loss` is the option score recorded when that candidate finishes the phase. These columns are not numerically comparable with restart `Trial loss`, `Accepted loss`, or `Final loss`, because those restart columns come from the joint underlying-data objective.
+In option progress tables, `Cur. loss` is the latest option residual score known for the running candidate. During a pricing call this can be the score from the previous completed evaluation for that candidate, because the current pricing call has not produced a score yet. `Best loss` is the best option score seen inside the active option phase. `Final loss` is the option score recorded when that candidate finishes the phase. These columns are not numerically comparable with population refinement `Trial loss`, `Best loss`, or `Final loss`, because those population refinement columns come from the joint underlying-data objective.
 
 The `Interval` column reports option-pricing interval progress. When row-level pricing detail is available, `Interval` shows the current interval position and `Rows` shows row progress inside that interval. When row detail is not available, `Interval` shows the completed interval count.
 
 ### Runtime profile
 
-Joint refinement reports `runtime_profile` in successful and failed stage reports. The wall-clock fields separate restart optimization, coarse consistency checks, final seed evaluation, and final assembly.
+Joint refinement reports `runtime_profile` in successful and failed stage reports. The wall-clock fields separate population refinement, coarse consistency checks, final seed evaluation, and final assembly.
 
 The cumulative fields split objective evaluation cost into deterministic work, likelihood-context construction, tick/5m/15m likelihood evaluation, expected activity counts, deterministic activity shape/level checks, seed-summary simulation, raw seed metric extraction, loss assembly, and option pricing. The cache counters show whether repeated evaluations reused objective, deterministic, seed-summary, aggregated-likelihood-context, or option-pricing artifacts.
 
 Use `cumulative_deterministic_evaluation_millis` as the broad total for deterministic objective work, then use the narrower cumulative fields to identify which deterministic substep dominates. Millisecond counters can remain zero for very small samples or very cheap substeps.
 
-Restart optimization also records `restart_evaluation_timing_diagnostics` for completed probes. These diagnostics include restart id, scheduling category, search direction, elapsed milliseconds, objective value, admissibility blocker count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long restart searches leave a durable timing trail before the final report is assembled.
+Population refinement also records `restart_evaluation_timing_diagnostics` for completed probes. These diagnostics include restart id, scheduling category, search direction, elapsed milliseconds, objective value, admissibility warning count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long refinement searches leave a durable timing trail before the final report is assembled.
 
 ## A practical reading order
 

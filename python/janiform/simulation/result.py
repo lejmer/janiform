@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 from .._workflow_outputs import (
+    _simulation_output_columns,
     persist_coarse_simulation,
     persist_seeded_tick_simulation,
     simulation_output_columns,
@@ -126,19 +127,13 @@ class JaniformSimulationResult:
     def _column_names(self) -> tuple[str, ...]:
         if self.simulation_kind == SimulationKind.COARSE_INTERVAL:
             rows = self._rows()
-            return tuple(rows[0].keys()) if rows else (
-                "interval_start_utc",
-                "interval_end_utc",
-                "market_state",
-                "total_flow",
-                "buy_flow",
-                "sell_flow",
-                "known_news_intensity",
-                "surprise_news_intensity",
-                "observed_log_price",
-                "anchor_value",
-                "market_pressure_state",
-                "deviation_from_anchor",
+            if rows:
+                return tuple(rows[0].keys())
+
+            return _simulation_output_columns(
+                self._preferences,
+                include_side=False,
+                include_market_pressure_state=False,
             )
 
         if self._preferences is None:
@@ -168,7 +163,6 @@ def coarse_simulation_rows(
                 "surprise_news_intensity": interval.surprise_news_intensity,
                 "observed_log_price": interval.observed_log_price,
                 "anchor_value": interval.anchor_value,
-                "market_pressure_state": interval.market_pressure_state,
                 "deviation_from_anchor": interval.deviation_from_anchor,
             }
         )

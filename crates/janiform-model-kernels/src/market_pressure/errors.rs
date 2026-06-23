@@ -53,38 +53,6 @@ impl Display for MarketPressureTransitionRatesValidationError {
 
 impl Error for MarketPressureTransitionRatesValidationError {}
 
-/// Validation failure for market pressure measure construction.
-#[derive(Debug, Clone, PartialEq)]
-pub enum MarketPressureMeasureParametersValidationError {
-    /// The transition rates were invalid.
-    InvalidTransitionRates {
-        source: MarketPressureTransitionRatesValidationError,
-    },
-    /// The anchor drift loading was invalid.
-    InvalidAnchorDriftPerSignedBalance { value: f64 },
-}
-
-impl Display for MarketPressureMeasureParametersValidationError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidTransitionRates { source } => write!(formatter, "{source}"),
-            Self::InvalidAnchorDriftPerSignedBalance { value } => write!(
-                formatter,
-                "anchor_drift_per_signed_balance must be finite, found {value}"
-            ),
-        }
-    }
-}
-
-impl Error for MarketPressureMeasureParametersValidationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::InvalidTransitionRates { source } => Some(source),
-            Self::InvalidAnchorDriftPerSignedBalance { .. } => None,
-        }
-    }
-}
-
 /// Validation failure for market pressure parameter construction.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarketPressureParametersValidationError {
@@ -101,10 +69,12 @@ pub enum MarketPressureParametersValidationError {
         state_position: usize,
         value: f64,
     },
-    /// Physical measure parameters were invalid.
-    InvalidPhysicalMeasure {
-        source: MarketPressureMeasureParametersValidationError,
+    /// Transition rates were invalid.
+    InvalidTransitionRates {
+        source: MarketPressureTransitionRatesValidationError,
     },
+    /// The anchor drift loading was invalid.
+    InvalidAnchorDriftPerSignedBalance { value: f64 },
 }
 
 impl Display for MarketPressureParametersValidationError {
@@ -137,9 +107,13 @@ impl Display for MarketPressureParametersValidationError {
                 formatter,
                 "side_imbalance_levels must be strictly increasing, found side_imbalance_levels[{previous_state_position}]={previous_value} before side_imbalance_levels[{state_position}]={value}"
             ),
-            Self::InvalidPhysicalMeasure { source } => {
-                write!(formatter, "physical_measure is invalid: {source}")
+            Self::InvalidTransitionRates { source } => {
+                write!(formatter, "transition_rates are invalid: {source}")
             }
+            Self::InvalidAnchorDriftPerSignedBalance { value } => write!(
+                formatter,
+                "anchor_drift_per_signed_balance must be finite, found {value}"
+            ),
         }
     }
 }
@@ -147,11 +121,12 @@ impl Display for MarketPressureParametersValidationError {
 impl Error for MarketPressureParametersValidationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidPhysicalMeasure { source } => Some(source),
+            Self::InvalidTransitionRates { source } => Some(source),
             Self::EmptySideImbalanceSupport
             | Self::InvalidSideImbalanceLevel { .. }
             | Self::SideImbalanceLevelOutOfRange { .. }
-            | Self::SideImbalanceLevelsNotIncreasing { .. } => None,
+            | Self::SideImbalanceLevelsNotIncreasing { .. }
+            | Self::InvalidAnchorDriftPerSignedBalance { .. } => None,
         }
     }
 }

@@ -2101,6 +2101,24 @@ pub struct ReturnComponentsStageCandidateFamilyCounts {
     pub market_pressure_family_count: usize,
 }
 
+/// Market-pressure state-count selection decision recorded during stage fitting.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageMarketPressureSelectionDiagnostic {
+    pub evidence_source: String,
+    pub decision: String,
+    pub reason: String,
+    pub current_state_count: usize,
+    pub candidate_state_count: usize,
+    pub effective_sample_count: f64,
+    pub current_log_likelihood: Option<f64>,
+    pub candidate_log_likelihood: Option<f64>,
+    pub current_penalized_score: Option<f64>,
+    pub candidate_penalized_score: Option<f64>,
+    pub score_improvement: Option<f64>,
+    pub current_support_levels: Vec<f64>,
+    pub candidate_support_levels: Vec<f64>,
+}
+
 /// Candidate parameterization and objective inputs for return-components-stage fitting.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnComponentsStageCandidateInput {
@@ -2553,6 +2571,8 @@ pub struct ReturnComponentsStageFittedPayload {
     #[serde(skip)]
     pub(crate) market_pressure_runtime_state: Option<Arc<MarketPressureRuntimeState>>,
     pub candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic>,
+    pub market_pressure_selection_diagnostics:
+        Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
     pub candidate_generation_policy: &'static str,
     pub objective_weighting_policy: &'static str,
     pub objective_metric_bucket_policy: &'static str,

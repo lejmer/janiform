@@ -30,7 +30,7 @@ where
 
     while remaining_delta > 0.0 {
         let exit_rate = state_exit_rate(
-            &input.parameters.physical_measure.transition_rates,
+            &input.parameters.transition_rates,
             state_position,
         );
         if exit_rate == 0.0 {
@@ -52,7 +52,7 @@ where
         remaining_delta -= waiting_time;
 
         state_position = sample_next_state_position(
-            &input.parameters.physical_measure.transition_rates,
+            &input.parameters.transition_rates,
             state_position,
             randomness_stream.next_unit_interval_f64(),
         );
@@ -72,11 +72,8 @@ where
         },
     )?;
 
-    let anchor_increment = input
-        .parameters
-        .physical_measure
-        .anchor_drift_per_signed_balance
-        * signed_balance_exposure;
+    let anchor_increment =
+        input.parameters.anchor_drift_per_signed_balance * signed_balance_exposure;
 
     validate_finite_number(anchor_increment, "market_pressure_anchor_increment").map_err(
         |source| MarketPressureStateEvolutionError::InvalidAnchorIncrement {

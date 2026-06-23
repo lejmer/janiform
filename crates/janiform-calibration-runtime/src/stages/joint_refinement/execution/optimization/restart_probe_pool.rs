@@ -7,6 +7,10 @@ use crate::stages::joint_refinement::contracts::JointRefinementStageProgressUpda
 use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 
 use super::super::{JointRefinementContext, elapsed_millis, ordered_parameter_bits};
+use super::trust_region_policy::{
+    refined_trust_region_radius, residual_squared_objective, trust_region_radius_after_prediction,
+    trust_region_radius_is_at_tolerance,
+};
 use super::workflow::{
     JOINT_REFINEMENT_RESTART_FAILED_SEARCH_REFINEMENT_DIVISOR, JointRefinementBudgetSchedule,
     JointRefinementRestartOptimizationOutput, RestartObjectiveEvaluation, RestartObjectiveResidual,
@@ -20,10 +24,7 @@ use progress::emit_batched_restart_pool_finished;
 use racing::racing_restart_positions;
 use repair::restart_repair_loss;
 use scheduler::{RestartProbeWorkerPoolInput, run_restart_probe_worker_pool};
-use trust_region::{
-    refined_trust_region_radius, residual_squared_objective, trust_region_candidate_vectors,
-    trust_region_radius_after_prediction, trust_region_radius_is_at_tolerance,
-};
+use trust_region::trust_region_candidate_vectors;
 
 mod finalization;
 mod model_probe;
@@ -982,7 +983,7 @@ mod tests {
             elapsed_millis: 1,
             evaluation: Some(RestartObjectiveEvaluation {
                 objective,
-                admissibility_blocker_count: 0,
+                admissibility_warning_count: 0,
                 max_standardized_residual: Some(0.0),
                 exact_likelihood_evaluator_counts: None,
                 residuals: vec![RestartObjectiveResidual {
@@ -1009,7 +1010,7 @@ mod tests {
             elapsed_millis: 1,
             evaluation: Some(RestartObjectiveEvaluation {
                 objective,
-                admissibility_blocker_count: 0,
+                admissibility_warning_count: 0,
                 max_standardized_residual: Some(0.0),
                 exact_likelihood_evaluator_counts: None,
                 residuals: vec![RestartObjectiveResidual {

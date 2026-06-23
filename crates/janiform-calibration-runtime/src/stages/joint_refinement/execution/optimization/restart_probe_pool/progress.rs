@@ -11,6 +11,10 @@ use super::super::super::{
     JointRefinementRestartOutcome, best_joint_restart_outcome,
     joint_restart_outcome_has_better_final_loss,
 };
+use super::super::evaluation_timing::{
+    RESTART_SEARCH_FIDELITY_TIER_LABEL, RestartEvaluationTimingDiagnosticInput,
+    restart_evaluation_timing_diagnostic,
+};
 use super::super::workflow::emit_joint_refinement_progress;
 use super::{RestartProbeResult, RestartProbeState};
 
@@ -18,38 +22,16 @@ pub(super) fn restart_probe_evaluation_timing_diagnostic(
     state: &RestartProbeState,
     result: &RestartProbeResult,
 ) -> JointRefinementStageRestartEvaluationTimingDiagnostic {
-    let exact_likelihood_evaluator_counts = result
-        .evaluation
-        .as_ref()
-        .and_then(|evaluation| evaluation.exact_likelihood_evaluator_counts);
-
-    // Diagnostics own labels because they are stored after the scheduler state is gone.
-    JointRefinementStageRestartEvaluationTimingDiagnostic {
-        restart_id: state.restart_id.clone(),
-        schedule_category: result.schedule_category.to_string(),
+    restart_evaluation_timing_diagnostic(RestartEvaluationTimingDiagnosticInput {
+        restart_id: state.restart_id.as_str(),
+        schedule_category: result.schedule_category,
+        fidelity_tier: RESTART_SEARCH_FIDELITY_TIER_LABEL,
         candidate_evaluation_count: result.candidate_evaluation_count,
         search_direction_position: result.search_direction_position,
-        search_direction_label: result.search_direction_label.clone(),
+        search_direction_label: result.search_direction_label.as_str(),
         elapsed_millis: result.elapsed_millis,
-        objective: result
-            .evaluation
-            .as_ref()
-            .map(|evaluation| evaluation.objective),
-        admissibility_blocker_count: result
-            .evaluation
-            .as_ref()
-            .map(|evaluation| evaluation.admissibility_blocker_count),
-        max_standardized_residual: result
-            .evaluation
-            .as_ref()
-            .and_then(|evaluation| evaluation.max_standardized_residual),
-        exact_closed_form_buy_count: exact_likelihood_evaluator_counts
-            .map(|counts| counts.closed_form_buy),
-        exact_closed_form_sell_count: exact_likelihood_evaluator_counts
-            .map(|counts| counts.closed_form_sell),
-        exact_tilted_mixed_count: exact_likelihood_evaluator_counts
-            .map(|counts| counts.tilted_mixed),
-    }
+        evaluation: result.evaluation.as_ref(),
+    })
 }
 
 pub(super) fn emit_batched_restart_progress(
@@ -477,12 +459,13 @@ mod tests {
             Some(JointRefinementStageRestartEvaluationTimingDiagnostic {
                 restart_id: "tick_moment_04".to_string(),
                 schedule_category: "model_probe".to_string(),
+                fidelity_tier: "coarse_local".to_string(),
                 candidate_evaluation_count: 7,
                 search_direction_position: Some(2),
                 search_direction_label: "interpolation.nig_alpha.positive".to_string(),
                 elapsed_millis: 12,
                 objective: Some(5.0),
-                admissibility_blocker_count: Some(0),
+                admissibility_warning_count: Some(0),
                 max_standardized_residual: Some(1.0),
                 exact_closed_form_buy_count: Some(3),
                 exact_closed_form_sell_count: Some(4),

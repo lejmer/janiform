@@ -50,8 +50,8 @@ use crate::stages::return_components::{
     nig_search_point_from_configuration,
 };
 use janiform_calibration_artifacts::{
-    CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermKind,
-    CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
+    CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermDiagnostic,
+    CalibrationLossTermKind, CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
     SurpriseNewsDeterministicIntensityProfile,
 };
 
@@ -283,7 +283,6 @@ fn build_test_objective_term(
         standardized_residual: Some(0.0),
         covariance_diagonal: Some(observed_value * observed_value),
         loss: 0.0,
-        admissibility_blocker: false,
     }
 }
 
@@ -323,32 +322,46 @@ fn build_test_joint_breakdown(
         global_loss,
         family_losses,
         term_diagnostics: Vec::new(),
-        hard_constraint_diagnostics: Vec::new(),
+        domain_margin_diagnostics: Vec::new(),
         admissibility: CalibrationLossAdmissibility {
             admissible: true,
             max_standardized_residual: 1.0,
             excess_loss: 0.0,
-            blockers: Vec::new(),
+            warnings: Vec::new(),
         },
     }
 }
 
-fn build_test_inadmissible_joint_breakdown(
+fn build_test_invalid_joint_breakdown(
     tick_return_asymmetry_fit: f64,
     tick_return_scale_fit: f64,
-    global_loss: f64,
-    blocker: &str,
+    invalid_term_id: &str,
 ) -> JointRefinementStageObjectiveBreakdown {
     let mut breakdown = build_test_joint_breakdown(
         tick_return_asymmetry_fit,
         tick_return_scale_fit,
-        global_loss,
+        f64::INFINITY,
     );
+    breakdown
+        .term_diagnostics
+        .push(CalibrationLossTermDiagnostic {
+            term_id: invalid_term_id.to_string(),
+            family_id: "invalid_candidate".to_string(),
+            term_kind: CalibrationLossTermKind::InvalidCandidate,
+            observed_value: None,
+            model_value: None,
+            observed_standard_error: None,
+            model_standard_error: None,
+            uncertainty_scale: None,
+            standardized_residual: None,
+            covariance_diagonal: None,
+            loss: f64::INFINITY,
+        });
     breakdown.admissibility = CalibrationLossAdmissibility {
         admissible: false,
         max_standardized_residual: 4.0,
-        excess_loss: 0.5,
-        blockers: vec![blocker.to_string()],
+        excess_loss: f64::INFINITY,
+        warnings: Vec::new(),
     };
     breakdown
 }
@@ -1486,7 +1499,7 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
 
     let fallback_restart = build_test_restart_outcome(
         "fallback_restart",
-        build_test_inadmissible_joint_breakdown(0.8, 0.8, 0.7, "activity_level_fit"),
+        build_test_invalid_joint_breakdown(0.8, 0.8, "activity_level_fit"),
     );
 
     let selected_restart_outcomes = vec![&admissible_restart, &fallback_restart];
@@ -1507,7 +1520,7 @@ fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
 fn option_refinement_frontier_is_empty_without_admissible_restart_outcomes() {
     let fallback_restart = build_test_restart_outcome(
         "fallback_restart",
-        build_test_inadmissible_joint_breakdown(0.8, 0.8, 0.7, "activity_level_fit"),
+        build_test_invalid_joint_breakdown(0.8, 0.8, "activity_level_fit"),
     );
 
     let selected_restart_outcomes = vec![&fallback_restart];
@@ -1571,7 +1584,7 @@ fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
 fn selected_restart_validation_rejects_inadmissible_candidate() {
     let restart_outcome = build_test_restart_outcome(
         "joint_refinement_midpoint",
-        build_test_inadmissible_joint_breakdown(1.0, 1.0, 0.8, "activity_level_fit"),
+        build_test_invalid_joint_breakdown(1.0, 1.0, "activity_level_fit"),
     );
 
     let failure = ensure_valid_selected_restart_outcome(&restart_outcome, 0, 0, true)
@@ -1580,11 +1593,15 @@ fn selected_restart_validation_rejects_inadmissible_candidate() {
     match failure {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message } => {
             assert!(
-                error_message.contains("did not identify an admissible replacement"),
+                error_message.contains("did not identify a finite-loss replacement"),
                 "unexpected failure message: {error_message}"
             );
             assert!(
                 error_message.contains("rejected_restart=joint_refinement_midpoint"),
+                "unexpected failure message: {error_message}"
+            );
+            assert!(
+                error_message.contains("invalid_term_ids=activity_level_fit"),
                 "unexpected failure message: {error_message}"
             );
         }

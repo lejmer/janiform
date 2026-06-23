@@ -174,9 +174,9 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
         .map(|family_loss| family_loss.family_id.clone())
         .chain(
             loss_evaluation
-                .hard_constraint_diagnostics
+                .domain_margin_diagnostics
                 .iter()
-                .map(|constraint| constraint.constraint_id.clone()),
+                .map(|diagnostic| diagnostic.margin_id.clone()),
         )
         .collect::<Vec<_>>();
     let component_scores = loss_evaluation
@@ -185,9 +185,9 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
         .map(|family_loss| family_loss.loss)
         .chain(
             loss_evaluation
-                .hard_constraint_diagnostics
+                .domain_margin_diagnostics
                 .iter()
-                .map(|constraint| constraint.loss),
+                .map(|diagnostic| diagnostic.loss),
         )
         .collect::<Vec<_>>();
 
@@ -700,9 +700,9 @@ pub(super) fn joint_primary_metrics_from_breakdown(
         .map(|family| family.loss)
         .chain(
             breakdown
-                .hard_constraint_diagnostics
+                .domain_margin_diagnostics
                 .iter()
-                .map(|constraint| constraint.loss),
+                .map(|diagnostic| diagnostic.loss),
         )
         .collect()
 }
@@ -2462,7 +2462,7 @@ fn add_domain_margin_priors(
             .recip()
             .sqrt();
 
-        builder.add_domain_margin_constraint(
+        builder.add_domain_margin_diagnostic(
             "domain_margin.hawkes_stationarity",
             1.0 - runtime_effective_branching_ratio,
             target_margin,
@@ -2476,7 +2476,7 @@ fn add_domain_margin_priors(
             .buy_side_parameters
             .characteristic_exponent_with_guardrails(ComplexScalar::new(0.0, 0.0));
 
-        builder.add_domain_margin_constraint(
+        builder.add_domain_margin_diagnostic(
             "domain_margin.nig_buy_alpha_beta",
             buy_report.alpha_beta_margin,
             buy_report.alpha_beta_margin_warning_threshold,
@@ -2486,7 +2486,7 @@ fn add_domain_margin_priors(
             .sell_side_parameters
             .characteristic_exponent_with_guardrails(ComplexScalar::new(0.0, 0.0));
 
-        builder.add_domain_margin_constraint(
+        builder.add_domain_margin_diagnostic(
             "domain_margin.nig_sell_alpha_beta",
             sell_report.alpha_beta_margin,
             sell_report.alpha_beta_margin_warning_threshold,

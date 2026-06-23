@@ -202,8 +202,8 @@ pub(super) fn joint_refinement_like_stage_input(
         calibration_effort: staged_run_inputs.joint_refinement_calibration_effort,
         restart_candidate_budget_override: staged_run_inputs
             .joint_refinement_restart_candidate_budget_override,
-        treat_inadmissible_calibration_warning_as_error: staged_run_inputs
-            .treat_inadmissible_calibration_warning_as_error,
+        treat_invalid_restart_fallback_warning_as_error: staged_run_inputs
+            .treat_invalid_restart_fallback_warning_as_error,
         option_refinement_candidate_count_override: option_refinement_settings
             .candidate_count_override,
         option_refinement_wall_clock_budget_millis: option_refinement_settings

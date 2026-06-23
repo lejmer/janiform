@@ -15,10 +15,11 @@ use super::fit::{
 };
 use crate::stages::model_selection::bayesian_information_score_for_effective_sample_count;
 use crate::stages::parallelism::bounded_stage_worker_count;
+use crate::stages::return_components::ReturnComponentsStageMarketPressureSelectionDiagnostic;
 use coarse_returns::fit_coarse_augmented_single_side_model;
 use event_sides::{
-    fit_ordered_side_balance_model, ordered_side_model_progress_total_units,
-    side_observation_log_likelihood,
+    fit_ordered_side_balance_model, ordered_side_model_parameter_count,
+    ordered_side_model_progress_total_units, side_observation_log_likelihood,
 };
 
 mod coarse_returns;
@@ -31,6 +32,7 @@ pub(super) struct HiddenSideBalanceFit {
     pub(super) transition_rates: MarketPressureTransitionRates,
     pub(super) state_probabilities: Vec<Vec<f64>>,
     pub(super) coarse_state_probabilities: Vec<Vec<f64>>,
+    pub(super) selection_diagnostics: Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +43,7 @@ pub(super) struct SidePredictionFit {
     pub(super) interval_joint_probabilities: Vec<Vec<Vec<f64>>>,
     pub(super) log_likelihood: f64,
     pub(super) parameter_count: usize,
+    pub(super) selection_diagnostics: Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,11 +98,55 @@ pub(super) fn fit_hidden_side_balance_model(
         progress_observer,
     )?;
 
+    hidden_side_balance_fit_from_side_prediction_fit(
+        observations,
+        coarse_return_observations,
+        coarse_return_law,
+        side_prediction_fit,
+        open_event_rate_per_hour,
+        solver_settings,
+        progress_observer,
+    )
+}
+
+pub(super) fn fit_hidden_side_balance_model_from_cached_fit(
+    observations: &[MarketPressureSideBalanceObservation],
+    coarse_return_observations: &[MarketPressureCoarseReturnObservation],
+    coarse_return_law: Option<MarketPressureCoarseReturnLaw>,
+    open_event_rate_per_hour: f64,
+    cached_fit: &HiddenSideBalanceFit,
+    solver_settings: &CalibrationOptimizerSettings,
+    progress_observer: &mut Option<MarketPressureFitProgressObserver<'_>>,
+) -> Result<HiddenSideBalanceFit, MarketPressureFitError> {
+    emit_market_pressure_fit_progress(progress_observer, 0, 1, "reuse side-balance pressure fit");
+
+    let side_prediction_fit = cached_side_prediction_fit(cached_fit)?;
+
+    hidden_side_balance_fit_from_side_prediction_fit(
+        observations,
+        coarse_return_observations,
+        coarse_return_law,
+        side_prediction_fit,
+        open_event_rate_per_hour,
+        solver_settings,
+        progress_observer,
+    )
+}
+
+fn hidden_side_balance_fit_from_side_prediction_fit(
+    observations: &[MarketPressureSideBalanceObservation],
+    coarse_return_observations: &[MarketPressureCoarseReturnObservation],
+    coarse_return_law: Option<MarketPressureCoarseReturnLaw>,
+    side_prediction_fit: SidePredictionFit,
+    open_event_rate_per_hour: f64,
+    solver_settings: &CalibrationOptimizerSettings,
+    progress_observer: &mut Option<MarketPressureFitProgressObserver<'_>>,
+) -> Result<HiddenSideBalanceFit, MarketPressureFitError> {
     if side_prediction_fit.support_levels.len() > 1 {
         return Ok(side_prediction_fit.into_hidden_fit());
     }
 
-    if let Some(coarse_augmented_fit) = fit_coarse_augmented_single_side_model(
+    let coarse_augmented_decision = fit_coarse_augmented_single_side_model(
         observations,
         coarse_return_observations,
         coarse_return_law,
@@ -107,11 +154,22 @@ pub(super) fn fit_hidden_side_balance_model(
         open_event_rate_per_hour,
         solver_settings,
         progress_observer,
-    )? {
+    )?;
+
+    if let Some(mut coarse_augmented_fit) = coarse_augmented_decision.hidden_fit {
+        let mut selection_diagnostics = side_prediction_fit.selection_diagnostics;
+        selection_diagnostics.extend(coarse_augmented_decision.selection_diagnostics);
+        coarse_augmented_fit.selection_diagnostics = selection_diagnostics;
+
         return Ok(coarse_augmented_fit);
     }
 
-    Ok(side_prediction_fit.into_hidden_fit())
+    let mut hidden_fit = side_prediction_fit.into_hidden_fit();
+    hidden_fit
+        .selection_diagnostics
+        .extend(coarse_augmented_decision.selection_diagnostics);
+
+    Ok(hidden_fit)
 }
 
 fn fit_ordered_side_prediction_model(
@@ -128,14 +186,35 @@ fn fit_ordered_side_prediction_model(
             "evaluate side-balance state splits",
         );
 
+        let effective_sample_count = side_evidence_sample_count(observations);
+
         let Some(split_support) = split_largest_residual_state(observations, &current_fit)? else {
+            let current_score = penalized_side_prediction_score(&current_fit, effective_sample_count);
+            current_fit.selection_diagnostics.push(
+                market_pressure_selection_diagnostic(SelectionDiagnosticInput {
+                    evidence_source: "side_balance",
+                    decision: "skipped",
+                    reason: "no_split_candidate",
+                    current_state_count: current_fit.support_levels.len(),
+                    candidate_state_count: current_fit.support_levels.len(),
+                    effective_sample_count,
+                    current_log_likelihood: Some(current_fit.log_likelihood),
+                    candidate_log_likelihood: None,
+                    current_penalized_score: Some(current_score),
+                    candidate_penalized_score: None,
+                    current_support_levels: current_fit.support_levels.clone(),
+                    candidate_support_levels: current_fit.support_levels.clone(),
+                }),
+            );
+
             return Ok(current_fit);
         };
 
         let initial_rate_sets =
             initial_ordered_transition_rate_sets(observations, split_support.as_slice())?;
+        let candidate_support_levels = split_support.clone();
 
-        let Some(split_fit) = fit_ordered_start_candidates(
+        let Some(mut split_fit) = fit_ordered_start_candidates(
             observations,
             split_support,
             initial_rate_sets,
@@ -143,10 +222,28 @@ fn fit_ordered_side_prediction_model(
             progress_observer,
         )?
         else {
+            current_fit.selection_diagnostics.push(
+                market_pressure_selection_diagnostic(SelectionDiagnosticInput {
+                    evidence_source: "side_balance",
+                    decision: "rejected",
+                    reason: "split_fit_failed",
+                    current_state_count: current_fit.support_levels.len(),
+                    candidate_state_count: candidate_support_levels.len(),
+                    effective_sample_count,
+                    current_log_likelihood: Some(current_fit.log_likelihood),
+                    candidate_log_likelihood: None,
+                    current_penalized_score: Some(penalized_side_prediction_score(
+                        &current_fit,
+                        effective_sample_count,
+                    )),
+                    candidate_penalized_score: None,
+                    current_support_levels: current_fit.support_levels.clone(),
+                    candidate_support_levels,
+                }),
+            );
+
             return Ok(current_fit);
         };
-
-        let effective_sample_count = side_evidence_sample_count(observations);
 
         emit_market_pressure_fit_progress(
             progress_observer,
@@ -155,12 +252,38 @@ fn fit_ordered_side_prediction_model(
             "select side-balance state split",
         );
 
-        if penalized_side_prediction_score(&split_fit, effective_sample_count)
-            <= penalized_side_prediction_score(&current_fit, effective_sample_count)
-        {
+        let current_score = penalized_side_prediction_score(&current_fit, effective_sample_count);
+        let split_score = penalized_side_prediction_score(&split_fit, effective_sample_count);
+        let accepted = split_score > current_score;
+        let selection_diagnostic =
+            market_pressure_selection_diagnostic(SelectionDiagnosticInput {
+                evidence_source: "side_balance",
+                decision: if accepted { "accepted" } else { "rejected" },
+                reason: if accepted {
+                    "penalized_score_improved"
+                } else {
+                    "penalized_score_not_improved"
+                },
+                current_state_count: current_fit.support_levels.len(),
+                candidate_state_count: split_fit.support_levels.len(),
+                effective_sample_count,
+                current_log_likelihood: Some(current_fit.log_likelihood),
+                candidate_log_likelihood: Some(split_fit.log_likelihood),
+                current_penalized_score: Some(current_score),
+                candidate_penalized_score: Some(split_score),
+                current_support_levels: current_fit.support_levels.clone(),
+                candidate_support_levels: split_fit.support_levels.clone(),
+            });
+
+        if !accepted {
+            current_fit.selection_diagnostics.push(selection_diagnostic);
+
             return Ok(current_fit);
         }
 
+        let mut selection_diagnostics = current_fit.selection_diagnostics;
+        selection_diagnostics.push(selection_diagnostic);
+        split_fit.selection_diagnostics = selection_diagnostics;
         current_fit = split_fit;
     }
 }
@@ -447,6 +570,7 @@ fn fit_one_state_side_balance_model(
         interval_joint_probabilities: Vec::new(),
         log_likelihood,
         parameter_count: 1,
+        selection_diagnostics: Vec::new(),
     })
 }
 
@@ -550,6 +674,26 @@ fn largest_residual_split_candidate(
     }
 
     Ok(best_candidate)
+}
+
+fn cached_side_prediction_fit(
+    cached_fit: &HiddenSideBalanceFit,
+) -> Result<SidePredictionFit, MarketPressureFitError> {
+    if cached_fit.support_levels.is_empty() {
+        return Err(MarketPressureFitError::InvalidStateAssignments);
+    }
+
+    // Cached refits own immutable snapshots so the returned runtime state can be reused
+    // independently of the source stage payload.
+    Ok(SidePredictionFit {
+        support_levels: cached_fit.support_levels.clone(),
+        transition_rates: cached_fit.transition_rates.clone(),
+        state_probabilities: cached_fit.state_probabilities.clone(),
+        interval_joint_probabilities: Vec::new(),
+        log_likelihood: 0.0,
+        parameter_count: ordered_side_model_parameter_count(cached_fit.support_levels.len()),
+        selection_diagnostics: cached_fit.selection_diagnostics.clone(),
+    })
 }
 
 fn initial_ordered_transition_rate_sets(
@@ -751,6 +895,47 @@ fn side_evidence_sample_count(observations: &[MarketPressureSideBalanceObservati
         .sum()
 }
 
+pub(super) struct SelectionDiagnosticInput {
+    pub(super) evidence_source: &'static str,
+    pub(super) decision: &'static str,
+    pub(super) reason: &'static str,
+    pub(super) current_state_count: usize,
+    pub(super) candidate_state_count: usize,
+    pub(super) effective_sample_count: f64,
+    pub(super) current_log_likelihood: Option<f64>,
+    pub(super) candidate_log_likelihood: Option<f64>,
+    pub(super) current_penalized_score: Option<f64>,
+    pub(super) candidate_penalized_score: Option<f64>,
+    pub(super) current_support_levels: Vec<f64>,
+    pub(super) candidate_support_levels: Vec<f64>,
+}
+
+pub(super) fn market_pressure_selection_diagnostic(
+    input: SelectionDiagnosticInput,
+) -> ReturnComponentsStageMarketPressureSelectionDiagnostic {
+    ReturnComponentsStageMarketPressureSelectionDiagnostic {
+        evidence_source: input.evidence_source.to_string(),
+        decision: input.decision.to_string(),
+        reason: input.reason.to_string(),
+        current_state_count: input.current_state_count,
+        candidate_state_count: input.candidate_state_count,
+        effective_sample_count: input.effective_sample_count,
+        current_log_likelihood: input.current_log_likelihood,
+        candidate_log_likelihood: input.candidate_log_likelihood,
+        current_penalized_score: input.current_penalized_score,
+        candidate_penalized_score: input.candidate_penalized_score,
+        score_improvement: match (
+            input.current_penalized_score,
+            input.candidate_penalized_score,
+        ) {
+            (Some(current_score), Some(candidate_score)) => Some(candidate_score - current_score),
+            _ => None,
+        },
+        current_support_levels: input.current_support_levels,
+        candidate_support_levels: input.candidate_support_levels,
+    }
+}
+
 fn transition_rate_from_count_and_exposure(
     transition_count: usize,
     exposure_hours: f64,
@@ -809,6 +994,7 @@ impl SidePredictionFit {
             transition_rates: self.transition_rates,
             state_probabilities: self.state_probabilities,
             coarse_state_probabilities: Vec::new(),
+            selection_diagnostics: self.selection_diagnostics,
         }
     }
 }

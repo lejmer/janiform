@@ -1,5 +1,5 @@
 mod progress;
-mod variance_handoff;
+mod quantile_shape_backfit;
 
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
@@ -14,14 +14,17 @@ use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    CalibrationStageSelectedCandidateSource, ReturnBackfitStageDiagnostics,
-    ReturnBackfitStageScaleHandoffDiagnostic, stage_solver_settings_for_stage,
+    CalibrationStageSelectedCandidateSource, ReturnBackfitStageDeltaQuantileShapeDiagnostic,
+    ReturnBackfitStageDiagnostics, ReturnBackfitStageObjectiveBlockDiagnostic,
+    stage_solver_settings_for_stage,
 };
 
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_pressure::{
-    MarketPressureFitProgress, MarketPressureNigFitInput, MarketPressureRuntimeState,
-    fit_market_pressure_from_nig_configuration, market_pressure_parameters_from_runtime_state,
+    MarketPressureFitProgress, MarketPressureNigFitInput, MarketPressureRuntimeNigFitInput,
+    MarketPressureRuntimeState, fit_market_pressure_from_nig_configuration,
+    fit_market_pressure_from_runtime_state_and_nig_configuration,
+    market_pressure_parameters_from_runtime_state,
 };
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::long_variance::LongVarianceStageFittedPayload;
@@ -37,11 +40,13 @@ use progress::{
     emit_return_backfit_subphase_progress,
 };
 pub use progress::{ReturnBackfitStageProgressPhase, ReturnBackfitStageProgressUpdate};
-use variance_handoff::{ReturnBackfitVarianceHandoffInput, return_backfit_delta_variance_handoff};
+use quantile_shape_backfit::{
+    ReturnBackfitDeltaQuantileShapeInput, return_backfit_delta_quantile_shape_backfit,
+};
 
 const RETURN_BACKFIT_ESTIMATION_POLICY: &str =
-    "nig_delta_variance_handoff_under_long_variance_news_pressure_clock.v1";
-const RETURN_BACKFIT_TRANSFORMATION_ID: &str = "nig_delta_variance_handoff_under_dynamic_clock";
+    "nig_delta_quantile_shape_backfit_under_long_variance_news_pressure_clock.v1";
+const RETURN_BACKFIT_TRANSFORMATION_ID: &str = "nig_delta_quantile_shape_backfit";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReturnBackfitStageExecutionInput {
@@ -117,6 +122,7 @@ struct ReturnBackfitFittedStagePayloadInput<'a> {
     long_variance_stage_payload: LongVarianceStageFittedPayload,
     news_shocks_stage_payload: NewsShocksStageFittedPayload,
     solver_settings: &'a CalibrationOptimizerSettings,
+    stage_seed: u64,
     progress_sender: Option<Sender<ReturnBackfitStageProgressUpdate>>,
 }
 
@@ -278,6 +284,7 @@ fn run_return_backfit_calibration_stage_internal(
             long_variance_stage_payload,
             news_shocks_stage_payload,
             solver_settings: &solver_settings,
+            stage_seed: seed_metadata.stage_seed,
             progress_sender,
         }) {
             Ok(payload) => payload,
@@ -322,21 +329,20 @@ fn build_return_backfit_fitted_stage_payload(
         long_variance_stage_payload,
         news_shocks_stage_payload,
         solver_settings,
+        stage_seed,
         progress_sender,
     } = input;
 
     let mut effective_return_components_payload = effective_return_components_payload;
 
-    let selected_candidate =
-        selected_return_components_candidate(&effective_return_components_payload)?;
+    selected_return_components_candidate(&effective_return_components_payload)?;
 
-    let variance_handoff_progress_sender = progress_sender.clone();
+    let delta_backfit_progress_sender = progress_sender.clone();
 
-    let variance_handoff_fit =
-        return_backfit_delta_variance_handoff(ReturnBackfitVarianceHandoffInput {
+    let delta_backfit_fit =
+        return_backfit_delta_quantile_shape_backfit(ReturnBackfitDeltaQuantileShapeInput {
             hawkes_stage_payload,
             candidate_generation_input,
-            selected_candidate,
             nig_configuration: effective_return_components_payload
                 .fitted_parameters
                 .nig_shared_plus_shift_configuration,
@@ -347,10 +353,11 @@ fn build_return_backfit_fitted_stage_payload(
             news_process_configuration: &news_shocks_stage_payload.news_process_configuration,
             surprise_deterministic_intensity_profile: &news_shocks_stage_payload
                 .surprise_deterministic_intensity_profile,
-            progress_sender: variance_handoff_progress_sender,
+            stage_seed,
+            progress_sender: delta_backfit_progress_sender,
         })?;
 
-    let nig_configuration = variance_handoff_fit.post_handoff_nig_configuration;
+    let nig_configuration = delta_backfit_fit.post_backfit_nig_configuration;
 
     effective_return_components_payload
         .fitted_parameters
@@ -426,28 +433,37 @@ fn build_return_backfit_fitted_stage_payload(
         diagnostics: ReturnBackfitStageDiagnostics {
             estimation_policy: RETURN_BACKFIT_ESTIMATION_POLICY.to_string(),
             selected_candidate_id: RETURN_BACKFIT_TRANSFORMATION_ID.to_string(),
-            scale_handoff: ReturnBackfitStageScaleHandoffDiagnostic {
-                selected_nig_delta: Some(variance_handoff_fit.selected_nig_delta),
-                post_handoff_nig_delta: Some(variance_handoff_fit.post_handoff_nig_delta),
-                selected_continuous_model_variance_scale: Some(
-                    variance_handoff_fit.selected_continuous_model_variance_scale,
-                ),
-                long_variance_clock_scale_multiplier: Some(
-                    variance_handoff_fit.long_variance_clock_scale_multiplier,
-                ),
-                delta_handoff_multiplier: Some(variance_handoff_fit.delta_handoff_multiplier),
-                post_handoff_base_variance_scale: Some(
-                    variance_handoff_fit.post_handoff_base_variance_scale,
-                ),
-                post_handoff_dynamic_variance_scale: Some(
-                    variance_handoff_fit.post_handoff_dynamic_variance_scale,
-                ),
-                observed_reference_variance_scale: Some(
-                    variance_handoff_fit.observed_reference_variance_scale,
-                ),
+            delta_quantile_shape_backfit: ReturnBackfitStageDeltaQuantileShapeDiagnostic {
+                selected_nig_delta: delta_backfit_fit.selected_nig_delta,
+                post_backfit_nig_delta: delta_backfit_fit.post_backfit_nig_delta,
+                delta_backfit_multiplier: delta_backfit_fit.delta_backfit_multiplier,
+                long_variance_clock_scale_multiplier: delta_backfit_fit
+                    .long_variance_clock_scale_multiplier,
+                selected_aggregation_horizon: delta_backfit_fit.selected_aggregation_horizon,
+                selected_aggregation_interval_nanos: delta_backfit_fit
+                    .selected_aggregation_interval_nanos,
+                selected_aggregation_sample_count: delta_backfit_fit
+                    .selected_aggregation_sample_count,
+                minimum_aggregation_sample_count: delta_backfit_fit
+                    .minimum_aggregation_sample_count,
+                quantile_count: delta_backfit_fit.quantile_count,
+                quantile_stability_order_multiplier: delta_backfit_fit
+                    .quantile_stability_order_multiplier,
+                quantile_levels: delta_backfit_fit.quantile_levels,
+                observed_quantiles: delta_backfit_fit.observed_quantiles,
+                before_fitted_quantiles: delta_backfit_fit.before_fitted_quantiles,
+                after_fitted_quantiles: delta_backfit_fit.after_fitted_quantiles,
+                before_quantile_shape_score: delta_backfit_fit.before_quantile_shape_score,
+                after_quantile_shape_score: delta_backfit_fit.after_quantile_shape_score,
+                candidate_delta_multiplier_count: delta_backfit_fit
+                    .candidate_delta_multiplier_count,
             },
-            objective_blocks: Vec::new(),
-            warnings: Vec::new(),
+            objective_blocks: vec![ReturnBackfitStageObjectiveBlockDiagnostic {
+                target_block: "delta_quantile_shape".to_string(),
+                before_objective: Some(delta_backfit_fit.before_quantile_shape_score),
+                after_objective: Some(delta_backfit_fit.after_quantile_shape_score),
+            }],
+            warnings: delta_backfit_fit.warnings,
         },
         return_components_input_transport,
         return_components_selected_candidate_id,
@@ -479,6 +495,47 @@ fn refit_return_backfit_market_pressure(
         return Ok(ReturnBackfitMarketPressureRefitOutput {
             parameters,
             runtime_state: Some(Arc::clone(runtime_state)),
+        });
+    }
+
+    if let Some(runtime_state) = input.runtime_state.filter(|runtime_state| {
+        runtime_state.can_refit_coarse_return_pressure_for_record_count(
+            input.coarse_data_records.map_or(0, |records| records.len()),
+        )
+    }) {
+        emit_return_backfit_progress(
+            input.progress_sender.as_ref(),
+            ReturnBackfitStageProgressPhase::MarketPressureRefit,
+            4,
+            RETURN_BACKFIT_STAGE_PROGRESS_UNITS,
+            Some("reuse side-balance pressure fit"),
+        );
+
+        let market_pressure_progress_sender = input.progress_sender.clone();
+        let mut market_pressure_progress_observer = move |progress: MarketPressureFitProgress| {
+            emit_return_backfit_subphase_progress(
+                market_pressure_progress_sender.as_ref(),
+                ReturnBackfitStageProgressPhase::MarketPressureRefit,
+                4,
+                progress.completed_units,
+                progress.total_units,
+                Some(progress.current_item_label),
+            );
+        };
+
+        let output = fit_market_pressure_from_runtime_state_and_nig_configuration(
+            MarketPressureRuntimeNigFitInput {
+                runtime_state,
+                nig_configuration: input.nig_configuration,
+                solver_settings: input.solver_settings,
+                progress_observer: Some(&mut market_pressure_progress_observer),
+            },
+        )
+        .map_err(|source| format!("market pressure backfit failed: {source}"))?;
+
+        return Ok(ReturnBackfitMarketPressureRefitOutput {
+            parameters: output.parameters,
+            runtime_state: Some(output.runtime_state),
         });
     }
 

@@ -2918,6 +2918,7 @@ mod tests {
             source_window_open_exposure_hours: 1.0,
             fitted_parameters: return_components_fitted_parameters.clone(),
             candidate_diagnostics: Vec::new(),
+            market_pressure_selection_diagnostics: Vec::new(),
             candidate_generation_policy: "debug_fixture",
             objective_weighting_policy: "debug_fixture",
             objective_metric_bucket_policy: "debug_fixture",

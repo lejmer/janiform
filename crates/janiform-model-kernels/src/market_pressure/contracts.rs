@@ -5,9 +5,8 @@ use janiform_foundations::numeric::{
 use serde::{Deserialize, Serialize};
 
 use super::errors::{
-    MarketPressureMeasureParametersValidationError, MarketPressureParametersValidationError,
-    MarketPressureStateEvolutionError, MarketPressureStateValidationError,
-    MarketPressureTransitionRatesValidationError,
+    MarketPressureParametersValidationError, MarketPressureStateEvolutionError,
+    MarketPressureStateValidationError, MarketPressureTransitionRatesValidationError,
 };
 
 /// Nearest-neighbor CTMC transition rates over ordered market-pressure support.
@@ -87,61 +86,6 @@ impl MarketPressureTransitionRates {
     }
 }
 
-/// Measure-specific parameters for the latent side-balance CTMC.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MarketPressureMeasureParameters {
-    /// Birth-death transition rates under this measure.
-    pub transition_rates: MarketPressureTransitionRates,
-    /// Log-anchor drift loading per unit expected signed side-balance exposure.
-    pub anchor_drift_per_signed_balance: f64,
-}
-
-impl MarketPressureMeasureParameters {
-    /// Construct measure-specific pressure parameters without validation.
-    pub fn new(
-        transition_rates: MarketPressureTransitionRates,
-        anchor_drift_per_signed_balance: f64,
-    ) -> Self {
-        Self {
-            transition_rates,
-            anchor_drift_per_signed_balance,
-        }
-    }
-
-    /// Return the one-state neutral measure parameters.
-    pub const fn neutral() -> Self {
-        Self {
-            transition_rates: MarketPressureTransitionRates::single_state(),
-            anchor_drift_per_signed_balance: 0.0,
-        }
-    }
-
-    /// Validate this measure against the shared pressure support.
-    pub fn validate_for_state_count(
-        &self,
-        state_count: usize,
-    ) -> Result<(), MarketPressureMeasureParametersValidationError> {
-        self.transition_rates
-            .validate_for_state_count(state_count)
-            .map_err(|source| {
-                MarketPressureMeasureParametersValidationError::InvalidTransitionRates { source }
-            })?;
-
-        validate_finite_number(
-            self.anchor_drift_per_signed_balance,
-            "anchor_drift_per_signed_balance",
-        )
-        .map_err(|source| {
-            MarketPressureMeasureParametersValidationError::InvalidAnchorDriftPerSignedBalance {
-                value: source.value,
-            }
-        })?;
-
-        Ok(())
-    }
-}
-
 /// Fitted parameters for latent side-balance market pressure.
 ///
 /// The support values are ordered signed buy/sell imbalances in `[-1, 1]`. Conditional on an
@@ -153,19 +97,23 @@ impl MarketPressureMeasureParameters {
 pub struct MarketPressureParameters {
     /// Ordered side-balance support points.
     pub side_imbalance_levels: Vec<f64>,
-    /// Physical-measure transition and drift-loading parameters.
-    pub physical_measure: MarketPressureMeasureParameters,
+    /// Birth-death transition rates for the latent side-balance CTMC.
+    pub transition_rates: MarketPressureTransitionRates,
+    /// Log-anchor drift loading per unit expected signed side-balance exposure.
+    pub anchor_drift_per_signed_balance: f64,
 }
 
 impl MarketPressureParameters {
-    /// Construct latent side-balance parameters from validated support and measure contracts.
+    /// Construct latent side-balance parameters from validated support and dynamics contracts.
     pub fn try_new(
         side_imbalance_levels: Vec<f64>,
-        physical_measure: MarketPressureMeasureParameters,
+        transition_rates: MarketPressureTransitionRates,
+        anchor_drift_per_signed_balance: f64,
     ) -> Result<Self, MarketPressureParametersValidationError> {
         let parameters = Self {
             side_imbalance_levels,
-            physical_measure,
+            transition_rates,
+            anchor_drift_per_signed_balance,
         };
 
         parameters.validate()?;
@@ -177,7 +125,8 @@ impl MarketPressureParameters {
     pub fn no_anchor_impact() -> Self {
         Self {
             side_imbalance_levels: vec![0.0],
-            physical_measure: MarketPressureMeasureParameters::neutral(),
+            transition_rates: MarketPressureTransitionRates::single_state(),
+            anchor_drift_per_signed_balance: 0.0,
         }
     }
 
@@ -228,11 +177,21 @@ impl MarketPressureParameters {
 
         let state_count = self.state_count();
 
-        self.physical_measure
+        self.transition_rates
             .validate_for_state_count(state_count)
-            .map_err(
-                |source| MarketPressureParametersValidationError::InvalidPhysicalMeasure { source },
-            )?;
+            .map_err(|source| MarketPressureParametersValidationError::InvalidTransitionRates {
+                source,
+            })?;
+
+        validate_finite_number(
+            self.anchor_drift_per_signed_balance,
+            "anchor_drift_per_signed_balance",
+        )
+        .map_err(|source| {
+            MarketPressureParametersValidationError::InvalidAnchorDriftPerSignedBalance {
+                value: source.value,
+            }
+        })?;
 
         Ok(())
     }

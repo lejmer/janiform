@@ -5,6 +5,7 @@ import pytest
 
 from janiform._native_api import native_module
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.sufficient_statistics import (
@@ -36,6 +37,7 @@ from janiform.simulation.coarse import (
     validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 from tests.support.interval_factor_grid_contracts import build_interval_factor_grid_contract
 from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
@@ -162,6 +164,9 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                     shape_k=1.8,
                 ),
                 long_variance_parameters=LongVarianceParameters.neutral(),
+                market_pressure_parameters=MarketPressureParameters.from_mapping(
+                    build_no_anchor_impact_market_pressure_parameters_payload()
+                ),
             ),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
@@ -178,6 +183,7 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
             ),
             long_variance_parameters=LongVarianceParameters.neutral(),
             initial_long_variance_state=LongVarianceState.unit(),
+            initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

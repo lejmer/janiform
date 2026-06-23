@@ -38,7 +38,6 @@ from ...contracts.base import (
     parse_json_object,
     require_datetime_utc,
     require_finite_number,
-    require_finite_scalar,
     require_mapping,
     require_non_empty_string,
     require_non_negative_integer,
@@ -451,7 +450,6 @@ class CoarseSimulationPathRecord(ContractModel):
     observed_interval_return: float
     observed_log_price_end: float
     anchor_value_end: float
-    market_pressure_state_end: float
     deviation_from_anchor_end: float
 
     def __post_init__(self) -> None:
@@ -480,11 +478,6 @@ class CoarseSimulationPathRecord(ContractModel):
             observed_log_price=self.observed_log_price_end,
             anchor_value=self.anchor_value_end,
             deviation=self.deviation_from_anchor_end,
-        )
-        require_finite_scalar(
-            self.market_pressure_state_end,
-            "market_pressure_state_end",
-            SIMULATION_ERROR_FACTORY,
         )
 
     @staticmethod
@@ -582,12 +575,6 @@ class CoarseSimulationPathRecord(ContractModel):
                 raw_payload,
                 "anchor_value_end",
                 f"{field_path}.anchor_value_end",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            market_pressure_state_end=require_finite_number(
-                raw_payload,
-                "market_pressure_state_end",
-                f"{field_path}.market_pressure_state_end",
                 SIMULATION_ERROR_FACTORY,
             ),
             deviation_from_anchor_end=require_finite_number(

@@ -3,7 +3,7 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_model_kernels::market_pressure::{
-    MarketPressureMeasureParameters, MarketPressureParameters, MarketPressureTransitionRates,
+    MarketPressureParameters, MarketPressureTransitionRates,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 
@@ -57,11 +57,10 @@ pub(crate) fn batch_input_fixture(
 }
 
 fn test_market_pressure_parameters() -> MarketPressureParameters {
-    let measure_parameters = MarketPressureMeasureParameters::new(
+    MarketPressureParameters::try_new(
+        vec![-0.5, 0.5],
         MarketPressureTransitionRates::new(vec![0.25], vec![0.25]),
         0.01,
-    );
-
-    MarketPressureParameters::try_new(vec![-0.5, 0.5], measure_parameters)
-        .expect("test market-pressure parameters should validate")
+    )
+    .expect("test market-pressure parameters should validate")
 }

@@ -72,7 +72,7 @@ pub struct JointRefinementStageExecutionInput {
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub calibration_effort: Option<CalibrationEffortOptions>,
     pub restart_candidate_budget_override: Option<usize>,
-    pub treat_inadmissible_calibration_warning_as_error: bool,
+    pub treat_invalid_restart_fallback_warning_as_error: bool,
     pub option_refinement_candidate_count_override: Option<usize>,
     pub option_refinement_wall_clock_budget_millis: Option<u64>,
     pub audit_option_pricing_enabled: bool,

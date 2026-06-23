@@ -96,7 +96,7 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
     #[serde(default)]
-    pub treat_inadmissible_calibration_warning_as_error: bool,
+    pub treat_invalid_restart_fallback_warning_as_error: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -638,8 +638,8 @@ impl CalibrationStagedExecutionInput {
             joint_refinement_restart_candidate_budget_override: self
                 .joint_refinement_restart_candidate_budget_override,
             joint_refinement_calibration_effort: self.joint_refinement_calibration_effort,
-            treat_inadmissible_calibration_warning_as_error: self
-                .treat_inadmissible_calibration_warning_as_error,
+            treat_invalid_restart_fallback_warning_as_error: self
+                .treat_invalid_restart_fallback_warning_as_error,
             option_refinement_candidate_count_override: self
                 .joint_refinement_option_refinement_candidate_count_override,
             option_refinement_wall_clock_budget_millis: self
@@ -1443,7 +1443,7 @@ mod tests {
             }),
             joint_refinement_restart_candidate_budget_override: None,
             joint_refinement_calibration_effort: None,
-            treat_inadmissible_calibration_warning_as_error: false,
+            treat_invalid_restart_fallback_warning_as_error: false,
             joint_refinement_option_refinement_candidate_count_override: None,
             joint_refinement_option_refinement_wall_clock_budget_millis: None,
             joint_refinement_audit_option_pricing_enabled: false,

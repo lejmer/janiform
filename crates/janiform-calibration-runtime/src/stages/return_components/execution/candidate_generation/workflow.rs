@@ -22,6 +22,7 @@ use crate::stages::return_components::contracts::{
     ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsStageCandidateFamilyCounts,
     ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageCandidateGenerationInputError, ReturnComponentsStageCandidateInput,
+    ReturnComponentsStageMarketPressureSelectionDiagnostic,
     ReturnComponentsStageObservedSignalSummaryStatistics, ReturnComponentsStageProgressPhase,
     ReturnComponentsStageProgressUpdate, ReturnComponentsStageQuantileBinningPolicy,
 };
@@ -42,6 +43,8 @@ pub(in crate::stages::return_components::execution) struct ReturnComponentsStage
         Vec<ReturnComponentsStageCandidateInput>,
     pub(in crate::stages::return_components::execution) market_pressure_runtime_state:
         Arc<MarketPressureRuntimeState>,
+    pub(in crate::stages::return_components::execution) market_pressure_selection_diagnostics:
+        Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
     pub(in crate::stages::return_components::execution) candidate_family_counts:
         ReturnComponentsStageCandidateFamilyCounts,
     pub(in crate::stages::return_components::execution) fitted_surprise_arrival_layer:
@@ -162,6 +165,8 @@ pub(in crate::stages::return_components::execution) fn generate_return_component
     Ok(ReturnComponentsStageCandidateGenerationOutput {
         candidate_inputs,
         market_pressure_runtime_state: sorted_signal_fit.market_pressure_runtime_state,
+        market_pressure_selection_diagnostics: sorted_signal_fit
+            .market_pressure_selection_diagnostics,
         candidate_family_counts,
         fitted_surprise_arrival_layer: fitted_layers.fitted_surprise_arrival_layer,
     })
@@ -242,6 +247,8 @@ struct SortedSignalFit {
     fitted_return_clock_exposure_parameters: ReturnClockExposureParameters,
     fitted_market_pressure_parameters: MarketPressureParameters,
     market_pressure_runtime_state: Arc<MarketPressureRuntimeState>,
+    market_pressure_selection_diagnostics:
+        Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
 }
 
 fn sort_signals_and_fit_market_inputs(
@@ -297,6 +304,7 @@ fn sort_signals_and_fit_market_inputs(
         fitted_return_clock_exposure_parameters,
         fitted_market_pressure_parameters: fitted_market_pressure_output.parameters,
         market_pressure_runtime_state: fitted_market_pressure_output.runtime_state,
+        market_pressure_selection_diagnostics: fitted_market_pressure_output.selection_diagnostics,
     })
 }
 

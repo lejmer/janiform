@@ -67,76 +67,30 @@ class MarketPressureTransitionRates(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class MarketPressureMeasureParameters(ContractModel):
+class MarketPressureParameters(ContractModel):
+    side_imbalance_levels: list[float]
     transition_rates: MarketPressureTransitionRates
     anchor_drift_per_signed_balance: float
 
     def __post_init__(self) -> None:
+        _validate_side_imbalance_support(self.side_imbalance_levels)
+
         if not isinstance(self.transition_rates, MarketPressureTransitionRates):
             raise _market_pressure_error(
                 "transition_rates",
                 "must be a MarketPressureTransitionRates",
             )
 
+        _validate_transition_rate_count(
+            self.transition_rates,
+            len(self.side_imbalance_levels),
+            "transition_rates",
+        )
+
         require_finite_scalar(
             self.anchor_drift_per_signed_balance,
             "anchor_drift_per_signed_balance",
             _market_pressure_error,
-        )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str = "market_pressure_measure_parameters",
-    ) -> MarketPressureMeasureParameters:
-        if not isinstance(raw_payload, dict):
-            raise _market_pressure_error(field_path, "must be an object")
-
-        require_only_supported_fields(
-            raw_payload,
-            supported_fields=("transition_rates", "anchor_drift_per_signed_balance"),
-            field_path=field_path,
-            error_factory=_market_pressure_error,
-        )
-
-        return MarketPressureMeasureParameters(
-            transition_rates=MarketPressureTransitionRates.from_mapping(
-                require_mapping(
-                    raw_payload,
-                    "transition_rates",
-                    f"{field_path}.transition_rates",
-                    _market_pressure_error,
-                ),
-                field_path=f"{field_path}.transition_rates",
-            ),
-            anchor_drift_per_signed_balance=require_finite_number(
-                raw_payload,
-                "anchor_drift_per_signed_balance",
-                f"{field_path}.anchor_drift_per_signed_balance",
-                _market_pressure_error,
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class MarketPressureParameters(ContractModel):
-    side_imbalance_levels: list[float]
-    physical_measure: MarketPressureMeasureParameters
-
-    def __post_init__(self) -> None:
-        _validate_side_imbalance_support(self.side_imbalance_levels)
-
-        if not isinstance(self.physical_measure, MarketPressureMeasureParameters):
-            raise _market_pressure_error(
-                "physical_measure",
-                "must be a MarketPressureMeasureParameters",
-            )
-
-        _validate_transition_rate_count(
-            self.physical_measure.transition_rates,
-            len(self.side_imbalance_levels),
-            "physical_measure.transition_rates",
         )
 
     @staticmethod
@@ -152,7 +106,8 @@ class MarketPressureParameters(ContractModel):
             raw_payload,
             supported_fields=(
                 "side_imbalance_levels",
-                "physical_measure",
+                "transition_rates",
+                "anchor_drift_per_signed_balance",
             ),
             field_path=field_path,
             error_factory=_market_pressure_error,
@@ -166,14 +121,20 @@ class MarketPressureParameters(ContractModel):
                 _market_pressure_error,
                 require_non_empty=True,
             ),
-            physical_measure=MarketPressureMeasureParameters.from_mapping(
+            transition_rates=MarketPressureTransitionRates.from_mapping(
                 require_mapping(
                     raw_payload,
-                    "physical_measure",
-                    f"{field_path}.physical_measure",
+                    "transition_rates",
+                    f"{field_path}.transition_rates",
                     _market_pressure_error,
                 ),
-                field_path=f"{field_path}.physical_measure",
+                field_path=f"{field_path}.transition_rates",
+            ),
+            anchor_drift_per_signed_balance=require_finite_number(
+                raw_payload,
+                "anchor_drift_per_signed_balance",
+                f"{field_path}.anchor_drift_per_signed_balance",
+                _market_pressure_error,
             ),
         )
 
@@ -302,7 +263,6 @@ def _validate_transition_rate_count(
 
 
 __all__ = [
-    "MarketPressureMeasureParameters",
     "MarketPressureParameters",
     "MarketPressureState",
     "MarketPressureTransitionRates",

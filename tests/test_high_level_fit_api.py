@@ -2381,7 +2381,6 @@ def test_high_level_simulation_result_exposes_tabular_exports(
                         "mid_price": 1.01,
                         "observed_log_price": 0.01,
                         "anchor_value": 0.005,
-                        "market_pressure_state": 0.002,
                         "deviation_from_anchor": 0.005,
                     }
                 ]
@@ -2423,11 +2422,10 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         "mid_price",
         "observed_log_price",
         "anchor_value",
-        "market_pressure_state",
         "deviation_from_anchor",
     ]
     assert pandas_frame.iloc[0]["mid_price"] == pytest.approx(1.01)
-    assert numpy_array.shape == (1, 6)
+    assert numpy_array.shape == (1, 5)
     assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
     assert captured_output_paths[-1] == parquet_path
     assert captured_export_context == [
@@ -2569,7 +2567,6 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 19, 0, tzinfo=UTC)),
                 observed_log_price_end=0.01,
                 anchor_value_end=0.005,
-                market_pressure_state_end=0.002,
                 deviation_from_anchor_end=0.005,
             ),
             SimpleNamespace(
@@ -2577,7 +2574,6 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 0, tzinfo=UTC)),
                 observed_log_price_end=999.0,
                 anchor_value_end=999.0,
-                market_pressure_state_end=999.0,
                 deviation_from_anchor_end=999.0,
             ),
             SimpleNamespace(
@@ -2585,7 +2581,6 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 22, 15, tzinfo=UTC)),
                 observed_log_price_end=0.05,
                 anchor_value_end=0.03,
-                market_pressure_state_end=0.01,
                 deviation_from_anchor_end=0.02,
             ),
         )
@@ -2611,8 +2606,8 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
         ]
     )
     assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.005, 0.03])
-    assert [row["market_pressure_state"] for row in sink.rows] == pytest.approx([0.002, 0.01])
     assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.005, 0.02])
+    assert all("market_pressure_state" not in row for row in sink.rows)
     assert all("side" not in row for row in sink.rows)
 
 

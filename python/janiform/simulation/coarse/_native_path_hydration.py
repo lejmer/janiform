@@ -90,7 +90,6 @@ def _coarse_simulation_path_record_from_validated_payload(
             "observed_interval_return": raw_payload["observed_interval_return"],
             "observed_log_price_end": raw_payload["observed_log_price_end"],
             "anchor_value_end": raw_payload["anchor_value_end"],
-            "market_pressure_state_end": raw_payload["market_pressure_state_end"],
             "deviation_from_anchor_end": raw_payload["deviation_from_anchor_end"],
         },
     )

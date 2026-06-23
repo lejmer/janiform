@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_calibration_artifacts::{
-    CalibrationHardConstraintDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,
+    CalibrationDomainMarginDiagnostic, CalibrationLossAdmissibility, CalibrationLossEvaluation,
     CalibrationLossFamilyDiagnostic, CalibrationLossTermDiagnostic, CalibrationLossTermKind,
 };
 use serde::Serialize;
@@ -187,7 +187,7 @@ pub(crate) struct CalibrationLossBuilder {
     family_diagnostics: Vec<CalibrationLossFamilyDiagnostic>,
     terms: Vec<CalibrationLossTermDiagnostic>,
     option_quote_terms: Vec<OptionQuoteTerm>,
-    hard_constraints: Vec<CalibrationHardConstraintDiagnostic>,
+    domain_margin_diagnostics: Vec<CalibrationDomainMarginDiagnostic>,
     invalid_candidate_terms: Vec<CalibrationLossTermDiagnostic>,
 }
 
@@ -197,7 +197,7 @@ impl CalibrationLossBuilder {
             family_diagnostics: Vec::new(),
             terms: Vec::new(),
             option_quote_terms: Vec::new(),
-            hard_constraints: Vec::new(),
+            domain_margin_diagnostics: Vec::new(),
             invalid_candidate_terms: Vec::new(),
         }
     }
@@ -216,7 +216,6 @@ impl CalibrationLossBuilder {
                 standardized_residual: None,
                 covariance_diagonal: None,
                 loss: f64::INFINITY,
-                admissibility_blocker: true,
             });
     }
 
@@ -281,9 +280,9 @@ impl CalibrationLossBuilder {
         }
     }
 
-    pub(crate) fn add_domain_margin_constraint(
+    pub(crate) fn add_domain_margin_diagnostic(
         &mut self,
-        constraint_id: impl Into<String>,
+        margin_id: impl Into<String>,
         margin: f64,
         target_margin: f64,
     ) {
@@ -296,14 +295,14 @@ impl CalibrationLossBuilder {
 
         let loss = standardized_violation * standardized_violation;
 
-        self.hard_constraints
-            .push(CalibrationHardConstraintDiagnostic {
-                constraint_id: constraint_id.into(),
+        self.domain_margin_diagnostics
+            .push(CalibrationDomainMarginDiagnostic {
+                margin_id: margin_id.into(),
                 margin,
                 target_margin,
                 standardized_violation,
                 loss,
-                admissibility_blocker: standardized_violation > 0.0,
+                admissibility_warning: standardized_violation > 0.0,
             });
     }
 
@@ -320,12 +319,12 @@ impl CalibrationLossBuilder {
         );
 
         let domain_margin_loss = mean_finite_or_zero(
-            self.hard_constraints
+            self.domain_margin_diagnostics
                 .iter()
-                .map(|constraint| constraint.loss),
+                .map(|diagnostic| diagnostic.loss),
         );
 
-        let mut blockers = Vec::new();
+        let mut warnings = Vec::new();
         let mut max_standardized_residual = 0.0_f64;
 
         for term in &self.terms {
@@ -333,22 +332,14 @@ impl CalibrationLossBuilder {
                 max_standardized_residual =
                     max_standardized_residual.max(standardized_residual.abs());
             }
-
-            if term.admissibility_blocker {
-                blockers.push(term.term_id.clone());
-            }
         }
 
-        for constraint in &self.hard_constraints {
+        for diagnostic in &self.domain_margin_diagnostics {
             max_standardized_residual =
-                max_standardized_residual.max(constraint.standardized_violation.abs());
-            if constraint.admissibility_blocker {
-                blockers.push(constraint.constraint_id.clone());
+                max_standardized_residual.max(diagnostic.standardized_violation.abs());
+            if diagnostic.admissibility_warning {
+                warnings.push(diagnostic.margin_id.clone());
             }
-        }
-
-        for term in &self.invalid_candidate_terms {
-            blockers.push(term.term_id.clone());
         }
 
         let invalid_candidate_loss = if self.invalid_candidate_terms.is_empty() {
@@ -365,12 +356,12 @@ impl CalibrationLossBuilder {
             global_loss,
             family_losses,
             term_diagnostics: self.terms,
-            hard_constraint_diagnostics: self.hard_constraints,
+            domain_margin_diagnostics: self.domain_margin_diagnostics,
             admissibility: CalibrationLossAdmissibility {
-                admissible: blockers.is_empty() && global_loss.is_finite(),
+                admissible: global_loss.is_finite(),
                 max_standardized_residual,
                 excess_loss: invalid_candidate_loss,
-                blockers,
+                warnings,
             },
         }
     }
@@ -455,7 +446,6 @@ fn objective_family_coordinate_terms(
                 standardized_residual,
                 covariance_diagonal: Some(covariance_diagonal),
                 loss: coordinate_loss,
-                admissibility_blocker: false,
             }
         })
         .collect()
@@ -521,17 +511,17 @@ mod loss_tests {
     }
 
     #[test]
-    fn loss_builder_keeps_domain_barrier_active() {
+    fn loss_builder_records_domain_margin_warning() {
         let mut builder = CalibrationLossBuilder::new();
 
-        builder.add_domain_margin_constraint("domain_margin.test", 0.5, 1.0);
+        builder.add_domain_margin_diagnostic("domain_margin.test", 0.5, 1.0);
 
         let evaluation = builder.build();
 
-        assert!(!evaluation.admissibility.admissible);
+        assert!(evaluation.admissibility.admissible);
         assert_eq!(evaluation.global_loss, 0.25);
         assert_eq!(
-            evaluation.admissibility.blockers,
+            evaluation.admissibility.warnings,
             vec!["domain_margin.test"]
         );
     }
@@ -546,9 +536,6 @@ mod loss_tests {
 
         assert!(!evaluation.global_loss.is_finite());
         assert!(!evaluation.admissibility.admissible);
-        assert_eq!(
-            evaluation.admissibility.blockers,
-            vec!["invalid_candidate.test"]
-        );
+        assert!(evaluation.admissibility.warnings.is_empty());
     }
 }

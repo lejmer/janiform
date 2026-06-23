@@ -14,7 +14,7 @@ pub enum ReturnBackfitStageProgressPhase {
     InputPreflight,
     ContinuousSamplePreparation,
     DynamicClockReplay,
-    DeltaVarianceHandoff,
+    DeltaQuantileShapeBackfit,
     MarketPressureRefit,
     ReportAssembly,
 }
