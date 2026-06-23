@@ -178,16 +178,14 @@
             "vol_of_vol": 1.3202387066366394
           },
           "market_pressure_parameters": {
-            "physical_measure": {
-              "anchor_drift_per_signed_balance": -0.000017856171193408594,
-              "transition_rates": {
-                "downward_transition_rates": [],
-                "upward_transition_rates": []
-              }
-            },
             "side_imbalance_levels": [
               0.00207597376845935
-            ]
+            ],
+            "transition_rates": {
+              "downward_transition_rates": [],
+              "upward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": -0.000017856171193408594
           },
           "mean_reversion_fitted_parameters": {
             "kappa": 0.0
