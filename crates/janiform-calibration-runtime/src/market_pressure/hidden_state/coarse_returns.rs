@@ -90,19 +90,12 @@ pub(super) fn fit_coarse_augmented_single_side_model(
         coarse_return_effective_sample_count(coarse_return_observations.len())?;
 
     let Some(coarse_return_law) = coarse_return_law else {
-        return Ok(coarse_augmented_fit_decision(
-            None,
-            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
-                one_state_fit,
-                decision: "skipped",
-                reason: "missing_coarse_return_law",
-                candidate_support_levels: one_state_fit.support_levels.clone(),
-                effective_sample_count,
-                current_log_likelihood: None,
-                candidate_log_likelihood: None,
-                current_penalized_score: None,
-                candidate_penalized_score: None,
-            }),
+        return Ok(coarse_augmented_unscored_decision(
+            one_state_fit,
+            "skipped",
+            "missing_coarse_return_law",
+            one_state_fit.support_levels.clone(),
+            effective_sample_count,
         ));
     };
 
@@ -110,38 +103,25 @@ pub(super) fn fit_coarse_augmented_single_side_model(
         || !open_event_rate_per_hour.is_finite()
         || open_event_rate_per_hour <= 0.0
     {
-        return Ok(coarse_augmented_fit_decision(
-            None,
-            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
-                one_state_fit,
-                decision: "skipped",
-                reason: "insufficient_coarse_return_evidence",
-                candidate_support_levels: one_state_fit.support_levels.clone(),
-                effective_sample_count,
-                current_log_likelihood: None,
-                candidate_log_likelihood: None,
-                current_penalized_score: None,
-                candidate_penalized_score: None,
-            }),
+        return Ok(coarse_augmented_unscored_decision(
+            one_state_fit,
+            "skipped",
+            "insufficient_coarse_return_evidence",
+            one_state_fit.support_levels.clone(),
+            effective_sample_count,
         ));
     }
 
     let Some(support_levels) = coarse_augmented_support_levels(observations, one_state_fit)? else {
-        return Ok(coarse_augmented_fit_decision(
-            None,
-            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
-                one_state_fit,
-                decision: "skipped",
-                reason: "no_binary_support",
-                candidate_support_levels: one_state_fit.support_levels.clone(),
-                effective_sample_count,
-                current_log_likelihood: None,
-                candidate_log_likelihood: None,
-                current_penalized_score: None,
-                candidate_penalized_score: None,
-            }),
+        return Ok(coarse_augmented_unscored_decision(
+            one_state_fit,
+            "skipped",
+            "no_binary_support",
+            one_state_fit.support_levels.clone(),
+            effective_sample_count,
         ));
     };
+
     let support_magnitude = support_levels[1].abs().max(support_levels[0].abs());
 
     validate_strictly_increasing_support(&support_levels)?;
@@ -154,38 +134,24 @@ pub(super) fn fit_coarse_augmented_single_side_model(
         open_event_rate_per_hour,
     )?
     else {
-        return Ok(coarse_augmented_fit_decision(
-            None,
-            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
-                one_state_fit,
-                decision: "skipped",
-                reason: "no_anchor_drift_seed",
-                candidate_support_levels: support_levels.to_vec(),
-                effective_sample_count,
-                current_log_likelihood: None,
-                candidate_log_likelihood: None,
-                current_penalized_score: None,
-                candidate_penalized_score: None,
-            }),
+        return Ok(coarse_augmented_unscored_decision(
+            one_state_fit,
+            "skipped",
+            "no_anchor_drift_seed",
+            support_levels.to_vec(),
+            effective_sample_count,
         ));
     };
 
     let Some(initial_transition_rates) =
         initial_coarse_transition_rates(coarse_return_observations)?
     else {
-        return Ok(coarse_augmented_fit_decision(
-            None,
-            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
-                one_state_fit,
-                decision: "skipped",
-                reason: "no_transition_rate_seed",
-                candidate_support_levels: support_levels.to_vec(),
-                effective_sample_count,
-                current_log_likelihood: None,
-                candidate_log_likelihood: None,
-                current_penalized_score: None,
-                candidate_penalized_score: None,
-            }),
+        return Ok(coarse_augmented_unscored_decision(
+            one_state_fit,
+            "skipped",
+            "no_transition_rate_seed",
+            support_levels.to_vec(),
+            effective_sample_count,
         ));
     };
 
@@ -204,19 +170,12 @@ pub(super) fn fit_coarse_augmented_single_side_model(
         solver_settings,
     )?
     else {
-        return Ok(coarse_augmented_fit_decision(
-            None,
-            coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
-                one_state_fit,
-                decision: "rejected",
-                reason: "one_state_coarse_fit_failed",
-                candidate_support_levels: support_levels.to_vec(),
-                effective_sample_count,
-                current_log_likelihood: None,
-                candidate_log_likelihood: None,
-                current_penalized_score: None,
-                candidate_penalized_score: None,
-            }),
+        return Ok(coarse_augmented_unscored_decision(
+            one_state_fit,
+            "rejected",
+            "one_state_coarse_fit_failed",
+            support_levels.to_vec(),
+            effective_sample_count,
         ));
     };
 
@@ -323,6 +282,29 @@ fn coarse_augmented_fit_decision(
         hidden_fit,
         selection_diagnostics: vec![selection_diagnostic],
     }
+}
+
+fn coarse_augmented_unscored_decision(
+    one_state_fit: &SidePredictionFit,
+    decision: &'static str,
+    reason: &'static str,
+    candidate_support_levels: Vec<f64>,
+    effective_sample_count: f64,
+) -> CoarseAugmentedSingleSideModelFitDecision {
+    coarse_augmented_fit_decision(
+        None,
+        coarse_return_selection_diagnostic(CoarseReturnSelectionDiagnosticInput {
+            one_state_fit,
+            decision,
+            reason,
+            candidate_support_levels,
+            effective_sample_count,
+            current_log_likelihood: None,
+            candidate_log_likelihood: None,
+            current_penalized_score: None,
+            candidate_penalized_score: None,
+        }),
+    )
 }
 
 fn coarse_return_selection_diagnostic(
