@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from ._workflow_outputs import SimulationArtifactSink
 from ._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
-from .calibration.fit.state import CurrentStateEstimationResult
 from .contracts.base import require_non_empty_string
 from .forecast import ForecastMeasure, ForecastTableFormat, JaniformForecast
 from .forecast.result import DEFAULT_FORECAST_DISTRIBUTION_NODE_COUNT
@@ -37,6 +36,7 @@ from .simulation.shared import HawkesExcitationState, SeededTickEventStateSnapsh
 if TYPE_CHECKING:
     from .calibration.fit.state import (
         CurrentStateEstimationRequest,
+        CurrentStateEstimationResult,
         CurrentStateTrackerSnapshot,
         JaniformStateTracker,
     )
@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from .calibration.sessions.contracts import MarketDataSessionResolution
 
 _DEFAULT_SIMULATION_SEED = 0
+
 
 @dataclass(frozen=True, slots=True)
 class JaniformModel:
@@ -134,6 +135,7 @@ class JaniformModel:
         from ._native_api import native_module
         from ._native_progress import native_terminal_progress_mode
         from ._workflow_outputs import generate_workflow_run_id
+        from .calibration.fit.state import CurrentStateEstimationResult
         from .interval_factor_grids.workflow import _parse_interval_duration_nanos
 
         if state is not None and not isinstance(state, CurrentStateEstimationResult):

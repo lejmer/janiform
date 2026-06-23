@@ -24,11 +24,11 @@ from ...market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
 )
-from ..state import CurrentStateEstimationRequest
 from .input_inference import tick_data_input_inference_from_model_metadata
 from .shared import PreparedModelRuntimeFactors
 
 if TYPE_CHECKING:
+    from ..state import CurrentStateEstimationRequest
     from ....model import JaniformModel
 
 
