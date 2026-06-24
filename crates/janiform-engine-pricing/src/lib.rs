@@ -74,8 +74,9 @@ pub use contracts::{
     VanillaOptionPricingStatus, build_vanilla_option_pricing_run_result,
 };
 pub use forecast::{
-    AffineForecastExpectedLogReturn, AffineForecastExpectedLogReturnInput, AffineForecastMeasure,
-    AffineForecastTerminalLaw, AffineForecastTerminalLawInput,
+    AffineForecastExpectedLogReturn, AffineForecastExpectedLogReturnInput,
+    AffineForecastExpectedLogReturnProjector, AffineForecastExpectedLogReturnProjectorInput,
+    AffineForecastMeasure, AffineForecastTerminalLaw, AffineForecastTerminalLawInput,
     solve_affine_forecast_expected_log_return, solve_affine_forecast_terminal_law,
 };
 pub use grids::{

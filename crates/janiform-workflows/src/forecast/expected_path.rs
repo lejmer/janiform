@@ -122,6 +122,16 @@ fn compute_expected_path_range_result(
 
     let mut rows = Vec::with_capacity(range.len());
 
+    let projector = janiform_engine_pricing::AffineForecastExpectedLogReturnProjector::try_new(
+        janiform_engine_pricing::AffineForecastExpectedLogReturnProjectorInput {
+            pricing_request: &runtime.pricing_request,
+            interval_deltas: runtime.interval_deltas.as_slice(),
+            interval_factor_grids: runtime.interval_factor_grids.as_slice(),
+            measure: engine_forecast_measure(request.measure),
+        },
+    )
+    .map_err(|source| validation_error("expected_path", source.to_string()))?;
+
     for interval_offset in range.start..range.end {
         worker_cancellation_token.check_cancelled()?;
 
@@ -130,17 +140,9 @@ fn compute_expected_path_range_result(
         let maturity_interval =
             runtime.context.interval_delta * usize_to_f64(interval_index, "interval_index")?;
 
-        let projection = janiform_engine_pricing::solve_affine_forecast_expected_log_return(
-            janiform_engine_pricing::AffineForecastExpectedLogReturnInput {
-                pricing_request: &runtime.pricing_request,
-                maturity_count: interval_index,
-                maturity_interval,
-                interval_deltas: runtime.interval_deltas.as_slice(),
-                interval_factor_grids: runtime.interval_factor_grids.as_slice(),
-                measure: engine_forecast_measure(request.measure),
-            },
-        )
-        .map_err(|source| validation_error("expected_path", source.to_string()))?;
+        let projection = projector
+            .project_prefix(interval_index, maturity_interval)
+            .map_err(|source| validation_error("expected_path", source.to_string()))?;
 
         let timestamp_utc = timestamp_after_intervals(
             request.start_date_utc,

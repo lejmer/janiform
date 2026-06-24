@@ -744,11 +744,10 @@ mod tests {
         TerminalAffineMaturitySolveInput, TerminalAffineMeasurePolicy,
         TerminalAffineSpectralDomainInput, solve_terminal_affine_maturity_law,
     };
-    use crate::tests::support::build_valid_vanilla_option_request;
-    use crate::{
-        VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
-        VanillaOptionPricingModelParameters,
+    use crate::tests::support::{
+        build_unit_interval_factor_grids, build_valid_vanilla_option_request,
     };
+    use crate::{VanillaOptionPayoffType, VanillaOptionPricingModelParameters};
 
     #[test]
     fn terminal_affine_measure_change_normalizes_characteristic_and_martingale() {
@@ -793,9 +792,7 @@ mod tests {
     fn solve_test_maturity_law(
         pricing_request: crate::VanillaOptionPricingRequest,
     ) -> super::SolvedMaturityLaw {
-        let interval_factor_grids = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-            .expect("interval factors should construct")];
-
+        let interval_factor_grids = build_unit_interval_factor_grids(1);
         let interval_deltas = [1.0_f64];
         let payoff_types = [VanillaOptionPayoffType::Call];
 

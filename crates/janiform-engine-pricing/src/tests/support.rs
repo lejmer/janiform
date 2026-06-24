@@ -3,9 +3,9 @@ use crate::{
     PricingIntegrationProjectionRule, PricingIntegrationQualityDiagnostics,
     PricingIntegrationQualityGate, PricingIntervalSchedule, PricingIntervalScheduleMetadata,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingKernelParameters, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input,
+    VanillaOptionPricingIntervalFactors, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
 };
 use crate::{
     PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
@@ -93,6 +93,17 @@ pub(crate) fn build_uniform_runtime_interval_schedule(
             .collect(),
     )
     .expect("uniform runtime interval schedule should construct")
+}
+
+pub(crate) fn build_unit_interval_factor_grids(
+    interval_count: usize,
+) -> Vec<VanillaOptionPricingIntervalFactors> {
+    (0..interval_count)
+        .map(|_| {
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                .expect("unit interval factors should construct")
+        })
+        .collect()
 }
 
 pub(super) fn endogenous_boundary_input(

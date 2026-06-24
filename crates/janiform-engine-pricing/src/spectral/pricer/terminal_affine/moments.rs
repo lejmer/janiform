@@ -69,9 +69,10 @@ mod tests {
         TerminalAffineExpectedLogReturn, TerminalAffineExpectedLogReturnInput,
         TerminalAffineMeasurePolicy, solve_terminal_affine_expected_log_return,
     };
-    use crate::VanillaOptionPricingIntervalFactors;
     use crate::grids::SpectralThetaWarmStartKey;
-    use crate::tests::support::build_valid_vanilla_option_request;
+    use crate::tests::support::{
+        build_unit_interval_factor_grids, build_valid_vanilla_option_request,
+    };
 
     #[test]
     fn risk_neutral_projection_exposes_arithmetic_first_price_moment() {
@@ -96,9 +97,7 @@ mod tests {
         pricing_request: &crate::VanillaOptionPricingRequest,
         measure_policy: TerminalAffineMeasurePolicy,
     ) -> TerminalAffineExpectedLogReturn {
-        let interval_factor_grids = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-            .expect("interval factors should construct")];
-
+        let interval_factor_grids = build_unit_interval_factor_grids(1);
         let interval_deltas = [1.0_f64];
 
         let driver_parameters = pricing_request
