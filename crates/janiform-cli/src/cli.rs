@@ -19,7 +19,7 @@ use crate::context::GlobalCliOptions;
     about = "Command-line interface for the Janiform high-frequency return model.",
     long_about = "Janiform is a high-frequency return model for realistic simulation of market prices and derivative valuation.
 
-This command-line interface fits the model from market data, then uses fitted models for simulation, derivative valuation, reporting, and validation. Use command help for details on each task.
+This command-line interface fits models from market data, then uses fitted models for simulation, derivative valuation, and forecasting. Use command help for details on each task.
 
 Output modes:
   default terminal output writes summaries to stdout and progress to stderr
