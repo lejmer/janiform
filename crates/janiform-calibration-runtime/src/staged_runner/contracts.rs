@@ -612,10 +612,6 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_restart_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed_outer_cycles: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_outer_cycles: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub current_evaluation_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_evaluation_budget: Option<usize>,

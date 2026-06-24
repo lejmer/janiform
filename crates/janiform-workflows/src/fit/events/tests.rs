@@ -127,9 +127,11 @@ fn hawkes_likelihood_progress_uses_shared_work_item_table() {
     );
 
     progress.stage = CalibrationStage::Hawkes;
+
     progress.progress_phase = CalibrationStageProgressPhase::Hawkes(
         HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
     );
+
     progress.current_global_loss = Some(-0.125);
     progress.evaluation_progress_percent = Some(40);
 
@@ -266,7 +268,7 @@ fn resumed_run_started_event_marks_preceding_terminal_stages_completed() {
 }
 
 #[test]
-fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
+fn population_refinement_table_includes_losses_and_exact_evaluator_counts() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         Some("halton_01"),
@@ -279,7 +281,7 @@ fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
     progress.stage = CalibrationStage::JointRefinement;
 
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
-        JointRefinementStageProgressPhase::RestartOptimization,
+        JointRefinementStageProgressPhase::PopulationRefinement,
     );
 
     progress.current_restart_best_global_loss = Some(0.5);
@@ -320,7 +322,7 @@ fn restart_progress_table_includes_losses_and_exact_evaluator_counts() {
 }
 
 #[test]
-fn restart_progress_signal_uses_stable_global_summary_fields() {
+fn population_refinement_signal_uses_stable_global_summary_fields() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         Some("tick_moment_08"),
@@ -331,9 +333,11 @@ fn restart_progress_signal_uses_stable_global_summary_fields() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
-        JointRefinementStageProgressPhase::RestartOptimization,
+        JointRefinementStageProgressPhase::PopulationRefinement,
     );
+
     progress.current_global_loss = Some(74.277624);
     progress.current_restart_best_global_loss = Some(51.125);
     progress.active_restart_count = Some(4);
@@ -343,7 +347,7 @@ fn restart_progress_signal_uses_stable_global_summary_fields() {
     let progress_event = progress_event_from_staged_event(
         &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
     )
-    .expect("restart progress should map to terminal progress");
+    .expect("population refinement progress should map to terminal progress");
 
     match progress_event {
         Some(ProgressEvent::StageProgress {
@@ -368,7 +372,7 @@ fn restart_progress_signal_uses_stable_global_summary_fields() {
 }
 
 #[test]
-fn restart_progress_signal_uses_placeholders_for_unavailable_summary_fields() {
+fn population_refinement_signal_uses_placeholders_for_unavailable_summary_fields() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         Some("tick_moment_08"),
@@ -379,9 +383,11 @@ fn restart_progress_signal_uses_placeholders_for_unavailable_summary_fields() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
-        JointRefinementStageProgressPhase::RestartOptimization,
+        JointRefinementStageProgressPhase::PopulationRefinement,
     );
+
     progress.current_global_loss = Some(74.277624);
     progress.current_restart_best_global_loss = Some(51.125);
     progress.active_restart_count = Some(4);
@@ -389,7 +395,7 @@ fn restart_progress_signal_uses_placeholders_for_unavailable_summary_fields() {
     let progress_event = progress_event_from_staged_event(
         &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
     )
-    .expect("restart progress should map to terminal progress");
+    .expect("population refinement progress should map to terminal progress");
 
     match progress_event {
         Some(ProgressEvent::StageProgress { latest_signal, .. }) => {
@@ -405,7 +411,7 @@ fn restart_progress_signal_uses_placeholders_for_unavailable_summary_fields() {
 }
 
 #[test]
-fn restart_finalization_metrics_report_final_loss_without_replacing_search_losses() {
+fn population_finalization_metrics_report_final_loss_without_replacing_search_losses() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         Some("tick_moment_08"),
@@ -416,9 +422,11 @@ fn restart_finalization_metrics_report_final_loss_without_replacing_search_losse
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
-        JointRefinementStageProgressPhase::RestartOptimization,
+        JointRefinementStageProgressPhase::PopulationRefinement,
     );
+
     progress.evaluation_progress_percent = Some(100);
     progress.current_global_loss = Some(74.277624);
     progress.current_restart_best_global_loss = Some(51.125);
@@ -448,9 +456,11 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
-        JointRefinementStageProgressPhase::RestartOptimization,
+        JointRefinementStageProgressPhase::PopulationRefinement,
     );
+
     progress.restart_evaluation_timing_diagnostic =
         Some(JointRefinementStageRestartEvaluationTimingDiagnostic {
             restart_id: "tick_moment_21".to_string(),
@@ -487,6 +497,7 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
     let RunEventPayload::MetricUpdate(metric_update) = &events[1].payload else {
         panic!("expected metric update event");
     };
+
     assert_eq!(
         metric_update
             .measures
@@ -583,9 +594,11 @@ fn option_refinement_phase_start_seeds_planned_rows_without_active_work_item() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
         JointRefinementStageProgressPhase::OptionSearchTierRefinement,
     );
+
     progress.aggregate_progress_percent = Some(0);
     progress.planned_work_item_labels = vec!["halton_02".to_string(), "halton_14".to_string()];
 
@@ -660,9 +673,11 @@ fn option_selection_progress_table_includes_single_pricing_eval() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
         JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
     );
+
     progress.evaluation_progress_percent = Some(37);
     progress.current_pricing_interval_index = Some(145);
     progress.total_pricing_interval_count = Some(734);
@@ -719,9 +734,11 @@ fn option_refinement_progress_signal_prefers_best_loss_over_work_item_label() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
         JointRefinementStageProgressPhase::OptionSearchTierRefinement,
     );
+
     progress.current_global_loss = Some(74.277624);
     progress.current_pricing_interval_index = Some(47);
     progress.total_pricing_interval_count = Some(47);
@@ -751,9 +768,11 @@ fn option_refinement_progress_signal_omits_row_scoped_eval_count() {
     );
 
     progress.stage = CalibrationStage::JointRefinement;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
         JointRefinementStageProgressPhase::OptionSearchTierRefinement,
     );
+
     progress.current_pricing_interval_index = Some(0);
     progress.total_pricing_interval_count = Some(47);
 
@@ -782,6 +801,7 @@ fn finalization_pre_evaluation_progress_uses_named_phase_and_signal() {
     );
 
     progress.stage = CalibrationStage::Finalization;
+
     progress.progress_phase = CalibrationStageProgressPhase::JointRefinement(
         JointRefinementStageProgressPhase::StageInputResolution,
     );
@@ -848,8 +868,6 @@ fn return_components_progress_event(
         current_work_item_status: None,
         planned_work_item_labels: Vec::new(),
         active_restart_count: None,
-        completed_outer_cycles: None,
-        total_outer_cycles: None,
         current_evaluation_count,
         total_evaluation_budget,
         evaluation_progress_percent: None,

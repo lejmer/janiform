@@ -1,4 +1,3 @@
-pub(crate) mod adaptive_direct_search;
 pub(crate) mod coarse_data;
 pub(crate) mod hawkes;
 pub(crate) mod joint_metrics;

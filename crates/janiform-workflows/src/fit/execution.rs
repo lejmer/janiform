@@ -279,6 +279,7 @@ fn run_staged_with_observer(
 ) -> Result<(CalibrationStagedRunReport, Duration), WorkflowError> {
     let scope_id = workflow_scope_id(execution_input);
     let scope_label = workflow_scope_label_for_input(execution_input);
+
     let mut observer_error: Option<WorkflowError> = None;
     let mut progress_gate = VolatileProgressGate::default();
 
@@ -323,6 +324,7 @@ fn run_staged_with_observer(
             &mut staged_observer,
         )
     };
+
     let execution_duration = execution_started_at.elapsed();
 
     if let Some(observer_error) = observer_error {
@@ -494,7 +496,6 @@ fn write_execution_artifacts(
     )?;
 
     observe_output_materialization_progress(input.progress_adapter, "writing fit report")?;
-
     write_pretty_json(input.paths.report_path.as_path(), &report_payload)?;
 
     observe_output_materialization_progress(
@@ -525,9 +526,7 @@ fn write_execution_artifacts(
     )?;
 
     observe_output_materialization_progress(input.progress_adapter, "writing fitted model")?;
-
     write_pretty_json(input.paths.model_path.as_path(), &model_payload)?;
-
     observe_output_materialization_progress(input.progress_adapter, "recording model artifact")?;
 
     append_artifact_event(
@@ -578,13 +577,13 @@ mod tests {
     }
 
     #[test]
-    fn progress_gate_observes_restart_work_item_start_without_eval_metrics() {
+    fn progress_gate_observes_population_work_item_start_without_eval_metrics() {
         let mut progress_gate = VolatileProgressGate::default();
 
         assert!(should_observe_staged_event(
             &mut progress_gate,
             &joint_refinement_progress_event(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 Some("baseline"),
                 Some(1),
                 Some(1),
@@ -593,7 +592,7 @@ mod tests {
         assert!(should_observe_staged_event(
             &mut progress_gate,
             &joint_refinement_progress_event(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 Some("midpoint"),
                 None,
                 None,
@@ -649,8 +648,6 @@ mod tests {
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: None,
-                completed_outer_cycles: None,
-                total_outer_cycles: None,
                 current_evaluation_count,
                 total_evaluation_budget: None,
                 evaluation_progress_percent,
@@ -699,8 +696,6 @@ mod tests {
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
                 active_restart_count: Some(5),
-                completed_outer_cycles: None,
-                total_outer_cycles: Some(1),
                 current_evaluation_count,
                 total_evaluation_budget: Some(59),
                 evaluation_progress_percent,

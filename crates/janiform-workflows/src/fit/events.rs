@@ -561,8 +561,8 @@ fn stage_progress_signal_with_metrics(
     progress: &CalibrationStagedRunStageProgressEvent,
     work_item_metrics: &[ProgressWorkItemMetric],
 ) -> Option<String> {
-    if work_item_table_uses_restart_optimization_columns(&progress.progress_phase) {
-        return Some(restart_optimization_progress_signal(progress));
+    if work_item_table_uses_population_refinement_columns(&progress.progress_phase) {
+        return Some(population_refinement_progress_signal(progress));
     }
 
     let work_item_label = progress_work_item_label(progress, work_item_metrics);
@@ -602,7 +602,7 @@ fn stage_progress_signal_with_metrics(
 
     if let Some(current_global_loss) = progress.current_global_loss {
         let score_label =
-            if work_item_table_uses_restart_optimization_columns(&progress.progress_phase) {
+            if work_item_table_uses_population_refinement_columns(&progress.progress_phase) {
                 "loss"
             } else {
                 "global loss"
@@ -630,7 +630,7 @@ fn stage_progress_signal_with_metrics(
     (!parts.is_empty()).then(|| parts.join(", "))
 }
 
-fn restart_optimization_progress_signal(
+fn population_refinement_progress_signal(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> String {
     let active_evaluations = progress
@@ -736,10 +736,10 @@ fn work_item_table_columns(
 ) -> Vec<ProgressWorkItemColumn> {
     let mut columns = Vec::new();
 
-    let uses_restart_optimization_columns =
-        work_item_table_uses_restart_optimization_columns(&progress.progress_phase);
+    let uses_population_refinement_columns =
+        work_item_table_uses_population_refinement_columns(&progress.progress_phase);
 
-    if uses_restart_optimization_columns
+    if uses_population_refinement_columns
         || progress.current_evaluation_count.is_some()
         || progress.total_evaluation_budget.is_some()
     {
@@ -757,8 +757,8 @@ fn work_item_table_columns(
         columns.push(ProgressWorkItemColumn::new("pricing_rows", "Rows"));
     }
 
-    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
-        let current_objective_label = if uses_restart_optimization_columns {
+    if uses_population_refinement_columns || progress.current_global_loss.is_some() {
+        let current_objective_label = if uses_population_refinement_columns {
             "Trial loss"
         } else {
             "Cur. loss"
@@ -770,11 +770,11 @@ fn work_item_table_columns(
         ));
     }
 
-    if uses_restart_optimization_columns || progress.current_restart_best_global_loss.is_some() {
+    if uses_population_refinement_columns || progress.current_restart_best_global_loss.is_some() {
         columns.push(ProgressWorkItemColumn::new("best_objective", "Best loss"));
     }
 
-    if uses_restart_optimization_columns
+    if uses_population_refinement_columns
         || progress.current_global_loss.is_some()
         || progress.current_final_global_loss.is_some()
     {
@@ -844,13 +844,13 @@ fn display_work_item_metrics(
     work_item_metrics
 }
 
-fn work_item_table_uses_restart_optimization_columns(
+fn work_item_table_uses_population_refinement_columns(
     progress_phase: &CalibrationStageProgressPhase,
 ) -> bool {
     matches!(
         progress_phase,
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization
+            JointRefinementStageProgressPhase::PopulationRefinement
         )
     )
 }
@@ -859,8 +859,9 @@ fn work_item_table_metrics(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Vec<ProgressWorkItemMetric> {
     let mut metrics = Vec::new();
-    let restart_finalization_metric_update =
-        work_item_table_uses_restart_optimization_columns(&progress.progress_phase)
+
+    let population_finalization_metric_update =
+        work_item_table_uses_population_refinement_columns(&progress.progress_phase)
             && progress.current_final_global_loss.is_some();
 
     if let Some(evaluation_label) = evaluation_label(
@@ -884,11 +885,11 @@ fn work_item_table_metrics(
         metrics.push(ProgressWorkItemMetric::new("pricing_rows", row_label));
     }
 
-    if !restart_finalization_metric_update
+    if !population_finalization_metric_update
         && let Some(current_global_loss) = progress.current_global_loss
     {
         let metric_key =
-            if !work_item_table_uses_restart_optimization_columns(&progress.progress_phase)
+            if !work_item_table_uses_population_refinement_columns(&progress.progress_phase)
                 && progress.evaluation_progress_percent == Some(100)
             {
                 "final_objective"
@@ -902,7 +903,7 @@ fn work_item_table_metrics(
         ));
     }
 
-    if !restart_finalization_metric_update
+    if !population_finalization_metric_update
         && let Some(current_restart_best_global_loss) = progress.current_restart_best_global_loss
     {
         metrics.push(ProgressWorkItemMetric::new(
@@ -1025,7 +1026,7 @@ fn progress_work_item_label(
             HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
         )
         | CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization
+            JointRefinementStageProgressPhase::PopulationRefinement
             | JointRefinementStageProgressPhase::CoarseConsistencyEvaluation
             | JointRefinementStageProgressPhase::OptionSearchTierRefinement
             | JointRefinementStageProgressPhase::OptionSelectionTierEvaluation
@@ -1092,7 +1093,7 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
             ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
         ) => "continuous_nig_basin_optimization",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization,
+            JointRefinementStageProgressPhase::PopulationRefinement,
         ) => "population_refinement",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::StageInputResolution,
@@ -1284,7 +1285,7 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
             JointRefinementStageProgressPhase::RestartCandidateScreening,
         ) => "restart screening",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization,
+            JointRefinementStageProgressPhase::PopulationRefinement,
         ) => "population refinement",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,

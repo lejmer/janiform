@@ -1,7 +1,9 @@
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 
 use super::super::super::{JointRefinementContext, ordered_parameter_bits};
-use super::super::workflow::{JointRefinementBudgetSchedule, restart_cycle_evaluation_budget};
+use super::super::workflow::{
+    JointRefinementBudgetSchedule, population_control_reference_evaluation_budget,
+};
 use super::archive::{
     best_population_control_score_record, best_restart_population_control_archive_record,
     distinct_ranked_population_control_archive_record, ranked_population_control_archive_records,
@@ -53,9 +55,10 @@ pub(super) fn build_population_control_state(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
 ) -> PopulationControlState {
-    let cycle_budget = restart_cycle_evaluation_budget(context, solver_settings).max(1);
+    let reference_budget =
+        population_control_reference_evaluation_budget(context, solver_settings).max(1);
 
-    let max_search_count_per_restart = ((cycle_budget as f64)
+    let max_search_count_per_restart = ((reference_budget as f64)
         * budget_schedule
             .calibration_effort
             .restart_pool_max_candidate_budget_scale)
@@ -225,6 +228,7 @@ impl PopulationControlState {
     ) -> Option<PopulationControlFinalizationJob> {
         let restart_id = self.restart_ids.get(restart_position)?;
         let seed_vector = self.seed_vectors.get(restart_position)?;
+
         let candidate_vector =
             self.finalization_candidate_vector(restart_position, self.search_closed)?;
 
@@ -323,6 +327,7 @@ impl PopulationControlState {
         F: Fn(usize) -> Option<usize>,
     {
         let mut candidate_specs = Vec::new();
+
         // Candidate preparation tracks restart reservations locally so the queue
         // does not fill with work that the per-restart budget will reject.
         let mut prepared_restart_counts = self.restart_scheduled_search_counts.clone();
@@ -612,6 +617,7 @@ mod tests {
             candidate_evaluation_count: 1,
             score: test_score(0.0),
         });
+
         state.archive.push(PopulationControlCandidateRecord {
             restart_id: "latest_restart".to_string(),
             parameter_vector: vec![1.0],

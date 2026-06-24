@@ -138,7 +138,7 @@ pub(super) fn emit_population_control_finalization_completed_progress(
                 .map(|counts| counts.closed_form_sell),
             exact_tilted_mixed_count: snapshots.exact_counts.map(|counts| counts.tilted_mixed),
             ..JointRefinementStageProgressUpdate::new(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 state.completed_finalization_count(),
                 state.restart_count(),
             )
@@ -198,7 +198,7 @@ pub(super) fn emit_population_control_finished(
             current_restart_best_global_loss: best_search,
             best_global_loss: best_final.map(|(_, objective)| objective),
             ..JointRefinementStageProgressUpdate::new(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 restart_outcomes.len(),
                 restart_outcomes.len(),
             )
@@ -259,7 +259,7 @@ fn emit_population_control_running_progress(
             exact_tilted_mixed_count: snapshots.exact_counts.map(|counts| counts.tilted_mixed),
             restart_evaluation_timing_diagnostic,
             ..JointRefinementStageProgressUpdate::new(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 state.completed_finalization_count(),
                 state.restart_count(),
             )

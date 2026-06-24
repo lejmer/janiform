@@ -88,7 +88,7 @@ fn restart_search_artifacts_from_runtime_handoff(
         option_search_selection_agreement: handoff.option_search_selection_agreement.clone(),
         coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
         warning: handoff.warning.clone(),
-        restart_optimization_wall_clock_millis: handoff.restart_optimization_wall_clock_millis,
+        population_refinement_wall_clock_millis: handoff.population_refinement_wall_clock_millis,
         coarse_consistency_wall_clock_millis: handoff.coarse_consistency_wall_clock_millis,
     }
 }
@@ -151,7 +151,7 @@ fn restart_search_artifacts_from_dynamics_resume_store(
             &restart_selection.best_restart_id,
             selectable_restart_outcomes.as_slice(),
         ),
-        restart_optimization_wall_clock_millis: 0,
+        population_refinement_wall_clock_millis: 0,
         coarse_consistency_wall_clock_millis: restart_selection
             .coarse_consistency_wall_clock_millis,
     })
@@ -216,7 +216,7 @@ fn restart_search_artifacts_from_option_resume_store(
         option_search_selection_agreement: None,
         coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
         warning: None,
-        restart_optimization_wall_clock_millis: 0,
+        population_refinement_wall_clock_millis: 0,
         coarse_consistency_wall_clock_millis: 0,
     })
 }

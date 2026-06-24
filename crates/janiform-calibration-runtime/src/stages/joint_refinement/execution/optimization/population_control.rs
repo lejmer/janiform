@@ -14,7 +14,7 @@ use super::evaluation_timing::{
     RestartFinalizationTimingDiagnosticInput, restart_finalization_timing_diagnostic,
 };
 use super::workflow::{
-    JointRefinementBudgetSchedule, JointRefinementRestartOptimizationOutput,
+    JointRefinementBudgetSchedule, JointRefinementPopulationRefinementOutput,
     evaluate_finalized_restart_candidate, evaluate_prechecked_full_parameter_vector_objective,
     joint_refinement_has_fatal_execution_failure,
 };
@@ -69,7 +69,7 @@ pub(super) fn optimize_restart_seeds_population_control(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) -> JointRefinementRestartOptimizationOutput {
+) -> JointRefinementPopulationRefinementOutput {
     let search_budget = population_control_search_budget(context, solver_settings, budget_schedule);
 
     let mut state =
@@ -92,7 +92,7 @@ pub(super) fn optimize_restart_seeds_population_control(
 
     emit_population_control_finished(progress_sender, restart_outcomes.as_slice());
 
-    JointRefinementRestartOptimizationOutput {
+    JointRefinementPopulationRefinementOutput {
         restart_outcomes,
         evaluation_timing_diagnostics,
     }

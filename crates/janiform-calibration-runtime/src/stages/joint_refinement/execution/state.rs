@@ -363,13 +363,13 @@ impl JointRefinementProfilingState {
 
     pub(crate) fn snapshot_runtime_profile(
         &self,
-        restart_optimization_wall_clock_millis: u64,
+        population_refinement_wall_clock_millis: u64,
         coarse_consistency_wall_clock_millis: u64,
         final_seed_evaluation_wall_clock_millis: u64,
         final_assembly_wall_clock_millis: u64,
     ) -> JointRefinementStageRuntimeProfile {
         JointRefinementStageRuntimeProfile {
-            restart_optimization_wall_clock_millis,
+            population_refinement_wall_clock_millis,
             coarse_consistency_wall_clock_millis,
             final_seed_evaluation_wall_clock_millis,
             final_assembly_wall_clock_millis,
@@ -732,7 +732,7 @@ pub(crate) struct JointRefinementStageRuntimeHandoff {
     pub(crate) option_search_selection_agreement:
         Option<JointRefinementStageOptionSearchSelectionAgreementDiagnostics>,
     pub(crate) warning: Option<String>,
-    pub(crate) restart_optimization_wall_clock_millis: u64,
+    pub(crate) population_refinement_wall_clock_millis: u64,
     pub(crate) coarse_consistency_wall_clock_millis: u64,
 }
 

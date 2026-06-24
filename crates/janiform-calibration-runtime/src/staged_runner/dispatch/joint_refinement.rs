@@ -129,8 +129,6 @@ pub(super) fn forward_joint_refinement_like_stage_progress(
                 current_work_item_status: progress_update.current_work_item_status,
                 planned_work_item_labels: progress_update.planned_work_item_labels,
                 active_restart_count: progress_update.active_restart_count,
-                completed_outer_cycles: progress_update.completed_outer_cycles,
-                total_outer_cycles: progress_update.total_outer_cycles,
                 current_evaluation_count: progress_update.current_evaluation_count,
                 total_evaluation_budget: progress_update.total_evaluation_budget,
                 evaluation_progress_percent: progress_update.evaluation_progress_percent,

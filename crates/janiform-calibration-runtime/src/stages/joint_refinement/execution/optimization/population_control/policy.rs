@@ -3,7 +3,7 @@ use janiform_foundations::numeric::ceil_integer_square_root;
 
 use super::super::super::JointRefinementContext;
 use super::super::workflow::{
-    JointRefinementBudgetSchedule, restart_candidate_total_evaluation_budget,
+    JointRefinementBudgetSchedule, population_control_seed_evaluation_budget,
 };
 
 // A generation keeps one running wave and one queued wave per worker. This keeps
@@ -16,7 +16,7 @@ pub(super) fn population_control_search_budget(
     budget_schedule: JointRefinementBudgetSchedule,
 ) -> usize {
     let fixed_restart_budget = budget_schedule.restart_count.max(1).saturating_mul(
-        restart_candidate_total_evaluation_budget(context, solver_settings, budget_schedule),
+        population_control_seed_evaluation_budget(context, solver_settings, budget_schedule),
     );
 
     ((fixed_restart_budget as f64)

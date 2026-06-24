@@ -376,7 +376,7 @@ pub struct JointRefinementStageRestartDiagnostics {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageRuntimeProfile {
-    pub restart_optimization_wall_clock_millis: u64,
+    pub population_refinement_wall_clock_millis: u64,
     pub coarse_consistency_wall_clock_millis: u64,
     pub final_seed_evaluation_wall_clock_millis: u64,
     pub final_assembly_wall_clock_millis: u64,

@@ -752,7 +752,7 @@ mod tests {
             17,
         );
         let runtime_profile = JointRefinementStageRuntimeProfile {
-            restart_optimization_wall_clock_millis: 123,
+            population_refinement_wall_clock_millis: 123,
             coarse_consistency_wall_clock_millis: 0,
             final_seed_evaluation_wall_clock_millis: 0,
             final_assembly_wall_clock_millis: 0,

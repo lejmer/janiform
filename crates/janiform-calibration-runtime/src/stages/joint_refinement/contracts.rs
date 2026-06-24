@@ -94,7 +94,7 @@ pub enum JointRefinementStageProgressPhase {
     BaselineCoarseConsistencyEvaluation,
     RestartSeedGeneration,
     RestartCandidateScreening,
-    RestartOptimization,
+    PopulationRefinement,
     CoarseConsistencyEvaluation,
     MarketPressureRefit,
     OptionSearchTierRefinement,
@@ -117,7 +117,7 @@ const JOINT_REFINEMENT_PROGRESS_PHASES: &[JointRefinementStageProgressPhase] = &
     JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
     JointRefinementStageProgressPhase::RestartSeedGeneration,
     JointRefinementStageProgressPhase::RestartCandidateScreening,
-    JointRefinementStageProgressPhase::RestartOptimization,
+    JointRefinementStageProgressPhase::PopulationRefinement,
     JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
     JointRefinementStageProgressPhase::MarketPressureRefit,
     JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -174,7 +174,7 @@ const JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1: &[(JointRefinementStageProgress
         JointRefinementStageProgressPhase::RestartCandidateScreening,
         4,
     ),
-    (JointRefinementStageProgressPhase::RestartOptimization, 56),
+    (JointRefinementStageProgressPhase::PopulationRefinement, 56),
     (
         JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
         4,
@@ -210,8 +210,6 @@ pub struct JointRefinementStageProgressUpdate {
     pub current_work_item_status: Option<String>,
     pub planned_work_item_labels: Vec<String>,
     pub active_restart_count: Option<usize>,
-    pub completed_outer_cycles: Option<usize>,
-    pub total_outer_cycles: Option<usize>,
     pub current_evaluation_count: Option<usize>,
     pub total_evaluation_budget: Option<usize>,
     pub evaluation_progress_percent: Option<usize>,
@@ -252,8 +250,6 @@ impl JointRefinementStageProgressUpdate {
             current_work_item_status: None,
             planned_work_item_labels: Vec::new(),
             active_restart_count: None,
-            completed_outer_cycles: None,
-            total_outer_cycles: None,
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
@@ -378,9 +374,9 @@ mod tests {
     }
 
     #[test]
-    fn joint_refinement_stage_progress_uses_restart_aggregate_percent() {
+    fn joint_refinement_stage_progress_uses_population_refinement_aggregate_percent() {
         let mut progress_update = JointRefinementStageProgressUpdate::new(
-            JointRefinementStageProgressPhase::RestartOptimization,
+            JointRefinementStageProgressPhase::PopulationRefinement,
             18,
             22,
         );

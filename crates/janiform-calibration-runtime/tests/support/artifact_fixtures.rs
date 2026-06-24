@@ -605,7 +605,7 @@ fn regression_joint_refinement_optimizer_diagnostics() -> JointRefinementStageOp
             invalid_reason_frequencies: Vec::new(),
         },
         runtime_profile: JointRefinementStageRuntimeProfile {
-            restart_optimization_wall_clock_millis: 0,
+            population_refinement_wall_clock_millis: 0,
             coarse_consistency_wall_clock_millis: 0,
             final_seed_evaluation_wall_clock_millis: 0,
             final_assembly_wall_clock_millis: 0,

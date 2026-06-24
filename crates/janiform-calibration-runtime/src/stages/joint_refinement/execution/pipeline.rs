@@ -176,7 +176,7 @@ pub(super) struct RestartSearchArtifacts {
     pub(super) coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
     pub(super) warning: Option<String>,
-    pub(super) restart_optimization_wall_clock_millis: u64,
+    pub(super) population_refinement_wall_clock_millis: u64,
     pub(super) coarse_consistency_wall_clock_millis: u64,
 }
 
@@ -1513,10 +1513,10 @@ fn run_restart_search(
         .cloned()
         .collect::<Vec<_>>();
 
-    let restart_optimization_started_at = Instant::now();
+    let population_refinement_started_at = Instant::now();
 
-    let remaining_restart_optimization_output = if remaining_restart_seeds.is_empty() {
-        super::optimization::JointRefinementRestartOptimizationOutput {
+    let remaining_population_refinement_output = if remaining_restart_seeds.is_empty() {
+        super::optimization::JointRefinementPopulationRefinementOutput {
             restart_outcomes: Vec::new(),
             evaluation_timing_diagnostics: Vec::new(),
         }
@@ -1530,7 +1530,7 @@ fn run_restart_search(
             Some(resume_store),
         )
     };
-    let remaining_restart_outcomes = remaining_restart_optimization_output
+    let remaining_restart_outcomes = remaining_population_refinement_output
         .restart_outcomes
         .as_slice();
 
@@ -1550,7 +1550,7 @@ fn run_restart_search(
         })
         .collect::<Vec<_>>();
 
-    let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
+    let population_refinement_wall_clock_millis = elapsed_millis(population_refinement_started_at);
 
     ensure_simulation_infrastructure_available(&prepared_bootstrap.bootstrap_context)?;
 
@@ -1569,7 +1569,7 @@ fn run_restart_search(
             let runtime_profile = prepared_bootstrap
                 .bootstrap_context
                 .profiling_state
-                .snapshot_runtime_profile(restart_optimization_wall_clock_millis, 0, 0, 0);
+                .snapshot_runtime_profile(population_refinement_wall_clock_millis, 0, 0, 0);
 
             resume_store.record_runtime_profile(runtime_profile);
 
@@ -1579,7 +1579,7 @@ fn run_restart_search(
 
     Ok(RestartSearchArtifacts {
         restart_outcomes,
-        restart_evaluation_timing_diagnostics: remaining_restart_optimization_output
+        restart_evaluation_timing_diagnostics: remaining_population_refinement_output
             .evaluation_timing_diagnostics,
         valid_restart_count,
         best_restart: restart_selection_artifacts.best_restart,
@@ -1592,7 +1592,7 @@ fn run_restart_search(
         coarse_consistency_artifacts_by_restart_id: restart_selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
         warning: restart_selection_artifacts.warning,
-        restart_optimization_wall_clock_millis,
+        population_refinement_wall_clock_millis,
         coarse_consistency_wall_clock_millis: restart_selection_artifacts
             .coarse_consistency_wall_clock_millis,
     })
@@ -2582,8 +2582,8 @@ fn build_runtime_handoff(
             .option_search_selection_agreement
             .clone(),
         warning: restart_search_artifacts.warning.clone(),
-        restart_optimization_wall_clock_millis: restart_search_artifacts
-            .restart_optimization_wall_clock_millis,
+        population_refinement_wall_clock_millis: restart_search_artifacts
+            .population_refinement_wall_clock_millis,
         coarse_consistency_wall_clock_millis: restart_search_artifacts
             .coarse_consistency_wall_clock_millis,
     }
@@ -2600,7 +2600,7 @@ fn build_fitted_stage_payload(
         build_joint_restart_diagnostics(restart_search_artifacts.restart_outcomes.as_slice());
 
     let runtime_profile = bootstrap_context.profiling_state.snapshot_runtime_profile(
-        restart_search_artifacts.restart_optimization_wall_clock_millis,
+        restart_search_artifacts.population_refinement_wall_clock_millis,
         restart_search_artifacts.coarse_consistency_wall_clock_millis,
         final_assembly_artifacts.final_seed_evaluation_wall_clock_millis,
         final_assembly_artifacts.final_assembly_wall_clock_millis,

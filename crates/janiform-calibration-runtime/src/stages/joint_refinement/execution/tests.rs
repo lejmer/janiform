@@ -22,7 +22,6 @@ use super::{
     JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
     desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
     extend_joint_coarse_tick_consistency_metrics_for_seed, joint_refinement_budget_schedule,
-    joint_refinement_restart_full_vector_direct_search_settings,
     option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
     test_joint_fitted_parameters, tick_shape_sample_target_count,
 };
@@ -513,59 +512,19 @@ fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_
 
     assert_eq!(single_restart_schedule.restart_count, 1);
     assert_eq!(
-        single_restart_schedule.outer_cycle_count,
+        single_restart_schedule.search_depth_multiplier,
         super::JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT
     );
 
     let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15, None);
 
     assert_eq!(default_frontier_schedule.restart_count, 15);
-    assert_eq!(default_frontier_schedule.outer_cycle_count, 2);
+    assert_eq!(default_frontier_schedule.search_depth_multiplier, 2);
 
     let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50, None);
 
     assert_eq!(broad_frontier_schedule.restart_count, 50);
-    assert_eq!(broad_frontier_schedule.outer_cycle_count, 1);
-}
-
-#[test]
-fn joint_refinement_restart_full_vector_budget_is_dimension_minimal() {
-    let solver_settings = build_test_solver_settings(64);
-
-    let four_dimensional_lower_bounds = vec![-1.0, -1.0, -1.0, -1.0];
-    let four_dimensional_upper_bounds = vec![1.0, 1.0, 1.0, 1.0];
-    let four_dimensional_settings = joint_refinement_restart_full_vector_direct_search_settings(
-        &solver_settings,
-        four_dimensional_lower_bounds.as_slice(),
-        four_dimensional_upper_bounds.as_slice(),
-    );
-
-    assert_eq!(four_dimensional_settings.initial_mesh_divisor, 5);
-    assert_eq!(
-        four_dimensional_settings.failed_poll_mesh_refinement_divisor,
-        2
-    );
-    assert_eq!(four_dimensional_settings.evaluation_budget, 29);
-    assert_eq!(
-        four_dimensional_settings.absolute_tolerance,
-        solver_settings.absolute_tolerance
-    );
-    assert_eq!(
-        four_dimensional_settings.relative_tolerance,
-        solver_settings.relative_tolerance
-    );
-
-    let one_movable_dimension_lower_bounds = vec![-1.0, 0.0, 0.0];
-    let one_movable_dimension_upper_bounds = vec![1.0, 0.0, 0.0];
-    let one_movable_dimension_settings =
-        joint_refinement_restart_full_vector_direct_search_settings(
-            &solver_settings,
-            one_movable_dimension_lower_bounds.as_slice(),
-            one_movable_dimension_upper_bounds.as_slice(),
-        );
-
-    assert_eq!(one_movable_dimension_settings.initial_mesh_divisor, 2);
-    assert_eq!(one_movable_dimension_settings.evaluation_budget, 13);
+    assert_eq!(broad_frontier_schedule.search_depth_multiplier, 1);
 }
 
 #[test]

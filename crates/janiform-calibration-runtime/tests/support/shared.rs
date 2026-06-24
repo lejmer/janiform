@@ -327,7 +327,7 @@ const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limit
 pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile: &mut JointRefinementStageRuntimeProfile,
 ) {
-    runtime_profile.restart_optimization_wall_clock_millis = 0;
+    runtime_profile.population_refinement_wall_clock_millis = 0;
     runtime_profile.coarse_consistency_wall_clock_millis = 0;
     runtime_profile.final_seed_evaluation_wall_clock_millis = 0;
     runtime_profile.final_assembly_wall_clock_millis = 0;
@@ -519,9 +519,9 @@ fn assert_joint_refinement_runtime_profile_matches(
     context: &str,
 ) {
     assert_eq!(
-        actual_profile.restart_optimization_wall_clock_millis,
-        expected_profile.restart_optimization_wall_clock_millis,
-        "{context} restart_optimization_wall_clock_millis drifted"
+        actual_profile.population_refinement_wall_clock_millis,
+        expected_profile.population_refinement_wall_clock_millis,
+        "{context} population_refinement_wall_clock_millis drifted"
     );
     assert_eq!(
         actual_profile.coarse_consistency_wall_clock_millis,
