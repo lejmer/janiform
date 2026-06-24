@@ -72,7 +72,6 @@ pub(super) fn joint_return_clock_exposure_candidate_seeds(
             )?;
 
             let buy_log_scale_shift = if move_buy_side { log_scale_shift } else { 0.0 };
-
             let sell_log_scale_shift = if move_buy_side { 0.0 } else { log_scale_shift };
 
             build_return_clock_exposure_candidate_seed(
