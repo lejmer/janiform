@@ -163,7 +163,8 @@ pub use contracts::{
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 pub use stage_outputs::{
-    HawkesStageFittedParameters, JointRefinementStageCarryInput,
+    HawkesStageFittedParameters, JointRefinementStageCandidateDiagnostics,
+    JointRefinementStageCandidateEvaluationTimingDiagnostic, JointRefinementStageCarryInput,
     JointRefinementStageFittedParameters, JointRefinementStageLabeledCount,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     JointRefinementStageOptionAggregateDiagnostic,
@@ -177,8 +178,7 @@ pub use stage_outputs::{
     JointRefinementStageOptionTierConstructionDiagnostics,
     JointRefinementStageOptionTierMaturityDiagnostic,
     JointRefinementStageOptionTierPricingDiagnostics,
-    JointRefinementStagePricingBlockFittedParameters, JointRefinementStageRestartDiagnostics,
-    JointRefinementStageRestartEvaluationTimingDiagnostic, JointRefinementStageRuntimeProfile,
+    JointRefinementStagePricingBlockFittedParameters, JointRefinementStageRuntimeProfile,
     LongVarianceStageDiagnostics, LongVarianceStageHorizonDiagnostic,
     LongVarianceStagePersistenceLagDiagnostic, MeanReversionStageCalibrationGrid,
     MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,

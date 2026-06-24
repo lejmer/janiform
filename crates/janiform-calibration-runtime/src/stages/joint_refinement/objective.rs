@@ -88,19 +88,19 @@ pub(super) struct JointRefinementLikelihoodFitWithCounts {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct JointRefinementRestartAdmissionScreening {
+pub(super) struct JointRefinementCandidateAdmissionScreening {
     pub(super) aggregate_score: f64,
     pub(super) component_ids: Vec<String>,
     pub(super) component_scores: Vec<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct JointRefinementRestartAdmissionDiagnostics {
-    pub(super) screening: JointRefinementRestartAdmissionScreening,
+pub(super) struct JointRefinementCandidateAdmissionDiagnostics {
+    pub(super) screening: JointRefinementCandidateAdmissionScreening,
     pub(super) term_diagnostics: Vec<JointRefinementStageObjectiveTermDiagnostic>,
 }
 
-impl JointRefinementRestartAdmissionScreening {
+impl JointRefinementCandidateAdmissionScreening {
     pub(super) fn maximum_component_score(&self) -> f64 {
         self.component_scores
             .iter()
@@ -147,10 +147,10 @@ pub(super) fn evaluate_joint_candidate(
     candidate_evaluation
 }
 
-pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
+pub(super) fn evaluate_joint_fitted_candidate_admission_diagnostics(
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
-) -> Result<JointRefinementRestartAdmissionDiagnostics, &'static str> {
+) -> Result<JointRefinementCandidateAdmissionDiagnostics, &'static str> {
     if violates_runtime_seasonality_scaled_stationarity(fitted_parameters, context) {
         context
             .profiling_state
@@ -159,7 +159,7 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
     }
 
     let deterministic_evaluation =
-        build_restart_screening_deterministic_evaluation(fitted_parameters, context);
+        build_candidate_screening_deterministic_evaluation(fitted_parameters, context);
     if let Some(failure_reason) =
         deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation)
     {
@@ -196,8 +196,8 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
             .iter()
             .all(|component_score| component_score.is_finite())
     {
-        Ok(JointRefinementRestartAdmissionDiagnostics {
-            screening: JointRefinementRestartAdmissionScreening {
+        Ok(JointRefinementCandidateAdmissionDiagnostics {
+            screening: JointRefinementCandidateAdmissionScreening {
                 aggregate_score: loss_evaluation.global_loss,
                 component_ids,
                 component_scores,
@@ -205,11 +205,11 @@ pub(super) fn evaluate_joint_fitted_candidate_restart_admission_diagnostics(
             term_diagnostics: loss_evaluation.term_diagnostics,
         })
     } else {
-        Err("deterministic_restart_global_loss_not_finite")
+        Err("deterministic_candidate_global_loss_not_finite")
     }
 }
 
-fn build_restart_screening_deterministic_evaluation(
+fn build_candidate_screening_deterministic_evaluation(
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
 ) -> JointRefinementDeterministicEvaluation {
@@ -714,11 +714,11 @@ pub(super) fn compare_joint_candidate_breakdowns(
         left_pareto_rank,
         left_breakdown,
         left_admissible,
-        left_restart_id,
+        left_candidate_id,
         right_pareto_rank,
         right_breakdown,
         right_admissible,
-        right_restart_id,
+        right_candidate_id,
         has_admissible_candidate,
     } = input;
 
@@ -769,18 +769,18 @@ pub(super) fn compare_joint_candidate_breakdowns(
                 .total_cmp(&right_breakdown.global_loss)
         })
         .then_with(|| left_pareto_rank.cmp(&right_pareto_rank))
-        .then_with(|| left_restart_id.cmp(right_restart_id))
+        .then_with(|| left_candidate_id.cmp(right_candidate_id))
 }
 
 pub(super) struct JointCandidateBreakdownComparisonInput<'a> {
     pub(super) left_pareto_rank: usize,
     pub(super) left_breakdown: &'a JointRefinementStageObjectiveBreakdown,
     pub(super) left_admissible: bool,
-    pub(super) left_restart_id: &'a str,
+    pub(super) left_candidate_id: &'a str,
     pub(super) right_pareto_rank: usize,
     pub(super) right_breakdown: &'a JointRefinementStageObjectiveBreakdown,
     pub(super) right_admissible: bool,
-    pub(super) right_restart_id: &'a str,
+    pub(super) right_candidate_id: &'a str,
     pub(super) has_admissible_candidate: bool,
 }
 

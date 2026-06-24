@@ -2078,7 +2078,7 @@ fn normalized_report_for_reproducibility(
                     );
                     for timing_diagnostic in &mut fitted_stage_payload
                         .optimizer_diagnostics
-                        .restart_evaluation_timing_diagnostics
+                        .candidate_evaluation_timing_diagnostics
                     {
                         timing_diagnostic.elapsed_millis = 0;
                     }

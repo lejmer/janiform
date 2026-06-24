@@ -26,7 +26,7 @@ pub(super) fn next_population_control_search_job(
     }
 
     let generation_width = population_control_generation_width(
-        pool_state.state.restart_count(),
+        pool_state.state.candidate_count(),
         pool_state.worker_capacity,
         remaining_search_budget,
     );
@@ -53,7 +53,7 @@ pub(super) fn next_population_control_search_job(
 pub(super) fn population_control_pool_completed(
     pool_state: &PopulationControlWorkerPoolState<'_>,
 ) -> bool {
-    pool_state.restart_outcomes.iter().all(Option::is_some)
+    pool_state.candidate_outcomes.iter().all(Option::is_some)
 }
 
 fn next_schedulable_population_search_job(

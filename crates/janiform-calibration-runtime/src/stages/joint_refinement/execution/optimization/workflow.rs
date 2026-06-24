@@ -1,8 +1,9 @@
 use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::{
-    CalibrationEffortOptions, CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
-    JointRefinementStageRestartEvaluationTimingDiagnostic, STANDARD_CALIBRATION_EFFORT,
+    CalibrationEffortOptions, CalibrationOptimizerSettings,
+    JointRefinementStageCandidateEvaluationTimingDiagnostic, JointRefinementStageFittedParameters,
+    STANDARD_CALIBRATION_EFFORT,
 };
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{
@@ -19,7 +20,7 @@ use super::super::super::setup::parameter_vector_to_fitted_parameters;
 use super::super::selection::admissibility_threshold_from_sample_count;
 use super::super::{
     JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT, JointRefinementCandidateEvaluation,
-    JointRefinementContext, JointRefinementFidelityTier, JointRefinementRestartOutcome,
+    JointRefinementCandidateOutcome, JointRefinementContext, JointRefinementFidelityTier,
     JointRefinementResumeStore, option_pricing_execution_failure_message,
     simulation_infrastructure_failure_message,
 };
@@ -32,25 +33,25 @@ const POPULATION_CONTROL_REFERENCE_EXPLORATORY_CANDIDATE_COUNT: usize = 4;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JointRefinementBudgetSchedule {
-    pub(crate) restart_count: usize,
+    pub(crate) candidate_count: usize,
     pub(crate) search_depth_multiplier: usize,
     pub(crate) calibration_effort: CalibrationEffortOptions,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct RestartObjectiveResidual {
+pub(super) struct CandidateObjectiveResidual {
     pub(super) family_id: String,
     pub(super) residual_id: String,
     pub(super) objective_residual: f64,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct RestartObjectiveEvaluation {
+pub(super) struct CandidateObjectiveEvaluation {
     pub(super) objective: f64,
     pub(super) admissibility_warning_count: usize,
     pub(super) max_standardized_residual: Option<f64>,
     pub(super) exact_likelihood_evaluator_counts: Option<ContinuousLikelihoodEvaluatorCounts>,
-    pub(super) residuals: Vec<RestartObjectiveResidual>,
+    pub(super) residuals: Vec<CandidateObjectiveResidual>,
 }
 
 struct RefreshedFullVectorCandidate {
@@ -59,23 +60,23 @@ struct RefreshedFullVectorCandidate {
 }
 
 pub(crate) struct JointRefinementPopulationRefinementOutput {
-    pub(crate) restart_outcomes: Vec<JointRefinementRestartOutcome>,
+    pub(crate) candidate_outcomes: Vec<JointRefinementCandidateOutcome>,
     pub(crate) evaluation_timing_diagnostics:
-        Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
+        Vec<JointRefinementStageCandidateEvaluationTimingDiagnostic>,
 }
 
-pub(crate) fn optimize_restart_seeds(
-    restart_seeds: &[(String, Vec<f64>)],
+pub(crate) fn optimize_candidate_seeds(
+    candidate_seeds: &[(String, Vec<f64>)],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    completed_restart_store: Option<&mut JointRefinementResumeStore>,
+    completed_candidate_store: Option<&mut JointRefinementResumeStore>,
 ) -> JointRefinementPopulationRefinementOutput {
-    debug_assert!(budget_schedule.restart_count > 0);
+    debug_assert!(budget_schedule.candidate_count > 0);
 
-    // Resume passes only pending restart seeds while retaining the original search depth.
-    let total_units = restart_seeds.len();
+    // Resume passes only pending candidate seeds while retaining the original search depth.
+    let total_units = candidate_seeds.len();
 
     let planned_work_item_labels =
         super::population_control::population_control_planned_work_item_labels();
@@ -100,24 +101,24 @@ pub(crate) fn optimize_restart_seeds(
         },
     );
 
-    let mut output = super::population_control::optimize_restart_seeds_population_control(
-        restart_seeds,
+    let mut output = super::population_control::optimize_candidate_seeds_population_control(
+        candidate_seeds,
         context,
         solver_settings,
         budget_schedule,
         progress_sender,
     );
 
-    if let Some(resume_store) = completed_restart_store {
-        for outcome in &output.restart_outcomes {
-            resume_store.record_restart_outcome(outcome);
+    if let Some(resume_store) = completed_candidate_store {
+        for outcome in &output.candidate_outcomes {
+            resume_store.record_candidate_outcome(outcome);
         }
     }
 
-    output.restart_outcomes.sort_by_key(|outcome| {
-        restart_seeds
+    output.candidate_outcomes.sort_by_key(|outcome| {
+        candidate_seeds
             .iter()
-            .position(|(restart_id, _)| *restart_id == outcome.restart_id)
+            .position(|(candidate_id, _)| *candidate_id == outcome.candidate_id)
             .unwrap_or(usize::MAX)
     });
 
@@ -126,38 +127,38 @@ pub(crate) fn optimize_restart_seeds(
 
 pub(crate) fn joint_refinement_budget_schedule(
     solver_settings: &CalibrationOptimizerSettings,
-    restart_count: usize,
+    candidate_count: usize,
     calibration_effort: Option<CalibrationEffortOptions>,
 ) -> JointRefinementBudgetSchedule {
     let base_search_depth_multiplier =
         joint_refinement_base_search_depth_multiplier(solver_settings);
 
     let calibration_effort = calibration_effort.unwrap_or(STANDARD_CALIBRATION_EFFORT);
-    let restart_count = restart_count.max(1);
+    let candidate_count = candidate_count.max(1);
 
     let search_depth_multiplier = base_search_depth_multiplier
         .saturating_mul(base_search_depth_multiplier)
-        .checked_div(restart_count)
+        .checked_div(candidate_count)
         .unwrap_or(1)
         .clamp(1, base_search_depth_multiplier);
 
     JointRefinementBudgetSchedule {
-        restart_count,
+        candidate_count,
         search_depth_multiplier,
         calibration_effort,
     }
 }
 
-pub(crate) fn desired_joint_refinement_restart_candidate_budget(
-    restart_candidate_budget_override: Option<usize>,
+pub(crate) fn desired_joint_refinement_candidate_budget(
+    candidate_budget_override: Option<usize>,
     calibration_effort: Option<CalibrationEffortOptions>,
 ) -> usize {
-    restart_candidate_budget_override
-        .filter(|restart_candidate_budget| *restart_candidate_budget > 0)
+    candidate_budget_override
+        .filter(|candidate_budget| *candidate_budget > 0)
         .unwrap_or_else(|| {
             calibration_effort
                 .unwrap_or(STANDARD_CALIBRATION_EFFORT)
-                .restart_candidate_budget
+                .candidate_budget
                 .max(1)
         })
 }
@@ -168,11 +169,11 @@ fn joint_refinement_base_search_depth_multiplier(
     JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT
 }
 
-fn precheck_restart_seed(
+fn precheck_candidate_seed(
     seed_vector: &[f64],
     context: &JointRefinementContext,
 ) -> Result<(), String> {
-    precheck_restart_seed_vector_contract(
+    precheck_candidate_seed_vector_contract(
         seed_vector,
         context.lower_bounds.as_slice(),
         context.upper_bounds.as_slice(),
@@ -189,7 +190,7 @@ fn precheck_restart_seed(
     Ok(())
 }
 
-fn precheck_restart_seed_vector_contract(
+fn precheck_candidate_seed_vector_contract(
     seed_vector: &[f64],
     lower_bounds: &[f64],
     upper_bounds: &[f64],
@@ -475,14 +476,14 @@ pub(crate) fn precheck_seed_summary_workload(
     Ok(())
 }
 
-fn build_precheck_rejected_restart_outcome(
-    restart_id: &str,
+fn build_precheck_rejected_candidate_outcome(
+    candidate_id: &str,
     current_vector: Vec<f64>,
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     failure_reason: &str,
-) -> JointRefinementRestartOutcome {
-    let invalid_reason = format!("restart_seed_precheck_failed:{failure_reason}");
+) -> JointRefinementCandidateOutcome {
+    let invalid_reason = format!("candidate_seed_precheck_failed:{failure_reason}");
 
     let local_evaluation = invalid_candidate_evaluation(
         context,
@@ -492,13 +493,13 @@ fn build_precheck_rejected_restart_outcome(
         invalid_reason.as_str(),
     );
 
-    JointRefinementRestartOutcome {
-        restart_id: restart_id.to_string(),
+    JointRefinementCandidateOutcome {
+        candidate_id: candidate_id.to_string(),
         parameter_vector: current_vector,
         final_evaluation: local_evaluation.clone(),
         local_evaluation,
         local_evaluation_count: 0,
-        stop_reason: "restart_seed_precheck_failed".to_string(),
+        stop_reason: "candidate_seed_precheck_failed".to_string(),
     }
 }
 
@@ -558,18 +559,18 @@ fn refreshed_full_vector_candidate(
     }
 }
 
-pub(super) fn evaluate_finalized_restart_candidate(
-    restart_id: &str,
+pub(super) fn evaluate_finalized_candidate(
+    candidate_id: &str,
     seed_vector: &[f64],
     candidate_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     evaluation_count: usize,
     stop_reason: &str,
-) -> JointRefinementRestartOutcome {
-    if let Err(precheck_failure) = precheck_restart_seed(candidate_vector, context) {
-        return build_precheck_rejected_restart_outcome(
-            restart_id,
+) -> JointRefinementCandidateOutcome {
+    if let Err(precheck_failure) = precheck_candidate_seed(candidate_vector, context) {
+        return build_precheck_rejected_candidate_outcome(
+            candidate_id,
             candidate_vector.to_vec(),
             context,
             solver_settings,
@@ -585,8 +586,8 @@ pub(super) fn evaluate_finalized_restart_candidate(
     if local_evaluation.invalid_reason.is_some()
         || joint_refinement_has_fatal_execution_failure(context)
     {
-        return JointRefinementRestartOutcome {
-            restart_id: restart_id.to_string(),
+        return JointRefinementCandidateOutcome {
+            candidate_id: candidate_id.to_string(),
             parameter_vector: refreshed_vector,
             // No final pass is valid after a local failure, so the final slot mirrors local.
             final_evaluation: local_evaluation.clone(),
@@ -603,8 +604,8 @@ pub(super) fn evaluate_finalized_restart_candidate(
         solver_settings,
     );
 
-    JointRefinementRestartOutcome {
-        restart_id: restart_id.to_string(),
+    JointRefinementCandidateOutcome {
+        candidate_id: candidate_id.to_string(),
         parameter_vector: refreshed_vector,
         local_evaluation,
         final_evaluation,
@@ -617,8 +618,8 @@ pub(super) fn evaluate_prechecked_full_parameter_vector_objective(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Option<RestartObjectiveEvaluation> {
-    if precheck_restart_seed(parameter_vector, context).is_err() {
+) -> Option<CandidateObjectiveEvaluation> {
+    if precheck_candidate_seed(parameter_vector, context).is_err() {
         return None;
     }
 
@@ -629,7 +630,7 @@ fn evaluate_full_parameter_vector_objective(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Option<RestartObjectiveEvaluation> {
+) -> Option<CandidateObjectiveEvaluation> {
     let candidate_evaluation = evaluate_joint_candidate(
         parameter_vector,
         context,
@@ -640,7 +641,7 @@ fn evaluate_full_parameter_vector_objective(
     candidate_evaluation
         .invalid_reason
         .is_none()
-        .then_some(RestartObjectiveEvaluation {
+        .then_some(CandidateObjectiveEvaluation {
             objective: candidate_evaluation.breakdown.global_loss,
             admissibility_warning_count: candidate_evaluation
                 .breakdown
@@ -656,13 +657,13 @@ fn evaluate_full_parameter_vector_objective(
             exact_likelihood_evaluator_counts: Some(
                 candidate_evaluation.exact_likelihood_evaluator_counts,
             ),
-            residuals: restart_objective_residuals(&candidate_evaluation.breakdown),
+            residuals: candidate_objective_residuals(&candidate_evaluation.breakdown),
         })
 }
 
-fn restart_objective_residuals(
+fn candidate_objective_residuals(
     breakdown: &janiform_calibration_artifacts::JointRefinementStageObjectiveBreakdown,
-) -> Vec<RestartObjectiveResidual> {
+) -> Vec<CandidateObjectiveResidual> {
     breakdown
         .family_losses
         .iter()
@@ -692,7 +693,7 @@ fn restart_objective_residuals(
 
                     objective_residual
                         .is_finite()
-                        .then(|| RestartObjectiveResidual {
+                        .then(|| CandidateObjectiveResidual {
                             family_id: family.family_id.clone(),
                             residual_id: coordinate_ids
                                 .get(coordinate_position)
@@ -839,18 +840,18 @@ mod tests {
     };
 
     use super::{
-        full_vector_refresh_fidelity_tier, full_vector_search_fidelity_tier,
-        population_control_candidate_reference_evaluation_budget,
-        precheck_hawkes_structural_domain, precheck_nig_return_composition_domain,
-        precheck_restart_seed_vector_contract, restart_objective_residuals,
-        runtime_branching_workload_is_infeasible, summary_simulation_event_capacity_is_infeasible,
+        candidate_objective_residuals, full_vector_refresh_fidelity_tier,
+        full_vector_search_fidelity_tier, population_control_candidate_reference_evaluation_budget,
+        precheck_candidate_seed_vector_contract, precheck_hawkes_structural_domain,
+        precheck_nig_return_composition_domain, runtime_branching_workload_is_infeasible,
+        summary_simulation_event_capacity_is_infeasible,
     };
     use crate::stages::joint_refinement::execution::{
         JointRefinementFidelityTier, test_joint_fitted_parameters,
     };
 
     #[test]
-    fn restart_objective_residuals_use_family_loss_geometry() {
+    fn candidate_objective_residuals_use_family_loss_geometry() {
         let breakdown = JointRefinementStageObjectiveBreakdown {
             global_loss: 6.5,
             family_losses: vec![
@@ -949,24 +950,24 @@ mod tests {
         };
 
         assert_eq!(
-            restart_objective_residuals(&breakdown),
+            candidate_objective_residuals(&breakdown),
             vec![
-                super::RestartObjectiveResidual {
+                super::CandidateObjectiveResidual {
                     family_id: "return_shape".to_string(),
                     residual_id: "return_shape.q01".to_string(),
                     objective_residual: 3.0 / 2.0_f64.sqrt(),
                 },
-                super::RestartObjectiveResidual {
+                super::CandidateObjectiveResidual {
                     family_id: "return_shape".to_string(),
                     residual_id: "return_shape.q99".to_string(),
                     objective_residual: 0.0,
                 },
-                super::RestartObjectiveResidual {
+                super::CandidateObjectiveResidual {
                     family_id: "activity_shape".to_string(),
                     residual_id: "activity_shape.hour_00".to_string(),
                     objective_residual: 0.0,
                 },
-                super::RestartObjectiveResidual {
+                super::CandidateObjectiveResidual {
                     family_id: "activity_shape".to_string(),
                     residual_id: "activity_shape.hour_12".to_string(),
                     objective_residual: 2.0 / 2.0_f64.sqrt(),
@@ -1019,7 +1020,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_full_vector_objectives_use_coarse_search_fidelity() {
+    fn candidate_full_vector_objectives_use_coarse_search_fidelity() {
         assert_eq!(
             full_vector_search_fidelity_tier(),
             JointRefinementFidelityTier::CoarseLocal
@@ -1027,7 +1028,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_full_vector_refresh_uses_seeded_local_fidelity() {
+    fn candidate_full_vector_refresh_uses_seeded_local_fidelity() {
         assert_eq!(
             full_vector_refresh_fidelity_tier(),
             JointRefinementFidelityTier::Local
@@ -1035,24 +1036,25 @@ mod tests {
     }
 
     #[test]
-    fn restart_seed_vector_precheck_rejects_non_finite_parameters() {
+    fn candidate_seed_vector_precheck_rejects_non_finite_parameters() {
         let error =
-            precheck_restart_seed_vector_contract(&[0.0, f64::NAN], &[-1.0, -1.0], &[1.0, 1.0])
+            precheck_candidate_seed_vector_contract(&[0.0, f64::NAN], &[-1.0, -1.0], &[1.0, 1.0])
                 .expect_err("non-finite seed parameter should be rejected");
 
         assert!(error.contains("non_finite_parameter_or_bound"));
     }
 
     #[test]
-    fn restart_seed_vector_precheck_rejects_out_of_bounds_parameters() {
-        let error = precheck_restart_seed_vector_contract(&[0.0, 2.0], &[-1.0, -1.0], &[1.0, 1.0])
-            .expect_err("out-of-bounds seed parameter should be rejected");
+    fn candidate_seed_vector_precheck_rejects_out_of_bounds_parameters() {
+        let error =
+            precheck_candidate_seed_vector_contract(&[0.0, 2.0], &[-1.0, -1.0], &[1.0, 1.0])
+                .expect_err("out-of-bounds seed parameter should be rejected");
 
         assert!(error.contains("parameter_out_of_bounds"));
     }
 
     #[test]
-    fn restart_seed_model_domain_prechecks_accept_valid_parameters() {
+    fn candidate_seed_model_domain_prechecks_accept_valid_parameters() {
         let fitted_parameters = test_joint_fitted_parameters();
 
         precheck_hawkes_structural_domain(&fitted_parameters)
@@ -1062,7 +1064,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_seed_hawkes_precheck_rejects_structural_domain_violations() {
+    fn candidate_seed_hawkes_precheck_rejects_structural_domain_violations() {
         let mut fitted_parameters = test_joint_fitted_parameters();
 
         fitted_parameters
@@ -1077,7 +1079,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_seed_nig_precheck_rejects_return_composition_domain_violations() {
+    fn candidate_seed_nig_precheck_rejects_return_composition_domain_violations() {
         let mut fitted_parameters = test_joint_fitted_parameters();
 
         fitted_parameters

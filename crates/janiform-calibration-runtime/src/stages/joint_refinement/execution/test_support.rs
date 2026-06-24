@@ -21,8 +21,8 @@ use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 use crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts;
 
 use super::state::{
-    JointRefinementCandidateEvaluation, JointRefinementRawAdmissibilityMetrics,
-    JointRefinementRestartOutcome,
+    JointRefinementCandidateEvaluation, JointRefinementCandidateOutcome,
+    JointRefinementRawAdmissibilityMetrics,
 };
 
 pub(crate) fn test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
@@ -159,14 +159,14 @@ pub(crate) fn test_joint_candidate_evaluation(
     }
 }
 
-pub(crate) fn test_joint_restart_outcome(
-    restart_id: &str,
+pub(crate) fn test_joint_candidate_outcome(
+    candidate_id: &str,
     global_loss: f64,
-) -> JointRefinementRestartOutcome {
+) -> JointRefinementCandidateOutcome {
     let evaluation = test_joint_candidate_evaluation(global_loss);
 
-    JointRefinementRestartOutcome {
-        restart_id: restart_id.to_string(),
+    JointRefinementCandidateOutcome {
+        candidate_id: candidate_id.to_string(),
         parameter_vector: vec![global_loss],
         local_evaluation: evaluation.clone(),
         final_evaluation: evaluation,

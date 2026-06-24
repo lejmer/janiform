@@ -705,8 +705,8 @@ pub(crate) struct JointRefinementCandidateEvaluation {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct JointRefinementRestartOutcome {
-    pub(crate) restart_id: String,
+pub(crate) struct JointRefinementCandidateOutcome {
+    pub(crate) candidate_id: String,
     pub(crate) parameter_vector: Vec<f64>,
     pub(crate) local_evaluation: JointRefinementCandidateEvaluation,
     pub(crate) final_evaluation: JointRefinementCandidateEvaluation,
@@ -716,13 +716,14 @@ pub(crate) struct JointRefinementRestartOutcome {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct JointRefinementStageRuntimeHandoff {
-    pub(crate) baseline_restart_outcome: JointRefinementRestartOutcome,
-    pub(crate) restart_outcomes: Vec<JointRefinementRestartOutcome>,
-    pub(crate) restart_evaluation_timing_diagnostics:
-        Vec<janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic>,
-    pub(crate) valid_restart_count: usize,
-    pub(crate) best_restart: JointRefinementRestartOutcome,
-    pub(crate) option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
+    pub(crate) baseline_candidate_outcome: JointRefinementCandidateOutcome,
+    pub(crate) candidate_outcomes: Vec<JointRefinementCandidateOutcome>,
+    pub(crate) candidate_evaluation_timing_diagnostics: Vec<
+        janiform_calibration_artifacts::JointRefinementStageCandidateEvaluationTimingDiagnostic,
+    >,
+    pub(crate) valid_candidate_count: usize,
+    pub(crate) best_candidate: JointRefinementCandidateOutcome,
+    pub(crate) option_refinement_candidate_frontier: Vec<JointRefinementCandidateOutcome>,
     pub(crate) selected_option_search_tier_pricing_artifact:
         Option<Arc<JointRefinementOptionTierPricingArtifact>>,
     pub(crate) selected_option_selection_tier_pricing_artifact:

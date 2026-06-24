@@ -56,11 +56,11 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
         .decision
         .selected_candidate_id
         .clone();
-    let selected_restart_id = selected_candidate_id
+    let selected_candidate_id = selected_candidate_id
         .strip_prefix("finalization_")
         .or_else(|| selected_candidate_id.strip_prefix("joint_refinement_"))
         .unwrap_or(selected_candidate_id.as_str());
-    let selected_joint_candidate_id = format!("joint_refinement_{selected_restart_id}");
+    let selected_joint_candidate_id = format!("joint_refinement_{selected_candidate_id}");
     let selected_joint_candidate = diagnostic_bundle
         .candidate_frontier
         .frontier_entries

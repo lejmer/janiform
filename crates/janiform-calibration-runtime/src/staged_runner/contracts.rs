@@ -1,5 +1,5 @@
 use janiform_calibration_artifacts::{
-    CalibrationEffortOptions, JointRefinementStageRestartEvaluationTimingDiagnostic,
+    CalibrationEffortOptions, JointRefinementStageCandidateEvaluationTimingDiagnostic,
 };
 
 use super::{
@@ -39,8 +39,8 @@ pub struct CalibrationStagedRunInputs {
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
     pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
-    pub joint_refinement_restart_candidate_budget_override: Option<usize>,
-    pub treat_invalid_restart_fallback_warning_as_error: bool,
+    pub joint_refinement_candidate_budget_override: Option<usize>,
+    pub treat_invalid_candidate_fallback_warning_as_error: bool,
     pub option_refinement_candidate_count_override: Option<usize>,
     pub option_refinement_wall_clock_budget_millis: Option<u64>,
     pub audit_option_pricing_enabled: bool,
@@ -604,13 +604,13 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_item_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_restart_id: Option<String>,
+    pub current_candidate_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_work_item_status: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub planned_work_item_labels: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_restart_count: Option<usize>,
+    pub active_candidate_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_evaluation_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -632,13 +632,13 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_restart_best_global_loss: Option<f64>,
+    pub current_candidate_best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_final_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub best_restart_id: Option<String>,
+    pub best_candidate_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_global_loss: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -652,8 +652,8 @@ pub struct CalibrationStagedRunStageProgressEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exact_tilted_mixed_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub restart_evaluation_timing_diagnostic:
-        Option<JointRefinementStageRestartEvaluationTimingDiagnostic>,
+    pub candidate_evaluation_timing_diagnostic:
+        Option<JointRefinementStageCandidateEvaluationTimingDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_convergence_ratio: Option<f64>,
 }

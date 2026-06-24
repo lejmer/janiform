@@ -1,16 +1,16 @@
 use std::sync::mpsc::Sender;
 
-use janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic;
+use janiform_calibration_artifacts::JointRefinementStageCandidateEvaluationTimingDiagnostic;
 use janiform_foundations::progress::WorkItemStatus;
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
 
-use super::super::super::JointRefinementRestartOutcome;
+use super::super::super::JointRefinementCandidateOutcome;
 use super::super::evaluation_timing::{
-    RESTART_SEARCH_FIDELITY_TIER_LABEL, RestartEvaluationTimingDiagnosticInput,
-    restart_evaluation_timing_diagnostic,
+    CandidateEvaluationTimingDiagnosticInput, RESTART_SEARCH_FIDELITY_TIER_LABEL,
+    candidate_evaluation_timing_diagnostic,
 };
 use super::super::workflow::emit_joint_refinement_progress;
 use super::POPULATION_CONTROL_PROGRESS_LABEL;
@@ -29,9 +29,9 @@ struct PopulationControlProgressSnapshots<'a> {
 
 pub(super) fn population_control_evaluation_timing_diagnostic(
     result: &PopulationControlSearchResult,
-) -> JointRefinementStageRestartEvaluationTimingDiagnostic {
-    restart_evaluation_timing_diagnostic(RestartEvaluationTimingDiagnosticInput {
-        restart_id: result.restart_id.as_str(),
+) -> JointRefinementStageCandidateEvaluationTimingDiagnostic {
+    candidate_evaluation_timing_diagnostic(CandidateEvaluationTimingDiagnosticInput {
+        candidate_id: result.candidate_id.as_str(),
         schedule_category: result.schedule_category,
         fidelity_tier: RESTART_SEARCH_FIDELITY_TIER_LABEL,
         candidate_evaluation_count: result.candidate_evaluation_count,
@@ -63,8 +63,8 @@ pub(super) fn emit_population_control_search_completed_progress(
     state: &PopulationControlState,
     search_budget: usize,
     total_progress_units: usize,
-    restart_evaluation_timing_diagnostic: Option<
-        JointRefinementStageRestartEvaluationTimingDiagnostic,
+    candidate_evaluation_timing_diagnostic: Option<
+        JointRefinementStageCandidateEvaluationTimingDiagnostic,
     >,
 ) {
     emit_population_control_running_progress(
@@ -72,7 +72,7 @@ pub(super) fn emit_population_control_search_completed_progress(
         state,
         search_budget,
         total_progress_units,
-        restart_evaluation_timing_diagnostic,
+        candidate_evaluation_timing_diagnostic,
     );
 }
 
@@ -94,7 +94,7 @@ pub(super) fn emit_population_control_finalization_scheduled_progress(
 pub(super) fn emit_population_control_finalization_completed_progress(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     state: &PopulationControlState,
-    outcome: &JointRefinementRestartOutcome,
+    outcome: &JointRefinementCandidateOutcome,
     total_progress_units: usize,
 ) {
     let aggregate_progress_percent =
@@ -102,19 +102,19 @@ pub(super) fn emit_population_control_finalization_completed_progress(
 
     let snapshots = population_control_progress_snapshots(state);
 
-    // Progress payloads own restart labels so UI consumers are decoupled from scheduler state.
+    // Progress payloads own candidate labels so UI consumers are decoupled from scheduler state.
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
             aggregate_progress_percent: Some(aggregate_progress_percent),
             current_item_label: Some(POPULATION_CONTROL_PROGRESS_LABEL.to_string()),
-            current_restart_id: snapshots
+            current_candidate_id: snapshots
                 .latest_score
-                .map(|snapshot| snapshot.restart_id.clone()),
+                .map(|snapshot| snapshot.candidate_id.clone()),
             current_work_item_status: Some(WorkItemStatus::Running.as_str().to_string()),
-            active_restart_count: Some(
+            active_candidate_count: Some(
                 state
-                    .restart_count()
+                    .candidate_count()
                     .saturating_sub(state.completed_finalization_count()),
             ),
             current_evaluation_count: Some(state.scheduled_search_evaluation_count()),
@@ -122,13 +122,13 @@ pub(super) fn emit_population_control_finalization_completed_progress(
             evaluation_progress_percent: Some(100),
             cumulative_local_evaluation_count: Some(state.completed_search_evaluation_count()),
             current_global_loss: snapshots.latest_score.map(|snapshot| snapshot.objective),
-            current_restart_best_global_loss: snapshots
+            current_candidate_best_global_loss: snapshots
                 .best_global
                 .map(|snapshot| snapshot.objective),
             current_final_global_loss: Some(outcome.final_evaluation.breakdown.global_loss),
-            best_restart_id: snapshots
+            best_candidate_id: snapshots
                 .best_global
-                .map(|snapshot| snapshot.restart_id.clone()),
+                .map(|snapshot| snapshot.candidate_id.clone()),
             best_global_loss: snapshots.best_global.map(|snapshot| snapshot.objective),
             exact_closed_form_buy_count: snapshots
                 .exact_counts
@@ -140,7 +140,7 @@ pub(super) fn emit_population_control_finalization_completed_progress(
             ..JointRefinementStageProgressUpdate::new(
                 JointRefinementStageProgressPhase::PopulationRefinement,
                 state.completed_finalization_count(),
-                state.restart_count(),
+                state.candidate_count(),
             )
         },
     );
@@ -148,11 +148,11 @@ pub(super) fn emit_population_control_finalization_completed_progress(
 
 pub(super) fn emit_population_control_finished(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-    restart_outcomes: &[JointRefinementRestartOutcome],
+    candidate_outcomes: &[JointRefinementCandidateOutcome],
 ) {
     // Completion reports both search and final validation loss because the two evaluations
     // can use different fidelity.
-    let best_final = restart_outcomes
+    let best_final = candidate_outcomes
         .iter()
         .filter(|outcome| outcome.final_evaluation.invalid_reason.is_none())
         .min_by(|left, right| {
@@ -163,11 +163,11 @@ pub(super) fn emit_population_control_finished(
         })
         .map(|outcome| {
             (
-                outcome.restart_id.clone(),
+                outcome.candidate_id.clone(),
                 outcome.final_evaluation.breakdown.global_loss,
             )
         });
-    let best_search = restart_outcomes
+    let best_search = candidate_outcomes
         .iter()
         .filter(|outcome| outcome.local_evaluation.invalid_reason.is_none())
         .min_by(|left, right| {
@@ -178,29 +178,29 @@ pub(super) fn emit_population_control_finished(
         })
         .map(|outcome| outcome.local_evaluation.breakdown.global_loss);
 
-    // Progress payloads own restart labels so UI consumers are decoupled from scheduler state.
+    // Progress payloads own candidate labels so UI consumers are decoupled from scheduler state.
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
             aggregate_progress_percent: Some(100),
             current_item_label: Some(POPULATION_CONTROL_PROGRESS_LABEL.to_string()),
             current_work_item_status: Some(WorkItemStatus::Completed.as_str().to_string()),
-            active_restart_count: Some(0),
+            active_candidate_count: Some(0),
             valid_completed_units: Some(
-                restart_outcomes
+                candidate_outcomes
                     .iter()
                     .filter(|outcome| outcome.final_evaluation.invalid_reason.is_none())
                     .count(),
             ),
-            best_restart_id: best_final
+            best_candidate_id: best_final
                 .as_ref()
-                .map(|(restart_id, _)| restart_id.clone()),
-            current_restart_best_global_loss: best_search,
+                .map(|(candidate_id, _)| candidate_id.clone()),
+            current_candidate_best_global_loss: best_search,
             best_global_loss: best_final.map(|(_, objective)| objective),
             ..JointRefinementStageProgressUpdate::new(
                 JointRefinementStageProgressPhase::PopulationRefinement,
-                restart_outcomes.len(),
-                restart_outcomes.len(),
+                candidate_outcomes.len(),
+                candidate_outcomes.len(),
             )
         },
     );
@@ -211,8 +211,8 @@ fn emit_population_control_running_progress(
     state: &PopulationControlState,
     search_budget: usize,
     total_progress_units: usize,
-    restart_evaluation_timing_diagnostic: Option<
-        JointRefinementStageRestartEvaluationTimingDiagnostic,
+    candidate_evaluation_timing_diagnostic: Option<
+        JointRefinementStageCandidateEvaluationTimingDiagnostic,
     >,
 ) {
     let aggregate_progress_percent =
@@ -220,17 +220,17 @@ fn emit_population_control_running_progress(
 
     let snapshots = population_control_progress_snapshots(state);
 
-    // Progress payloads own restart labels so UI consumers are decoupled from scheduler state.
+    // Progress payloads own candidate labels so UI consumers are decoupled from scheduler state.
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
             aggregate_progress_percent: Some(aggregate_progress_percent),
             current_item_label: Some(POPULATION_CONTROL_PROGRESS_LABEL.to_string()),
-            current_restart_id: snapshots
+            current_candidate_id: snapshots
                 .latest_score
-                .map(|snapshot| snapshot.restart_id.clone()),
+                .map(|snapshot| snapshot.candidate_id.clone()),
             current_work_item_status: Some(WorkItemStatus::Running.as_str().to_string()),
-            active_restart_count: Some(state.in_flight_search_count()),
+            active_candidate_count: Some(state.in_flight_search_count()),
             current_evaluation_count: Some(state.scheduled_search_evaluation_count()),
             total_evaluation_budget: Some(search_budget.max(1)),
             evaluation_progress_percent: Some(
@@ -243,12 +243,12 @@ fn emit_population_control_running_progress(
             ),
             cumulative_local_evaluation_count: Some(state.completed_search_evaluation_count()),
             current_global_loss: snapshots.latest_score.map(|snapshot| snapshot.objective),
-            current_restart_best_global_loss: snapshots
+            current_candidate_best_global_loss: snapshots
                 .best_global
                 .map(|snapshot| snapshot.objective),
-            best_restart_id: snapshots
+            best_candidate_id: snapshots
                 .best_global
-                .map(|snapshot| snapshot.restart_id.clone()),
+                .map(|snapshot| snapshot.candidate_id.clone()),
             best_global_loss: snapshots.best_global.map(|snapshot| snapshot.objective),
             exact_closed_form_buy_count: snapshots
                 .exact_counts
@@ -257,11 +257,11 @@ fn emit_population_control_running_progress(
                 .exact_counts
                 .map(|counts| counts.closed_form_sell),
             exact_tilted_mixed_count: snapshots.exact_counts.map(|counts| counts.tilted_mixed),
-            restart_evaluation_timing_diagnostic,
+            candidate_evaluation_timing_diagnostic,
             ..JointRefinementStageProgressUpdate::new(
                 JointRefinementStageProgressPhase::PopulationRefinement,
                 state.completed_finalization_count(),
-                state.restart_count(),
+                state.candidate_count(),
             )
         },
     );
@@ -302,7 +302,7 @@ fn population_control_aggregate_progress_percent(
 mod tests {
     use std::sync::mpsc;
 
-    use crate::stages::joint_refinement::execution::test_joint_restart_outcome;
+    use crate::stages::joint_refinement::execution::test_joint_candidate_outcome;
 
     use super::super::state::population_control_state_with_progress_snapshots_for_test;
     use super::{
@@ -325,14 +325,14 @@ mod tests {
             Some("population refinement")
         );
         assert_eq!(
-            progress.current_restart_id.as_deref(),
-            Some("latest_restart")
+            progress.current_candidate_id.as_deref(),
+            Some("latest_candidate")
         );
         assert_eq!(progress.current_global_loss, Some(12.0));
-        assert_eq!(progress.current_restart_best_global_loss, Some(3.0));
+        assert_eq!(progress.current_candidate_best_global_loss, Some(3.0));
         assert_eq!(
-            progress.best_restart_id.as_deref(),
-            Some("best_global_restart")
+            progress.best_candidate_id.as_deref(),
+            Some("best_global_candidate")
         );
         assert_eq!(progress.best_global_loss, Some(3.0));
     }
@@ -340,11 +340,11 @@ mod tests {
     #[test]
     fn finished_progress_keeps_search_and_final_validation_losses_separate() {
         let (sender, receiver) = mpsc::channel();
-        let mut search_best = test_joint_restart_outcome("search_best", 10.0);
+        let mut search_best = test_joint_candidate_outcome("search_best", 10.0);
         search_best.local_evaluation.breakdown.global_loss = 4.0;
         search_best.final_evaluation.breakdown.global_loss = 12.0;
 
-        let mut final_best = test_joint_restart_outcome("final_best", 8.0);
+        let mut final_best = test_joint_candidate_outcome("final_best", 8.0);
         final_best.local_evaluation.breakdown.global_loss = 6.0;
         final_best.final_evaluation.breakdown.global_loss = 8.0;
 
@@ -354,8 +354,8 @@ mod tests {
             .recv()
             .expect("progress event should be emitted for completed population search");
 
-        assert_eq!(progress.current_restart_best_global_loss, Some(4.0));
+        assert_eq!(progress.current_candidate_best_global_loss, Some(4.0));
         assert_eq!(progress.best_global_loss, Some(8.0));
-        assert_eq!(progress.best_restart_id.as_deref(), Some("final_best"));
+        assert_eq!(progress.best_candidate_id.as_deref(), Some("final_best"));
     }
 }

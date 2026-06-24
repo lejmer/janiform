@@ -4,7 +4,7 @@ use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 
-use super::super::{JointRefinementContext, JointRefinementRestartOutcome, elapsed_millis};
+use super::super::{JointRefinementCandidateOutcome, JointRefinementContext, elapsed_millis};
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 use super::workflow::{
     OptionRefinementProgressContext, ScoredPricingVectorInput, SearchTierCandidate,
@@ -61,7 +61,7 @@ struct PricingBlockWeightedResidualJacobianRow {
 
 pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
     refinement_context: &JointRefinementContext,
-    dynamics_candidate: &JointRefinementRestartOutcome,
+    dynamics_candidate: &JointRefinementCandidateOutcome,
     initial_candidate: SearchTierCandidate,
     source_dynamics_parameter_bits: &[u64],
     theta_warm_start_state: &mut SpectralThetaWarmStartState,
@@ -119,10 +119,10 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
     )?;
 
     if budget_limited {
-        best_candidate.restart_outcome.stop_reason =
+        best_candidate.candidate_outcome.stop_reason =
             "option_pricing_block_budget_limited".to_string();
     } else if prediction_rejected {
-        best_candidate.restart_outcome.stop_reason =
+        best_candidate.candidate_outcome.stop_reason =
             "option_pricing_block_reduced_model_prediction_rejected".to_string();
     }
 
@@ -131,7 +131,7 @@ pub(super) fn optimize_pricing_block_from_search_tier_sensitivities(
 
 struct PricingBlockProposalEvaluationInput<'a> {
     refinement_context: &'a JointRefinementContext,
-    dynamics_candidate: &'a JointRefinementRestartOutcome,
+    dynamics_candidate: &'a JointRefinementCandidateOutcome,
     source_dynamics_parameter_bits: &'a [u64],
     theta_warm_start_state: &'a mut SpectralThetaWarmStartState,
     progress_context: Option<&'a OptionRefinementProgressContext<'a>>,
@@ -194,7 +194,7 @@ fn evaluate_pricing_block_proposals(
             *input.best_candidate = evaluated_candidate;
 
             if validated_improvement <= score_resolution {
-                input.best_candidate.restart_outcome.stop_reason =
+                input.best_candidate.candidate_outcome.stop_reason =
                     "option_pricing_block_validated_improvement_below_resolution".to_string();
 
                 break;
@@ -270,7 +270,7 @@ fn pricing_block_least_squares_proposals(
     }
 
     let current_vector = initial_candidate
-        .restart_outcome
+        .candidate_outcome
         .parameter_vector
         .as_slice();
 
@@ -353,7 +353,7 @@ fn pricing_block_gradient_proposals(
     }
 
     let current_vector = initial_candidate
-        .restart_outcome
+        .candidate_outcome
         .parameter_vector
         .as_slice();
 
@@ -579,7 +579,7 @@ fn pricing_block_bound_exploration_proposals(
     initial_candidate: &SearchTierCandidate,
 ) -> Vec<PricingBlockProposal> {
     let current_vector = initial_candidate
-        .restart_outcome
+        .candidate_outcome
         .parameter_vector
         .as_slice();
 

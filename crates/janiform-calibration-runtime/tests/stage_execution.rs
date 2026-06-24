@@ -33,8 +33,8 @@ use support::shared::{
 };
 
 const JOINT_REFINEMENT_WORKER_EXECUTABLE_ENV: &str = "JANIFORM_JOINT_REFINEMENT_WORKER_EXECUTABLE";
-const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
-const JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED: &str = "budget_derived";
+const JOINT_REFINEMENT_CANDIDATE_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_CANDIDATE_POLICY";
+const JOINT_REFINEMENT_CANDIDATE_POLICY_BUDGET_DERIVED: &str = "budget_derived";
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
     "JANIFORM_JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND";
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER: &str = "process_worker";
@@ -382,8 +382,8 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
-            restart_candidate_budget_override: Some(1),
-            treat_invalid_restart_fallback_warning_as_error: false,
+            candidate_budget_override: Some(1),
+            treat_invalid_candidate_fallback_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -415,8 +415,8 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
-            restart_candidate_budget_override: Some(1),
-            treat_invalid_restart_fallback_warning_as_error: false,
+            candidate_budget_override: Some(1),
+            treat_invalid_candidate_fallback_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -432,8 +432,8 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
 
 #[test]
 fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
-    with_joint_refinement_restart_policy_override(
-        JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED,
+    with_joint_refinement_candidate_policy_override(
+        JOINT_REFINEMENT_CANDIDATE_POLICY_BUDGET_DERIVED,
         || {
             let calendar_registry = calibration_stage_test_registry();
 
@@ -482,8 +482,8 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     tick_objective_data_usage_policy:
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
-                    restart_candidate_budget_override: Some(1),
-                    treat_invalid_restart_fallback_warning_as_error: false,
+                    candidate_budget_override: Some(1),
+                    treat_invalid_candidate_fallback_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
@@ -515,8 +515,8 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     tick_objective_data_usage_policy:
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
-                    restart_candidate_budget_override: Some(1),
-                    treat_invalid_restart_fallback_warning_as_error: false,
+                    candidate_budget_override: Some(1),
+                    treat_invalid_candidate_fallback_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,
@@ -590,8 +590,8 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
         tick_objective_data_usage_policy:
             CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
         calibration_effort: None,
-        restart_candidate_budget_override: Some(1),
-        treat_invalid_restart_fallback_warning_as_error: false,
+        candidate_budget_override: Some(1),
+        treat_invalid_candidate_fallback_warning_as_error: false,
         option_refinement_candidate_count_override: Some(1),
         option_refinement_wall_clock_budget_millis: None,
         audit_option_pricing_enabled: false,
@@ -667,8 +667,8 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
-            restart_candidate_budget_override: Some(1),
-            treat_invalid_restart_fallback_warning_as_error: false,
+            candidate_budget_override: Some(1),
+            treat_invalid_candidate_fallback_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -688,13 +688,13 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
 }
 
 #[test]
-fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
+fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
-            "run-joint-stage-zero-restart-override",
+            "run-joint-stage-zero-candidate-override",
             CalibrationExecutionMode::Memory,
             None,
         )
@@ -731,8 +731,8 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             tick_objective_data_usage_policy:
                 CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
             calibration_effort: None,
-            restart_candidate_budget_override: Some(0),
-            treat_invalid_restart_fallback_warning_as_error: false,
+            candidate_budget_override: Some(0),
+            treat_invalid_candidate_fallback_warning_as_error: false,
             option_refinement_candidate_count_override: Some(1),
             option_refinement_wall_clock_budget_millis: None,
             audit_option_pricing_enabled: false,
@@ -747,7 +747,7 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
         report.failure,
         Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             ref error_message,
-        }) if error_message.contains("restart_candidate_budget_override must be greater than zero")
+        }) if error_message.contains("candidate_budget_override must be greater than zero")
     ));
 }
 
@@ -1530,19 +1530,19 @@ fn with_joint_refinement_worker_executable_override<T>(
 }
 
 /// Never use this in production paths!
-fn with_joint_refinement_restart_policy_override<T>(
-    restart_policy: &str,
+fn with_joint_refinement_candidate_policy_override<T>(
+    candidate_policy: &str,
     operation: impl FnOnce() -> T,
 ) -> T {
     let _guard = JOINT_REFINEMENT_WORKER_ENV_LOCK
         .lock()
         .expect("joint-refinement worker environment lock should be available");
-    let previous_value = std::env::var_os(JOINT_REFINEMENT_RESTART_POLICY_ENV);
+    let previous_value = std::env::var_os(JOINT_REFINEMENT_CANDIDATE_POLICY_ENV);
 
     // SAFETY: This helper serializes environment mutation through a process-local mutex and
     // restores the previous value before releasing the lock.
     unsafe {
-        std::env::set_var(JOINT_REFINEMENT_RESTART_POLICY_ENV, restart_policy);
+        std::env::set_var(JOINT_REFINEMENT_CANDIDATE_POLICY_ENV, candidate_policy);
     }
 
     let result = operation();
@@ -1550,12 +1550,12 @@ fn with_joint_refinement_restart_policy_override<T>(
     if let Some(previous_value) = previous_value {
         // SAFETY: The same mutex guard is still held while restoring the previous value.
         unsafe {
-            std::env::set_var(JOINT_REFINEMENT_RESTART_POLICY_ENV, previous_value);
+            std::env::set_var(JOINT_REFINEMENT_CANDIDATE_POLICY_ENV, previous_value);
         }
     } else {
         // SAFETY: The same mutex guard is still held while clearing the temporary override.
         unsafe {
-            std::env::remove_var(JOINT_REFINEMENT_RESTART_POLICY_ENV);
+            std::env::remove_var(JOINT_REFINEMENT_CANDIDATE_POLICY_ENV);
         }
     }
 

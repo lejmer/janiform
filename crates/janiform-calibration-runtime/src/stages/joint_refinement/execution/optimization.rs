@@ -6,6 +6,6 @@ mod workflow;
 
 pub(crate) use workflow::{
     JointRefinementBudgetSchedule, JointRefinementPopulationRefinementOutput,
-    desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
-    optimize_restart_seeds, precheck_seed_summary_workload,
+    desired_joint_refinement_candidate_budget, joint_refinement_budget_schedule,
+    optimize_candidate_seeds, precheck_seed_summary_workload,
 };

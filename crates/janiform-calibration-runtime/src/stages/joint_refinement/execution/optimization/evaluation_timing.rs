@@ -1,38 +1,38 @@
-use janiform_calibration_artifacts::JointRefinementStageRestartEvaluationTimingDiagnostic;
+use janiform_calibration_artifacts::JointRefinementStageCandidateEvaluationTimingDiagnostic;
 
-use super::super::JointRefinementRestartOutcome;
-use super::workflow::RestartObjectiveEvaluation;
+use super::super::JointRefinementCandidateOutcome;
+use super::workflow::CandidateObjectiveEvaluation;
 
 pub(super) const RESTART_SEARCH_FIDELITY_TIER_LABEL: &str = "coarse_local";
 pub(super) const RESTART_FINALIZATION_FIDELITY_TIER_LABEL: &str = "local_refresh_final";
 
-pub(super) struct RestartEvaluationTimingDiagnosticInput<'a> {
-    pub(super) restart_id: &'a str,
+pub(super) struct CandidateEvaluationTimingDiagnosticInput<'a> {
+    pub(super) candidate_id: &'a str,
     pub(super) schedule_category: &'a str,
     pub(super) fidelity_tier: &'a str,
     pub(super) candidate_evaluation_count: usize,
     pub(super) search_direction_position: Option<usize>,
     pub(super) search_direction_label: &'a str,
     pub(super) elapsed_millis: u64,
-    pub(super) evaluation: Option<&'a RestartObjectiveEvaluation>,
+    pub(super) evaluation: Option<&'a CandidateObjectiveEvaluation>,
 }
 
-pub(super) struct RestartFinalizationTimingDiagnosticInput<'a> {
+pub(super) struct CandidateFinalizationTimingDiagnosticInput<'a> {
     pub(super) schedule_category: &'a str,
     pub(super) elapsed_millis: u64,
-    pub(super) outcome: &'a JointRefinementRestartOutcome,
+    pub(super) outcome: &'a JointRefinementCandidateOutcome,
 }
 
-pub(super) fn restart_evaluation_timing_diagnostic(
-    input: RestartEvaluationTimingDiagnosticInput<'_>,
-) -> JointRefinementStageRestartEvaluationTimingDiagnostic {
+pub(super) fn candidate_evaluation_timing_diagnostic(
+    input: CandidateEvaluationTimingDiagnosticInput<'_>,
+) -> JointRefinementStageCandidateEvaluationTimingDiagnostic {
     let exact_likelihood_evaluator_counts = input
         .evaluation
         .and_then(|evaluation| evaluation.exact_likelihood_evaluator_counts);
 
     // Timing diagnostics own labels because they are retained after scheduler state is released.
-    JointRefinementStageRestartEvaluationTimingDiagnostic {
-        restart_id: input.restart_id.to_string(),
+    JointRefinementStageCandidateEvaluationTimingDiagnostic {
+        candidate_id: input.candidate_id.to_string(),
         schedule_category: input.schedule_category.to_string(),
         fidelity_tier: input.fidelity_tier.to_string(),
         candidate_evaluation_count: input.candidate_evaluation_count,
@@ -55,17 +55,17 @@ pub(super) fn restart_evaluation_timing_diagnostic(
     }
 }
 
-pub(super) fn restart_finalization_timing_diagnostic(
-    input: RestartFinalizationTimingDiagnosticInput<'_>,
-) -> JointRefinementStageRestartEvaluationTimingDiagnostic {
+pub(super) fn candidate_finalization_timing_diagnostic(
+    input: CandidateFinalizationTimingDiagnosticInput<'_>,
+) -> JointRefinementStageCandidateEvaluationTimingDiagnostic {
     let final_evaluation = &input.outcome.final_evaluation;
     let exact_likelihood_evaluator_counts = final_evaluation
         .invalid_reason
         .is_none()
         .then_some(final_evaluation.exact_likelihood_evaluator_counts);
 
-    JointRefinementStageRestartEvaluationTimingDiagnostic {
-        restart_id: input.outcome.restart_id.clone(),
+    JointRefinementStageCandidateEvaluationTimingDiagnostic {
+        candidate_id: input.outcome.candidate_id.clone(),
         schedule_category: input.schedule_category.to_string(),
         fidelity_tier: RESTART_FINALIZATION_FIDELITY_TIER_LABEL.to_string(),
         candidate_evaluation_count: input.outcome.local_evaluation_count,

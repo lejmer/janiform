@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use super::workflow::RestartObjectiveResidual;
+use super::workflow::CandidateObjectiveResidual;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct ResidualTailProfile {
@@ -9,7 +9,7 @@ pub(super) struct ResidualTailProfile {
 }
 
 impl ResidualTailProfile {
-    pub(super) fn from_residuals(residuals: &[RestartObjectiveResidual]) -> Option<Self> {
+    pub(super) fn from_residuals(residuals: &[CandidateObjectiveResidual]) -> Option<Self> {
         let mut energies = Vec::with_capacity(residuals.len());
         let mut family_energies = BTreeMap::<&str, f64>::new();
 
@@ -67,14 +67,14 @@ impl ResidualTailProfile {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResidualTailProfile, RestartObjectiveResidual};
+    use super::{CandidateObjectiveResidual, ResidualTailProfile};
 
     fn residual(
         family_id: &str,
         residual_id: &str,
         objective_residual: f64,
-    ) -> RestartObjectiveResidual {
-        RestartObjectiveResidual {
+    ) -> CandidateObjectiveResidual {
+        CandidateObjectiveResidual {
             family_id: family_id.to_string(),
             residual_id: residual_id.to_string(),
             objective_residual,

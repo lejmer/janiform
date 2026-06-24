@@ -363,10 +363,10 @@ pub struct JointRefinementStageLabeledCount {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JointRefinementStageRestartDiagnostics {
-    pub restart_count: usize,
-    pub valid_restart_count: usize,
-    pub invalid_restart_count: usize,
+pub struct JointRefinementStageCandidateDiagnostics {
+    pub candidate_count: usize,
+    pub valid_candidate_count: usize,
+    pub invalid_candidate_count: usize,
     pub unique_terminal_candidate_count: usize,
     pub terminal_collision_count: usize,
     pub terminal_collision_share: f64,
@@ -414,8 +414,8 @@ pub struct JointRefinementStageRuntimeProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JointRefinementStageRestartEvaluationTimingDiagnostic {
-    pub restart_id: String,
+pub struct JointRefinementStageCandidateEvaluationTimingDiagnostic {
+    pub candidate_id: String,
     pub schedule_category: String,
     pub fidelity_tier: String,
     pub candidate_evaluation_count: usize,
@@ -437,10 +437,10 @@ pub struct JointRefinementStageOptimizerDiagnostics {
     pub local_evaluation_count: usize,
     pub final_simulation_seeds: Vec<u64>,
     pub stop_reason: String,
-    pub restart_diagnostics: JointRefinementStageRestartDiagnostics,
+    pub candidate_diagnostics: JointRefinementStageCandidateDiagnostics,
     pub runtime_profile: JointRefinementStageRuntimeProfile,
-    pub restart_evaluation_timing_diagnostics:
-        Vec<JointRefinementStageRestartEvaluationTimingDiagnostic>,
+    pub candidate_evaluation_timing_diagnostics:
+        Vec<JointRefinementStageCandidateEvaluationTimingDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -607,9 +607,9 @@ pub struct JointRefinementStageOptionCalibrationDiagnostics {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageOptionSearchSelectionAgreementDiagnostics {
     pub frontier_size: usize,
-    pub best_by_search_restart_id: Option<String>,
-    pub best_by_selection_restart_id: Option<String>,
-    pub selected_restart_id: Option<String>,
+    pub best_by_search_candidate_id: Option<String>,
+    pub best_by_selection_candidate_id: Option<String>,
+    pub selected_candidate_id: Option<String>,
     pub selected_search_rank: Option<usize>,
     pub selected_selection_rank: Option<usize>,
     pub selected_rank_movement: Option<i64>,

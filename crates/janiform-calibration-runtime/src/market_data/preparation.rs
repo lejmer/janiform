@@ -188,7 +188,7 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     #[serde(default)]
-    pub dynamics_search_restart_candidate_budget: Option<usize>,
+    pub dynamics_search_candidate_budget: Option<usize>,
     #[serde(default)]
     pub calibration_effort: Option<CalibrationEffortOptions>,
     #[serde(default)]
@@ -330,13 +330,12 @@ fn validate_joint_refinement_option_refinement_wall_clock_budget(
     Ok(())
 }
 
-fn validate_dynamics_search_restart_candidate_budget(
+fn validate_dynamics_search_candidate_budget(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
-    if request.dynamics_search_restart_candidate_budget == Some(0) {
+    if request.dynamics_search_candidate_budget == Some(0) {
         return Err(CalibrationMarketDataPreparationError::from(
-            "dynamics_search_restart_candidate_budget must be greater than zero when provided"
-                .to_string(),
+            "dynamics_search_candidate_budget must be greater than zero when provided".to_string(),
         ));
     }
 
@@ -463,7 +462,7 @@ fn prepare_market_data_calibration_plan_with_context(
     cpu_count: Option<usize>,
     progress: &mut MarketDataPreparationProgressContext<'_>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_dynamics_search_candidate_budget(&request)?;
     validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
@@ -502,7 +501,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     session_resolution: MarketDataSessionResolutionPayload,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_dynamics_search_candidate_budget(&request)?;
     validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
@@ -1810,10 +1809,9 @@ fn prepared_market_data_plan_from_loading_output(
             &selected_stages,
             &loading_output,
         )?,
-        joint_refinement_restart_candidate_budget_override: request
-            .dynamics_search_restart_candidate_budget,
+        joint_refinement_candidate_budget_override: request.dynamics_search_candidate_budget,
         joint_refinement_calibration_effort: request.calibration_effort,
-        treat_invalid_restart_fallback_warning_as_error: request
+        treat_invalid_candidate_fallback_warning_as_error: request
             .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,

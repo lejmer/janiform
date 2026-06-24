@@ -8,7 +8,7 @@ use super::super::execution::{JointRefinementActiveParameterLayout, JointRefinem
 use super::core::apply_nig_log_delta_offset_shift;
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct ReturnClockExposureRestartSeedProfile {
+pub(super) struct ReturnClockExposureCandidateSeedProfile {
     baseline_buy_excitation_return_clock_scale: f64,
     baseline_sell_excitation_return_clock_scale: f64,
     stationary_buy_intensity_multiplier: f64,
@@ -20,10 +20,10 @@ pub(super) struct JointReturnClockExposureSeedsBuildInput<'a> {
     pub(super) active_parameter_layout: &'a JointRefinementActiveParameterLayout,
     pub(super) lower_bounds: &'a [f64],
     pub(super) upper_bounds: &'a [f64],
-    pub(super) return_clock_seed_profile: ReturnClockExposureRestartSeedProfile,
+    pub(super) return_clock_seed_profile: ReturnClockExposureCandidateSeedProfile,
 }
 
-pub(super) fn joint_return_clock_exposure_restart_seeds(
+pub(super) fn joint_return_clock_exposure_candidate_seeds(
     input: JointReturnClockExposureSeedsBuildInput<'_>,
 ) -> Vec<(String, Vec<f64>)> {
     let JointReturnClockExposureSeedsBuildInput {
@@ -75,8 +75,8 @@ pub(super) fn joint_return_clock_exposure_restart_seeds(
 
             let sell_log_scale_shift = if move_buy_side { 0.0 } else { log_scale_shift };
 
-            build_return_clock_exposure_restart_seed(
-                ReturnClockExposureRestartSeedInput {
+            build_return_clock_exposure_candidate_seed(
+                ReturnClockExposureCandidateSeedInput {
                     seed_id,
                     baseline_parameter_vector,
                     active_parameter_layout,
@@ -92,9 +92,9 @@ pub(super) fn joint_return_clock_exposure_restart_seeds(
     .collect()
 }
 
-pub(super) fn return_clock_exposure_restart_seed_profile(
+pub(super) fn return_clock_exposure_candidate_seed_profile(
     joint_context: &JointRefinementContext,
-) -> Option<ReturnClockExposureRestartSeedProfile> {
+) -> Option<ReturnClockExposureCandidateSeedProfile> {
     let stationary_multipliers = stationary_intensity_multipliers(
         joint_context
             .baseline_hawkes_fitted_parameters
@@ -110,7 +110,7 @@ pub(super) fn return_clock_exposure_restart_seed_profile(
         .baseline_return_components_fitted_parameters
         .return_clock_exposure_parameters;
 
-    let profile = ReturnClockExposureRestartSeedProfile {
+    let profile = ReturnClockExposureCandidateSeedProfile {
         baseline_buy_excitation_return_clock_scale: baseline_return_clock_exposure
             .buy_excitation_return_clock_scale,
         baseline_sell_excitation_return_clock_scale: baseline_return_clock_exposure
@@ -119,20 +119,20 @@ pub(super) fn return_clock_exposure_restart_seed_profile(
         stationary_sell_intensity_multiplier: stationary_multipliers.sell_intensity_multiplier,
     };
 
-    return_clock_exposure_restart_seed_profile_is_valid(profile).then_some(profile)
+    return_clock_exposure_candidate_seed_profile_is_valid(profile).then_some(profile)
 }
 
-struct ReturnClockExposureRestartSeedInput<'a> {
+struct ReturnClockExposureCandidateSeedInput<'a> {
     seed_id: &'a str,
     baseline_parameter_vector: &'a [f64],
     active_parameter_layout: &'a JointRefinementActiveParameterLayout,
     lower_bounds: &'a [f64],
     upper_bounds: &'a [f64],
-    return_clock_seed_profile: ReturnClockExposureRestartSeedProfile,
+    return_clock_seed_profile: ReturnClockExposureCandidateSeedProfile,
 }
 
-fn build_return_clock_exposure_restart_seed(
-    input: ReturnClockExposureRestartSeedInput<'_>,
+fn build_return_clock_exposure_candidate_seed(
+    input: ReturnClockExposureCandidateSeedInput<'_>,
     buy_log_scale_shift: f64,
     sell_log_scale_shift: f64,
 ) -> Option<(String, Vec<f64>)> {
@@ -147,19 +147,19 @@ fn build_return_clock_exposure_restart_seed(
     let baseline_buy_log_scale = *input.baseline_parameter_vector.get(buy_index)?;
     let baseline_sell_log_scale = *input.baseline_parameter_vector.get(sell_index)?;
 
-    let mut restart_seed = input.baseline_parameter_vector.to_vec();
+    let mut candidate_seed = input.baseline_parameter_vector.to_vec();
 
-    *restart_seed.get_mut(buy_index)? += buy_log_scale_shift;
-    *restart_seed.get_mut(sell_index)? += sell_log_scale_shift;
+    *candidate_seed.get_mut(buy_index)? += buy_log_scale_shift;
+    *candidate_seed.get_mut(sell_index)? += sell_log_scale_shift;
 
     clamp_in_place(
-        restart_seed.as_mut_slice(),
+        candidate_seed.as_mut_slice(),
         input.lower_bounds,
         input.upper_bounds,
     );
 
-    let candidate_buy_log_scale = *restart_seed.get(buy_index)?;
-    let candidate_sell_log_scale = *restart_seed.get(sell_index)?;
+    let candidate_buy_log_scale = *candidate_seed.get(buy_index)?;
+    let candidate_sell_log_scale = *candidate_seed.get(sell_index)?;
 
     if candidate_buy_log_scale == baseline_buy_log_scale
         && candidate_sell_log_scale == baseline_sell_log_scale
@@ -176,22 +176,22 @@ fn build_return_clock_exposure_restart_seed(
     )?;
 
     apply_nig_log_delta_offset_shift(
-        restart_seed.as_mut_slice(),
+        candidate_seed.as_mut_slice(),
         input.active_parameter_layout,
         log_delta_offset_shift,
     );
 
     clamp_in_place(
-        restart_seed.as_mut_slice(),
+        candidate_seed.as_mut_slice(),
         input.lower_bounds,
         input.upper_bounds,
     );
 
-    Some((input.seed_id.to_string(), restart_seed))
+    Some((input.seed_id.to_string(), candidate_seed))
 }
 
-fn return_clock_exposure_restart_seed_profile_is_valid(
-    profile: ReturnClockExposureRestartSeedProfile,
+fn return_clock_exposure_candidate_seed_profile_is_valid(
+    profile: ReturnClockExposureCandidateSeedProfile,
 ) -> bool {
     [
         profile.baseline_buy_excitation_return_clock_scale,
@@ -206,7 +206,7 @@ fn return_clock_exposure_restart_seed_profile_is_valid(
 }
 
 fn stationary_return_clock_log_delta_compensation(
-    profile: ReturnClockExposureRestartSeedProfile,
+    profile: ReturnClockExposureCandidateSeedProfile,
     baseline_buy_log_scale: f64,
     baseline_sell_log_scale: f64,
     candidate_buy_log_scale: f64,
@@ -232,11 +232,11 @@ fn stationary_return_clock_log_delta_compensation(
 }
 
 fn stationary_total_return_clock_for_exposure(
-    profile: ReturnClockExposureRestartSeedProfile,
+    profile: ReturnClockExposureCandidateSeedProfile,
     buy_log_scale: f64,
     sell_log_scale: f64,
 ) -> Option<f64> {
-    if !return_clock_exposure_restart_seed_profile_is_valid(profile)
+    if !return_clock_exposure_candidate_seed_profile_is_valid(profile)
         || !buy_log_scale.is_finite()
         || !sell_log_scale.is_finite()
     {
@@ -285,43 +285,15 @@ fn midpoint_log_scale_shift_toward_bound(
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::test_active_parameter_layout;
     use super::{
-        JointReturnClockExposureSeedsBuildInput, ReturnClockExposureRestartSeedProfile,
-        joint_return_clock_exposure_restart_seeds, midpoint_log_scale_shift_toward_bound,
+        JointReturnClockExposureSeedsBuildInput, ReturnClockExposureCandidateSeedProfile,
+        joint_return_clock_exposure_candidate_seeds, midpoint_log_scale_shift_toward_bound,
         stationary_return_clock_log_delta_compensation,
     };
-    use crate::stages::joint_refinement::execution::JointRefinementActiveParameterLayout;
 
-    fn test_active_parameter_layout() -> JointRefinementActiveParameterLayout {
-        JointRefinementActiveParameterLayout {
-            hawkes_block: vec![0, 1, 2, 3],
-            nig_block: vec![4, 5, 6, 7],
-            return_clock_block: vec![8, 9],
-            long_variance_block: vec![10, 11, 12, 13, 14],
-            option_pricing_kernel_block: vec![15, 16, 17],
-            coupling_block: Vec::new(),
-            log_stationary_event_rate_scale_index: 0,
-            log_beta_scale_index: 1,
-            log_self_excitation_scale_index: 2,
-            log_cross_excitation_scale_index: 3,
-            log_buy_excitation_return_clock_scale_index: 8,
-            log_sell_excitation_return_clock_scale_index: 9,
-            log_long_variance_mean_reversion_rate_scale_index: 10,
-            long_variance_vol_of_vol_index: 11,
-            long_variance_return_energy_loading_index: 12,
-            long_variance_buy_event_loading_index: 13,
-            long_variance_sell_event_loading_index: 14,
-            option_pricing_log_buy_activity_premium_index: 15,
-            option_pricing_log_sell_activity_premium_index: 16,
-            option_pricing_pressure_signed_imbalance_exposure_risk_price_index: 17,
-            known_activity_scale_index: None,
-            surprise_activity_scale_index: None,
-            surprise_baseline_scale_index: None,
-        }
-    }
-
-    fn test_return_clock_seed_profile() -> ReturnClockExposureRestartSeedProfile {
-        ReturnClockExposureRestartSeedProfile {
+    fn test_return_clock_seed_profile() -> ReturnClockExposureCandidateSeedProfile {
+        ReturnClockExposureCandidateSeedProfile {
             baseline_buy_excitation_return_clock_scale: 1.0,
             baseline_sell_excitation_return_clock_scale: 1.0,
             stationary_buy_intensity_multiplier: 3.0,
@@ -344,15 +316,15 @@ mod tests {
     }
 
     #[test]
-    fn return_clock_exposure_restart_seeds_move_exposure_and_compensate_delta() {
+    fn return_clock_exposure_candidate_seeds_move_exposure_and_compensate_delta() {
         let active_parameter_layout = test_active_parameter_layout();
         let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
 
         let lower_bounds = vec![-2.0; baseline_parameter_vector.len()];
         let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
 
-        let restart_seeds =
-            joint_return_clock_exposure_restart_seeds(JointReturnClockExposureSeedsBuildInput {
+        let candidate_seeds =
+            joint_return_clock_exposure_candidate_seeds(JointReturnClockExposureSeedsBuildInput {
                 baseline_parameter_vector: baseline_parameter_vector.as_slice(),
                 active_parameter_layout: &active_parameter_layout,
                 lower_bounds: lower_bounds.as_slice(),
@@ -360,13 +332,13 @@ mod tests {
                 return_clock_seed_profile: test_return_clock_seed_profile(),
             });
 
-        let restart_seed_ids = restart_seeds
+        let candidate_seed_ids = candidate_seeds
             .iter()
-            .map(|(restart_id, _)| restart_id.as_str())
+            .map(|(candidate_id, _)| candidate_id.as_str())
             .collect::<Vec<_>>();
 
         assert_eq!(
-            restart_seed_ids,
+            candidate_seed_ids,
             vec![
                 "return_clock_buy_excitation_up",
                 "return_clock_buy_excitation_down",
@@ -384,10 +356,10 @@ mod tests {
         )
         .expect("test bounds have positive width");
 
-        let buy_up_seed = restart_seeds
+        let buy_up_seed = candidate_seeds
             .iter()
-            .find(|(restart_id, _)| restart_id == "return_clock_buy_excitation_up")
-            .map(|(_, restart_seed)| restart_seed.as_slice())
+            .find(|(candidate_id, _)| candidate_id == "return_clock_buy_excitation_up")
+            .map(|(_, candidate_seed)| candidate_seed.as_slice())
             .expect("buy-up return-clock seed should be present");
 
         let expected_log_delta_shift = stationary_return_clock_log_delta_compensation(
@@ -427,6 +399,7 @@ mod tests {
             1.0,
         )
         .expect("upward shift should exist");
+
         let downward_shift = midpoint_log_scale_shift_toward_bound(
             0,
             baseline_parameter_vector.as_slice(),

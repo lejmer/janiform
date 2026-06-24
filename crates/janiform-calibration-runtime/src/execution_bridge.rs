@@ -92,11 +92,11 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub joint_refinement_restart_candidate_budget_override: Option<usize>,
+    pub joint_refinement_candidate_budget_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_calibration_effort: Option<CalibrationEffortOptions>,
     #[serde(default)]
-    pub treat_invalid_restart_fallback_warning_as_error: bool,
+    pub treat_invalid_candidate_fallback_warning_as_error: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -402,7 +402,7 @@ pub enum CalibrationStagedExecutionBridgeError {
     MissingDiskCheckpointDirectory,
     EmptyDiskCheckpointDirectory,
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
-    InvalidJointRefinementRestartCandidateBudgetOverride,
+    InvalidJointRefinementCandidateBudgetOverride,
     InvalidJointRefinementOptionRefinementCandidateCountOverride,
     InvalidJointRefinementOptionRefinementWallClockBudget,
     AuditOptionPricingRequiresOptionInput,
@@ -448,9 +448,9 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "runtime_resources.disk_checkpoint_directory is only supported when execution_mode=`disk`"
             ),
-            Self::InvalidJointRefinementRestartCandidateBudgetOverride => write!(
+            Self::InvalidJointRefinementCandidateBudgetOverride => write!(
                 formatter,
-                "joint_refinement_restart_candidate_budget_override must be greater than zero when provided"
+                "joint_refinement_candidate_budget_override must be greater than zero when provided"
             ),
             Self::InvalidJointRefinementOptionRefinementCandidateCountOverride => write!(
                 formatter,
@@ -504,9 +504,9 @@ impl CalibrationStagedExecutionInput {
 
         let request = self.request;
         let selected_stages = request.selected_stages.clone();
-        if self.joint_refinement_restart_candidate_budget_override == Some(0) {
+        if self.joint_refinement_candidate_budget_override == Some(0) {
             return Err(
-                CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCandidateBudgetOverride,
+                CalibrationStagedExecutionBridgeError::InvalidJointRefinementCandidateBudgetOverride,
             );
         }
         if self.joint_refinement_option_refinement_candidate_count_override == Some(0) {
@@ -635,11 +635,11 @@ impl CalibrationStagedExecutionInput {
             mean_reversion_stage_input: self
                 .mean_reversion_stage_input
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
-            joint_refinement_restart_candidate_budget_override: self
-                .joint_refinement_restart_candidate_budget_override,
+            joint_refinement_candidate_budget_override: self
+                .joint_refinement_candidate_budget_override,
             joint_refinement_calibration_effort: self.joint_refinement_calibration_effort,
-            treat_invalid_restart_fallback_warning_as_error: self
-                .treat_invalid_restart_fallback_warning_as_error,
+            treat_invalid_candidate_fallback_warning_as_error: self
+                .treat_invalid_candidate_fallback_warning_as_error,
             option_refinement_candidate_count_override: self
                 .joint_refinement_option_refinement_candidate_count_override,
             option_refinement_wall_clock_budget_millis: self
@@ -1441,9 +1441,9 @@ mod tests {
                     ],
                 }],
             }),
-            joint_refinement_restart_candidate_budget_override: None,
+            joint_refinement_candidate_budget_override: None,
             joint_refinement_calibration_effort: None,
-            treat_invalid_restart_fallback_warning_as_error: false,
+            treat_invalid_candidate_fallback_warning_as_error: false,
             joint_refinement_option_refinement_candidate_count_override: None,
             joint_refinement_option_refinement_wall_clock_budget_millis: None,
             joint_refinement_audit_option_pricing_enabled: false,
@@ -1520,17 +1520,17 @@ mod tests {
     }
 
     #[test]
-    fn execution_input_plan_rejects_zero_joint_refinement_restart_candidate_budget_override() {
+    fn execution_input_plan_rejects_zero_joint_refinement_candidate_budget_override() {
         let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
-        execution_input.joint_refinement_restart_candidate_budget_override = Some(0);
+        execution_input.joint_refinement_candidate_budget_override = Some(0);
 
         let error = execution_input
             .build_execution_plan()
-            .expect_err("zero restart candidate budget override should fail");
+            .expect_err("zero candidate budget override should fail");
 
         assert_eq!(
             error,
-            CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCandidateBudgetOverride
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementCandidateBudgetOverride
         );
     }
 

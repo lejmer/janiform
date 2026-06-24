@@ -18,31 +18,31 @@ use super::super::setup::{
     CandidateSeedSummariesCacheInput, cached_seed_summaries_for_candidate_seeds,
 };
 use super::{
-    JointRefinementContext, JointRefinementRestartOutcome, JointRefinementSeedSummary,
+    JointRefinementCandidateOutcome, JointRefinementContext, JointRefinementSeedSummary,
     ordered_parameter_bits,
 };
 
-pub(crate) fn build_joint_restart_diagnostics(
-    restart_outcomes: &[JointRefinementRestartOutcome],
-) -> janiform_calibration_artifacts::JointRefinementStageRestartDiagnostics {
-    let restart_count = restart_outcomes.len();
+pub(crate) fn build_joint_candidate_diagnostics(
+    candidate_outcomes: &[JointRefinementCandidateOutcome],
+) -> janiform_calibration_artifacts::JointRefinementStageCandidateDiagnostics {
+    let candidate_count = candidate_outcomes.len();
 
-    let valid_restart_count = restart_outcomes
+    let valid_candidate_count = candidate_outcomes
         .iter()
-        .filter(|restart_outcome| {
-            restart_outcome.local_evaluation.invalid_reason.is_none()
-                && restart_outcome.final_evaluation.invalid_reason.is_none()
+        .filter(|candidate_outcome| {
+            candidate_outcome.local_evaluation.invalid_reason.is_none()
+                && candidate_outcome.final_evaluation.invalid_reason.is_none()
         })
         .count();
 
-    let invalid_restart_count = restart_count.saturating_sub(valid_restart_count);
+    let invalid_candidate_count = candidate_count.saturating_sub(valid_candidate_count);
 
-    let terminal_candidate_counts = restart_outcomes.iter().fold(
+    let terminal_candidate_counts = candidate_outcomes.iter().fold(
         BTreeMap::<Vec<u64>, usize>::new(),
-        |mut counts, restart_outcome| {
+        |mut counts, candidate_outcome| {
             *counts
                 .entry(ordered_parameter_bits(
-                    restart_outcome.parameter_vector.as_slice(),
+                    candidate_outcome.parameter_vector.as_slice(),
                 ))
                 .or_default() += 1;
             counts
@@ -51,33 +51,33 @@ pub(crate) fn build_joint_restart_diagnostics(
 
     let unique_terminal_candidate_count = terminal_candidate_counts.len();
 
-    let terminal_collision_count = restart_count.saturating_sub(unique_terminal_candidate_count);
+    let terminal_collision_count = candidate_count.saturating_sub(unique_terminal_candidate_count);
 
-    let terminal_collision_share = if restart_count == 0 {
+    let terminal_collision_share = if candidate_count == 0 {
         0.0
     } else {
-        terminal_collision_count as f64 / restart_count as f64
+        terminal_collision_count as f64 / candidate_count as f64
     };
 
-    janiform_calibration_artifacts::JointRefinementStageRestartDiagnostics {
-        restart_count,
-        valid_restart_count,
-        invalid_restart_count,
+    janiform_calibration_artifacts::JointRefinementStageCandidateDiagnostics {
+        candidate_count,
+        valid_candidate_count,
+        invalid_candidate_count,
         unique_terminal_candidate_count,
         terminal_collision_count,
         terminal_collision_share,
         stop_reason_frequencies: build_labeled_count_frequencies(
-            restart_outcomes
+            candidate_outcomes
                 .iter()
-                .map(|restart_outcome| restart_outcome.stop_reason.clone()),
+                .map(|candidate_outcome| candidate_outcome.stop_reason.clone()),
         ),
         invalid_reason_frequencies: build_labeled_count_frequencies(
-            restart_outcomes.iter().filter_map(|restart_outcome| {
-                restart_outcome
+            candidate_outcomes.iter().filter_map(|candidate_outcome| {
+                candidate_outcome
                     .final_evaluation
                     .invalid_reason
                     .clone()
-                    .or_else(|| restart_outcome.local_evaluation.invalid_reason.clone())
+                    .or_else(|| candidate_outcome.local_evaluation.invalid_reason.clone())
             }),
         ),
     }

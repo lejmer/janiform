@@ -14,7 +14,7 @@ use janiform_calibration_artifacts::{
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
 use super::state::{JointRefinementOptionPricingContext, JointRefinementOptionTierPricingInputs};
-use super::{JointRefinementOptionTierPricingArtifact, JointRefinementRestartOutcome};
+use super::{JointRefinementCandidateOutcome, JointRefinementOptionTierPricingArtifact};
 
 const JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION: &str =
     "janiform.joint_refinement.resume_state.v1";
@@ -22,33 +22,33 @@ const JOINT_REFINEMENT_OPTION_PRICING_CONTEXT_FINGERPRINT_POLICY: &str =
     "joint_refinement_option_pricing_context_sha256_canonical_tiers_and_pricing_inputs.v1";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct PersistedRestartSelectionArtifacts {
-    pub(crate) best_restart_id: String,
+pub(crate) struct PersistedCandidateSelectionArtifacts {
+    pub(crate) best_candidate_id: String,
     pub(crate) option_refinement_candidate_frontier_ids: Vec<String>,
     #[serde(default)]
-    pub(crate) selected_restart_count: usize,
+    pub(crate) selected_candidate_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) option_pricing_context_fingerprint: Option<String>,
-    pub(crate) coarse_consistency_artifacts_by_restart_id:
+    pub(crate) coarse_consistency_artifacts_by_candidate_id:
         BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
     pub(crate) coarse_consistency_wall_clock_millis: u64,
 }
 
-impl PersistedRestartSelectionArtifacts {
+impl PersistedCandidateSelectionArtifacts {
     pub(crate) fn matches_resume_context(
         &self,
-        valid_restart_ids: &BTreeSet<String>,
-        selected_restart_count: usize,
+        valid_candidate_ids: &BTreeSet<String>,
+        selected_candidate_count: usize,
         option_pricing_context_fingerprint: Option<&str>,
     ) -> bool {
         self.option_pricing_context_fingerprint.as_deref() == option_pricing_context_fingerprint
-            && self.selected_restart_count >= selected_restart_count
+            && self.selected_candidate_count >= selected_candidate_count
             && !self.option_refinement_candidate_frontier_ids.is_empty()
             && self
                 .option_refinement_candidate_frontier_ids
                 .iter()
-                .all(|restart_id| valid_restart_ids.contains(restart_id))
-            && valid_restart_ids.contains(&self.best_restart_id)
+                .all(|candidate_id| valid_candidate_ids.contains(candidate_id))
+            && valid_candidate_ids.contains(&self.best_candidate_id)
     }
 }
 
@@ -58,7 +58,7 @@ pub(crate) struct PersistedSearchTierCandidate {
     pub(crate) source_dynamics_parameter_bits: Vec<u64>,
     pub(crate) search_tier_score: f64,
     pub(crate) search_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
-    pub(crate) restart_outcome: JointRefinementRestartOutcome,
+    pub(crate) candidate_outcome: JointRefinementCandidateOutcome,
 }
 
 impl PersistedSearchTierCandidate {
@@ -68,7 +68,7 @@ impl PersistedSearchTierCandidate {
             source_dynamics_parameter_bits: candidate.source_dynamics_parameter_bits.clone(),
             search_tier_score: candidate.search_tier_score,
             search_tier_pricing_artifact: (*candidate.search_tier_pricing_artifact).clone(),
-            restart_outcome: candidate.restart_outcome.clone(),
+            candidate_outcome: candidate.candidate_outcome.clone(),
         }
     }
 
@@ -78,7 +78,7 @@ impl PersistedSearchTierCandidate {
             source_dynamics_parameter_bits: self.source_dynamics_parameter_bits,
             search_tier_score: self.search_tier_score,
             search_tier_pricing_artifact: Arc::new(self.search_tier_pricing_artifact),
-            restart_outcome: self.restart_outcome,
+            candidate_outcome: self.candidate_outcome,
         }
     }
 }
@@ -90,7 +90,7 @@ pub(crate) struct PersistedSelectionTierCandidate {
     pub(crate) selection_tier_score: f64,
     pub(crate) search_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
     pub(crate) selection_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
-    pub(crate) restart_outcome: JointRefinementRestartOutcome,
+    pub(crate) candidate_outcome: JointRefinementCandidateOutcome,
 }
 
 impl PersistedSelectionTierCandidate {
@@ -101,7 +101,7 @@ impl PersistedSelectionTierCandidate {
             selection_tier_score: candidate.selection_tier_score,
             search_tier_pricing_artifact: (*candidate.search_tier_pricing_artifact).clone(),
             selection_tier_pricing_artifact: (*candidate.selection_tier_pricing_artifact).clone(),
-            restart_outcome: candidate.restart_outcome.clone(),
+            candidate_outcome: candidate.candidate_outcome.clone(),
         }
     }
 
@@ -112,14 +112,14 @@ impl PersistedSelectionTierCandidate {
             selection_tier_score: self.selection_tier_score,
             search_tier_pricing_artifact: Arc::new(self.search_tier_pricing_artifact),
             selection_tier_pricing_artifact: Arc::new(self.selection_tier_pricing_artifact),
-            restart_outcome: self.restart_outcome,
+            candidate_outcome: self.candidate_outcome,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct PersistedSelectedOptionRefinement {
-    pub(crate) restart_id: String,
+    pub(crate) candidate_id: String,
     pub(crate) search_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
     pub(crate) selection_tier_pricing_artifact: JointRefinementOptionTierPricingArtifact,
 }
@@ -130,8 +130,8 @@ struct JointRefinementResumeState {
     run_id: String,
     stage: CalibrationStage,
     stage_seed: u64,
-    restart_outcomes_by_id: BTreeMap<String, JointRefinementRestartOutcome>,
-    restart_selection: Option<PersistedRestartSelectionArtifacts>,
+    candidate_outcomes_by_id: BTreeMap<String, JointRefinementCandidateOutcome>,
+    candidate_selection: Option<PersistedCandidateSelectionArtifacts>,
     #[serde(default)]
     search_tier_candidates_by_option_context:
         BTreeMap<String, BTreeMap<String, PersistedSearchTierCandidate>>,
@@ -154,8 +154,8 @@ impl JointRefinementResumeState {
             run_id: run_id.to_string(),
             stage,
             stage_seed,
-            restart_outcomes_by_id: BTreeMap::new(),
-            restart_selection: None,
+            candidate_outcomes_by_id: BTreeMap::new(),
+            candidate_selection: None,
             search_tier_candidates_by_option_context: BTreeMap::new(),
             selection_tier_candidates_by_option_context: BTreeMap::new(),
             selected_option_refinement_by_context: BTreeMap::new(),
@@ -210,34 +210,37 @@ impl JointRefinementResumeStore {
         }
     }
 
-    pub(crate) fn restart_outcome(
+    pub(crate) fn candidate_outcome(
         &self,
-        restart_id: &str,
-    ) -> Option<JointRefinementRestartOutcome> {
-        self.state.restart_outcomes_by_id.get(restart_id).cloned()
+        candidate_id: &str,
+    ) -> Option<JointRefinementCandidateOutcome> {
+        self.state
+            .candidate_outcomes_by_id
+            .get(candidate_id)
+            .cloned()
     }
 
-    pub(crate) fn restart_outcomes(&self) -> Vec<JointRefinementRestartOutcome> {
+    pub(crate) fn candidate_outcomes(&self) -> Vec<JointRefinementCandidateOutcome> {
         self.state
-            .restart_outcomes_by_id
+            .candidate_outcomes_by_id
             .values()
             .cloned()
             .collect()
     }
 
-    pub(crate) fn restart_selection(&self) -> Option<&PersistedRestartSelectionArtifacts> {
-        self.state.restart_selection.as_ref()
+    pub(crate) fn candidate_selection(&self) -> Option<&PersistedCandidateSelectionArtifacts> {
+        self.state.candidate_selection.as_ref()
     }
 
     pub(crate) fn search_tier_candidate(
         &self,
         option_context_fingerprint: &str,
-        restart_id: &str,
+        candidate_id: &str,
     ) -> Option<SearchTierCandidate> {
         self.state
             .search_tier_candidates_by_option_context
             .get(option_context_fingerprint)?
-            .get(restart_id)
+            .get(candidate_id)
             .cloned()
             .map(PersistedSearchTierCandidate::into_runtime)
     }
@@ -245,12 +248,12 @@ impl JointRefinementResumeStore {
     pub(crate) fn selection_tier_candidate(
         &self,
         option_context_fingerprint: &str,
-        restart_id: &str,
+        candidate_id: &str,
     ) -> Option<OptionRefinedCandidate> {
         self.state
             .selection_tier_candidates_by_option_context
             .get(option_context_fingerprint)?
-            .get(restart_id)
+            .get(candidate_id)
             .cloned()
             .map(PersistedSelectionTierCandidate::into_runtime)
     }
@@ -269,7 +272,7 @@ impl JointRefinementResumeStore {
             .map(|refinement| {
                 // Intentional clones decouple the returned runtime artifacts from persisted store state.
                 (
-                    refinement.restart_id.clone(),
+                    refinement.candidate_id.clone(),
                     Arc::new(refinement.search_tier_pricing_artifact.clone()),
                     Arc::new(refinement.selection_tier_pricing_artifact.clone()),
                 )
@@ -287,18 +290,18 @@ impl JointRefinementResumeStore {
             .map(Arc::new)
     }
 
-    pub(crate) fn record_restart_outcome(&mut self, outcome: &JointRefinementRestartOutcome) {
+    pub(crate) fn record_candidate_outcome(&mut self, outcome: &JointRefinementCandidateOutcome) {
         self.state
-            .restart_outcomes_by_id
-            .insert(outcome.restart_id.clone(), outcome.clone());
+            .candidate_outcomes_by_id
+            .insert(outcome.candidate_id.clone(), outcome.clone());
         self.persist();
     }
 
-    pub(crate) fn record_restart_selection(
+    pub(crate) fn record_candidate_selection(
         &mut self,
-        selection: PersistedRestartSelectionArtifacts,
+        selection: PersistedCandidateSelectionArtifacts,
     ) {
-        self.state.restart_selection = Some(selection);
+        self.state.candidate_selection = Some(selection);
         self.persist();
     }
 
@@ -320,7 +323,7 @@ impl JointRefinementResumeStore {
             .entry(option_context_fingerprint.to_string())
             .or_default()
             .insert(
-                candidate.restart_outcome.restart_id.clone(),
+                candidate.candidate_outcome.candidate_id.clone(),
                 PersistedSearchTierCandidate::from_runtime(candidate),
             );
         self.persist();
@@ -336,7 +339,7 @@ impl JointRefinementResumeStore {
             .entry(option_context_fingerprint.to_string())
             .or_default()
             .insert(
-                candidate.restart_outcome.restart_id.clone(),
+                candidate.candidate_outcome.candidate_id.clone(),
                 PersistedSelectionTierCandidate::from_runtime(candidate),
             );
         self.persist();
@@ -345,14 +348,14 @@ impl JointRefinementResumeStore {
     pub(crate) fn record_selected_option_refinement(
         &mut self,
         option_context_fingerprint: &str,
-        restart_id: &str,
+        candidate_id: &str,
         search_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
         selection_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
     ) {
         self.state.selected_option_refinement_by_context.insert(
             option_context_fingerprint.to_string(),
             PersistedSelectedOptionRefinement {
-                restart_id: restart_id.to_string(),
+                candidate_id: candidate_id.to_string(),
                 search_tier_pricing_artifact: search_tier_pricing_artifact.clone(),
                 selection_tier_pricing_artifact: selection_tier_pricing_artifact.clone(),
             },
@@ -620,7 +623,7 @@ mod tests {
             CalibrationStage::JointRefinement,
             17,
         );
-        assert!(loaded_store.restart_selection().is_none());
+        assert!(loaded_store.candidate_selection().is_none());
 
         let mismatched_state = JointRefinementResumeState {
             schema_version: JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION.to_string(),
@@ -638,7 +641,7 @@ mod tests {
             CalibrationStage::JointRefinement,
             17,
         );
-        assert!(ignored_store.restart_selection().is_none());
+        assert!(ignored_store.candidate_selection().is_none());
         assert!(persisted_path.exists());
 
         let _ = fs::remove_file(persisted_path);
@@ -652,12 +655,12 @@ mod tests {
             directory.join(resume_state_filename(CalibrationStage::OptionRefinement));
         let mut persisted_state =
             JointRefinementResumeState::new("run-001", CalibrationStage::OptionRefinement, 17);
-        persisted_state.restart_selection = Some(super::PersistedRestartSelectionArtifacts {
-            best_restart_id: "stale".to_string(),
+        persisted_state.candidate_selection = Some(super::PersistedCandidateSelectionArtifacts {
+            best_candidate_id: "stale".to_string(),
             option_refinement_candidate_frontier_ids: vec!["stale".to_string()],
-            selected_restart_count: 1,
+            selected_candidate_count: 1,
             option_pricing_context_fingerprint: Some("options-a".to_string()),
-            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_artifacts_by_candidate_id: Default::default(),
             coarse_consistency_wall_clock_millis: 0,
         });
 
@@ -670,7 +673,7 @@ mod tests {
             CalibrationStage::OptionRefinement,
             17,
         );
-        assert!(loaded_store.restart_selection().is_some());
+        assert!(loaded_store.candidate_selection().is_some());
 
         let mut fresh_store = JointRefinementResumeStore::fresh(
             Some(directory.as_path()),
@@ -678,14 +681,14 @@ mod tests {
             CalibrationStage::OptionRefinement,
             17,
         );
-        assert!(fresh_store.restart_selection().is_none());
+        assert!(fresh_store.candidate_selection().is_none());
 
-        fresh_store.record_restart_selection(super::PersistedRestartSelectionArtifacts {
-            best_restart_id: "fresh".to_string(),
+        fresh_store.record_candidate_selection(super::PersistedCandidateSelectionArtifacts {
+            best_candidate_id: "fresh".to_string(),
             option_refinement_candidate_frontier_ids: vec!["fresh".to_string()],
-            selected_restart_count: 1,
+            selected_candidate_count: 1,
             option_pricing_context_fingerprint: Some("options-a".to_string()),
-            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_artifacts_by_candidate_id: Default::default(),
             coarse_consistency_wall_clock_millis: 0,
         });
 
@@ -697,8 +700,8 @@ mod tests {
 
         assert_eq!(
             persisted_state
-                .restart_selection
-                .map(|selection| selection.best_restart_id),
+                .candidate_selection
+                .map(|selection| selection.best_candidate_id),
             Some("fresh".to_string())
         );
 
@@ -707,34 +710,34 @@ mod tests {
     }
 
     #[test]
-    fn restart_selection_resume_requires_matching_option_context_and_selection_width() {
-        let selection = super::PersistedRestartSelectionArtifacts {
-            best_restart_id: "baseline".to_string(),
+    fn candidate_selection_resume_requires_matching_option_context_and_selection_width() {
+        let selection = super::PersistedCandidateSelectionArtifacts {
+            best_candidate_id: "baseline".to_string(),
             option_refinement_candidate_frontier_ids: vec![
                 "baseline".to_string(),
                 "halton_01".to_string(),
             ],
-            selected_restart_count: 2,
+            selected_candidate_count: 2,
             option_pricing_context_fingerprint: Some("options-a".to_string()),
-            coarse_consistency_artifacts_by_restart_id: Default::default(),
+            coarse_consistency_artifacts_by_candidate_id: Default::default(),
             coarse_consistency_wall_clock_millis: 0,
         };
-        let valid_restart_ids = ["baseline".to_string(), "halton_01".to_string()]
+        let valid_candidate_ids = ["baseline".to_string(), "halton_01".to_string()]
             .into_iter()
             .collect();
 
-        assert!(selection.matches_resume_context(&valid_restart_ids, 2, Some("options-a")));
-        assert!(!selection.matches_resume_context(&valid_restart_ids, 3, Some("options-a")));
-        assert!(!selection.matches_resume_context(&valid_restart_ids, 2, Some("options-b")));
-        assert!(!selection.matches_resume_context(&valid_restart_ids, 2, None));
+        assert!(selection.matches_resume_context(&valid_candidate_ids, 2, Some("options-a")));
+        assert!(!selection.matches_resume_context(&valid_candidate_ids, 3, Some("options-a")));
+        assert!(!selection.matches_resume_context(&valid_candidate_ids, 2, Some("options-b")));
+        assert!(!selection.matches_resume_context(&valid_candidate_ids, 2, None));
 
-        let filtered_selection = super::PersistedRestartSelectionArtifacts {
-            selected_restart_count: 5,
+        let filtered_selection = super::PersistedCandidateSelectionArtifacts {
+            selected_candidate_count: 5,
             ..selection
         };
 
         assert!(filtered_selection.matches_resume_context(
-            &valid_restart_ids,
+            &valid_candidate_ids,
             5,
             Some("options-a")
         ));

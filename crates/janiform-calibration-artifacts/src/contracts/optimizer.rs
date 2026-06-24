@@ -7,66 +7,64 @@ use super::CalibrationStage;
 
 /// Calibration search effort policy.
 ///
-/// The effort policy controls how much restart search work Janiform performs
+/// The effort policy controls how much candidate search work Janiform performs
 /// after stage warm starts are available. Presets are named policies rather
 /// than optimizer-specific magic numbers: the runtime derives concrete search
 /// counts from the active parameter dimension and uses these multipliers to
-/// size the asynchronous restart pool.
+/// size the asynchronous candidate pool.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationEffortOptions {
-    pub restart_candidate_budget: usize,
-    pub restart_pool_total_budget_scale: f64,
-    pub restart_pool_max_candidate_budget_scale: f64,
+    pub candidate_budget: usize,
+    pub candidate_pool_total_budget_scale: f64,
+    pub candidate_pool_max_budget_scale: f64,
 }
 
 impl CalibrationEffortOptions {
     pub const fn fast() -> Self {
         Self {
-            restart_candidate_budget: 10,
-            restart_pool_total_budget_scale: 0.65,
-            restart_pool_max_candidate_budget_scale: 1.25,
+            candidate_budget: 10,
+            candidate_pool_total_budget_scale: 0.65,
+            candidate_pool_max_budget_scale: 1.25,
         }
     }
 
     pub const fn standard() -> Self {
         Self {
-            restart_candidate_budget: 15,
-            restart_pool_total_budget_scale: 1.0,
-            restart_pool_max_candidate_budget_scale: 2.0,
+            candidate_budget: 15,
+            candidate_pool_total_budget_scale: 1.0,
+            candidate_pool_max_budget_scale: 2.0,
         }
     }
 
     pub const fn thorough() -> Self {
         Self {
-            restart_candidate_budget: 24,
-            restart_pool_total_budget_scale: 1.75,
-            restart_pool_max_candidate_budget_scale: 3.0,
+            candidate_budget: 24,
+            candidate_pool_total_budget_scale: 1.75,
+            candidate_pool_max_budget_scale: 3.0,
         }
     }
 
     pub fn validate(&self) -> Result<(), CalibrationEffortOptionsError> {
-        if self.restart_candidate_budget == 0 {
-            return Err(
-                CalibrationEffortOptionsError::InvalidRestartCandidateBudget {
-                    value: self.restart_candidate_budget,
-                },
-            );
-        }
-
-        if !self.restart_pool_total_budget_scale.is_finite()
-            || self.restart_pool_total_budget_scale <= 0.0
-        {
-            return Err(CalibrationEffortOptionsError::InvalidTotalBudgetScale {
-                value: self.restart_pool_total_budget_scale,
+        if self.candidate_budget == 0 {
+            return Err(CalibrationEffortOptionsError::InvalidCandidateBudget {
+                value: self.candidate_budget,
             });
         }
 
-        if !self.restart_pool_max_candidate_budget_scale.is_finite()
-            || self.restart_pool_max_candidate_budget_scale <= 0.0
+        if !self.candidate_pool_total_budget_scale.is_finite()
+            || self.candidate_pool_total_budget_scale <= 0.0
+        {
+            return Err(CalibrationEffortOptionsError::InvalidTotalBudgetScale {
+                value: self.candidate_pool_total_budget_scale,
+            });
+        }
+
+        if !self.candidate_pool_max_budget_scale.is_finite()
+            || self.candidate_pool_max_budget_scale <= 0.0
         {
             return Err(
                 CalibrationEffortOptionsError::InvalidMaxCandidateBudgetScale {
-                    value: self.restart_pool_max_candidate_budget_scale,
+                    value: self.candidate_pool_max_budget_scale,
                 },
             );
         }
@@ -83,7 +81,7 @@ pub const THOROUGH_CALIBRATION_EFFORT: CalibrationEffortOptions =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CalibrationEffortOptionsError {
-    InvalidRestartCandidateBudget { value: usize },
+    InvalidCandidateBudget { value: usize },
     InvalidTotalBudgetScale { value: f64 },
     InvalidMaxCandidateBudgetScale { value: f64 },
 }
@@ -91,17 +89,17 @@ pub enum CalibrationEffortOptionsError {
 impl Display for CalibrationEffortOptionsError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidRestartCandidateBudget { value } => write!(
+            Self::InvalidCandidateBudget { value } => write!(
                 formatter,
-                "restart_candidate_budget must be strictly positive, found {value}"
+                "candidate_budget must be strictly positive, found {value}"
             ),
             Self::InvalidTotalBudgetScale { value } => write!(
                 formatter,
-                "restart_pool_total_budget_scale must be finite and strictly positive, found {value}"
+                "candidate_pool_total_budget_scale must be finite and strictly positive, found {value}"
             ),
             Self::InvalidMaxCandidateBudgetScale { value } => write!(
                 formatter,
-                "restart_pool_max_candidate_budget_scale must be finite and strictly positive, found {value}"
+                "candidate_pool_max_budget_scale must be finite and strictly positive, found {value}"
             ),
         }
     }

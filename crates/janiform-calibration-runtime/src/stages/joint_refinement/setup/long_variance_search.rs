@@ -208,7 +208,7 @@ fn long_variance_feedback_loading_upper_bound(
     Ok(upper_bound)
 }
 
-pub(super) fn joint_long_variance_restart_seeds(
+pub(super) fn joint_long_variance_candidate_seeds(
     baseline_parameter_vector: &[f64],
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     lower_bounds: &[f64],
@@ -218,32 +218,32 @@ pub(super) fn joint_long_variance_restart_seeds(
         (
             "long_variance_mean_reversion_up",
             active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index,
-            LongVarianceRestartSeedDirection::Upper,
+            LongVarianceCandidateSeedDirection::Upper,
         ),
         (
             "long_variance_mean_reversion_down",
             active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index,
-            LongVarianceRestartSeedDirection::Lower,
+            LongVarianceCandidateSeedDirection::Lower,
         ),
         (
             "long_variance_vol_of_vol_up",
             active_parameter_layout.long_variance_vol_of_vol_index,
-            LongVarianceRestartSeedDirection::Upper,
+            LongVarianceCandidateSeedDirection::Upper,
         ),
         (
             "long_variance_return_energy_loading_up",
             active_parameter_layout.long_variance_return_energy_loading_index,
-            LongVarianceRestartSeedDirection::Upper,
+            LongVarianceCandidateSeedDirection::Upper,
         ),
         (
             "long_variance_buy_event_loading_up",
             active_parameter_layout.long_variance_buy_event_loading_index,
-            LongVarianceRestartSeedDirection::Upper,
+            LongVarianceCandidateSeedDirection::Upper,
         ),
         (
             "long_variance_sell_event_loading_up",
             active_parameter_layout.long_variance_sell_event_loading_index,
-            LongVarianceRestartSeedDirection::Upper,
+            LongVarianceCandidateSeedDirection::Upper,
         ),
     ];
 
@@ -252,7 +252,7 @@ pub(super) fn joint_long_variance_restart_seeds(
         .map(|(seed_id, parameter_index, direction)| {
             (
                 seed_id.to_string(),
-                single_long_variance_restart_seed(
+                single_long_variance_candidate_seed(
                     baseline_parameter_vector,
                     lower_bounds,
                     upper_bounds,
@@ -270,7 +270,7 @@ pub(super) fn joint_long_variance_restart_seeds(
         lower_bounds,
         upper_bounds,
         active_parameter_layout.long_variance_return_energy_loading_index,
-        LongVarianceRestartSeedDirection::Upper,
+        LongVarianceCandidateSeedDirection::Upper,
     );
 
     set_coordinate_midpoint_toward_bound(
@@ -278,7 +278,7 @@ pub(super) fn joint_long_variance_restart_seeds(
         lower_bounds,
         upper_bounds,
         active_parameter_layout.long_variance_buy_event_loading_index,
-        LongVarianceRestartSeedDirection::Upper,
+        LongVarianceCandidateSeedDirection::Upper,
     );
 
     set_coordinate_midpoint_toward_bound(
@@ -286,7 +286,7 @@ pub(super) fn joint_long_variance_restart_seeds(
         lower_bounds,
         upper_bounds,
         active_parameter_layout.long_variance_sell_event_loading_index,
-        LongVarianceRestartSeedDirection::Upper,
+        LongVarianceCandidateSeedDirection::Upper,
     );
 
     clamp_in_place(
@@ -304,31 +304,31 @@ pub(super) fn joint_long_variance_restart_seeds(
 }
 
 #[derive(Debug, Clone, Copy)]
-enum LongVarianceRestartSeedDirection {
+enum LongVarianceCandidateSeedDirection {
     Lower,
     Upper,
 }
 
-fn single_long_variance_restart_seed(
+fn single_long_variance_candidate_seed(
     baseline_parameter_vector: &[f64],
     lower_bounds: &[f64],
     upper_bounds: &[f64],
     parameter_index: usize,
-    direction: LongVarianceRestartSeedDirection,
+    direction: LongVarianceCandidateSeedDirection,
 ) -> Vec<f64> {
-    let mut restart_seed = baseline_parameter_vector.to_vec();
+    let mut candidate_seed = baseline_parameter_vector.to_vec();
 
     set_coordinate_midpoint_toward_bound(
-        restart_seed.as_mut_slice(),
+        candidate_seed.as_mut_slice(),
         lower_bounds,
         upper_bounds,
         parameter_index,
         direction,
     );
 
-    clamp_in_place(restart_seed.as_mut_slice(), lower_bounds, upper_bounds);
+    clamp_in_place(candidate_seed.as_mut_slice(), lower_bounds, upper_bounds);
 
-    restart_seed
+    candidate_seed
 }
 
 fn set_coordinate_midpoint_toward_bound(
@@ -336,7 +336,7 @@ fn set_coordinate_midpoint_toward_bound(
     lower_bounds: &[f64],
     upper_bounds: &[f64],
     parameter_index: usize,
-    direction: LongVarianceRestartSeedDirection,
+    direction: LongVarianceCandidateSeedDirection,
 ) {
     let Some(current_value) = parameter_vector.get_mut(parameter_index) else {
         return;
@@ -351,8 +351,8 @@ fn set_coordinate_midpoint_toward_bound(
     };
 
     let target_bound = match direction {
-        LongVarianceRestartSeedDirection::Lower => *lower_bound,
-        LongVarianceRestartSeedDirection::Upper => *upper_bound,
+        LongVarianceCandidateSeedDirection::Lower => *lower_bound,
+        LongVarianceCandidateSeedDirection::Upper => *upper_bound,
     };
 
     *current_value = 0.5 * (*current_value + target_bound);
@@ -363,37 +363,8 @@ mod tests {
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
     use janiform_model_kernels::long_variance::LongVarianceParameters;
 
-    use crate::stages::joint_refinement::execution::JointRefinementActiveParameterLayout;
-
-    use super::{apply_long_variance_parameter_bounds, joint_long_variance_restart_seeds};
-
-    fn test_active_parameter_layout() -> JointRefinementActiveParameterLayout {
-        JointRefinementActiveParameterLayout {
-            hawkes_block: vec![0, 1, 2, 3],
-            nig_block: vec![4, 5, 6, 7],
-            return_clock_block: vec![8, 9],
-            long_variance_block: vec![10, 11, 12, 13, 14],
-            option_pricing_kernel_block: vec![15, 16, 17],
-            coupling_block: Vec::new(),
-            log_stationary_event_rate_scale_index: 0,
-            log_beta_scale_index: 1,
-            log_self_excitation_scale_index: 2,
-            log_cross_excitation_scale_index: 3,
-            log_buy_excitation_return_clock_scale_index: 8,
-            log_sell_excitation_return_clock_scale_index: 9,
-            log_long_variance_mean_reversion_rate_scale_index: 10,
-            long_variance_vol_of_vol_index: 11,
-            long_variance_return_energy_loading_index: 12,
-            long_variance_buy_event_loading_index: 13,
-            long_variance_sell_event_loading_index: 14,
-            option_pricing_log_buy_activity_premium_index: 15,
-            option_pricing_log_sell_activity_premium_index: 16,
-            option_pricing_pressure_signed_imbalance_exposure_risk_price_index: 17,
-            known_activity_scale_index: None,
-            surprise_activity_scale_index: None,
-            surprise_baseline_scale_index: None,
-        }
-    }
+    use super::super::test_support::test_active_parameter_layout;
+    use super::{apply_long_variance_parameter_bounds, joint_long_variance_candidate_seeds};
 
     fn test_hawkes_kernel_parameters() -> HawkesKernelParameters {
         HawkesKernelParameters::try_new(
@@ -458,27 +429,27 @@ mod tests {
     }
 
     #[test]
-    fn long_variance_restart_seeds_move_each_active_coordinate() {
+    fn long_variance_candidate_seeds_move_each_active_coordinate() {
         let active_parameter_layout = test_active_parameter_layout();
         let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
 
         let lower_bounds = vec![-1.0; active_parameter_layout.vector_length()];
         let upper_bounds = vec![2.0; active_parameter_layout.vector_length()];
 
-        let restart_seeds = joint_long_variance_restart_seeds(
+        let candidate_seeds = joint_long_variance_candidate_seeds(
             baseline_parameter_vector.as_slice(),
             &active_parameter_layout,
             lower_bounds.as_slice(),
             upper_bounds.as_slice(),
         );
 
-        let restart_seed_ids = restart_seeds
+        let candidate_seed_ids = candidate_seeds
             .iter()
-            .map(|(restart_id, _)| restart_id.as_str())
+            .map(|(candidate_id, _)| candidate_id.as_str())
             .collect::<Vec<_>>();
 
         assert_eq!(
-            restart_seed_ids,
+            candidate_seed_ids,
             vec![
                 "long_variance_mean_reversion_up",
                 "long_variance_mean_reversion_down",
@@ -490,10 +461,10 @@ mod tests {
             ]
         );
 
-        let vol_of_vol_seed = restart_seeds
+        let vol_of_vol_seed = candidate_seeds
             .iter()
-            .find(|(restart_id, _)| restart_id == "long_variance_vol_of_vol_up")
-            .map(|(_, restart_seed)| restart_seed)
+            .find(|(candidate_id, _)| candidate_id == "long_variance_vol_of_vol_up")
+            .map(|(_, candidate_seed)| candidate_seed)
             .expect("vol-of-vol seed should be present");
 
         assert_eq!(

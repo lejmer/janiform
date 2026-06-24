@@ -7,9 +7,9 @@ use janiform_calibration_artifacts::{
     CalibrationRunContract, CalibrationStage, CalibrationStageHandoffTransport,
     CalibrationStageParameterArtifact, CalibrationStageParameterBuildMetadata,
     CalibrationStageParameterOptimizerStateInput, HawkesStageFittedParameters,
-    HawkesStageParameterArtifactInput, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    JointRefinementStageParameterArtifactInput, JointRefinementStageRestartDiagnostics,
+    HawkesStageParameterArtifactInput, JointRefinementStageCandidateDiagnostics,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptimizerDiagnostics, JointRefinementStageParameterArtifactInput,
     JointRefinementStageRuntimeProfile, LongVarianceStageDiagnostics,
     LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
     MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
@@ -594,10 +594,10 @@ fn regression_joint_refinement_optimizer_diagnostics() -> JointRefinementStageOp
         local_evaluation_count: 1,
         final_simulation_seeds: vec![1],
         stop_reason: "artifact_regression_fixture".to_string(),
-        restart_diagnostics: JointRefinementStageRestartDiagnostics {
-            restart_count: 1,
-            valid_restart_count: 1,
-            invalid_restart_count: 0,
+        candidate_diagnostics: JointRefinementStageCandidateDiagnostics {
+            candidate_count: 1,
+            valid_candidate_count: 1,
+            invalid_candidate_count: 0,
             unique_terminal_candidate_count: 1,
             terminal_collision_count: 0,
             terminal_collision_share: 0.0,
@@ -641,6 +641,6 @@ fn regression_joint_refinement_optimizer_diagnostics() -> JointRefinementStageOp
             cumulative_loss_build_millis: 0,
             cumulative_option_pricing_millis: 0,
         },
-        restart_evaluation_timing_diagnostics: Vec::new(),
+        candidate_evaluation_timing_diagnostics: Vec::new(),
     }
 }

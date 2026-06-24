@@ -97,10 +97,10 @@ pub(crate) struct OptionPricingProgressInput<'a> {
     pub(crate) progress_phase: Option<JointRefinementStageProgressPhase>,
     pub(crate) completed_units: Option<usize>,
     pub(crate) total_units: Option<usize>,
-    pub(crate) current_restart_id: Option<&'a str>,
-    pub(crate) best_restart_id: Option<&'a str>,
+    pub(crate) current_candidate_id: Option<&'a str>,
+    pub(crate) best_candidate_id: Option<&'a str>,
     pub(crate) best_weighted_objective: Option<f64>,
-    pub(crate) active_restart_count: Option<usize>,
+    pub(crate) active_candidate_count: Option<usize>,
     pub(crate) current_evaluation_count: Option<usize>,
     pub(crate) total_evaluation_budget: Option<usize>,
     pub(crate) evaluation_progress_percent: Option<usize>,
@@ -115,10 +115,10 @@ impl<'a> OptionPricingProgressInput<'a> {
             progress_phase: None,
             completed_units: None,
             total_units: None,
-            current_restart_id: None,
-            best_restart_id: None,
+            current_candidate_id: None,
+            best_candidate_id: None,
             best_weighted_objective: None,
-            active_restart_count: None,
+            active_candidate_count: None,
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
@@ -131,13 +131,13 @@ impl<'a> OptionPricingProgressInput<'a> {
 pub(crate) struct OptionPricingProgressSnapshot {
     pub(crate) completed_units: usize,
     pub(crate) aggregate_progress_percent: Option<usize>,
-    pub(crate) active_restart_count: Option<usize>,
+    pub(crate) active_candidate_count: Option<usize>,
     pub(crate) current_evaluation_count: Option<usize>,
     pub(crate) total_evaluation_budget: Option<usize>,
     pub(crate) evaluation_progress_percent: Option<usize>,
     pub(crate) current_weighted_objective: Option<f64>,
     pub(crate) current_best_weighted_objective: Option<f64>,
-    pub(crate) best_restart_id: Option<String>,
+    pub(crate) best_candidate_id: Option<String>,
     pub(crate) best_weighted_objective: Option<f64>,
 }
 
@@ -884,11 +884,11 @@ fn run_option_grid_batch_pricing(
             let _ = progress_sender.send(JointRefinementStageProgressUpdate {
                 aggregate_progress_percent: snapshot.aggregate_progress_percent,
                 current_item_label: Some(format_option_pricing_work_item(&progress, &event)),
-                current_restart_id: progress.current_restart_id.map(str::to_string),
+                current_candidate_id: progress.current_candidate_id.map(str::to_string),
                 current_work_item_status: Some(
                     pricing_progress_phase_label(event.phase).to_string(),
                 ),
-                active_restart_count: snapshot.active_restart_count,
+                active_candidate_count: snapshot.active_candidate_count,
                 current_evaluation_count: snapshot.current_evaluation_count,
                 total_evaluation_budget: snapshot.total_evaluation_budget,
                 evaluation_progress_percent: snapshot.evaluation_progress_percent,
@@ -897,8 +897,8 @@ fn run_option_grid_batch_pricing(
                 total_pricing_interval_count: event.total_intervals,
                 completed_pricing_row_count: pricing_progress_completed_row_count(&event),
                 total_pricing_row_count: pricing_progress_total_row_count(&event),
-                current_restart_best_global_loss: snapshot.current_best_weighted_objective,
-                best_restart_id: snapshot.best_restart_id,
+                current_candidate_best_global_loss: snapshot.current_best_weighted_objective,
+                best_candidate_id: snapshot.best_candidate_id,
                 best_global_loss: snapshot.best_weighted_objective,
                 ..JointRefinementStageProgressUpdate::new(
                     progress_phase,
@@ -940,13 +940,13 @@ fn option_pricing_progress_snapshot(
         None => OptionPricingProgressSnapshot {
             completed_units,
             aggregate_progress_percent: None,
-            active_restart_count: progress.active_restart_count,
+            active_candidate_count: progress.active_candidate_count,
             current_evaluation_count: progress.current_evaluation_count,
             total_evaluation_budget: progress.total_evaluation_budget,
             evaluation_progress_percent: progress.evaluation_progress_percent,
             current_weighted_objective: progress.current_weighted_objective,
             current_best_weighted_objective: None,
-            best_restart_id: progress.best_restart_id.map(str::to_string),
+            best_candidate_id: progress.best_candidate_id.map(str::to_string),
             best_weighted_objective: progress.best_weighted_objective,
         },
     }
@@ -1660,7 +1660,7 @@ fn format_option_pricing_work_item(
     event: &PricingProgressEvent,
 ) -> String {
     progress
-        .current_restart_id
+        .current_candidate_id
         .map(str::to_string)
         .or_else(|| {
             progress

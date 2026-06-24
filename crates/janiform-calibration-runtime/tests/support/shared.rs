@@ -103,25 +103,26 @@ pub(crate) use janiform_calibration_artifacts::{
     CalibrationValidationMetricSourceKind, CalibrationValidationMetricStageOutputLink,
     CalibrationValidationMetricStatus, CalibrationValidationMetricThresholdMetadata,
     CalibrationValidationObservedValue, HawkesStageFittedParameters,
-    HawkesStageParameterArtifactInput, HawkesStageParameterPayload, JointRefinementStageCarryInput,
+    HawkesStageParameterArtifactInput, HawkesStageParameterPayload,
+    JointRefinementStageCandidateDiagnostics, JointRefinementStageCarryInput,
     JointRefinementStageFittedParameters, JointRefinementStageLabeledCount,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     JointRefinementStageOptionAggregateDiagnostic,
     JointRefinementStageOptionCalibrationDiagnostics, JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionSnapshotMetadata, JointRefinementStageParameterArtifactInput,
     JointRefinementStageParameterPayload, JointRefinementStagePricingBlockFittedParameters,
-    JointRefinementStageRestartDiagnostics, JointRefinementStageRuntimeProfile,
-    LongVarianceStageParameterArtifactInput, MeanReversionStageCalibrationGrid,
-    MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
-    MeanReversionStageDiagnostics, MeanReversionStageParameterArtifactInput,
-    MeanReversionStageParameterPayload, MeanReversionStageSeriesSummary,
-    NewsShocksStageParameterArtifactInput, ReturnBackfitStageParameterArtifactInput,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
-    ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
-    SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
-    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
+    JointRefinementStageRuntimeProfile, LongVarianceStageParameterArtifactInput,
+    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
+    MeanReversionStageCandidateSeriesDiagnostics, MeanReversionStageDiagnostics,
+    MeanReversionStageParameterArtifactInput, MeanReversionStageParameterPayload,
+    MeanReversionStageSeriesSummary, NewsShocksStageParameterArtifactInput,
+    ReturnBackfitStageParameterArtifactInput, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
+    SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,
+    SurpriseNewsDeterministicIntensityProfile, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, calibration_artifact_manifest_path,
+    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
+    calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -321,8 +322,8 @@ pub(crate) use serde_json::json;
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
     "JANIFORM_JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND";
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS: &str = "in_process";
-const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
-const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
+const JOINT_REFINEMENT_CANDIDATE_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_CANDIDATE_POLICY";
+const JOINT_REFINEMENT_CANDIDATE_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
 
 pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile: &mut JointRefinementStageRuntimeProfile,
@@ -459,10 +460,10 @@ pub(crate) fn assert_joint_refinement_optimizer_diagnostics_matches(
         actual_diagnostics.stop_reason, expected_diagnostics.stop_reason,
         "{context} stop_reason drifted"
     );
-    assert_joint_refinement_restart_diagnostics_match(
-        &actual_diagnostics.restart_diagnostics,
-        &expected_diagnostics.restart_diagnostics,
-        &format!("{context} restart_diagnostics"),
+    assert_joint_refinement_candidate_diagnostics_match(
+        &actual_diagnostics.candidate_diagnostics,
+        &expected_diagnostics.candidate_diagnostics,
+        &format!("{context} candidate_diagnostics"),
     );
     assert_joint_refinement_runtime_profile_matches(
         &actual_diagnostics.runtime_profile,
@@ -471,22 +472,22 @@ pub(crate) fn assert_joint_refinement_optimizer_diagnostics_matches(
     );
 }
 
-fn assert_joint_refinement_restart_diagnostics_match(
-    actual_diagnostics: &JointRefinementStageRestartDiagnostics,
-    expected_diagnostics: &JointRefinementStageRestartDiagnostics,
+fn assert_joint_refinement_candidate_diagnostics_match(
+    actual_diagnostics: &JointRefinementStageCandidateDiagnostics,
+    expected_diagnostics: &JointRefinementStageCandidateDiagnostics,
     context: &str,
 ) {
     assert_eq!(
-        actual_diagnostics.restart_count, expected_diagnostics.restart_count,
-        "{context} restart_count drifted"
+        actual_diagnostics.candidate_count, expected_diagnostics.candidate_count,
+        "{context} candidate_count drifted"
     );
     assert_eq!(
-        actual_diagnostics.valid_restart_count, expected_diagnostics.valid_restart_count,
-        "{context} valid_restart_count drifted"
+        actual_diagnostics.valid_candidate_count, expected_diagnostics.valid_candidate_count,
+        "{context} valid_candidate_count drifted"
     );
     assert_eq!(
-        actual_diagnostics.invalid_restart_count, expected_diagnostics.invalid_restart_count,
-        "{context} invalid_restart_count drifted"
+        actual_diagnostics.invalid_candidate_count, expected_diagnostics.invalid_candidate_count,
+        "{context} invalid_candidate_count drifted"
     );
     assert_eq!(
         actual_diagnostics.unique_terminal_candidate_count,
@@ -2171,13 +2172,13 @@ fn configure_joint_refinement_test_backend() {
         );
     }
 
-    if std::env::var_os(JOINT_REFINEMENT_RESTART_POLICY_ENV).is_none() {
-        // SAFETY: Test helpers in this module set a single deterministic restart policy for the
+    if std::env::var_os(JOINT_REFINEMENT_CANDIDATE_POLICY_ENV).is_none() {
+        // SAFETY: Test helpers in this module set a single deterministic candidate policy for the
         // current process before invoking the staged runner. All callers use the same value.
         unsafe {
             std::env::set_var(
-                JOINT_REFINEMENT_RESTART_POLICY_ENV,
-                JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED,
+                JOINT_REFINEMENT_CANDIDATE_POLICY_ENV,
+                JOINT_REFINEMENT_CANDIDATE_POLICY_CPU_COUNT_LIMITED,
             );
         }
     }
@@ -2389,8 +2390,8 @@ pub(crate) fn staged_run_inputs(
             None
         },
         joint_refinement_calibration_effort: None,
-        joint_refinement_restart_candidate_budget_override: Some(1),
-        treat_invalid_restart_fallback_warning_as_error: false,
+        joint_refinement_candidate_budget_override: Some(1),
+        treat_invalid_candidate_fallback_warning_as_error: false,
         option_refinement_candidate_count_override: Some(1),
         option_refinement_wall_clock_budget_millis: None,
         audit_option_pricing_enabled: false,
@@ -2833,8 +2834,8 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     tick_objective_data_usage_policy:
                         CalibrationTickObjectiveDataUsagePolicy::ShortHorizonWindow,
                     calibration_effort: None,
-                    restart_candidate_budget_override: Some(1),
-                    treat_invalid_restart_fallback_warning_as_error: false,
+                    candidate_budget_override: Some(1),
+                    treat_invalid_candidate_fallback_warning_as_error: false,
                     option_refinement_candidate_count_override: Some(1),
                     option_refinement_wall_clock_budget_millis: None,
                     audit_option_pricing_enabled: false,

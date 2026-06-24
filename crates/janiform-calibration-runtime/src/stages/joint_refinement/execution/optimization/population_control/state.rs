@@ -5,7 +5,7 @@ use super::super::workflow::{
     JointRefinementBudgetSchedule, population_control_reference_evaluation_budget,
 };
 use super::archive::{
-    best_population_control_score_record, best_restart_population_control_archive_record,
+    best_candidate_population_control_archive_record, best_population_control_score_record,
     distinct_ranked_population_control_archive_record, ranked_population_control_archive_records,
 };
 use super::policy::population_control_elite_count;
@@ -26,7 +26,7 @@ use super::{
 
 #[derive(Debug)]
 pub(super) struct PopulationControlState {
-    restart_ids: Vec<String>,
+    candidate_ids: Vec<String>,
     seed_vectors: Vec<Vec<f64>>,
     distribution: Option<PopulationControlDistribution>,
     scheduled_parameter_bits: Vec<Vec<u64>>,
@@ -34,9 +34,9 @@ pub(super) struct PopulationControlState {
     latest_score_snapshot: Option<PopulationControlFitSnapshot>,
     best_score_snapshot: Option<PopulationControlFitSnapshot>,
     best_global_snapshot: Option<PopulationControlFitSnapshot>,
-    restart_scheduled_search_counts: Vec<usize>,
-    restart_completed_search_counts: Vec<usize>,
-    max_search_count_per_restart: usize,
+    candidate_scheduled_search_counts: Vec<usize>,
+    candidate_completed_search_counts: Vec<usize>,
+    max_search_count_per_candidate: usize,
     scheduled_search_evaluation_count: usize,
     completed_search_evaluation_count: usize,
     in_flight_search_count: usize,
@@ -44,13 +44,13 @@ pub(super) struct PopulationControlState {
     completed_finalization_count: usize,
     seed_candidates_prepared: bool,
     next_generation_index: usize,
-    next_restart_position: usize,
+    next_candidate_position: usize,
     search_closed: bool,
     stop_reason: String,
 }
 
 pub(super) fn build_population_control_state(
-    restart_seeds: &[(String, Vec<f64>)],
+    candidate_seeds: &[(String, Vec<f64>)],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
@@ -58,21 +58,21 @@ pub(super) fn build_population_control_state(
     let reference_budget =
         population_control_reference_evaluation_budget(context, solver_settings).max(1);
 
-    let max_search_count_per_restart = ((reference_budget as f64)
+    let max_search_count_per_candidate = ((reference_budget as f64)
         * budget_schedule
             .calibration_effort
-            .restart_pool_max_candidate_budget_scale)
+            .candidate_pool_max_budget_scale)
         .ceil()
         .max(1.0) as usize;
 
-    let restart_ids = restart_seeds
+    let candidate_ids = candidate_seeds
         .iter()
-        // Population state owns restart labels because restart seeds are borrowed
+        // Population state owns candidate labels because candidate seeds are borrowed
         // from workflow input.
-        .map(|(restart_id, _)| restart_id.clone())
+        .map(|(candidate_id, _)| candidate_id.clone())
         .collect::<Vec<_>>();
 
-    let seed_vectors = restart_seeds
+    let seed_vectors = candidate_seeds
         .iter()
         // Population state owns seed vectors because worker jobs borrow state
         // across independent scheduling passes.
@@ -86,9 +86,9 @@ pub(super) fn build_population_control_state(
     );
 
     PopulationControlState {
-        restart_scheduled_search_counts: vec![0; restart_seeds.len()],
-        restart_completed_search_counts: vec![0; restart_seeds.len()],
-        restart_ids,
+        candidate_scheduled_search_counts: vec![0; candidate_seeds.len()],
+        candidate_completed_search_counts: vec![0; candidate_seeds.len()],
+        candidate_ids,
         seed_vectors,
         distribution,
         scheduled_parameter_bits: Vec::new(),
@@ -96,7 +96,7 @@ pub(super) fn build_population_control_state(
         latest_score_snapshot: None,
         best_score_snapshot: None,
         best_global_snapshot: None,
-        max_search_count_per_restart,
+        max_search_count_per_candidate,
         scheduled_search_evaluation_count: 0,
         completed_search_evaluation_count: 0,
         in_flight_search_count: 0,
@@ -104,7 +104,7 @@ pub(super) fn build_population_control_state(
         completed_finalization_count: 0,
         seed_candidates_prepared: false,
         next_generation_index: 0,
-        next_restart_position: 0,
+        next_candidate_position: 0,
         search_closed: false,
         stop_reason: POPULATION_CONTROL_STOP_REASON_NO_SCHEDULABLE_WORK.to_string(),
     }
@@ -121,8 +121,8 @@ pub(super) fn record_population_control_search_result(
         state.completed_search_evaluation_count.saturating_add(1);
 
     if let Some(completed_count) = state
-        .restart_completed_search_counts
-        .get_mut(result.restart_position)
+        .candidate_completed_search_counts
+        .get_mut(result.candidate_position)
     {
         *completed_count = completed_count.saturating_add(1);
     }
@@ -135,13 +135,13 @@ pub(super) fn record_population_control_search_result(
     let exact_likelihood_evaluator_counts = evaluation.exact_likelihood_evaluator_counts;
 
     state.update_score_snapshots(
-        result.restart_id.as_str(),
+        result.candidate_id.as_str(),
         &score,
         exact_likelihood_evaluator_counts,
     );
 
     state.archive.push(PopulationControlCandidateRecord {
-        restart_id: result.restart_id,
+        candidate_id: result.candidate_id,
         parameter_vector: result.parameter_vector,
         candidate_evaluation_count: result.candidate_evaluation_count,
         score,
@@ -149,8 +149,8 @@ pub(super) fn record_population_control_search_result(
 }
 
 impl PopulationControlState {
-    pub(super) fn restart_count(&self) -> usize {
-        self.restart_ids.len()
+    pub(super) fn candidate_count(&self) -> usize {
+        self.candidate_ids.len()
     }
 
     pub(super) fn scheduled_search_evaluation_count(&self) -> usize {
@@ -189,24 +189,24 @@ impl PopulationControlState {
         self.best_global_snapshot.as_ref()
     }
 
-    pub(super) fn restart_search_idle(&self, restart_position: usize) -> bool {
-        self.restart_scheduled_search_counts
-            .get(restart_position)
+    pub(super) fn candidate_search_idle(&self, candidate_position: usize) -> bool {
+        self.candidate_scheduled_search_counts
+            .get(candidate_position)
             .copied()
             .unwrap_or(0)
             == self
-                .restart_completed_search_counts
-                .get(restart_position)
+                .candidate_completed_search_counts
+                .get(candidate_position)
                 .copied()
                 .unwrap_or(0)
     }
 
-    pub(super) fn restart_search_budget_exhausted(&self, restart_position: usize) -> bool {
-        self.restart_scheduled_search_counts
-            .get(restart_position)
+    pub(super) fn candidate_search_budget_exhausted(&self, candidate_position: usize) -> bool {
+        self.candidate_scheduled_search_counts
+            .get(candidate_position)
             .copied()
             .unwrap_or(0)
-            >= self.max_search_count_per_restart
+            >= self.max_search_count_per_candidate
     }
 
     pub(super) fn mark_search_closed(&mut self, stop_reason: &str) {
@@ -222,27 +222,27 @@ impl PopulationControlState {
         self.completed_finalization_count = self.completed_finalization_count.saturating_add(1);
     }
 
-    pub(super) fn finalization_job_for_restart(
+    pub(super) fn finalization_job_for_candidate(
         &self,
-        restart_position: usize,
+        candidate_position: usize,
     ) -> Option<PopulationControlFinalizationJob> {
-        let restart_id = self.restart_ids.get(restart_position)?;
-        let seed_vector = self.seed_vectors.get(restart_position)?;
+        let candidate_id = self.candidate_ids.get(candidate_position)?;
+        let seed_vector = self.seed_vectors.get(candidate_position)?;
 
         let candidate_vector =
-            self.finalization_candidate_vector(restart_position, self.search_closed)?;
+            self.finalization_candidate_vector(candidate_position, self.search_closed)?;
 
         let evaluation_count = self
-            .restart_completed_search_counts
-            .get(restart_position)
+            .candidate_completed_search_counts
+            .get(candidate_position)
             .copied()
             .unwrap_or(0);
 
         // Finalization jobs own vectors and labels because seeded validation runs
         // outside the search-state borrow.
         Some(PopulationControlFinalizationJob {
-            restart_position,
-            restart_id: restart_id.clone(),
+            candidate_position,
+            candidate_id: candidate_id.clone(),
             seed_vector: seed_vector.clone(),
             candidate_vector,
             evaluation_count,
@@ -328,11 +328,11 @@ impl PopulationControlState {
     {
         let mut candidate_specs = Vec::new();
 
-        // Candidate preparation tracks restart reservations locally so the queue
-        // does not fill with work that the per-restart budget will reject.
-        let mut prepared_restart_counts = self.restart_scheduled_search_counts.clone();
+        // Candidate preparation tracks candidate reservations locally so the queue
+        // does not fill with work that the per-candidate budget will reject.
+        let mut prepared_candidate_counts = self.candidate_scheduled_search_counts.clone();
 
-        for (candidate_position, parameter_vector) in candidate_vectors.into_iter().enumerate() {
+        for parameter_vector in candidate_vectors {
             if candidate_specs.len() >= remaining_search_budget {
                 break;
             }
@@ -346,23 +346,23 @@ impl PopulationControlState {
                 continue;
             }
 
-            let Some(restart_position) =
-                self.next_restart_position_with_prepared_budget(&mut prepared_restart_counts)
+            let Some(candidate_position) =
+                self.next_candidate_position_with_prepared_budget(&mut prepared_candidate_counts)
             else {
                 break;
             };
 
             self.scheduled_parameter_bits.push(parameter_bits);
 
-            let Some(restart_id) = self.restart_ids.get(restart_position) else {
+            let Some(candidate_id) = self.candidate_ids.get(candidate_position) else {
                 continue;
             };
 
-            // Candidate specs own restart labels and vectors so worker scheduling
+            // Candidate specs own candidate labels and vectors so worker scheduling
             // does not borrow mutable population state.
             candidate_specs.push(PopulationControlCandidateSpec {
-                restart_position,
-                restart_id: restart_id.clone(),
+                candidate_position,
+                candidate_id: candidate_id.clone(),
                 parameter_vector,
                 schedule_category,
                 search_direction_position: search_direction_position(candidate_position),
@@ -378,10 +378,10 @@ impl PopulationControlState {
         candidate_spec: PopulationControlCandidateSpec,
     ) -> Option<PopulationControlSearchJob> {
         let scheduled_count = self
-            .restart_scheduled_search_counts
-            .get_mut(candidate_spec.restart_position)?;
+            .candidate_scheduled_search_counts
+            .get_mut(candidate_spec.candidate_position)?;
 
-        if *scheduled_count >= self.max_search_count_per_restart {
+        if *scheduled_count >= self.max_search_count_per_candidate {
             return None;
         }
 
@@ -393,8 +393,8 @@ impl PopulationControlState {
         self.in_flight_search_count = self.in_flight_search_count.saturating_add(1);
 
         Some(PopulationControlSearchJob {
-            restart_position: candidate_spec.restart_position,
-            restart_id: candidate_spec.restart_id,
+            candidate_position: candidate_spec.candidate_position,
+            candidate_id: candidate_spec.candidate_id,
             parameter_vector: candidate_spec.parameter_vector,
             candidate_evaluation_count: *scheduled_count,
             schedule_category: candidate_spec.schedule_category,
@@ -403,29 +403,30 @@ impl PopulationControlState {
         })
     }
 
-    fn next_restart_position_with_prepared_budget(
+    fn next_candidate_position_with_prepared_budget(
         &mut self,
-        prepared_restart_counts: &mut [usize],
+        prepared_candidate_counts: &mut [usize],
     ) -> Option<usize> {
-        if self.restart_ids.is_empty() {
+        if self.candidate_ids.is_empty() {
             return None;
         }
 
-        for _ in 0..self.restart_ids.len() {
-            let restart_position = self.next_restart_position % self.restart_ids.len();
+        for _ in 0..self.candidate_ids.len() {
+            let candidate_position = self.next_candidate_position % self.candidate_ids.len();
 
-            self.next_restart_position =
-                self.next_restart_position.saturating_add(1) % self.restart_ids.len();
+            self.next_candidate_position =
+                self.next_candidate_position.saturating_add(1) % self.candidate_ids.len();
 
-            let Some(prepared_restart_count) = prepared_restart_counts.get_mut(restart_position)
+            let Some(prepared_candidate_count) =
+                prepared_candidate_counts.get_mut(candidate_position)
             else {
                 continue;
             };
 
-            if *prepared_restart_count < self.max_search_count_per_restart {
-                *prepared_restart_count = prepared_restart_count.saturating_add(1);
+            if *prepared_candidate_count < self.max_search_count_per_candidate {
+                *prepared_candidate_count = prepared_candidate_count.saturating_add(1);
 
-                return Some(restart_position);
+                return Some(candidate_position);
             }
         }
 
@@ -469,14 +470,14 @@ impl PopulationControlState {
 
     fn update_score_snapshots(
         &mut self,
-        restart_id: &str,
+        candidate_id: &str,
         score: &PopulationControlScore,
         exact_likelihood_evaluator_counts: Option<
             crate::stages::return_components::ContinuousLikelihoodEvaluatorCounts,
         >,
     ) {
         self.latest_score_snapshot = Some(PopulationControlFitSnapshot {
-            restart_id: restart_id.to_string(),
+            candidate_id: candidate_id.to_string(),
             objective: score.objective(),
             exact_likelihood_evaluator_counts,
         });
@@ -487,7 +488,7 @@ impl PopulationControlState {
 
         if score_snapshot_improves {
             self.best_score_snapshot = Some(PopulationControlFitSnapshot {
-                restart_id: restart_id.to_string(),
+                candidate_id: candidate_id.to_string(),
                 objective: score.objective(),
                 exact_likelihood_evaluator_counts,
             });
@@ -501,7 +502,7 @@ impl PopulationControlState {
 
         if global_snapshot_improves {
             self.best_global_snapshot = Some(PopulationControlFitSnapshot {
-                restart_id: restart_id.to_string(),
+                candidate_id: candidate_id.to_string(),
                 objective: score.objective(),
                 exact_likelihood_evaluator_counts,
             });
@@ -510,15 +511,15 @@ impl PopulationControlState {
 
     fn finalization_candidate_vector(
         &self,
-        restart_position: usize,
+        candidate_position: usize,
         search_closed: bool,
     ) -> Option<Vec<f64>> {
-        let restart_id = self.restart_ids.get(restart_position)?;
+        let candidate_id = self.candidate_ids.get(candidate_position)?;
 
         if search_closed
             && let Some(candidate_record) = distinct_ranked_population_control_archive_record(
                 self.archive.as_slice(),
-                restart_position,
+                candidate_position,
             )
         {
             // Finalization owns candidate vectors because seeded validation runs
@@ -526,9 +527,9 @@ impl PopulationControlState {
             return Some(candidate_record.parameter_vector.clone());
         }
 
-        if let Some(candidate_record) = best_restart_population_control_archive_record(
+        if let Some(candidate_record) = best_candidate_population_control_archive_record(
             self.archive.as_slice(),
-            restart_id.as_str(),
+            candidate_id.as_str(),
         ) {
             // Finalization owns candidate vectors because seeded validation runs
             // after archive ranking releases its borrow.
@@ -537,7 +538,7 @@ impl PopulationControlState {
 
         // The seed fallback owns a vector for the same worker-boundary reason as
         // archive candidates.
-        self.seed_vectors.get(restart_position).cloned()
+        self.seed_vectors.get(candidate_position).cloned()
     }
 }
 
@@ -548,33 +549,33 @@ pub(super) fn population_control_state_with_progress_snapshots_for_test(
     best_global_objective: f64,
 ) -> PopulationControlState {
     PopulationControlState {
-        restart_ids: vec![
-            "latest_restart".to_string(),
-            "best_score_restart".to_string(),
-            "best_global_restart".to_string(),
+        candidate_ids: vec![
+            "latest_candidate".to_string(),
+            "best_score_candidate".to_string(),
+            "best_global_candidate".to_string(),
         ],
         seed_vectors: vec![vec![0.0], vec![0.0], vec![0.0]],
         distribution: None,
         scheduled_parameter_bits: Vec::new(),
         archive: Vec::new(),
         latest_score_snapshot: Some(PopulationControlFitSnapshot {
-            restart_id: "latest_restart".to_string(),
+            candidate_id: "latest_candidate".to_string(),
             objective: latest_objective,
             exact_likelihood_evaluator_counts: None,
         }),
         best_score_snapshot: Some(PopulationControlFitSnapshot {
-            restart_id: "best_score_restart".to_string(),
+            candidate_id: "best_score_candidate".to_string(),
             objective: best_score_objective,
             exact_likelihood_evaluator_counts: None,
         }),
         best_global_snapshot: Some(PopulationControlFitSnapshot {
-            restart_id: "best_global_restart".to_string(),
+            candidate_id: "best_global_candidate".to_string(),
             objective: best_global_objective,
             exact_likelihood_evaluator_counts: None,
         }),
-        restart_scheduled_search_counts: vec![1, 1, 1],
-        restart_completed_search_counts: vec![1, 1, 1],
-        max_search_count_per_restart: 1,
+        candidate_scheduled_search_counts: vec![1, 1, 1],
+        candidate_completed_search_counts: vec![1, 1, 1],
+        max_search_count_per_candidate: 1,
         scheduled_search_evaluation_count: 3,
         completed_search_evaluation_count: 3,
         in_flight_search_count: 0,
@@ -582,7 +583,7 @@ pub(super) fn population_control_state_with_progress_snapshots_for_test(
         completed_finalization_count: 0,
         seed_candidates_prepared: true,
         next_generation_index: 0,
-        next_restart_position: 0,
+        next_candidate_position: 0,
         search_closed: false,
         stop_reason: POPULATION_CONTROL_STOP_REASON_NO_SCHEDULABLE_WORK.to_string(),
     }
@@ -590,16 +591,21 @@ pub(super) fn population_control_state_with_progress_snapshots_for_test(
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::workflow::{RestartObjectiveEvaluation, RestartObjectiveResidual};
-    use super::*;
+    use super::super::super::workflow::{CandidateObjectiveEvaluation, CandidateObjectiveResidual};
+    use super::super::scoring::PopulationControlScore;
+    use super::super::types::PopulationControlCandidateSpec;
+    use super::super::{
+        POPULATION_CONTROL_SCHEDULE_CATEGORY_SAMPLE, PopulationControlCandidateRecord,
+    };
+    use super::population_control_state_with_progress_snapshots_for_test;
 
     fn test_score(objective: f64) -> PopulationControlScore {
-        PopulationControlScore::from_evaluation(&RestartObjectiveEvaluation {
+        PopulationControlScore::from_evaluation(&CandidateObjectiveEvaluation {
             objective,
             admissibility_warning_count: 0,
             max_standardized_residual: Some(objective),
             exact_likelihood_evaluator_counts: None,
-            residuals: vec![RestartObjectiveResidual {
+            residuals: vec![CandidateObjectiveResidual {
                 family_id: "test".to_string(),
                 residual_id: "test.residual".to_string(),
                 objective_residual: objective,
@@ -608,18 +614,18 @@ mod tests {
     }
 
     #[test]
-    fn open_search_finalization_uses_restart_local_candidate() {
+    fn open_search_finalization_uses_candidate_local_candidate() {
         let mut state = population_control_state_with_progress_snapshots_for_test(3.0, 2.0, 1.0);
 
         state.archive.push(PopulationControlCandidateRecord {
-            restart_id: "other_restart".to_string(),
+            candidate_id: "other_candidate".to_string(),
             parameter_vector: vec![9.0],
             candidate_evaluation_count: 1,
             score: test_score(0.0),
         });
 
         state.archive.push(PopulationControlCandidateRecord {
-            restart_id: "latest_restart".to_string(),
+            candidate_id: "latest_candidate".to_string(),
             parameter_vector: vec![1.0],
             candidate_evaluation_count: 1,
             score: test_score(1.0),
@@ -636,12 +642,12 @@ mod tests {
     }
 
     #[test]
-    fn search_job_scheduling_respects_restart_candidate_budget() {
+    fn search_job_scheduling_respects_candidate_budget() {
         let mut state = population_control_state_with_progress_snapshots_for_test(3.0, 2.0, 1.0);
 
         let candidate_spec = PopulationControlCandidateSpec {
-            restart_position: 0,
-            restart_id: "latest_restart".to_string(),
+            candidate_position: 0,
+            candidate_id: "latest_candidate".to_string(),
             parameter_vector: vec![1.0],
             schedule_category: POPULATION_CONTROL_SCHEDULE_CATEGORY_SAMPLE,
             search_direction_position: Some(0),

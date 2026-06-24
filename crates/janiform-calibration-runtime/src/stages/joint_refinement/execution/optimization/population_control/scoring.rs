@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use super::super::residual_profile::ResidualTailProfile;
-use super::super::workflow::RestartObjectiveEvaluation;
+use super::super::workflow::CandidateObjectiveEvaluation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct PopulationControlScore {
@@ -12,7 +12,7 @@ pub(super) struct PopulationControlScore {
 }
 
 impl PopulationControlScore {
-    pub(super) fn from_evaluation(evaluation: &RestartObjectiveEvaluation) -> Self {
+    pub(super) fn from_evaluation(evaluation: &CandidateObjectiveEvaluation) -> Self {
         Self {
             profile: ResidualTailProfile::from_residuals(evaluation.residuals.as_slice()),
             admissibility_warning_count: evaluation.admissibility_warning_count,
@@ -64,16 +64,16 @@ fn compare_optional_loss(left_loss: Option<f64>, right_loss: Option<f64>) -> Ord
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::workflow::{RestartObjectiveEvaluation, RestartObjectiveResidual};
+    use super::super::super::workflow::{CandidateObjectiveEvaluation, CandidateObjectiveResidual};
     use super::PopulationControlScore;
 
-    fn evaluation(objective: f64, residual: f64) -> RestartObjectiveEvaluation {
-        RestartObjectiveEvaluation {
+    fn evaluation(objective: f64, residual: f64) -> CandidateObjectiveEvaluation {
+        CandidateObjectiveEvaluation {
             objective,
             admissibility_warning_count: 0,
             max_standardized_residual: Some(residual.abs()),
             exact_likelihood_evaluator_counts: None,
-            residuals: vec![RestartObjectiveResidual {
+            residuals: vec![CandidateObjectiveResidual {
                 family_id: "shape".to_string(),
                 residual_id: "shape.tail".to_string(),
                 objective_residual: residual,

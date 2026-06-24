@@ -15,20 +15,20 @@ pub(super) fn population_control_search_budget(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
 ) -> usize {
-    let fixed_restart_budget = budget_schedule.restart_count.max(1).saturating_mul(
+    let fixed_candidate_budget = budget_schedule.candidate_count.max(1).saturating_mul(
         population_control_seed_evaluation_budget(context, solver_settings, budget_schedule),
     );
 
-    ((fixed_restart_budget as f64)
+    ((fixed_candidate_budget as f64)
         * budget_schedule
             .calibration_effort
-            .restart_pool_total_budget_scale)
+            .candidate_pool_total_budget_scale)
         .ceil()
         .max(1.0) as usize
 }
 
 pub(super) fn population_control_generation_width(
-    restart_count: usize,
+    candidate_count: usize,
     worker_capacity: usize,
     remaining_search_budget: usize,
 ) -> usize {
@@ -36,7 +36,7 @@ pub(super) fn population_control_generation_width(
         .max(1)
         .saturating_mul(POPULATION_CONTROL_WORKER_PIPELINE_WAVE_COUNT);
 
-    restart_count
+    candidate_count
         .max(worker_pipeline_width)
         .max(1)
         .min(remaining_search_budget.max(1))

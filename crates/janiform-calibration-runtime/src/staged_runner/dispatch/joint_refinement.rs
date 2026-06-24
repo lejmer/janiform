@@ -124,10 +124,10 @@ pub(super) fn forward_joint_refinement_like_stage_progress(
                 stage_progress_percent: Some(progress_update.stage_progress_percent()),
                 aggregate_progress_percent: progress_update.aggregate_progress_percent,
                 current_item_label: progress_update.current_item_label,
-                current_restart_id: progress_update.current_restart_id,
+                current_candidate_id: progress_update.current_candidate_id,
                 current_work_item_status: progress_update.current_work_item_status,
                 planned_work_item_labels: progress_update.planned_work_item_labels,
-                active_restart_count: progress_update.active_restart_count,
+                active_candidate_count: progress_update.active_candidate_count,
                 current_evaluation_count: progress_update.current_evaluation_count,
                 total_evaluation_budget: progress_update.total_evaluation_budget,
                 evaluation_progress_percent: progress_update.evaluation_progress_percent,
@@ -139,18 +139,19 @@ pub(super) fn forward_joint_refinement_like_stage_progress(
                 cumulative_local_evaluation_count: progress_update
                     .cumulative_local_evaluation_count,
                 current_global_loss: progress_update.current_global_loss,
-                current_restart_best_global_loss: progress_update.current_restart_best_global_loss,
+                current_candidate_best_global_loss: progress_update
+                    .current_candidate_best_global_loss,
                 current_final_global_loss: progress_update.current_final_global_loss,
                 current_candidate_assessment: progress_update.current_candidate_assessment,
-                best_restart_id: progress_update.best_restart_id,
+                best_candidate_id: progress_update.best_candidate_id,
                 best_global_loss: progress_update.best_global_loss,
                 current_coarse_consistency_fit: progress_update.current_coarse_consistency_fit,
                 best_coarse_consistency_fit: progress_update.best_coarse_consistency_fit,
                 exact_closed_form_buy_count: progress_update.exact_closed_form_buy_count,
                 exact_closed_form_sell_count: progress_update.exact_closed_form_sell_count,
                 exact_tilted_mixed_count: progress_update.exact_tilted_mixed_count,
-                restart_evaluation_timing_diagnostic: progress_update
-                    .restart_evaluation_timing_diagnostic,
+                candidate_evaluation_timing_diagnostic: progress_update
+                    .candidate_evaluation_timing_diagnostic,
                 current_convergence_ratio: None,
             },
         )));
@@ -197,10 +198,9 @@ pub(super) fn joint_refinement_like_stage_input(
         coarse_data_records: staged_run_inputs.coarse_data_records.clone(),
         tick_objective_data_usage_policy: staged_run_inputs.tick_objective_data_usage_policy,
         calibration_effort: staged_run_inputs.joint_refinement_calibration_effort,
-        restart_candidate_budget_override: staged_run_inputs
-            .joint_refinement_restart_candidate_budget_override,
-        treat_invalid_restart_fallback_warning_as_error: staged_run_inputs
-            .treat_invalid_restart_fallback_warning_as_error,
+        candidate_budget_override: staged_run_inputs.joint_refinement_candidate_budget_override,
+        treat_invalid_candidate_fallback_warning_as_error: staged_run_inputs
+            .treat_invalid_candidate_fallback_warning_as_error,
         option_refinement_candidate_count_override: option_refinement_settings
             .candidate_count_override,
         option_refinement_wall_clock_budget_millis: option_refinement_settings

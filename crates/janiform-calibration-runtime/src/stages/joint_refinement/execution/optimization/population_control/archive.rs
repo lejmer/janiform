@@ -17,7 +17,7 @@ pub(super) fn ranked_population_control_archive_records(
     records.sort_by(|left, right| {
         left.score
             .compare(&right.score)
-            .then_with(|| left.restart_id.cmp(&right.restart_id))
+            .then_with(|| left.candidate_id.cmp(&right.candidate_id))
             .then_with(|| {
                 left.candidate_evaluation_count
                     .cmp(&right.candidate_evaluation_count)
@@ -55,12 +55,12 @@ pub(super) fn distinct_ranked_population_control_archive_record(
     None
 }
 
-pub(super) fn best_restart_population_control_archive_record<'a>(
+pub(super) fn best_candidate_population_control_archive_record<'a>(
     archive: &'a [PopulationControlCandidateRecord],
-    restart_id: &str,
+    candidate_id: &str,
 ) -> Option<&'a PopulationControlCandidateRecord> {
     archive
         .iter()
-        .filter(|record| record.restart_id == restart_id)
+        .filter(|record| record.candidate_id == candidate_id)
         .min_by(|left, right| left.score.compare(&right.score))
 }
