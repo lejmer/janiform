@@ -24,6 +24,8 @@ from janiform.sufficient_statistics import SufficientStatisticsModelInputs
 from examples._contracts import (
     build_excitation_state,
     build_kernel_parameters,
+    build_market_pressure_parameters,
+    build_market_pressure_state,
     build_mean_reversion_runtime_contracts,
     build_news_process_configuration,
     build_nig_shared_plus_shift_configuration,
@@ -106,6 +108,8 @@ def main() -> None:
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        market_pressure_parameters=build_market_pressure_parameters(),
+        initial_market_pressure_state=build_market_pressure_state(),
     )
 
     # The runtime helper attaches the non-serializable interval-grid handle needed by execution.
@@ -124,6 +128,8 @@ def main() -> None:
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        market_pressure_parameters=build_market_pressure_parameters(),
+        initial_market_pressure_state=build_market_pressure_state(),
     )
 
     coarse_path: CoarseSimulationPath = run_coarse_simulation(coarse_request)
