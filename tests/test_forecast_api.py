@@ -7,18 +7,21 @@ from typing import Any, cast
 import pytest
 
 import janiform._native_api as native_api_module
-import janiform.forecast.result as forecast_result_module
 import janiform.calibration.fit._runtime.option_pricing.support as pricing_support_module
 import janiform.calibration.fit._runtime.payloads as runtime_payloads_module
-from janiform.market_pressure import MarketPressureState
+import janiform.forecast.result as forecast_result_module
 from janiform.calibration.fit.state import CurrentStateEstimationResult
 from janiform.calibration.market_data import CalibrationTickDataColumnMapping
 from janiform.forecast import ForecastTableFormat, JaniformForecast
 from janiform.long_variance import LongVarianceState
+from janiform.market_pressure import MarketPressureState
 from janiform.mean_reversion import MeanReversionBoundaryState
 from janiform.model import JaniformModel
 from janiform.simulation import HawkesExcitationState
-from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
+from tests.support.calibration import (
+    build_neutral_long_variance_parameters_payload,
+    build_no_anchor_impact_market_pressure_parameters_payload,
+)
 
 
 def test_model_forecast_builds_native_request_with_defaults_and_cpu_count(
@@ -111,14 +114,7 @@ def test_model_state_tracker_updates_native_state_and_forecasts_from_snapshot(
     monkeypatch.setattr(
         runtime_payloads_module,
         "long_variance_parameters_for_model",
-        lambda model: _Payload(
-            {
-                "mean_reversion_rate": 1.0,
-                "vol_of_vol": 0.0,
-                "buy_event_loading": 0.0,
-                "sell_event_loading": 0.0,
-            }
-        ),
+        lambda model: _Payload(build_neutral_long_variance_parameters_payload()),
     )
     monkeypatch.setattr(
         runtime_payloads_module,

@@ -59,6 +59,8 @@ def build_neutral_long_variance_parameters_payload() -> dict[str, Any]:
     return {
         "mean_reversion_rate": 1.0,
         "vol_of_vol": 0.0,
+        "stationary_return_energy_rate_per_hour": 0.0,
+        "return_energy_loading": 0.0,
         "buy_event_loading": 0.0,
         "sell_event_loading": 0.0,
     }
