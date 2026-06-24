@@ -53,12 +53,12 @@ The same ideas apply whether the report is a Python object or saved as JSON. The
 
 In the report, two sections matter most:
 
-| Report section                         | What it answers                                                |
-|----------------------------------------|----------------------------------------------------------------|
-| `objective_breakdown.global_loss`      | What single loss did Janiform use to rank complete candidates? |
-| `objective_breakdown.family_losses`    | Which broad parts of the fit were strong or weak?              |
-| `objective_breakdown.term_diagnostics` | What observed and modeled measurements caused those losses?    |
-| `objective_breakdown.admissibility`    | Is the objective finite, and which advisory warnings were recorded?    |
+| Report section                         | What it answers                                                     |
+|----------------------------------------|---------------------------------------------------------------------|
+| `objective_breakdown.global_loss`      | What single loss did Janiform use to rank complete candidates?      |
+| `objective_breakdown.family_losses`    | Which broad parts of the fit were strong or weak?                   |
+| `objective_breakdown.term_diagnostics` | What observed and modeled measurements caused those losses?         |
+| `objective_breakdown.admissibility`    | Is the objective finite, and which advisory warnings were recorded? |
 
 Start with `objective_breakdown.family_losses`. If one area looks bad, use `objective_breakdown.term_diagnostics` to see the underlying observed and modeled numbers.
 
@@ -75,7 +75,7 @@ Full calibration reports separate the final pipeline into the stages users see i
 | `Fit news shocks`             | Full runs              | Fits news and gap shock parameters used as fixed inputs to the return-distribution backfit.                                              |
 | `Backfit return distribution` | Full runs              | Re-estimates the physical return layer against the fixed long-variance and news/gap fit so scale is not counted twice.                   |
 | `Fit mean reversion`          | Full runs              | Fits temporary-deviation mean-reversion behavior.                                                                                        |
-| `Refine dynamics`             | Full runs              | Searches restart candidates for the physical dynamics fitted to underlying data.                                                         |
+| `Refine dynamics`             | Full runs              | Runs population refinement over complete physical-dynamics candidates fitted to underlying data.                                         |
 | `Fit option surface`          | Full runs with options | Fits the option pricing block from the selected dynamics frontier.                                                                       |
 | `Finalize model`              | Full runs              | Resolves upstream fit artifacts, prepares runtime inputs, builds final diagnostics, and writes the canonical final fitted model payload. |
 
@@ -145,19 +145,19 @@ The global loss is useful for ranking candidate fits, but it is not a standalone
 
 Each term has:
 
-| Field                     | Meaning                                                                            |
-|---------------------------|------------------------------------------------------------------------------------|
-| `term_id`                 | The report name for this measurement.                                              |
-| `family_id`               | The broader behavior it belongs to, such as activity or return scale.              |
+| Field                     | Meaning                                                                                                       |
+|---------------------------|---------------------------------------------------------------------------------------------------------------|
+| `term_id`                 | The report name for this measurement.                                                                         |
+| `family_id`               | The broader behavior it belongs to, such as activity or return scale.                                         |
 | `term_kind`               | The kind of term: exact likelihood, diagnostic coordinate, domain margin, option quote, or invalid candidate. |
-| `observed_value`          | The value measured in the training data when applicable.                           |
-| `model_value`             | The value from the fitted model or simulation when applicable.                     |
-| `observed_standard_error` | The estimated uncertainty of the observed value when applicable.                   |
-| `model_standard_error`    | The estimated uncertainty of the modeled value when applicable.                    |
-| `uncertainty_scale`       | The marginal covariance-diagonal scale used to standardize observed-versus-modeled mismatch. |
-| `standardized_residual`   | The signed mismatch after scaling.                                                 |
-| `covariance_diagonal`     | The coordinate variance used by the family covariance geometry.                    |
-| `loss`                    | The marginal squared standardized residual divided by the identified family rank.  |
+| `observed_value`          | The value measured in the training data when applicable.                                                      |
+| `model_value`             | The value from the fitted model or simulation when applicable.                                                |
+| `observed_standard_error` | The estimated uncertainty of the observed value when applicable.                                              |
+| `model_standard_error`    | The estimated uncertainty of the modeled value when applicable.                                               |
+| `uncertainty_scale`       | The marginal covariance-diagonal scale used to standardize observed-versus-modeled mismatch.                  |
+| `standardized_residual`   | The signed mismatch after scaling.                                                                            |
+| `covariance_diagonal`     | The coordinate variance used by the family covariance geometry.                                               |
+| `loss`                    | The marginal squared standardized residual divided by the identified family rank.                             |
 
 Use these terms when a broad area looks weak.
 
@@ -272,25 +272,25 @@ Janiform's underlying simulated price can move by less than one displayed tick. 
 
 If you provide a tick size during fitting, Janiform uses it. Otherwise, a selected market profile can provide a fallback tick size. When neither is available, Janiform may infer one from the smallest positive same-session price change in the training data. Small moves that do not yet reach a full tick are carried forward, so repeated small moves can eventually become a visible price change.
 
-### Search restarts
+### Candidate seed frontier
 
-A search restart is another starting point for calibration. Restarts are useful when the first starting point might lead to a fit that is locally reasonable but not well balanced.
+Joint refinement starts from a frontier of candidate seeds. A seed is a complete active parameter vector built from residual evidence Janiform can evaluate before the full simulation pass.
 
-Search restarts are built from the fit residuals Janiform can evaluate before the full simulation pass. Some restarts adjust return scale, some preserve the current activity model while changing return shape, and some combine return-shape changes with activity-level alignment. If the hand-built restart pool is too narrow, Janiform fills the frontier with local quasi-random points around the staged model.
+Some seeds adjust return scale, some preserve the current activity model while changing return shape, and some combine return-shape changes with activity-level alignment. If the structured seed pool is too narrow, Janiform fills the frontier with local quasi-random points around the staged model.
 
-The restart frontier is selected from low-cost screening losses before population refinement. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
+The candidate seed frontier is selected from low-cost screening losses before population refinement. The screening step keeps candidates that improve different weak areas, but admissibility is still decided from refreshed selection or audit-fidelity loss diagnostics.
 
 Before filling the frontier with quasi-random seeds, Janiform builds sensitivity repair seeds from the best screened candidates. For each anchor candidate, it perturbs each active parameter inside the validated bounds, measures how active finite standardized residuals respond, solves a small damped least-squares repair step in normalized parameter space, and adds bounded trust-region versions of that step back into the same screening and diversity selection path. The active residual geometry defines the term-driven repair direction.
 
-During population refinement, Janiform evaluates a population of full active parameter vectors across the restart frontier. Seed candidates anchor the population, sampled candidates are drawn from an elite-refitted distribution inside the validated parameter bounds, and finalization validates distinct ranked candidates at local and final fidelity. The search state updates return-shape, activity, and coupling parameters as one joint candidate. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
+During population refinement, Janiform evaluates a population of full active parameter vectors across the candidate seed frontier. Seed candidates anchor the population, sampled candidates are drawn from an elite-refitted distribution inside the validated parameter bounds, and finalization validates distinct ranked candidates at local and final fidelity. The search state updates return-shape, activity, and coupling parameters as one joint candidate. Exact tick return likelihood is evaluated on a deterministic weighted representative sample so each optimizer probe remains cheap while preserving support across return sign, return size, and business-time regimes. Coarse interval probes also include a reduced deterministic tick-shape proxy from the NIG return-composition sampler, so the optimizer still sees tick-level shape pressure before the refreshed seeded-tick evaluations. Refreshed local/final evaluations use full-fidelity tick likelihood before a candidate can be selected or accepted as admissible.
 
 The Hawkes search coordinate is a stationary event-rate coordinate. Janiform solves `lambda_bar` from the current excitation matrix and the requested stationary open-event rate, which lets the search change clustering and decay without accidentally changing total activity on every single-coordinate probe.
 
-During population refinement, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent full-vector probe, `Best loss` is the best retained population candidate, and `Final loss` is the completed restart loss when the restart has reached a final evaluation. Smaller loss is better.
+During population refinement, terminal progress reports the shared pseudo-likelihood loss used by the search. `Trial loss` is the most recent full-vector probe, `Best loss` is the best retained population candidate, and `Final loss` is the completed candidate loss when the candidate has reached a final evaluation. Smaller loss is better.
 
 Population refinement progress may also show exact return-likelihood evaluator counters. `CF-Buy` is the number of return blocks evaluated by the closed-form single-side buy density, `CF-Sell` is the number evaluated by the closed-form single-side sell density, and `Mix` is the number evaluated by the tilted mixed buy/sell inversion path. High `CF-Buy` or `CF-Sell` means the return likelihood mostly used the cheaper closed-form kernels. High `Mix` means more blocks required the more expensive mixed-side tilted inversion path.
 
-The report may mention these restarts because they explain how Janiform searched. You usually do not need to tune them when reading a normal fit report.
+The report may mention seed candidates because they explain how Janiform searched. They are diagnostic search artifacts, not user-tuned model components.
 
 ### Option refinement progress
 
@@ -310,7 +310,7 @@ The cumulative fields split objective evaluation cost into deterministic work, l
 
 Use `cumulative_deterministic_evaluation_millis` as the broad total for deterministic objective work, then use the narrower cumulative fields to identify which deterministic substep dominates. Millisecond counters can remain zero for very small samples or very cheap substeps.
 
-Population refinement also records `restart_evaluation_timing_diagnostics` for completed probes. These diagnostics include restart id, scheduling category, search direction, elapsed milliseconds, objective value, admissibility warning count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long refinement searches leave a durable timing trail before the final report is assembled.
+Population refinement also records completed-probe timing diagnostics. These diagnostics include candidate id, scheduling category, search direction, elapsed milliseconds, objective value, admissibility warning count, standardized residual summary, and exact likelihood evaluator counters. The same completed-probe diagnostics are streamed into `events.jsonl` as `metric_update` events during the run, so long refinement searches leave a durable timing trail before the final report is assembled.
 
 ## A practical reading order
 

@@ -19,6 +19,11 @@
     The return clocks \(A_{\mathrm{return},t}^\pm\) are continuous activity
     exposures built from baseline event opportunity, Hawkes excitation, and
     long-variance scaling.
+    Write
+    \[
+        \widetilde L_t^\pm=L_t^\pm-tm_\pm
+    \]
+    for side NIG drivers compensated by their unit-business-time means.
 
     \section*{2. Residual Log-Price Component and Market Pressure State}
     The parameter \(\kappa\) controls the residual component \(D_t\).
@@ -41,8 +46,8 @@
     \]
     The pressure state changes side composition without changing total
     event-arrival activity.
-    Its physical generator is learned from side-composition evidence and
-    coarse-return evidence.
+    Write \(\mathcal G^\Omega\) for its physical CTMC generator, which is
+    learned from side-composition evidence and coarse-return evidence.
 
     The anchor drift driven by market pressure is
     \[
@@ -58,8 +63,8 @@
         dD_t
         =
         -\kappa D_t\,dt
-        +dL^+_{A_{\mathrm{return},t}^+}
-        -dL^-_{A_{\mathrm{return},t}^-}
+        +d\widetilde L^+_{A_{\mathrm{return},t}^+}
+        -d\widetilde L^-_{A_{\mathrm{return},t}^-}
         +dM_t
         +dG_t,
         \qquad
@@ -71,8 +76,8 @@
         =
         dA_t^\Omega
         -\kappa D_t\,dt
-        +dL^+_{A_{\mathrm{return},t}^+}
-        -dL^-_{A_{\mathrm{return},t}^-}
+        +d\widetilde L^+_{A_{\mathrm{return},t}^+}
+        -d\widetilde L^-_{A_{\mathrm{return},t}^-}
         +dM_t
         +dG_t.
     \]
@@ -81,7 +86,7 @@
     relaxation.
     For an implementation interval \(I_k=[t_k,t_{k+1})\), let
     \(r_k^{\mathrm{core}}\) denote the core log-return contribution from
-    \(L^\pm\), \(M\), and \(G\),
+    \(\widetilde L^\pm\), \(M\), and \(G\),
     \(\phi_k=e^{-\kappa\Delta_k}\), and
     \[
         \Delta A_k^\Omega
@@ -93,7 +98,7 @@
     \[
         A_{k+1}^\Omega=A_k^\Omega+\Delta A_k^\Omega,
         \qquad
-        D_{k+1}=\phi_kD_k+r_k^{\mathrm{core}},
+        D_{k+1}=\phi_k D_k+r_k^{\mathrm{core}},
     \]
     and therefore
     \[
@@ -427,6 +432,10 @@
     \[
         r_{\mathrm{trading}}
         =
+        \widetilde L^+_{A_{\mathrm{return}}^+}
+        -
+        \widetilde L^-_{A_{\mathrm{return}}^-}
+        =
         (L^+_{A_{\mathrm{return}}^+}-A_{\mathrm{return}}^+m_+)
         -
         (L^-_{A_{\mathrm{return}}^-}-A_{\mathrm{return}}^-m_-).
@@ -580,7 +589,7 @@
         -s_k\bar{\lambda}\big(u_+^B+u_-^B\big),\\
         \partial_\tau\mathbf f^\Omega(\tau)
         =
-        \left(A^\Omega+\operatorname{diag}((r_\Omega\gamma_\Omega-\rho_\Omega)e_k^\Omega b_k)\right)
+        \left(\mathcal G^\Omega+\operatorname{diag}((r_\Omega\gamma_\Omega-\rho_\Omega)e_k^\Omega b_k)\right)
         \mathbf f^\Omega(\tau),\\
         C'(\tau)
         =
@@ -593,8 +602,8 @@
         +\nu_k^{\mathrm{surprise}}\Big(M_{\mathrm{surprise}}(q,\mathbf{D}(\tau)\cdot\mathbf{r})-1\Big),\\
     \end{gather*}
     where \(\nu_k=\nu_k^{\mathrm{known}}+\nu_k^{\mathrm{surprise}}\).
-    \(A^\Omega\) is the physical pressure generator, \(e_k^\Omega\) is the
-    interval exposure scale applied to signed balance, \(b_k\) is the
+    \(\mathcal G^\Omega\) is the physical pressure generator, \(e_k^\Omega\)
+    is the interval exposure scale applied to signed balance, \(b_k\) is the
     state-\(k\) side-balance support value, and \(\rho_\Omega\) is the
     signed-imbalance exposure risk price.
     The known-news term is deterministic-arrival random-mark.
@@ -615,7 +624,7 @@
     \(\mathbf f^\Omega(\tau)\) finite.
 
     The terminal cumulant adapter maps the mathematical moment argument \(v\)
-    into interval weighted core arguments \(\tilde v_h=w_hv\), affine activity
+    into interval weighted core arguments \(\tilde v_h=w_h v\), affine activity
     loadings via the side cumulants, and the unweighted market-pressure
     anchor loading:
     \[

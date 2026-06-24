@@ -321,7 +321,7 @@ janiform fit data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parqu
   --resume-from-stage option-refinement
 ```
 
-Joint-refinement resume state is finer grained than the top-level stage checkpoint. Dynamics restart outcomes are reusable across tick-only and option-aware runs when the run id and stage seed match. Option search, selection, and audit tier pricing artifacts are scoped to a fingerprint of the option-pricing context so changing the option surface recomputes only the option-dependent work.
+Joint-refinement resume state is finer grained than the top-level stage checkpoint. Dynamics candidate outcomes are reusable across tick-only and option-aware runs when the run id and stage seed match. Option search, selection, and audit tier pricing artifacts are scoped to a fingerprint of the option-pricing context so changing the option surface recomputes only the option-dependent work.
 
 The same resume flow is available from Python. Use disk output preferences, pass `output_dir` as the directory that contains the run folders, and point `disk_checkpoint_directory` at the run directory. For the CLI default layout, `output_dir` is `.janiform/runs` and `disk_checkpoint_directory` is `.janiform/runs/<run-id>`:
 

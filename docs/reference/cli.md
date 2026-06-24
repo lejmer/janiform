@@ -327,7 +327,7 @@ By default, Janiform writes a run directory under .janiform/runs/ with the fitte
    By default, janiform fit writes a durable run directory for downstream CLI commands. Use --no-persist for dry runs and one-off checks where the fitted model does not need to be reused.
 * `--cpu-count <COUNT>` — CPU count available to calibration preparation.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
-* `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--dynamics-search-candidate-budget <COUNT>` — Joint-refinement candidate budget.
 * `--option-refinement-candidate-count <COUNT>` — Option-refinement candidate count for search and selection tiers.
 * `--diagnostic <KIND>` — Enable an opt-in calibration diagnostic.
 
@@ -713,7 +713,7 @@ This command prepares the same calibration plan used by the default fit command,
 * `--staged-execution-input-output-path <PATH>` — Write the prepared calibration input file.
 * `--cpu-count <COUNT>` — CPU count available to calibration planning.
 * `--mean-reversion-grid-interval-hours <HOURS>` — Mean-reversion calibration grid interval in hours.
-* `--dynamics-search-restart-candidate-budget <COUNT>` — Joint-refinement restart candidate budget.
+* `--dynamics-search-candidate-budget <COUNT>` — Joint-refinement candidate budget.
 * `--option-refinement-candidate-count <COUNT>` — Option-refinement candidate count for search and selection tiers.
 * `--diagnostic <KIND>` — Enable an opt-in calibration diagnostic in the prepared plan.
 

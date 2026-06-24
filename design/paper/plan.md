@@ -5,12 +5,12 @@
 | Motivation                        | Why a unified tick/coarse/pricing model is useful                                                                   |
 | Existing model families           | Hawkes, LOB queue models, agent-based simulators, stochastic/rough vol, Lévy/subordinated models, neural generators |
 | Main contribution                 | Dual directional activity clocks, dual business-time drivers, shared sufficient statistics, affine pricing bridge   |
-| Core return process               | (X_t^{JF}=L^+*{A^+}-L^-*{A^-}+M_t+G_t)                                                                              |
+| Core return process               | \(X_t^{\mathrm{core}}=\widetilde L^+_{A_t^+}-\widetilde L^-_{A_t^-}+M_t+G_t\)                                       |
 | Activity/event layer              | Open-market buy/sell intensities, seasonality, Hawkes excitation, structured asymmetry                              |
 | News/gap layer                    | Known scheduled news, surprise news, shared severity, activity shock, open jumps, closed-session gaps               |
 | Long-variance layer               | (Z_t), event feedback, unit stationary normalization, baseline return-clock scaling                                 |
 | Business-time return drivers      | NIG side drivers, mean compensation, side skew shift                                                                |
-| Observed-state mean reversion     | `X=A+D`, temporary deviation relaxation, and market-pressure anchor-pressure driven by `Omega`                 |
+| Observed-state mean reversion     | `X=A+D`, temporary deviation relaxation, and market-pressure anchor-pressure driven by `Omega`                      |
 | Affine schedule transform         | (C,D,V,W) solver, schedule composition, domain constraints                                                          |
 | Pricing layer                     | Terminal cumulant, activity-risk premiums (\pi_+,\pi_-), derived martingale tilt (\theta), risk-neutral CF          |
 | Sufficient-statistics consistency | Seeded ticks, coarse simulation, sufficient-stat sampling, and affine pricing using the same decomposition          |
@@ -21,68 +21,68 @@
 
 ## 2. What to compute / plot
 
-| Category                  | Compute / plot                                                                                               |
-|---------------------------|--------------------------------------------------------------------------------------------------------------|
-| Tick realism              | Inter-arrival distribution, event-count bursts, zero-return frequency                                        |
-| Activity                  | Real vs fitted intraday activity curve; buy/sell event intensities                                           |
-| Seasonality               | (s(t)) by time-of-day, weekday, day-of-year, special days                                                    |
-| Hawkes behavior           | Excitation decay examples; branching ratio / spectral-radius diagnostics                                     |
-| News/gaps                 | Known vs surprise arrival counts; open-news jump examples; closed-news gap examples                          |
-| Shared severity           | Scatter/relationship between news severity, activity shock, and return jump                                  |
-| Long variance             | Simulated (Z_t); baseline clock with/without (Z_t); (Z_t) autocorrelation                                    |
-| Return distribution       | Histogram/KDE/QQ at tick, 1s, 1m, 5m, 1h, daily                                                              |
-| Tails                     | Tail plot, excess kurtosis by horizon, optional Hill estimator                                               |
-| Vol clustering            | ACF of (r), (r^2), realized variance                                                                         |
-| Directional asymmetry     | Signed-return stats conditional on buy/sell dominance; skew by horizon                                       |
-| Observed-state relaxation | Response/decay plot for (\kappa=0), weak (\kappa), strong (\kappa) showing temporary deviation relaxation    |
-| Market pressure       | finite-state `Omega` path, signed-balance side composition, and anchor-pressure movement without total-activity feedback |
-| Tick-grid layer           | Latent vs observed rounded path; distribution of observed tick moves                                         |
-| Aggregation               | Seeded tick aggregation vs direct coarse simulation                                                          |
-| Sufficient statistics     | Compare distributions/moments of ((B_Z^+,E^+,B_Z^-,E^-,N^+,N^-,Z_T)) from tick aggregation vs coarse sampler |
-| Pricing                   | IV smile/surface; pricing error by moneyness/tenor                                                           |
-| Martingale check          | Residual of martingale equation after solving (\theta)                                                       |
-| Parity check              | Put/call parity residuals                                                                                    |
-| Pricing domain            | Validity/failure map over ((\pi_+,\pi_-))                                                                    |
-| Calibration stability     | Parameter distributions across days, seeds, windows                                                          |
+| Category                  | Compute / plot                                                                                                           |
+|---------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Tick realism              | Inter-arrival distribution, event-count bursts, zero-return frequency                                                    |
+| Activity                  | Real vs fitted intraday activity curve; buy/sell event intensities                                                       |
+| Seasonality               | (s(t)) by time-of-day, weekday, day-of-year, special days                                                                |
+| Hawkes behavior           | Excitation decay examples; branching ratio / spectral-radius diagnostics                                                 |
+| News/gaps                 | Known vs surprise arrival counts; open-news jump examples; closed-news gap examples                                      |
+| Shared severity           | Scatter/relationship between news severity, activity shock, and return jump                                              |
+| Long variance             | Simulated (Z_t); baseline clock with/without (Z_t); (Z_t) autocorrelation                                                |
+| Return distribution       | Histogram/KDE/QQ at tick, 1s, 1m, 5m, 1h, daily                                                                          |
+| Tails                     | Tail plot, excess kurtosis by horizon, optional Hill estimator                                                           |
+| Vol clustering            | ACF of (r), (r^2), realized variance                                                                                     |
+| Directional asymmetry     | Signed-return stats conditional on buy/sell dominance; skew by horizon                                                   |
+| Observed-state relaxation | Response/decay plot for (\kappa=0), weak (\kappa), strong (\kappa) showing temporary deviation relaxation                |
+| Market pressure           | finite-state `Omega` path, signed-balance side composition, and anchor-pressure movement without total-activity feedback |
+| Tick-grid layer           | Latent vs observed rounded path; distribution of observed tick moves                                                     |
+| Aggregation               | Seeded tick aggregation vs direct coarse simulation                                                                      |
+| Sufficient statistics     | Compare distributions/moments of ((B_Z^+,E^+,B_Z^-,E^-,N^+,N^-,Z_T)) from tick aggregation vs coarse sampler             |
+| Pricing                   | IV smile/surface; pricing error by moneyness/tenor                                                                       |
+| Martingale check          | Residual of martingale equation after solving (\theta)                                                                   |
+| Parity check              | Put/call parity residuals                                                                                                |
+| Pricing domain            | Validity/failure map over ((\pi_+,\pi_-))                                                                                |
+| Calibration stability     | Parameter distributions across days, seeds, windows                                                                      |
 
 Minimum v1 ablations:
 
-| Ablation                                     | Purpose                                  |
-|----------------------------------------------|------------------------------------------|
-| Single clock vs dual clocks                  | Value of directional activity            |
-| Symmetric vs asymmetric excitation           | Value of structured asymmetry            |
-| No Hawkes vs Hawkes                          | Value of endogenous bursts               |
-| No (Z_t) vs (Z_t)                            | Value of persistent long-variance memory |
-| No news/gaps vs news/gaps                    | Value of event/gap layer                 |
+| Ablation                                     | Purpose                                      |
+|----------------------------------------------|----------------------------------------------|
+| Single clock vs dual clocks                  | Value of directional activity                |
+| Symmetric vs asymmetric excitation           | Value of structured asymmetry                |
+| No Hawkes vs Hawkes                          | Value of endogenous bursts                   |
+| No (Z_t) vs (Z_t)                            | Value of persistent long-variance memory     |
+| No news/gaps vs news/gaps                    | Value of event/gap layer                     |
 | Observed-state mean reversion off vs on      | Show optional temporary-deviation relaxation |
-| Market pressure anchor-pressure off vs on | Show `Omega` anchor-pressure contribution |
-| Tick aggregation vs direct coarse simulation | Core consistency test                    |
-| Underlying-only vs joint option refinement   | Pricing-layer contribution               |
+| Market pressure anchor-pressure off vs on    | Show `Omega` anchor-pressure contribution    |
+| Tick aggregation vs direct coarse simulation | Core consistency test                        |
+| Underlying-only vs joint option refinement   | Pricing-layer contribution                   |
 
 ## 3. What to derive equations for
 
-| Derivation                                                   |  Priority |
-|--------------------------------------------------------------|----------:|
-| Conditional CF/MGF of trading block                          | Very high |
-| Mean/variance conditional on activity clocks                 |      High |
-| Side mean compensation and zero conditional drift            |      High |
-| Hawkes stationary intensity and stability condition          |      High |
-| Long-variance unit-mean normalization                        | Very high |
-| First-moment guard for (Z_t)                                 | Very high |
-| Conditional mean baseline clock scale (\overline Z_h)        |      High |
-| News mark MGF (M_c(q,r))                                     |      High |
-| Open-news vs closed-gap decomposition                        |      High |
-| Observed-state `X=A+D` and market-pressure anchor pressure |    Medium |
+| Derivation                                                    |  Priority |
+|---------------------------------------------------------------|----------:|
+| Conditional CF/MGF of trading block                           | Very high |
+| Mean/variance conditional on activity clocks                  |      High |
+| Side mean compensation and zero conditional drift             |      High |
+| Hawkes stationary intensity and stability condition           |      High |
+| Long-variance unit-mean normalization                         | Very high |
+| First-moment guard for (Z_t)                                  | Very high |
+| Conditional mean baseline clock scale (\overline Z_h)         |      High |
+| News mark MGF (M_c(q,r))                                      |      High |
+| Open-news vs closed-gap decomposition                         |      High |
+| Observed-state `X=A+D` and market-pressure anchor pressure    |    Medium |
 | Affine transform ansatz (F=\exp(C+D\cdot y_0+VZ_0+W\Omega_0)) | Very high |
-| Riccati/ODE system for (C,D,V,W)                             | Very high |
-| Affine domain constraints                                    | Very high |
-| Terminal cumulant adapter (v\mapsto u_\pm^B,u_\pm^E,z_\pm,q) | Very high |
-| Pricing density normalization                                | Very high |
-| Martingale tilt equation for (\theta)                        | Very high |
-| Risk-neutral characteristic function (\phi_Q(u))             | Very high |
-| Put/call parity expression                                   |      High |
-| Sufficient-statistics consistency                            | Very high |
-| Tick-grid projection equation                                |    Medium |
+| Riccati/ODE system for (C,D,V,W)                              | Very high |
+| Affine domain constraints                                     | Very high |
+| Terminal cumulant adapter (v\mapsto u_\pm^B,u_\pm^E,z_\pm,q)  | Very high |
+| Pricing density normalization                                 | Very high |
+| Martingale tilt equation for (\theta)                         | Very high |
+| Risk-neutral characteristic function (\phi_Q(u))              | Very high |
+| Put/call parity expression                                    |      High |
+| Sufficient-statistics consistency                             | Very high |
+| Tick-grid projection equation                                 |    Medium |
 
 Most important derivations for the paper body:
 

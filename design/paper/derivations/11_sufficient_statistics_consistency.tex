@@ -221,8 +221,8 @@ or persist the terminal state explicitly.
 
 For market pressure, \(\Omega\) is a finite-state CTMC over side-balance
 levels \(b_k\in[-1,1]\).
-Let \(\mathbf p_k\) be the boundary probability vector and \(A^\Omega\) the
-physical pressure generator.
+Let \(\mathbf p_k\) be the boundary probability vector and
+\(\mathcal G^\Omega\) the physical pressure generator.
 Preserving the terminal pressure state and the integrated signed-balance
 exposure
 \[
@@ -235,14 +235,14 @@ The conditional mean formulas are
 \[
     \mathbf p_{k+1}
     =
-    \exp(A^\Omega\Delta_k)\mathbf p_k
+    \exp(\mathcal G^\Omega\Delta_k)\mathbf p_k
 \]
 and
 \[
     \mathbb E[B_k^\Omega\mid \mathbf p_k]
     =
     \left(
-        \int_0^{\Delta_k}\mathbf b^\top\exp(A^\Omega u)\mathbf p_k\,du
+        \int_0^{\Delta_k}\mathbf b^\top\exp(\mathcal G^\Omega u)\mathbf p_k\,du
     \right)e_k^\Omega.
 \]
 The anchor increment is

@@ -25,8 +25,8 @@ pressure is a finite-state signed-balance CTMC.
 Let \(\mathbf Y_t\) be the Hawkes reaction state, \(Z_t\) the long-variance
 state, and \(\Omega_t\in\{1,\ldots,K_\Omega\}\) the pressure state.
 The pressure support value in state \(k\) is \(b_k\in[-1,1]\), the physical
-pressure generator is \(A^\Omega\), and the non-negative signed-balance
-exposure scale on the interval is \(e^\Omega\).
+pressure generator is \(\mathcal G^\Omega\), and the non-negative
+signed-balance exposure scale on the interval is \(e^\Omega\).
 
 For a transform return loading \(r_\Omega\) and pressure exposure risk price
 \(\rho_\Omega\), define the pressure diagonal loading
@@ -57,7 +57,7 @@ The finite-state pressure factor evolves by the backward Kolmogorov equation
 \[
     \partial_\tau\mathbf f^\Omega(\tau)
     =
-    \left(A^\Omega+\operatorname{diag}(\ell_1^\Omega,\ldots,\ell_{K_\Omega}^\Omega)\right)
+    \left(\mathcal G^\Omega+\operatorname{diag}(\ell_1^\Omega,\ldots,\ell_{K_\Omega}^\Omega)\right)
     \mathbf f^\Omega(\tau).
 \]
 Thus
@@ -65,7 +65,7 @@ Thus
     \mathbf f^\Omega(\Delta)
     =
     \exp\!\left(
-        \Delta\left(A^\Omega+\operatorname{diag}(\boldsymbol\ell^\Omega)\right)
+        \Delta\left(\mathcal G^\Omega+\operatorname{diag}(\boldsymbol\ell^\Omega)\right)
     \right)\mathbf f^\Omega(0).
 \]
 

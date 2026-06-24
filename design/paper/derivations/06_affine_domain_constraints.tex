@@ -29,7 +29,7 @@ Input & Meaning & Domain\\
 \(\mathbf Y_0\) & Initial Hawkes state & Componentwise finite non-negative\\
 \(Z_0\) & Initial long-variance state & Finite positive\\
 \(\mathbf p^\Omega_0\) & Initial pressure state distribution & Finite non-negative weights with positive sum\\
-\(A^\Omega\) & Physical pressure generator & Finite non-negative off-diagonal rates with zero row sums\\
+\(\mathcal G^\Omega\) & Physical pressure generator & Finite non-negative off-diagonal rates with zero row sums\\
 \(b_k\) & Pressure side-balance support & Ordered finite values in \([-1,1]\)\\
 \(\gamma_\Omega\) & Anchor drift per signed-balance exposure & Finite real\\
 \(\rho_\Omega\) & Pressure exposure risk price & Finite real\\
@@ -59,7 +59,7 @@ term in \(V\).
 
 The pressure transform requires the finite matrix
 \[
-    A^\Omega+\operatorname{diag}\left(
+    \mathcal G^\Omega+\operatorname{diag}\left(
         (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_1,
         \ldots,
         (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_{K_\Omega}
