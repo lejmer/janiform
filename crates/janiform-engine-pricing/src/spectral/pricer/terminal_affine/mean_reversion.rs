@@ -2,7 +2,11 @@ use janiform_affine_oracle::endogenous_anchor::{
     EndogenousAnchorIntervalFactors, derive_expected_interval_projection_from_first_moment_dynamics,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::market_pressure::signed_balance_exposure_scale_from_side_exposures;
 use janiform_model_kernels::mean_reversion::evolve_mean_reversion_deviation_with_decay_on_interval_grid;
+use janiform_model_kernels::return_clock::{
+    IntegratedSideActivityDecomposition, compute_effective_return_clocks,
+};
 
 use crate::characteristic::build_pricing_equation_specification;
 
@@ -21,11 +25,13 @@ pub(super) struct TerminalAffineMeanReversionPath {
     pub(super) interval_anchor_values_after: Vec<f64>,
     pub(super) interval_hawkes_states_before: Vec<HawkesExcitationState>,
     pub(super) interval_hawkes_states_after: Vec<HawkesExcitationState>,
+    pub(super) interval_market_pressure_exposure_scales: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct TerminalAffinePhysicalProjection {
     structural_state_after: HawkesExcitationState,
+    market_pressure_exposure_scale: f64,
 }
 
 pub(super) fn build_terminal_affine_mean_reversion_path(
@@ -47,6 +53,7 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
     let mut interval_anchor_values_after = Vec::with_capacity(maturity_count);
     let mut interval_hawkes_states_before = Vec::with_capacity(maturity_count);
     let mut interval_hawkes_states_after = Vec::with_capacity(maturity_count);
+    let mut interval_market_pressure_exposure_scales = Vec::with_capacity(maturity_count);
     let mut zero_return_log_price_points = Vec::with_capacity(maturity_count + 1);
 
     zero_return_log_price_points.push(observed_boundary_state.observed_log_price);
@@ -94,6 +101,8 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
         interval_anchor_values_after.push(next_anchor_value);
         interval_hawkes_states_before.push(current_hawkes_state);
         interval_hawkes_states_after.push(physical_projection.structural_state_after);
+        interval_market_pressure_exposure_scales
+            .push(physical_projection.market_pressure_exposure_scale);
 
         current_anchor_value = next_anchor_value;
         current_deviation = next_zero_return_deviation;
@@ -124,6 +133,7 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
         interval_anchor_values_after,
         interval_hawkes_states_before,
         interval_hawkes_states_after,
+        interval_market_pressure_exposure_scales,
     })
 }
 
@@ -216,9 +226,40 @@ fn derive_terminal_affine_physical_projection(
             message: format!("terminal affine physical interval projection failed: {source}"),
         },
     )?;
+    let expected_statistics = projection.expected_statistics;
+
+    let effective_return_clocks = compute_effective_return_clocks(
+        pricing_request
+            .model_parameters
+            .return_clock_exposure_parameters,
+        IntegratedSideActivityDecomposition::new(
+            expected_statistics.expected_baseline_a_plus,
+            expected_statistics.expected_endogenous_a_plus,
+        ),
+        IntegratedSideActivityDecomposition::new(
+            expected_statistics.expected_baseline_a_minus,
+            expected_statistics.expected_endogenous_a_minus,
+        ),
+    )
+    .map_err(
+        |source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!("terminal affine expected return-clock exposure failed: {source}"),
+        },
+    )?;
+
+    let market_pressure_exposure_scale = signed_balance_exposure_scale_from_side_exposures(
+        effective_return_clocks.buy_return_clock,
+        effective_return_clocks.sell_return_clock,
+    )
+    .map_err(
+        |source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!("terminal affine market-pressure exposure scale failed: {source}"),
+        },
+    )?;
 
     Ok(TerminalAffinePhysicalProjection {
         structural_state_after: projection.structural_state_after,
+        market_pressure_exposure_scale,
     })
 }
 

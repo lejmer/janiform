@@ -116,6 +116,9 @@ fn evaluate_terminal_affine_cumulant(
                 context.interval_factor_grids[interval_offset],
                 context.interval_deltas[interval_offset],
                 context.mean_reversion_path.interval_return_weights[interval_offset],
+                context
+                    .mean_reversion_path
+                    .interval_market_pressure_exposure_scales[interval_offset],
                 argument,
             )
         })
@@ -182,6 +185,7 @@ fn build_terminal_affine_schedule_interval_input(
     interval_factor_grids: VanillaOptionPricingIntervalFactors,
     interval_delta: f64,
     interval_return_weight: f64,
+    market_pressure_exposure_scale: f64,
     argument: TerminalAffineCumulantArgument,
 ) -> Result<ExponentialAffineScheduleIntervalInput, VanillaOptionPricingRunError> {
     let weighted_argument = argument.fourier_argument().scale(interval_return_weight);
@@ -234,6 +238,12 @@ fn build_terminal_affine_schedule_interval_input(
         buy_side_characteristic_exponent_tangent,
         sell_side_characteristic_exponent_tangent,
         interval_return_weight,
+        market_pressure_exposure_scale,
+    );
+    let pricing_kernel_parameters = effective_pricing_kernel_parameters(context);
+    let market_pressure_return_weight = terminal_affine_market_pressure_return_weight(
+        interval_return_weight,
+        market_pressure_exposure_scale,
     );
 
     let news_intensity = interval_factor_grids
@@ -251,9 +261,9 @@ fn build_terminal_affine_schedule_interval_input(
             activity_transform_inputs.z_plus,
             activity_transform_inputs.z_minus,
             argument.return_loading(interval_return_weight),
-            argument.return_loading(1.0),
-            effective_pricing_kernel_parameters(context)
-                .pressure_signed_imbalance_exposure_risk_price,
+            argument.return_loading(market_pressure_return_weight),
+            pricing_kernel_parameters.pressure_signed_imbalance_exposure_risk_price
+                * market_pressure_exposure_scale,
             interval_factor_grids.seasonality_factor,
             news_intensity,
             context
@@ -303,6 +313,7 @@ fn build_terminal_affine_pricing_kernel_transform_inputs(
     buy_side_characteristic_exponent_tangent: ComplexScalar,
     sell_side_characteristic_exponent_tangent: ComplexScalar,
     interval_return_weight: f64,
+    market_pressure_exposure_scale: f64,
 ) -> TerminalAffinePricingKernelTransformInputs {
     let exposure_parameters = context
         .pricing_request
@@ -326,6 +337,10 @@ fn build_terminal_affine_pricing_kernel_transform_inputs(
         .scale(-exposure_parameters.sell_excitation_return_clock_scale);
 
     let pricing_kernel_parameters = effective_pricing_kernel_parameters(context);
+    let market_pressure_return_weight = terminal_affine_market_pressure_return_weight(
+        interval_return_weight,
+        market_pressure_exposure_scale,
+    );
 
     let buy_kernel_inputs = pricing_kernel_parameters.buy_terminal_density_transform_inputs(
         buy_endogenous_loading,
@@ -359,7 +374,7 @@ fn build_terminal_affine_pricing_kernel_transform_inputs(
                 interval_return_weight,
             ),
             market_pressure_return_loading: TerminalAffineCumulantArgument::return_loading_tangent(
-                1.0,
+                market_pressure_return_weight,
             ),
             pressure_signed_imbalance_exposure_risk_price: 0.0,
         },
@@ -403,10 +418,19 @@ fn build_terminal_affine_pricing_kernel_transform_inputs(
                 market_pressure_return_loading: ComplexScalar::new(0.0, 0.0),
                 pressure_signed_imbalance_exposure_risk_price: match context.measure_policy {
                     super::core::TerminalAffineMeasurePolicy::Physical => 0.0,
-                    super::core::TerminalAffineMeasurePolicy::RiskNeutralMartingale => 1.0,
+                    super::core::TerminalAffineMeasurePolicy::RiskNeutralMartingale => {
+                        market_pressure_exposure_scale
+                    }
                 },
             },
     }
+}
+
+fn terminal_affine_market_pressure_return_weight(
+    interval_return_weight: f64,
+    market_pressure_exposure_scale: f64,
+) -> f64 {
+    interval_return_weight * market_pressure_exposure_scale
 }
 
 fn effective_pricing_kernel_parameters(
