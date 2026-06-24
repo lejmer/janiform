@@ -11,7 +11,6 @@ use super::super::{
     JointRefinementStageExecutionInput, JointRefinementStageOptionPricingInput,
     JointRefinementStageProgressUpdate, JointRefinementStageRuntimeHandoff,
     JointRefinementStageSeasonalityFactorsInput, OptionRefinementCalibrationStageEntrypointInput,
-    ReturnComponentsStageCandidateGenerationInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
@@ -190,10 +189,10 @@ pub(super) fn joint_refinement_like_stage_input(
             consuming_stage,
             &payload_state.mean_reversion_stage_payload,
         )?,
-        candidate_generation_input: joint_refinement_candidate_generation_input(
-            consuming_stage,
+        candidate_generation_input: return_components_candidate_generation_input(
             staged_run_inputs,
             payload_state,
+            consuming_stage,
         )?,
         coarse_data_records: staged_run_inputs.coarse_data_records.clone(),
         tick_objective_data_usage_policy: staged_run_inputs.tick_objective_data_usage_policy,
@@ -223,14 +222,6 @@ fn joint_refinement_seasonality_factors_input(
         CalibrationStage::Seasonality,
         consuming_stage,
     )
-}
-
-fn joint_refinement_candidate_generation_input(
-    consuming_stage: CalibrationStage,
-    staged_run_inputs: &CalibrationStagedRunInputs,
-    payload_state: &CalibrationInMemoryStagePayloadState,
-) -> Result<ReturnComponentsStageCandidateGenerationInput, CalibrationStagedRunFailure> {
-    return_components_candidate_generation_input(staged_run_inputs, payload_state, consuming_stage)
 }
 
 fn joint_refinement_payload_source<T: Clone>(
