@@ -236,9 +236,10 @@ pull_requests/
 # Janiform exports
 .janiform/
 
-# Scratch files
+# Scratch/temp/local files
 scratch/
 data/databento*/
+.tmp
 
 # LaTeX
 *.aux
