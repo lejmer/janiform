@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use janiform_calibration_artifacts::{
-    CalibrationStage, JointRefinementStageRestartEvaluationTimingDiagnostic,
+    CalibrationStage, JointRefinementStageCandidateEvaluationTimingDiagnostic,
     calibration_stage_token,
 };
 use janiform_calibration_runtime::{
@@ -112,7 +112,7 @@ pub fn run_events_from_staged_event(
                 }),
             )];
 
-            if let Some(timing_diagnostic) = &progress.restart_evaluation_timing_diagnostic {
+            if let Some(timing_diagnostic) = &progress.candidate_evaluation_timing_diagnostic {
                 events.push(RunEvent::new(
                     progress.run_id.clone(),
                     workflow,
@@ -120,7 +120,7 @@ pub fn run_events_from_staged_event(
                     RunEventPayload::MetricUpdate(RunMetricUpdateEvent {
                         stage: Some(stage),
                         phase: Some(phase),
-                        measures: restart_evaluation_timing_measures(timing_diagnostic),
+                        measures: candidate_evaluation_timing_measures(timing_diagnostic),
                     }),
                 ));
             }
@@ -334,33 +334,38 @@ pub(crate) fn append_artifact_event(
         .map_err(|source| WorkflowError::FitEventLog { source })
 }
 
-fn restart_evaluation_timing_measures(
-    diagnostic: &JointRefinementStageRestartEvaluationTimingDiagnostic,
+fn candidate_evaluation_timing_measures(
+    diagnostic: &JointRefinementStageCandidateEvaluationTimingDiagnostic,
 ) -> Vec<EventProgressMeasure> {
     let mut measures = vec![
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.restart_id".to_string(),
-            label: Some("restart id".to_string()),
-            value: diagnostic.restart_id.clone(),
+            metric_id: "joint_refinement.candidate_eval.candidate_id".to_string(),
+            label: Some("candidate id".to_string()),
+            value: diagnostic.candidate_id.clone(),
         },
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.schedule_category".to_string(),
+            metric_id: "joint_refinement.candidate_eval.schedule_category".to_string(),
             label: Some("schedule category".to_string()),
             value: diagnostic.schedule_category.clone(),
         },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.candidate_eval.fidelity_tier".to_string(),
+            label: Some("fidelity tier".to_string()),
+            value: diagnostic.fidelity_tier.clone(),
+        },
         EventProgressMeasure::EvaluationCount {
-            metric_id: "joint_refinement.restart_eval.candidate_evaluation_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.candidate_evaluation_count".to_string(),
             label: Some("candidate evals".to_string()),
             completed_evaluations: diagnostic.candidate_evaluation_count,
             evaluation_budget: None,
         },
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.search_direction_label".to_string(),
+            metric_id: "joint_refinement.candidate_eval.search_direction_label".to_string(),
             label: Some("search direction".to_string()),
             value: diagnostic.search_direction_label.clone(),
         },
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.elapsed_millis".to_string(),
+            metric_id: "joint_refinement.candidate_eval.elapsed_millis".to_string(),
             label: Some("elapsed millis".to_string()),
             value: diagnostic.elapsed_millis.to_string(),
         },
@@ -368,7 +373,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(search_direction_position) = diagnostic.search_direction_position {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.search_direction_position".to_string(),
+            metric_id: "joint_refinement.candidate_eval.search_direction_position".to_string(),
             label: Some("search direction position".to_string()),
             value: search_direction_position.to_string(),
         });
@@ -376,7 +381,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(objective) = diagnostic.objective {
         measures.push(EventProgressMeasure::ObjectiveValue {
-            metric_id: "joint_refinement.restart_eval.objective".to_string(),
+            metric_id: "joint_refinement.candidate_eval.objective".to_string(),
             label: Some("objective".to_string()),
             value: objective,
         });
@@ -384,7 +389,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(admissibility_warning_count) = diagnostic.admissibility_warning_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.admissibility_warning_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.admissibility_warning_count".to_string(),
             label: Some("admissibility warnings".to_string()),
             value: admissibility_warning_count.to_string(),
         });
@@ -392,7 +397,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(max_standardized_residual) = diagnostic.max_standardized_residual {
         measures.push(EventProgressMeasure::Scalar {
-            metric_id: "joint_refinement.restart_eval.max_standardized_residual".to_string(),
+            metric_id: "joint_refinement.candidate_eval.max_standardized_residual".to_string(),
             label: Some("max standardized residual".to_string()),
             value: max_standardized_residual,
         });
@@ -400,7 +405,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(exact_closed_form_buy_count) = diagnostic.exact_closed_form_buy_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.exact_closed_form_buy_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.exact_closed_form_buy_count".to_string(),
             label: Some("CF buy count".to_string()),
             value: exact_closed_form_buy_count.to_string(),
         });
@@ -408,7 +413,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(exact_closed_form_sell_count) = diagnostic.exact_closed_form_sell_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.exact_closed_form_sell_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.exact_closed_form_sell_count".to_string(),
             label: Some("CF sell count".to_string()),
             value: exact_closed_form_sell_count.to_string(),
         });
@@ -416,7 +421,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(exact_tilted_mixed_count) = diagnostic.exact_tilted_mixed_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.exact_tilted_mixed_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.exact_tilted_mixed_count".to_string(),
             label: Some("mixed count".to_string()),
             value: exact_tilted_mixed_count.to_string(),
         });
@@ -569,7 +574,7 @@ fn stage_progress_signal_with_metrics(
     let has_multi_row_work_table = work_item_table_has_multiple_rows(progress, &work_item_label);
 
     if let Some(signal) = parallel_stage_progress_signal(
-        progress.active_restart_count,
+        progress.active_candidate_count,
         progress.valid_completed_units,
         progress.cumulative_local_evaluation_count,
         progress.best_global_loss,
@@ -634,7 +639,7 @@ fn population_refinement_progress_signal(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> String {
     let active_evaluations = progress
-        .active_restart_count
+        .active_candidate_count
         .map(|count| count.to_string())
         .unwrap_or_else(missing_progress_value_label);
 
@@ -644,7 +649,7 @@ fn population_refinement_progress_signal(
         .unwrap_or_else(missing_progress_value_label);
 
     let best_search_loss = progress
-        .current_restart_best_global_loss
+        .current_candidate_best_global_loss
         .or(progress.best_global_loss)
         .filter(|loss| loss.is_finite())
         .map(|loss| format!("{loss:.6}"))
@@ -688,7 +693,7 @@ fn work_item_phase_uses_row_scoped_evaluations(phase: &CalibrationStageProgressP
 }
 
 fn parallel_stage_progress_signal(
-    active_restart_count: Option<usize>,
+    active_candidate_count: Option<usize>,
     valid_completed_units: Option<usize>,
     cumulative_local_evaluation_count: Option<usize>,
     best_global_loss: Option<f64>,
@@ -696,8 +701,8 @@ fn parallel_stage_progress_signal(
 ) -> Option<String> {
     let mut parts = Vec::new();
 
-    if let Some(active_restart_count) = active_restart_count {
-        parts.push(format!("active restarts {active_restart_count}"));
+    if let Some(active_candidate_count) = active_candidate_count {
+        parts.push(format!("active candidates {active_candidate_count}"));
     }
 
     if let Some(valid_completed_units) = valid_completed_units {
@@ -770,7 +775,7 @@ fn work_item_table_columns(
         ));
     }
 
-    if uses_population_refinement_columns || progress.current_restart_best_global_loss.is_some() {
+    if uses_population_refinement_columns || progress.current_candidate_best_global_loss.is_some() {
         columns.push(ProgressWorkItemColumn::new("best_objective", "Best loss"));
     }
 
@@ -904,11 +909,12 @@ fn work_item_table_metrics(
     }
 
     if !population_finalization_metric_update
-        && let Some(current_restart_best_global_loss) = progress.current_restart_best_global_loss
+        && let Some(current_candidate_best_global_loss) =
+            progress.current_candidate_best_global_loss
     {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
-            format!("{current_restart_best_global_loss:.6}"),
+            format!("{current_candidate_best_global_loss:.6}"),
         ));
     }
 
@@ -1279,11 +1285,11 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
             JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
         ) => "baseline coarse consistency",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartSeedGeneration,
-        ) => "restart generation",
+            JointRefinementStageProgressPhase::CandidateSeedGeneration,
+        ) => "candidate seed generation",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartCandidateScreening,
-        ) => "restart screening",
+            JointRefinementStageProgressPhase::CandidateScreening,
+        ) => "candidate screening",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::PopulationRefinement,
         ) => "population refinement",

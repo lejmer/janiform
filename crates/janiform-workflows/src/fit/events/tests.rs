@@ -284,7 +284,7 @@ fn population_refinement_table_includes_losses_and_exact_evaluator_counts() {
         JointRefinementStageProgressPhase::PopulationRefinement,
     );
 
-    progress.current_restart_best_global_loss = Some(0.5);
+    progress.current_candidate_best_global_loss = Some(0.5);
 
     progress.exact_closed_form_buy_count = Some(3);
     progress.exact_closed_form_sell_count = Some(4);
@@ -339,10 +339,10 @@ fn population_refinement_signal_uses_stable_global_summary_fields() {
     );
 
     progress.current_global_loss = Some(74.277624);
-    progress.current_restart_best_global_loss = Some(51.125);
-    progress.active_restart_count = Some(4);
+    progress.current_candidate_best_global_loss = Some(51.125);
+    progress.active_candidate_count = Some(4);
     progress.cumulative_local_evaluation_count = Some(127);
-    progress.best_restart_id = Some("incumbent_local_search".to_string());
+    progress.best_candidate_id = Some("incumbent_local_search".to_string());
 
     let progress_event = progress_event_from_staged_event(
         &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
@@ -389,8 +389,8 @@ fn population_refinement_signal_uses_placeholders_for_unavailable_summary_fields
     );
 
     progress.current_global_loss = Some(74.277624);
-    progress.current_restart_best_global_loss = Some(51.125);
-    progress.active_restart_count = Some(4);
+    progress.current_candidate_best_global_loss = Some(51.125);
+    progress.active_candidate_count = Some(4);
 
     let progress_event = progress_event_from_staged_event(
         &CalibrationStagedRunObserverEvent::StageProgress(Box::new(progress)),
@@ -429,7 +429,7 @@ fn population_finalization_metrics_report_final_loss_without_replacing_search_lo
 
     progress.evaluation_progress_percent = Some(100);
     progress.current_global_loss = Some(74.277624);
-    progress.current_restart_best_global_loss = Some(51.125);
+    progress.current_candidate_best_global_loss = Some(51.125);
     progress.current_final_global_loss = Some(63.75);
 
     assert_eq!(
@@ -445,7 +445,7 @@ fn population_finalization_metrics_report_final_loss_without_replacing_search_lo
 }
 
 #[test]
-fn restart_evaluation_timing_progress_writes_metric_update_event() {
+fn candidate_evaluation_timing_progress_writes_metric_update_event() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
         Some("tick_moment_21"),
@@ -461,9 +461,9 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
         JointRefinementStageProgressPhase::PopulationRefinement,
     );
 
-    progress.restart_evaluation_timing_diagnostic =
-        Some(JointRefinementStageRestartEvaluationTimingDiagnostic {
-            restart_id: "tick_moment_21".to_string(),
+    progress.candidate_evaluation_timing_diagnostic =
+        Some(JointRefinementStageCandidateEvaluationTimingDiagnostic {
+            candidate_id: "tick_moment_21".to_string(),
             schedule_category: "competitive".to_string(),
             fidelity_tier: "coarse_local".to_string(),
             candidate_evaluation_count: 12,
@@ -519,18 +519,19 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
             })
             .collect::<Vec<_>>(),
         vec![
-            "joint_refinement.restart_eval.restart_id",
-            "joint_refinement.restart_eval.schedule_category",
-            "joint_refinement.restart_eval.candidate_evaluation_count",
-            "joint_refinement.restart_eval.search_direction_label",
-            "joint_refinement.restart_eval.elapsed_millis",
-            "joint_refinement.restart_eval.search_direction_position",
-            "joint_refinement.restart_eval.objective",
-            "joint_refinement.restart_eval.admissibility_warning_count",
-            "joint_refinement.restart_eval.max_standardized_residual",
-            "joint_refinement.restart_eval.exact_closed_form_buy_count",
-            "joint_refinement.restart_eval.exact_closed_form_sell_count",
-            "joint_refinement.restart_eval.exact_tilted_mixed_count",
+            "joint_refinement.candidate_eval.candidate_id",
+            "joint_refinement.candidate_eval.schedule_category",
+            "joint_refinement.candidate_eval.fidelity_tier",
+            "joint_refinement.candidate_eval.candidate_evaluation_count",
+            "joint_refinement.candidate_eval.search_direction_label",
+            "joint_refinement.candidate_eval.elapsed_millis",
+            "joint_refinement.candidate_eval.search_direction_position",
+            "joint_refinement.candidate_eval.objective",
+            "joint_refinement.candidate_eval.admissibility_warning_count",
+            "joint_refinement.candidate_eval.max_standardized_residual",
+            "joint_refinement.candidate_eval.exact_closed_form_buy_count",
+            "joint_refinement.candidate_eval.exact_closed_form_sell_count",
+            "joint_refinement.candidate_eval.exact_tilted_mixed_count",
         ],
     );
 }
@@ -539,7 +540,7 @@ fn restart_evaluation_timing_progress_writes_metric_update_event() {
 fn option_refinement_progress_table_includes_pricing_interval_and_rows() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
-        Some("restart_01"),
+        Some("candidate_01"),
         Some(1),
         Some(27),
         None,
@@ -633,7 +634,7 @@ fn option_refinement_phase_start_seeds_planned_rows_without_active_work_item() {
 fn option_refinement_interval_metric_uses_completed_count_without_row_detail() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
-        Some("restart_01"),
+        Some("candidate_01"),
         Some(3),
         Some(27),
         None,
@@ -830,7 +831,7 @@ fn finalization_pre_evaluation_progress_uses_named_phase_and_signal() {
 fn stage_progress_measure_uses_aggregate_percent_when_available() {
     let mut progress = return_components_progress_event(
         ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
-        Some("restart_01"),
+        Some("candidate_01"),
         Some(1),
         Some(27),
         None,
@@ -864,10 +865,10 @@ fn return_components_progress_event(
         stage_progress_percent: None,
         aggregate_progress_percent: None,
         current_item_label: current_item_label.map(str::to_string),
-        current_restart_id: None,
+        current_candidate_id: None,
         current_work_item_status: None,
         planned_work_item_labels: Vec::new(),
-        active_restart_count: None,
+        active_candidate_count: None,
         current_evaluation_count,
         total_evaluation_budget,
         evaluation_progress_percent: None,
@@ -878,17 +879,17 @@ fn return_components_progress_event(
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
         current_global_loss: None,
-        current_restart_best_global_loss: None,
+        current_candidate_best_global_loss: None,
         current_final_global_loss: None,
         current_candidate_assessment: None,
-        best_restart_id: None,
+        best_candidate_id: None,
         best_global_loss,
         current_coarse_consistency_fit: None,
         best_coarse_consistency_fit: None,
         exact_closed_form_buy_count: None,
         exact_closed_form_sell_count: None,
         exact_tilted_mixed_count: None,
-        restart_evaluation_timing_diagnostic: None,
+        candidate_evaluation_timing_diagnostic: None,
         current_convergence_ratio,
     }
 }

@@ -69,7 +69,7 @@ class MarketDataCalibrationRequest(ContractModel):
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy = field(
         default_factory=default_pricing_interval_schedule_policy
     )
-    dynamics_search_restart_candidate_budget: Optional[int] = None
+    dynamics_search_candidate_budget: Optional[int] = None
     calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT
     treat_calibration_warnings_as_errors: bool = False
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
@@ -190,11 +190,11 @@ class MarketDataCalibrationRequest(ContractModel):
             )
 
         if (
-            self.dynamics_search_restart_candidate_budget is not None
-            and self.dynamics_search_restart_candidate_budget <= 0
+            self.dynamics_search_candidate_budget is not None
+            and self.dynamics_search_candidate_budget <= 0
         ):
             raise calibration_error(
-                "dynamics_search_restart_candidate_budget",
+                "dynamics_search_candidate_budget",
                 "must be greater than zero when provided",
             )
 
@@ -406,15 +406,15 @@ class MarketDataCalibrationRequest(ContractModel):
                 and raw_payload["pricing_interval_schedule_policy"] is not None
                 else default_pricing_interval_schedule_policy()
             ),
-            dynamics_search_restart_candidate_budget=(
+            dynamics_search_candidate_budget=(
                 require_positive_integer(
                     raw_payload,
-                    "dynamics_search_restart_candidate_budget",
-                    "dynamics_search_restart_candidate_budget",
+                    "dynamics_search_candidate_budget",
+                    "dynamics_search_candidate_budget",
                     calibration_error,
                 )
-                if "dynamics_search_restart_candidate_budget" in raw_payload
-                and raw_payload["dynamics_search_restart_candidate_budget"] is not None
+                if "dynamics_search_candidate_budget" in raw_payload
+                and raw_payload["dynamics_search_candidate_budget"] is not None
                 else None
             ),
             calibration_effort=(

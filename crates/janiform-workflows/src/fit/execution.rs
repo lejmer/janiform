@@ -355,7 +355,7 @@ fn should_observe_staged_event(
         return true;
     }
 
-    if progress.restart_evaluation_timing_diagnostic.is_some() {
+    if progress.candidate_evaluation_timing_diagnostic.is_some() {
         return true;
     }
 
@@ -472,7 +472,7 @@ fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), Wor
     }
 
     if let CalibrationStagedRunObserverEvent::StageProgress(progress) = input.event
-        && progress.restart_evaluation_timing_diagnostic.is_some()
+        && progress.candidate_evaluation_timing_diagnostic.is_some()
     {
         input
             .event_writer
@@ -644,10 +644,10 @@ mod tests {
                 stage_progress_percent: None,
                 aggregate_progress_percent: None,
                 current_item_label: current_item_label.map(str::to_string),
-                current_restart_id: None,
+                current_candidate_id: None,
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
-                active_restart_count: None,
+                active_candidate_count: None,
                 current_evaluation_count,
                 total_evaluation_budget: None,
                 evaluation_progress_percent,
@@ -658,17 +658,17 @@ mod tests {
                 valid_completed_units: None,
                 cumulative_local_evaluation_count: None,
                 current_global_loss: None,
-                current_restart_best_global_loss: None,
+                current_candidate_best_global_loss: None,
                 current_final_global_loss: None,
                 current_candidate_assessment: None,
-                best_restart_id: None,
+                best_candidate_id: None,
                 best_global_loss: None,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
-                restart_evaluation_timing_diagnostic: None,
+                candidate_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))
@@ -676,7 +676,7 @@ mod tests {
 
     fn joint_refinement_progress_event(
         phase: JointRefinementStageProgressPhase,
-        restart_id: Option<&str>,
+        candidate_id: Option<&str>,
         current_evaluation_count: Option<usize>,
         evaluation_progress_percent: Option<usize>,
     ) -> CalibrationStagedRunObserverEvent {
@@ -691,11 +691,11 @@ mod tests {
                 total_units: 6,
                 stage_progress_percent: None,
                 aggregate_progress_percent: None,
-                current_item_label: restart_id.map(str::to_string),
-                current_restart_id: restart_id.map(str::to_string),
+                current_item_label: candidate_id.map(str::to_string),
+                current_candidate_id: candidate_id.map(str::to_string),
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
-                active_restart_count: Some(5),
+                active_candidate_count: Some(5),
                 current_evaluation_count,
                 total_evaluation_budget: Some(59),
                 evaluation_progress_percent,
@@ -706,17 +706,17 @@ mod tests {
                 valid_completed_units: Some(0),
                 cumulative_local_evaluation_count: Some(0),
                 current_global_loss: None,
-                current_restart_best_global_loss: None,
+                current_candidate_best_global_loss: None,
                 current_final_global_loss: None,
                 current_candidate_assessment: None,
-                best_restart_id: None,
+                best_candidate_id: None,
                 best_global_loss: None,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
-                restart_evaluation_timing_diagnostic: None,
+                candidate_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))

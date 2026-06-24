@@ -88,13 +88,13 @@ def test_market_data_calibration_request_accepts_option_refinement_candidate_ove
     assert validated_request.joint_refinement_option_refinement_candidate_count_override == 8
 
 
-def test_market_data_calibration_request_accepts_dynamics_search_restart_candidate_budget() -> None:
+def test_market_data_calibration_request_accepts_dynamics_search_candidate_budget() -> None:
     request_payload = _valid_market_data_request_payload()
-    request_payload["dynamics_search_restart_candidate_budget"] = 21
+    request_payload["dynamics_search_candidate_budget"] = 21
 
     validated_request = validate_market_data_calibration_request(request_payload)
 
-    assert validated_request.dynamics_search_restart_candidate_budget == 21
+    assert validated_request.dynamics_search_candidate_budget == 21
 
 
 def test_market_data_calibration_request_defaults_to_activity_compressed_schedule_policy() -> None:
@@ -143,16 +143,16 @@ def test_market_data_calibration_request_rejects_zero_option_refinement_candidat
     assert "strictly positive" in captured_error.value.failure.message
 
 
-def test_market_data_calibration_request_rejects_zero_dynamics_search_restart_candidate_budget() -> None:
+def test_market_data_calibration_request_rejects_zero_dynamics_search_candidate_budget() -> None:
     request_payload = _valid_market_data_request_payload()
-    request_payload["dynamics_search_restart_candidate_budget"] = 0
+    request_payload["dynamics_search_candidate_budget"] = 0
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_market_data_calibration_request(request_payload)
 
     assert (
         captured_error.value.failure.field_path
-        == "dynamics_search_restart_candidate_budget"
+        == "dynamics_search_candidate_budget"
     )
     assert "strictly positive" in captured_error.value.failure.message
 

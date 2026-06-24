@@ -51,8 +51,7 @@ pub(crate) fn run_fit_command(
             tick_size: command.tick_size.tick_size,
             overrides: FitPreparationOverrides {
                 mean_reversion_grid_interval_hours: command.mean_reversion_grid_interval_hours,
-                dynamics_search_restart_candidate_budget: command
-                    .dynamics_search_restart_candidate_budget,
+                dynamics_search_candidate_budget: command.dynamics_search_candidate_budget,
                 option_refinement_candidate_count: command.option_refinement_candidate_count,
                 diagnostics: command.diagnostics,
                 treat_calibration_warnings_as_errors: command.treat_calibration_warnings_as_errors,
@@ -80,7 +79,6 @@ pub(crate) fn run_fit_command(
             remove_no_persist_output_directory(prepared.paths.output_directory.clone());
 
         result?;
-
         cleanup_result?;
 
         return Ok(());

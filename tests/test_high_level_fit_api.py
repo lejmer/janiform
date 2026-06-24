@@ -4219,15 +4219,15 @@ def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_ex
         encoding="utf-8",
     )
 
-    captured_dynamics_search_restart_candidate_budgets: list[Optional[int]] = []
+    captured_dynamics_search_candidate_budgets: list[Optional[int]] = []
 
     def capture_execution_configuration(
         *args,
         **kwargs,
     ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
         configuration = kwargs["configuration"]
-        captured_dynamics_search_restart_candidate_budgets.append(
-            configuration.preparation.dynamics_search_restart_candidate_budget
+        captured_dynamics_search_candidate_budgets.append(
+            configuration.preparation.dynamics_search_candidate_budget
         )
 
         return _successful_staged_runner_payload("high-level-fit-single-pass")
@@ -4246,7 +4246,7 @@ def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_ex
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
         ),
-        dynamics_search_restart_candidate_budget=12,
+        dynamics_search_candidate_budget=12,
         session="XNYS",
         known_news="none",
     )
@@ -4257,16 +4257,16 @@ def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_ex
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert captured_dynamics_search_restart_candidate_budgets == [12]
+    assert captured_dynamics_search_candidate_budgets == [12]
 
 
-def test_high_level_estimator_rejects_zero_dynamics_search_restart_candidate_budget() -> None:
+def test_high_level_estimator_rejects_zero_dynamics_search_candidate_budget() -> None:
     with pytest.raises(CalibrationValidationError) as captured_error:
-        JaniformEstimator(dynamics_search_restart_candidate_budget=0)
+        JaniformEstimator(dynamics_search_candidate_budget=0)
 
     assert (
         captured_error.value.failure.field_path
-        == "dynamics_search_restart_candidate_budget"
+        == "dynamics_search_candidate_budget"
     )
     assert "strictly positive" in captured_error.value.failure.message
 

@@ -300,7 +300,7 @@ fn adapter_uses_explicit_work_item_status_when_provided() {
         planned_work_item_labels: Vec::new(),
         work_item_columns: vec![ProgressWorkItemColumn::new("eval", "Eval")],
         work_item_metrics: vec![ProgressWorkItemMetric::new("eval", "1/4")],
-        latest_signal: Some("queued restart".to_string()),
+        latest_signal: Some("queued candidate".to_string()),
     });
 
     let snapshot = adapter.snapshot();
@@ -378,7 +378,7 @@ fn adapter_preserves_population_search_losses_when_final_loss_arrives() {
         .work_items
         .iter()
         .find(|work_item| work_item.label == "tick_moment_21")
-        .expect("restart work item should remain visible");
+        .expect("candidate work item should remain visible");
 
     assert_eq!(
         work_item

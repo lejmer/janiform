@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e8894eac31905211b5bab73addd3be401e415c50b0aa345073c83af2820f70c1",
+  "approved_snapshot_sha256": "bb5f9b0f5f457d37397e12a8f1a2dd030e843e0cf9e38a6505b18bb638305c53",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1871,6 +1871,22 @@
         "janiform.pricing",
         "janiform.simulation",
         "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-25",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "Joint refinement effort controls use candidate terminology across the Python request contracts, estimator constructor, calibration effort payload, and CLI flag surface.",
+      "snapshot_sha256": "bb5f9b0f5f457d37397e12a8f1a2dd030e843e0cf9e38a6505b18bb638305c53",
+      "summary": "Rename joint refinement candidate-budget controls.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
       ]
     }
   ],

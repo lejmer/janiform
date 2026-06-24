@@ -120,13 +120,13 @@ pub struct FitPreparationConfiguration {
     /// Policy for how much tick evidence slower objectives may consume.
     #[serde(default)]
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
-    /// Optional dynamics restart budget override.
+    /// Optional dynamics candidate budget override.
     #[serde(default)]
-    pub dynamics_search_restart_candidate_budget: Option<usize>,
+    pub dynamics_search_candidate_budget: Option<usize>,
     /// Calibration search effort policy.
     #[serde(default)]
     pub calibration_effort: Option<CalibrationEffortOptions>,
-    /// Treat invalid restart fallback warnings as hard fit errors.
+    /// Treat calibration warnings as hard fit errors.
     #[serde(default)]
     pub treat_calibration_warnings_as_errors: bool,
     /// Optional joint option-refinement candidate count override.
@@ -724,10 +724,10 @@ fn build_preparation_request(
             .request
             .configuration
             .tick_objective_data_usage_policy,
-        dynamics_search_restart_candidate_budget: input
+        dynamics_search_candidate_budget: input
             .request
             .configuration
-            .dynamics_search_restart_candidate_budget,
+            .dynamics_search_candidate_budget,
         calibration_effort: input.request.configuration.calibration_effort,
         treat_calibration_warnings_as_errors: input
             .request

@@ -48,7 +48,7 @@ const FIT_PREPARATION_REQUEST_SCHEMA_VERSION: &str = "calibration.market_data.re
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FitPreparationOverrides {
     pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
-    pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+    pub(crate) dynamics_search_candidate_budget: Option<usize>,
     pub(crate) option_refinement_candidate_count: Option<usize>,
     pub(crate) diagnostics: Vec<CalibrationDiagnosticOption>,
     pub(crate) treat_calibration_warnings_as_errors: bool,
@@ -218,9 +218,9 @@ pub(crate) fn prepare_fit_preview(
             .tick_objective_data_usage_policy
             .map(tick_objective_data_usage_policy)
             .unwrap_or_default(),
-        dynamics_search_restart_candidate_budget: preview_options
+        dynamics_search_candidate_budget: preview_options
             .overrides
-            .dynamics_search_restart_candidate_budget,
+            .dynamics_search_candidate_budget,
         calibration_effort: None,
         treat_calibration_warnings_as_errors: preview_options
             .overrides
@@ -339,6 +339,7 @@ pub(crate) fn prepare_fit_preview(
         "session source".to_string(),
         session_source_label(&request, &preview_inputs),
     )];
+
     if let Some(market_profile) = &preview_inputs.market_profile {
         preset_defaults.push((
             "session preset".to_string(),
@@ -360,6 +361,7 @@ pub(crate) fn prepare_fit_preview(
             "none".to_string()
         },
     )];
+
     if let Some(market_profile) = &preview_inputs.market_profile
         && let Some(known_news_preset_name) = &market_profile.known_news_preset_name
     {

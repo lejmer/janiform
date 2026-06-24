@@ -107,7 +107,7 @@ class JaniformEstimator:
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     _tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy
-    _dynamics_search_restart_candidate_budget: Optional[int]
+    _dynamics_search_candidate_budget: Optional[int]
     _calibration_effort: CalibrationEffortOptions
     _treat_calibration_warnings_as_errors: bool
     _joint_refinement_option_refinement_candidate_count_override: Optional[int]
@@ -142,7 +142,7 @@ class JaniformEstimator:
         tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy = (
             CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
         ),
-        dynamics_search_restart_candidate_budget: Optional[int] = None,
+        dynamics_search_candidate_budget: Optional[int] = None,
         calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT,
         treat_calibration_warnings_as_errors: bool = False,
         joint_refinement_option_refinement_candidate_count: Optional[int] = None,
@@ -206,11 +206,11 @@ class JaniformEstimator:
             )
 
         if (
-            dynamics_search_restart_candidate_budget is not None
-            and dynamics_search_restart_candidate_budget <= 0
+            dynamics_search_candidate_budget is not None
+            and dynamics_search_candidate_budget <= 0
         ):
             raise calibration_error(
-                "dynamics_search_restart_candidate_budget",
+                "dynamics_search_candidate_budget",
                 "must be strictly positive when provided",
             )
 
@@ -280,7 +280,7 @@ class JaniformEstimator:
             else pricing_interval_schedule_policy
         )
         self._tick_objective_data_usage_policy = tick_objective_data_usage_policy
-        self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
+        self._dynamics_search_candidate_budget = dynamics_search_candidate_budget
         self._calibration_effort = calibration_effort
         self._treat_calibration_warnings_as_errors = treat_calibration_warnings_as_errors
         self._joint_refinement_option_refinement_candidate_count_override = (
@@ -428,7 +428,7 @@ class JaniformEstimator:
                 else pricing_interval_schedule_policy
             ),
             tick_objective_data_usage_policy=self._tick_objective_data_usage_policy,
-            dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
+            dynamics_search_candidate_budget=self._dynamics_search_candidate_budget,
             calibration_effort=self._calibration_effort,
             treat_calibration_warnings_as_errors=(
                 self._treat_calibration_warnings_as_errors

@@ -259,8 +259,8 @@ def _fit_preparation_configuration_payload(
         "tick_objective_data_usage_policy": (
             _enum_value(preparation.tick_objective_data_usage_policy)
         ),
-        "dynamics_search_restart_candidate_budget": (
-            preparation.dynamics_search_restart_candidate_budget
+        "dynamics_search_candidate_budget": (
+            preparation.dynamics_search_candidate_budget
         ),
         "calibration_effort": preparation.calibration_effort.to_payload(),
         "treat_calibration_warnings_as_errors": (

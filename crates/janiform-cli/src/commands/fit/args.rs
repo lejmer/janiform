@@ -82,9 +82,9 @@ By default, janiform fit writes a durable run directory for downstream CLI comma
     #[arg(
         long,
         value_name = "COUNT",
-        help = "Joint-refinement restart candidate budget."
+        help = "Joint-refinement candidate budget."
     )]
-    pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+    pub(crate) dynamics_search_candidate_budget: Option<usize>,
 
     #[arg(
         long,
@@ -239,9 +239,9 @@ pub(crate) struct FitPlanCommand {
     #[arg(
         long,
         value_name = "COUNT",
-        help = "Joint-refinement restart candidate budget."
+        help = "Joint-refinement candidate budget."
     )]
-    pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+    pub(crate) dynamics_search_candidate_budget: Option<usize>,
 
     #[arg(
         long,
