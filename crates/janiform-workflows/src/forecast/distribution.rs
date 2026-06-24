@@ -11,6 +11,9 @@ use crate::error::WorkflowError;
 
 use super::cdf_projection::isotonic_non_decreasing_projection;
 use super::cos_distribution::CosDistribution;
+use super::distribution_grid::{
+    TERMINAL_DISTRIBUTION_GRID_POLICY, projected_cdf_quantile_band_grid,
+};
 use super::numeric::usize_to_f64;
 use super::output::{
     ForecastDistributionSupport, ForecastQuantile, ForecastTerminalDistributionRow, ForecastWarning,
@@ -123,11 +126,19 @@ pub(super) fn build_distribution_projection(
     let terminal_law = law_projection.terminal_law;
     let density_distribution = CosDistribution::from_law(&terminal_law)?;
     let cdf_distribution = CosDistribution::from_law(&terminal_law)?;
-    let width = density_distribution.support_upper - density_distribution.support_lower;
-    let node_step = width / terminal_law_node_spacing_denominator(&terminal_law)?;
 
-    let worker_count = resolved_cpu_count(request.cpu_count).min(terminal_law.node_count.max(1));
-    let ranges = balanced_work_ranges(terminal_law.node_count, worker_count);
+    let quantile_log_returns =
+        cdf_distribution.quantiles(DEFAULT_QUANTILE_PROBABILITIES.as_slice())?;
+
+    let node_log_returns = projected_cdf_quantile_band_grid(
+        &cdf_distribution,
+        terminal_law.node_count,
+        DEFAULT_QUANTILE_PROBABILITIES.as_slice(),
+        quantile_log_returns.as_slice(),
+    )?;
+
+    let worker_count = resolved_cpu_count(request.cpu_count).min(node_log_returns.len().max(1));
+    let ranges = balanced_work_ranges(node_log_returns.len(), worker_count);
 
     let mut collector = ForecastRangeCollector::new(
         ForecastProgressPhase::BuildingDistribution,
@@ -146,7 +157,13 @@ pub(super) fn build_distribution_projection(
         ranges,
         worker_count,
         |range, context: StreamingWorkContext<ForecastRangeProgress, DistributionRangeOutput>| {
-            compute_distribution_range(runtime, &density_distribution, node_step, range, context)
+            compute_distribution_range(
+                runtime,
+                &density_distribution,
+                node_log_returns.as_slice(),
+                range,
+                context,
+            )
         },
         |collector: &mut ForecastRangeCollector<'_, DistributionRangeOutput>,
          progress: StreamingWorkProgress<ForecastRangeProgress>|
@@ -165,35 +182,30 @@ pub(super) fn build_distribution_projection(
 
     range_outputs.sort_by_key(|output| output.range.start);
 
-    let mut rows = Vec::with_capacity(terminal_law.node_count);
+    let mut rows = Vec::with_capacity(node_log_returns.len());
 
     for output in range_outputs {
         rows.extend(output.result?);
     }
 
-    materialize_distribution_probabilities(
-        rows.as_mut_slice(),
-        &terminal_law,
-        &cdf_distribution,
-        node_step,
-    )?;
+    materialize_distribution_probabilities(rows.as_mut_slice(), &terminal_law, &cdf_distribution)?;
 
     let quantiles = DEFAULT_QUANTILE_PROBABILITIES
         .iter()
         .copied()
-        .map(|probability| {
-            let terminal_log_return = cdf_distribution.quantile(probability)?;
+        .zip(quantile_log_returns)
+        .map(|(probability, terminal_log_return)| {
             let terminal_price_ratio = terminal_log_return.exp();
             let terminal_price = runtime.pricing_request.market_inputs.spot * terminal_price_ratio;
 
-            Ok(ForecastQuantile {
+            ForecastQuantile {
                 probability,
                 terminal_log_return,
                 terminal_price_ratio,
                 terminal_price,
-            })
+            }
         })
-        .collect::<Result<Vec<_>, WorkflowError>>()?;
+        .collect::<Vec<_>>();
 
     let support = ForecastDistributionSupport {
         policy: law_projection.support_resolution.policy.to_string(),
@@ -201,7 +213,8 @@ pub(super) fn build_distribution_projection(
         upper_probability: law_projection.support_resolution.upper_probability,
         log_return_lower: density_distribution.support_lower,
         log_return_upper: density_distribution.support_upper,
-        node_count: terminal_law.node_count,
+        node_count: node_log_returns.len(),
+        grid_policy: TERMINAL_DISTRIBUTION_GRID_POLICY.to_string(),
     };
 
     Ok(DistributionProjection {
@@ -243,14 +256,14 @@ fn solve_terminal_law_on_support(
 fn compute_distribution_range(
     runtime: &ForecastRuntime,
     density_distribution: &CosDistribution,
-    node_step: f64,
+    node_log_returns: &[f64],
     range: Range<usize>,
     context: StreamingWorkContext<ForecastRangeProgress, DistributionRangeOutput>,
 ) -> DistributionRangeOutput {
     let result = compute_distribution_range_result(
         runtime,
         density_distribution,
-        node_step,
+        node_log_returns,
         &range,
         &context,
     );
@@ -261,7 +274,7 @@ fn compute_distribution_range(
 fn compute_distribution_range_result(
     runtime: &ForecastRuntime,
     density_distribution: &CosDistribution,
-    node_step: f64,
+    node_log_returns: &[f64],
     range: &Range<usize>,
     context: &StreamingWorkContext<ForecastRangeProgress, DistributionRangeOutput>,
 ) -> Result<Vec<ForecastTerminalDistributionRow>, WorkflowError> {
@@ -286,7 +299,7 @@ fn compute_distribution_range_result(
         rows.push(distribution_row(
             runtime,
             density_distribution,
-            node_step,
+            node_log_returns,
             node_index,
         )?);
 
@@ -300,16 +313,22 @@ fn compute_distribution_range_result(
 fn distribution_row(
     runtime: &ForecastRuntime,
     density_distribution: &CosDistribution,
-    node_step: f64,
+    node_log_returns: &[f64],
     node_index: usize,
 ) -> Result<ForecastTerminalDistributionRow, WorkflowError> {
-    let terminal_log_return =
-        density_distribution.support_lower + usize_to_f64(node_index, "node_index")? * node_step;
+    let terminal_log_return = *node_log_returns.get(node_index).ok_or_else(|| {
+        validation_error(
+            "terminal_distribution",
+            "distribution node index exceeded adaptive grid length",
+        )
+    })?;
 
     let terminal_price_ratio = terminal_log_return.exp();
     let terminal_price = runtime.pricing_request.market_inputs.spot * terminal_price_ratio;
 
-    let log_return_density = density_distribution.density(terminal_log_return)?;
+    let log_return_density =
+        projected_nonnegative_density(density_distribution.density(terminal_log_return)?)?;
+
     let price_density = log_return_density / terminal_price;
 
     Ok(ForecastTerminalDistributionRow {
@@ -324,23 +343,40 @@ fn distribution_row(
     })
 }
 
+/// Project finite COS density samples onto the probability-density contract.
+///
+/// Spectral truncation can ring below zero at point samples even when the CDF
+/// projection remains monotone.
+fn projected_nonnegative_density(density: f64) -> Result<f64, WorkflowError> {
+    if !density.is_finite() {
+        return Err(validation_error(
+            "terminal_distribution",
+            "distribution density sample must be finite",
+        ));
+    }
+
+    Ok(density.max(0.0))
+}
+
 fn materialize_distribution_probabilities(
     rows: &mut [ForecastTerminalDistributionRow],
     terminal_law: &janiform_engine_pricing::AffineForecastTerminalLaw,
     cdf_distribution: &CosDistribution,
-    node_step: f64,
 ) -> Result<(), WorkflowError> {
     let mut cdf_points = Vec::with_capacity(rows.len().saturating_mul(2).saturating_add(1));
 
+    let mut previous_log_return = None;
+
     for row in rows.iter() {
-        let lower_edge = if row.node_index == 0 {
-            terminal_law.terminal_log_return_lower_bound
-        } else {
-            row.terminal_log_return - 0.5 * node_step
+        let lower_edge = match previous_log_return {
+            Some(previous) => midpoint_log_return(previous, row.terminal_log_return)?,
+            None => terminal_law.terminal_log_return_lower_bound,
         };
 
         cdf_points.push(cdf_distribution.projected_cdf(lower_edge)?);
         cdf_points.push(cdf_distribution.projected_cdf(row.terminal_log_return)?);
+
+        previous_log_return = Some(row.terminal_log_return);
     }
 
     cdf_points.push(cdf_distribution.projected_cdf(terminal_law.terminal_log_return_upper_bound)?);
@@ -352,26 +388,47 @@ fn materialize_distribution_probabilities(
         let center_position = lower_edge_position + 1;
         let upper_edge_position = lower_edge_position + 2;
 
-        row.probability_mass =
-            projected_cdf_points[upper_edge_position] - projected_cdf_points[lower_edge_position];
+        let lower_edge_cdf =
+            projected_cdf_point(projected_cdf_points.as_slice(), lower_edge_position)?;
 
-        row.cumulative_probability = projected_cdf_points[center_position];
+        let center_cdf = projected_cdf_point(projected_cdf_points.as_slice(), center_position)?;
+
+        let upper_edge_cdf =
+            projected_cdf_point(projected_cdf_points.as_slice(), upper_edge_position)?;
+
+        row.probability_mass = upper_edge_cdf - lower_edge_cdf;
+        row.cumulative_probability = center_cdf;
     }
 
     Ok(())
 }
 
-fn terminal_law_node_spacing_denominator(
-    terminal_law: &janiform_engine_pricing::AffineForecastTerminalLaw,
-) -> Result<f64, WorkflowError> {
-    let Some(denominator) = terminal_law.node_count.checked_sub(1) else {
-        return Err(validation_error(
-            "distribution_node_count",
-            "terminal law requires at least two distribution nodes",
-        ));
-    };
+fn projected_cdf_point(points: &[f64], position: usize) -> Result<f64, WorkflowError> {
+    points.get(position).copied().ok_or_else(|| {
+        validation_error(
+            "terminal_distribution",
+            "projected distribution CDF grid was shorter than the terminal distribution rows",
+        )
+    })
+}
 
-    usize_to_f64(denominator, "distribution_node_count")
+fn midpoint_log_return(lower: f64, upper: f64) -> Result<f64, WorkflowError> {
+    if !lower.is_finite() || !upper.is_finite() || upper < lower {
+        return Err(validation_error(
+            "terminal_distribution",
+            "distribution grid cell edges require finite ordered log-return nodes",
+        ));
+    }
+
+    let midpoint = lower + (upper - lower) / 2.0;
+    if !midpoint.is_finite() {
+        return Err(validation_error(
+            "terminal_distribution",
+            "distribution grid cell midpoint must be finite",
+        ));
+    }
+
+    Ok(midpoint)
 }
 
 #[cfg(test)]
@@ -384,5 +441,12 @@ mod tests {
             DEFAULT_QUANTILE_PROBABILITIES,
             [0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99]
         );
+    }
+
+    #[test]
+    fn projected_nonnegative_density_enforces_density_contract() {
+        assert_eq!(super::projected_nonnegative_density(-1.0).unwrap(), 0.0);
+        assert_eq!(super::projected_nonnegative_density(2.0).unwrap(), 2.0);
+        assert!(super::projected_nonnegative_density(f64::NAN).is_err());
     }
 }
