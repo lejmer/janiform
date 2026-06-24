@@ -75,10 +75,13 @@ pub fn aggregate_fine_sufficient_statistics_path_to_coarse_intervals(
             .map_err(map_interval_pair_error)?;
 
     let source_fine_interval_count = fine_path.records.len();
+
     let fine_subinterval_count_per_coarse_interval =
         interval_pair.fine_subinterval_count_per_coarse_interval;
+
     let aggregated_coarse_interval_count =
         source_fine_interval_count / fine_subinterval_count_per_coarse_interval;
+
     let trailing_partial_fine_interval_count =
         source_fine_interval_count % fine_subinterval_count_per_coarse_interval;
 
@@ -117,6 +120,7 @@ pub fn aggregate_fine_sufficient_statistics_path_to_coarse_intervals(
     for coarse_interval_index in 0..aggregated_coarse_interval_count {
         let fine_start =
             coarse_interval_index.saturating_mul(fine_subinterval_count_per_coarse_interval);
+
         let fine_end = fine_start + fine_subinterval_count_per_coarse_interval;
 
         let aggregated_record = aggregate_fine_records_to_coarse_interval(
@@ -330,6 +334,33 @@ fn aggregate_fine_records_to_coarse_interval(
             .iter()
             .map(|record| record.sufficient_statistics.n_minus)
             .sum(),
+        fine_records
+            .last()
+            .map(|record| record.sufficient_statistics.terminal_excitation_state)
+            .unwrap_or(janiform_model_kernels::hawkes::HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            }),
+        fine_records
+            .last()
+            .map(|record| {
+                // Aggregated coarse records own the terminal pressure-state distribution.
+                record
+                    .sufficient_statistics
+                    .terminal_market_pressure_state
+                    .clone()
+            })
+            .unwrap_or_else(janiform_model_kernels::market_pressure::MarketPressureState::neutral),
+        fine_records
+            .iter()
+            .map(|record| {
+                record
+                    .sufficient_statistics
+                    .market_pressure_anchor_increment
+            })
+            .sum(),
     )
     .map_err(
         |source| SufficientStatisticsPathRecordError::InvalidSufficientStatistics { source },
@@ -361,6 +392,7 @@ fn aggregate_fine_records_to_coarse_interval(
             .map(|record| record.return_components.total_return)
             .sum(),
     };
+
     let last_record = &fine_records[fine_records.len() - 1];
 
     SufficientStatisticsPathRecord::try_new(
@@ -377,7 +409,6 @@ fn aggregate_fine_records_to_coarse_interval(
             .sum(),
         last_record.observed_log_price_end,
         last_record.anchor_value_end,
-        last_record.pressure_state_end,
         last_record.deviation_from_anchor_end,
     )
 }

@@ -11,20 +11,21 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::interval_factor_grids::IntervalFactorGrid;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
 };
-use super::error::SeededTickSimulationRunError;
-use super::runtime::{
+use super::core::{
     compute_max_effective_endogenous_branching_ratio, validate_interval_factor_grid_field_length,
     validate_interval_factor_grid_interval_coverage, validate_known_scheduled_news_timestamps,
 };
+use super::error::SeededTickSimulationRunError;
 
 /// State snapshot capture mode for per-event diagnostics.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +135,12 @@ pub struct SeededTickSimulationModelInputs {
     /// Observed-state boundary payload carried into the first simulated interval.
     pub initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 
+    /// Physical market-pressure dynamics used for the signed event-flow state.
+    pub market_pressure_parameters: MarketPressureParameters,
+
+    /// Market-pressure state carried into the first simulated interval.
+    pub initial_market_pressure_state: MarketPressureState,
+
     /// Interval-aligned interval factor grids (`seasonality_factor`, `news_intensity`) used by the simulator.
     pub interval_factor_grid: IntervalFactorGrid,
 
@@ -150,7 +157,7 @@ pub struct SeededTickSimulationModelInputs {
     pub observed_price_tick_size: Option<f64>,
 
     /// Observation-layer contract mapping latent event times to observed tick timestamps.
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
 
     /// Calendar registry used to resolve open and closed market states.
     pub calendar_registry: ExchangeCalendarRegistry,
@@ -278,7 +285,7 @@ impl SeededTickSimulationRunConfig {
             )?;
 
         if let Some(tick_size) = self.model_inputs.observed_price_tick_size
-            && !super::runtime::is_valid_observed_price_tick_size(tick_size)
+            && !super::core::is_valid_observed_price_tick_size(tick_size)
         {
             return Err(SeededTickSimulationRunError::InvalidObservedPriceTickSize {
                 value: tick_size,
@@ -286,13 +293,13 @@ impl SeededTickSimulationRunConfig {
         }
 
         self.model_inputs
-            .timestamp_batching_observation_model
+            .timestamp_batching_surface
             .validate()
-            .map_err(|source| {
-                SeededTickSimulationRunError::InvalidTimestampBatchingObservationModel {
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidTimestampBatchingSurface {
                     source: Box::new(source),
-                }
-            })?;
+                },
+            )?;
 
         if self.horizon_interval_count > expected_interval_count {
             return Err(
@@ -349,6 +356,24 @@ impl SeededTickSimulationRunConfig {
             .validate()
             .map_err(
                 |source| SeededTickSimulationRunError::InvalidMeanReversionBoundaryState {
+                    source: Box::new(source),
+                },
+            )?;
+
+        self.model_inputs
+            .market_pressure_parameters
+            .validate()
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidMarketPressureParameters {
+                    source: Box::new(source),
+                },
+            )?;
+
+        self.model_inputs
+            .initial_market_pressure_state
+            .validate_for_parameters(&self.model_inputs.market_pressure_parameters)
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidInitialMarketPressureState {
                     source: Box::new(source),
                 },
             )?;

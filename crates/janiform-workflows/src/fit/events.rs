@@ -1,14 +1,14 @@
 use std::path::Path;
 
 use janiform_calibration_artifacts::{
-    CalibrationStage, JointRefinementStageRestartEvaluationTimingDiagnostic,
+    CalibrationStage, JointRefinementStageCandidateEvaluationTimingDiagnostic,
     calibration_stage_token,
 };
 use janiform_calibration_runtime::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageProgressEvent, HawkesStageProgressPhase,
     JointRefinementProgressCandidateAssessment, JointRefinementStageProgressPhase,
-    ObservationModelsStageProgressPhase, ReturnComponentsStageProgressPhase,
+    ReturnBackfitStageProgressPhase, ReturnComponentsStageProgressPhase,
     SeasonalityStageProgressPhase,
 };
 use janiform_event_log::{
@@ -25,6 +25,8 @@ use crate::error::WorkflowError;
 use crate::progress::{progress_count_label, progress_position_label};
 
 use super::labels::{fit_progress_scope_label, stage_execution_status_label, stage_label};
+
+const MISSING_PROGRESS_VALUE_LABEL: &str = "-";
 
 /// Convert a staged runtime observer event into durable run events.
 pub fn run_events_from_staged_event(
@@ -110,7 +112,7 @@ pub fn run_events_from_staged_event(
                 }),
             )];
 
-            if let Some(timing_diagnostic) = &progress.restart_evaluation_timing_diagnostic {
+            if let Some(timing_diagnostic) = &progress.candidate_evaluation_timing_diagnostic {
                 events.push(RunEvent::new(
                     progress.run_id.clone(),
                     workflow,
@@ -118,7 +120,7 @@ pub fn run_events_from_staged_event(
                     RunEventPayload::MetricUpdate(RunMetricUpdateEvent {
                         stage: Some(stage),
                         phase: Some(phase),
-                        measures: restart_evaluation_timing_measures(timing_diagnostic),
+                        measures: candidate_evaluation_timing_measures(timing_diagnostic),
                     }),
                 ));
             }
@@ -227,14 +229,33 @@ pub fn progress_event_from_staged_event(
             stage_count: *stage_count,
         }),
         CalibrationStagedRunObserverEvent::StageProgress(progress) => {
-            let work_item_metrics = work_item_table_metrics(progress);
-            let work_item_label = progress_work_item_label(progress, work_item_metrics.as_slice());
-            let planned_work_item_labels = progress.planned_work_item_labels.clone();
-            let work_item_columns = work_item_columns(progress, &work_item_label);
-            let work_item_metrics = display_work_item_metrics(work_item_metrics, &work_item_label);
+            let raw_work_item_metrics = work_item_table_metrics(progress);
+            let raw_work_item_label =
+                progress_work_item_label(progress, raw_work_item_metrics.as_slice());
 
             let latest_signal =
-                stage_progress_signal_with_metrics(progress, work_item_metrics.as_slice());
+                stage_progress_signal_with_metrics(progress, raw_work_item_metrics.as_slice());
+
+            let has_multi_row_work_table =
+                work_item_table_has_multiple_rows(progress, &raw_work_item_label);
+            let work_item_label = has_multi_row_work_table
+                .then_some(raw_work_item_label)
+                .flatten();
+            let planned_work_item_labels = if has_multi_row_work_table {
+                progress.planned_work_item_labels.clone()
+            } else {
+                Vec::new()
+            };
+            let work_item_columns = if has_multi_row_work_table {
+                work_item_columns(progress, &work_item_label)
+            } else {
+                Vec::new()
+            };
+            let work_item_metrics = if has_multi_row_work_table {
+                display_work_item_metrics(raw_work_item_metrics, &work_item_label)
+            } else {
+                Vec::new()
+            };
 
             Some(ProgressEvent::StageProgress {
                 phase: phase_label(&progress.progress_phase).to_string(),
@@ -313,65 +334,70 @@ pub(crate) fn append_artifact_event(
         .map_err(|source| WorkflowError::FitEventLog { source })
 }
 
-fn restart_evaluation_timing_measures(
-    diagnostic: &JointRefinementStageRestartEvaluationTimingDiagnostic,
+fn candidate_evaluation_timing_measures(
+    diagnostic: &JointRefinementStageCandidateEvaluationTimingDiagnostic,
 ) -> Vec<EventProgressMeasure> {
     let mut measures = vec![
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.restart_id".to_string(),
-            label: Some("restart id".to_string()),
-            value: diagnostic.restart_id.clone(),
+            metric_id: "joint_refinement.candidate_eval.candidate_id".to_string(),
+            label: Some("candidate id".to_string()),
+            value: diagnostic.candidate_id.clone(),
         },
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.schedule_category".to_string(),
+            metric_id: "joint_refinement.candidate_eval.schedule_category".to_string(),
             label: Some("schedule category".to_string()),
             value: diagnostic.schedule_category.clone(),
         },
+        EventProgressMeasure::Text {
+            metric_id: "joint_refinement.candidate_eval.fidelity_tier".to_string(),
+            label: Some("fidelity tier".to_string()),
+            value: diagnostic.fidelity_tier.clone(),
+        },
         EventProgressMeasure::EvaluationCount {
-            metric_id: "joint_refinement.restart_eval.candidate_evaluation_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.candidate_evaluation_count".to_string(),
             label: Some("candidate evals".to_string()),
             completed_evaluations: diagnostic.candidate_evaluation_count,
             evaluation_budget: None,
         },
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.poll_direction_label".to_string(),
-            label: Some("poll direction".to_string()),
-            value: diagnostic.poll_direction_label.clone(),
+            metric_id: "joint_refinement.candidate_eval.search_direction_label".to_string(),
+            label: Some("search direction".to_string()),
+            value: diagnostic.search_direction_label.clone(),
         },
         EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.elapsed_millis".to_string(),
+            metric_id: "joint_refinement.candidate_eval.elapsed_millis".to_string(),
             label: Some("elapsed millis".to_string()),
             value: diagnostic.elapsed_millis.to_string(),
         },
     ];
 
-    if let Some(poll_direction_position) = diagnostic.poll_direction_position {
+    if let Some(search_direction_position) = diagnostic.search_direction_position {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.poll_direction_position".to_string(),
-            label: Some("poll direction position".to_string()),
-            value: poll_direction_position.to_string(),
+            metric_id: "joint_refinement.candidate_eval.search_direction_position".to_string(),
+            label: Some("search direction position".to_string()),
+            value: search_direction_position.to_string(),
         });
     }
 
     if let Some(objective) = diagnostic.objective {
         measures.push(EventProgressMeasure::ObjectiveValue {
-            metric_id: "joint_refinement.restart_eval.objective".to_string(),
+            metric_id: "joint_refinement.candidate_eval.objective".to_string(),
             label: Some("objective".to_string()),
             value: objective,
         });
     }
 
-    if let Some(admissibility_blocker_count) = diagnostic.admissibility_blocker_count {
+    if let Some(admissibility_warning_count) = diagnostic.admissibility_warning_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.admissibility_blocker_count".to_string(),
-            label: Some("admissibility blockers".to_string()),
-            value: admissibility_blocker_count.to_string(),
+            metric_id: "joint_refinement.candidate_eval.admissibility_warning_count".to_string(),
+            label: Some("admissibility warnings".to_string()),
+            value: admissibility_warning_count.to_string(),
         });
     }
 
     if let Some(max_standardized_residual) = diagnostic.max_standardized_residual {
         measures.push(EventProgressMeasure::Scalar {
-            metric_id: "joint_refinement.restart_eval.max_standardized_residual".to_string(),
+            metric_id: "joint_refinement.candidate_eval.max_standardized_residual".to_string(),
             label: Some("max standardized residual".to_string()),
             value: max_standardized_residual,
         });
@@ -379,7 +405,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(exact_closed_form_buy_count) = diagnostic.exact_closed_form_buy_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.exact_closed_form_buy_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.exact_closed_form_buy_count".to_string(),
             label: Some("CF buy count".to_string()),
             value: exact_closed_form_buy_count.to_string(),
         });
@@ -387,7 +413,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(exact_closed_form_sell_count) = diagnostic.exact_closed_form_sell_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.exact_closed_form_sell_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.exact_closed_form_sell_count".to_string(),
             label: Some("CF sell count".to_string()),
             value: exact_closed_form_sell_count.to_string(),
         });
@@ -395,7 +421,7 @@ fn restart_evaluation_timing_measures(
 
     if let Some(exact_tilted_mixed_count) = diagnostic.exact_tilted_mixed_count {
         measures.push(EventProgressMeasure::Text {
-            metric_id: "joint_refinement.restart_eval.exact_tilted_mixed_count".to_string(),
+            metric_id: "joint_refinement.candidate_eval.exact_tilted_mixed_count".to_string(),
             label: Some("mixed count".to_string()),
             value: exact_tilted_mixed_count.to_string(),
         });
@@ -540,20 +566,27 @@ fn stage_progress_signal_with_metrics(
     progress: &CalibrationStagedRunStageProgressEvent,
     work_item_metrics: &[ProgressWorkItemMetric],
 ) -> Option<String> {
-    if progress_work_item_label(progress, work_item_metrics).is_some()
-        && let Some(signal) = parallel_stage_progress_signal(
-            progress.active_restart_count,
-            progress.valid_completed_units,
-            progress.cumulative_local_evaluation_count,
-            progress.best_global_loss,
-            progress.best_coarse_consistency_fit,
-        )
+    if work_item_table_uses_population_refinement_columns(&progress.progress_phase) {
+        return Some(population_refinement_progress_signal(progress));
+    }
+
+    let work_item_label = progress_work_item_label(progress, work_item_metrics);
+    let has_multi_row_work_table = work_item_table_has_multiple_rows(progress, &work_item_label);
+
+    if let Some(signal) = parallel_stage_progress_signal(
+        progress.active_candidate_count,
+        progress.valid_completed_units,
+        progress.cumulative_local_evaluation_count,
+        progress.best_global_loss,
+        progress.best_coarse_consistency_fit,
+    ) && (has_multi_row_work_table
+        || work_item_phase_uses_row_scoped_evaluations(&progress.progress_phase))
     {
         return Some(signal);
     }
 
     if work_item_phase_uses_row_scoped_evaluations(&progress.progress_phase)
-        && progress_work_item_label(progress, work_item_metrics).is_some()
+        && work_item_label.is_some()
     {
         return None;
     }
@@ -574,7 +607,7 @@ fn stage_progress_signal_with_metrics(
 
     if let Some(current_global_loss) = progress.current_global_loss {
         let score_label =
-            if work_item_table_uses_restart_optimization_columns(&progress.progress_phase) {
+            if work_item_table_uses_population_refinement_columns(&progress.progress_phase) {
                 "loss"
             } else {
                 "global loss"
@@ -602,6 +635,41 @@ fn stage_progress_signal_with_metrics(
     (!parts.is_empty()).then(|| parts.join(", "))
 }
 
+fn population_refinement_progress_signal(
+    progress: &CalibrationStagedRunStageProgressEvent,
+) -> String {
+    let active_evaluations = progress
+        .active_candidate_count
+        .map(|count| count.to_string())
+        .unwrap_or_else(missing_progress_value_label);
+
+    let cumulative_evaluations = progress
+        .cumulative_local_evaluation_count
+        .map(|count| count.to_string())
+        .unwrap_or_else(missing_progress_value_label);
+
+    let best_search_loss = progress
+        .current_candidate_best_global_loss
+        .or(progress.best_global_loss)
+        .filter(|loss| loss.is_finite())
+        .map(|loss| format!("{loss:.6}"))
+        .unwrap_or_else(missing_progress_value_label);
+
+    let current_loss = progress
+        .current_global_loss
+        .filter(|loss| loss.is_finite())
+        .map(|loss| format!("{loss:.6}"))
+        .unwrap_or_else(missing_progress_value_label);
+
+    format!(
+        "active evals {active_evaluations}, cumulative evals {cumulative_evaluations}, current loss {current_loss}, best search loss {best_search_loss}"
+    )
+}
+
+fn missing_progress_value_label() -> String {
+    MISSING_PROGRESS_VALUE_LABEL.to_string()
+}
+
 fn progress_signal_includes_current_item_label(phase: &CalibrationStageProgressPhase) -> bool {
     !matches!(
         phase,
@@ -625,7 +693,7 @@ fn work_item_phase_uses_row_scoped_evaluations(phase: &CalibrationStageProgressP
 }
 
 fn parallel_stage_progress_signal(
-    active_restart_count: Option<usize>,
+    active_candidate_count: Option<usize>,
     valid_completed_units: Option<usize>,
     cumulative_local_evaluation_count: Option<usize>,
     best_global_loss: Option<f64>,
@@ -633,8 +701,8 @@ fn parallel_stage_progress_signal(
 ) -> Option<String> {
     let mut parts = Vec::new();
 
-    if let Some(active_restart_count) = active_restart_count {
-        parts.push(format!("active restarts {active_restart_count}"));
+    if let Some(active_candidate_count) = active_candidate_count {
+        parts.push(format!("active candidates {active_candidate_count}"));
     }
 
     if let Some(valid_completed_units) = valid_completed_units {
@@ -673,10 +741,10 @@ fn work_item_table_columns(
 ) -> Vec<ProgressWorkItemColumn> {
     let mut columns = Vec::new();
 
-    let uses_restart_optimization_columns =
-        work_item_table_uses_restart_optimization_columns(&progress.progress_phase);
+    let uses_population_refinement_columns =
+        work_item_table_uses_population_refinement_columns(&progress.progress_phase);
 
-    if uses_restart_optimization_columns
+    if uses_population_refinement_columns
         || progress.current_evaluation_count.is_some()
         || progress.total_evaluation_budget.is_some()
     {
@@ -694,8 +762,8 @@ fn work_item_table_columns(
         columns.push(ProgressWorkItemColumn::new("pricing_rows", "Rows"));
     }
 
-    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
-        let current_objective_label = if uses_restart_optimization_columns {
+    if uses_population_refinement_columns || progress.current_global_loss.is_some() {
+        let current_objective_label = if uses_population_refinement_columns {
             "Trial loss"
         } else {
             "Cur. loss"
@@ -707,20 +775,14 @@ fn work_item_table_columns(
         ));
     }
 
-    if uses_restart_optimization_columns || progress.current_restart_best_global_loss.is_some() {
-        let best_objective_label = if uses_restart_optimization_columns {
-            "Accepted loss"
-        } else {
-            "Best loss"
-        };
-
-        columns.push(ProgressWorkItemColumn::new(
-            "best_objective",
-            best_objective_label,
-        ));
+    if uses_population_refinement_columns || progress.current_candidate_best_global_loss.is_some() {
+        columns.push(ProgressWorkItemColumn::new("best_objective", "Best loss"));
     }
 
-    if uses_restart_optimization_columns || progress.current_global_loss.is_some() {
+    if uses_population_refinement_columns
+        || progress.current_global_loss.is_some()
+        || progress.current_final_global_loss.is_some()
+    {
         columns.push(ProgressWorkItemColumn::new("final_objective", "Final loss"));
     }
 
@@ -762,6 +824,20 @@ fn work_item_columns(
     work_item_table_columns(progress)
 }
 
+fn work_item_table_has_multiple_rows(
+    progress: &CalibrationStagedRunStageProgressEvent,
+    work_item_label: &Option<String>,
+) -> bool {
+    match (
+        progress.planned_work_item_labels.as_slice(),
+        work_item_label.as_deref(),
+    ) {
+        ([planned_label], Some(work_item_label)) => planned_label != work_item_label,
+        (planned_work_item_labels, _) if planned_work_item_labels.len() > 1 => true,
+        _ => false,
+    }
+}
+
 fn display_work_item_metrics(
     work_item_metrics: Vec<ProgressWorkItemMetric>,
     work_item_label: &Option<String>,
@@ -773,13 +849,13 @@ fn display_work_item_metrics(
     work_item_metrics
 }
 
-fn work_item_table_uses_restart_optimization_columns(
+fn work_item_table_uses_population_refinement_columns(
     progress_phase: &CalibrationStageProgressPhase,
 ) -> bool {
     matches!(
         progress_phase,
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization
+            JointRefinementStageProgressPhase::PopulationRefinement
         )
     )
 }
@@ -788,6 +864,10 @@ fn work_item_table_metrics(
     progress: &CalibrationStagedRunStageProgressEvent,
 ) -> Vec<ProgressWorkItemMetric> {
     let mut metrics = Vec::new();
+
+    let population_finalization_metric_update =
+        work_item_table_uses_population_refinement_columns(&progress.progress_phase)
+            && progress.current_final_global_loss.is_some();
 
     if let Some(evaluation_label) = evaluation_label(
         progress.current_evaluation_count,
@@ -810,12 +890,17 @@ fn work_item_table_metrics(
         metrics.push(ProgressWorkItemMetric::new("pricing_rows", row_label));
     }
 
-    if let Some(current_global_loss) = progress.current_global_loss {
-        let metric_key = if progress.evaluation_progress_percent == Some(100) {
-            "final_objective"
-        } else {
-            "current_objective"
-        };
+    if !population_finalization_metric_update
+        && let Some(current_global_loss) = progress.current_global_loss
+    {
+        let metric_key =
+            if !work_item_table_uses_population_refinement_columns(&progress.progress_phase)
+                && progress.evaluation_progress_percent == Some(100)
+            {
+                "final_objective"
+            } else {
+                "current_objective"
+            };
 
         metrics.push(ProgressWorkItemMetric::new(
             metric_key,
@@ -823,10 +908,20 @@ fn work_item_table_metrics(
         ));
     }
 
-    if let Some(current_restart_best_global_loss) = progress.current_restart_best_global_loss {
+    if !population_finalization_metric_update
+        && let Some(current_candidate_best_global_loss) =
+            progress.current_candidate_best_global_loss
+    {
         metrics.push(ProgressWorkItemMetric::new(
             "best_objective",
-            format!("{current_restart_best_global_loss:.6}"),
+            format!("{current_candidate_best_global_loss:.6}"),
+        ));
+    }
+
+    if let Some(current_final_global_loss) = progress.current_final_global_loss {
+        metrics.push(ProgressWorkItemMetric::new(
+            "final_objective",
+            format!("{current_final_global_loss:.6}"),
         ));
     }
 
@@ -937,7 +1032,7 @@ fn progress_work_item_label(
             HawkesStageProgressPhase::LikelihoodShortlistEvaluation,
         )
         | CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization
+            JointRefinementStageProgressPhase::PopulationRefinement
             | JointRefinementStageProgressPhase::CoarseConsistencyEvaluation
             | JointRefinementStageProgressPhase::OptionSearchTierRefinement
             | JointRefinementStageProgressPhase::OptionSelectionTierEvaluation
@@ -997,18 +1092,6 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::ReportAssembly) => {
             "hawkes_report_assembly"
         }
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::InputPreflight,
-        ) => "observation_models_input_preflight",
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::HawkesSourceActivityFit,
-        ) => "hawkes_source_activity_fit",
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::TimestampBatchingModelFit,
-        ) => "timestamp_batching_model_fit",
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::ReportAssembly,
-        ) => "observation_models_report_assembly",
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
         ) => "continuous_nig_proxy_em",
@@ -1016,8 +1099,8 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
             ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
         ) => "continuous_nig_basin_optimization",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization,
-        ) => "restart_optimization",
+            JointRefinementStageProgressPhase::PopulationRefinement,
+        ) => "population_refinement",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::StageInputResolution,
         ) => "stage_input_resolution",
@@ -1037,6 +1120,9 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
             JointRefinementStageProgressPhase::RuntimeContextAssembly,
         ) => "runtime_context_assembly",
         CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::MarketPressureRefit,
+        ) => "market_pressure_refit",
+        CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
         ) => "option_search_tier_refinement",
         CalibrationStageProgressPhase::JointRefinement(
@@ -1045,6 +1131,24 @@ fn phase_token(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::OptionAuditTierEvaluation,
         ) => "option_audit_tier_evaluation",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::InputPreflight,
+        ) => "return_backfit_input_preflight",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::ContinuousSamplePreparation,
+        ) => "return_backfit_continuous_sample_preparation",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::DynamicClockReplay,
+        ) => "return_backfit_dynamic_clock_replay",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit,
+        ) => "return_backfit_delta_quantile_shape_backfit",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::MarketPressureRefit,
+        ) => "return_backfit_market_pressure_refit",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::ReportAssembly,
+        ) => "return_backfit_report_assembly",
         _ => "stage_progress",
     }
 }
@@ -1090,18 +1194,6 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::Hawkes(HawkesStageProgressPhase::ReportAssembly) => {
             "report assembly"
         }
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::InputPreflight,
-        ) => "input preflight",
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::HawkesSourceActivityFit,
-        ) => "source-activity fit",
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::TimestampBatchingModelFit,
-        ) => "timestamp batching fit",
-        CalibrationStageProgressPhase::ObservationModels(
-            ObservationModelsStageProgressPhase::ReportAssembly,
-        ) => "report assembly",
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::InputPreflight,
         ) => "input preflight",
@@ -1147,6 +1239,24 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
         CalibrationStageProgressPhase::ReturnComponents(
             ReturnComponentsStageProgressPhase::ReportAssembly,
         ) => "report assembly",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::InputPreflight,
+        ) => "input preflight",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::ContinuousSamplePreparation,
+        ) => "continuous sample preparation",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::DynamicClockReplay,
+        ) => "dynamic clock replay",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit,
+        ) => "delta quantile shape backfit",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::MarketPressureRefit,
+        ) => "market pressure refit",
+        CalibrationStageProgressPhase::ReturnBackfit(
+            ReturnBackfitStageProgressPhase::ReportAssembly,
+        ) => "report assembly",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::StageInputResolution,
         ) => "stage input resolution",
@@ -1175,17 +1285,20 @@ fn phase_label(phase: &CalibrationStageProgressPhase) -> &'static str {
             JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
         ) => "baseline coarse consistency",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartSeedGeneration,
-        ) => "restart generation",
+            JointRefinementStageProgressPhase::CandidateSeedGeneration,
+        ) => "candidate seed generation",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartCandidateScreening,
-        ) => "restart screening",
+            JointRefinementStageProgressPhase::CandidateScreening,
+        ) => "candidate screening",
         CalibrationStageProgressPhase::JointRefinement(
-            JointRefinementStageProgressPhase::RestartOptimization,
-        ) => "restart optimization",
+            JointRefinementStageProgressPhase::PopulationRefinement,
+        ) => "population refinement",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
         ) => "coarse consistency evaluation",
+        CalibrationStageProgressPhase::JointRefinement(
+            JointRefinementStageProgressPhase::MarketPressureRefit,
+        ) => "market pressure refit",
         CalibrationStageProgressPhase::JointRefinement(
             JointRefinementStageProgressPhase::OptionSearchTierRefinement,
         ) => "option search tier",

@@ -1233,6 +1233,7 @@ dependencies = [
  "chrono",
  "janiform-foundations",
  "janiform-test-support",
+ "nalgebra 0.34.2",
  "serde",
  "serde_json",
  "statrs",

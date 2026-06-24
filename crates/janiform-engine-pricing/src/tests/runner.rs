@@ -11,6 +11,7 @@ use crate::{
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::LongVarianceState;
+use janiform_model_kernels::market_pressure::MarketPressureState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -41,7 +42,7 @@ fn theta_warm_start_state_records_terminal_theta_hint() {
 
     assert_eq!(warm_start_state.theta_hint(warm_start_key), None);
 
-    warm_start_state.record_theta_solution(warm_start_key, 0.7, -0.2, 0.3);
+    warm_start_state.record_theta_solution(warm_start_key, 0.7, -0.2, 0.3, -0.1);
 
     assert_eq!(warm_start_state.theta_hint(warm_start_key), Some(0.7));
 }
@@ -67,13 +68,13 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
     let mut model_parameters = base_model_parameters.clone();
 
     model_parameters.pricing_kernel_parameters =
-        VanillaOptionPricingKernelParameters::try_new(log_premium_step.exp(), 1.0)
+        VanillaOptionPricingKernelParameters::try_new(log_premium_step.exp(), 1.0, 0.0)
             .expect("positive buy activity premium perturbation should stay valid");
 
     let positive_price = single_node_price(model_parameters.clone());
 
     model_parameters.pricing_kernel_parameters =
-        VanillaOptionPricingKernelParameters::try_new((-log_premium_step).exp(), 1.0)
+        VanillaOptionPricingKernelParameters::try_new((-log_premium_step).exp(), 1.0, 0.0)
             .expect("negative buy activity premium perturbation should stay valid");
 
     let negative_price = single_node_price(model_parameters);
@@ -89,13 +90,13 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
     let mut model_parameters = base_model_parameters.clone();
 
     model_parameters.pricing_kernel_parameters =
-        VanillaOptionPricingKernelParameters::try_new(1.0, log_premium_step.exp())
+        VanillaOptionPricingKernelParameters::try_new(1.0, log_premium_step.exp(), 0.0)
             .expect("positive sell activity premium perturbation should stay valid");
 
     let positive_price = single_node_price(model_parameters.clone());
 
     model_parameters.pricing_kernel_parameters =
-        VanillaOptionPricingKernelParameters::try_new(1.0, (-log_premium_step).exp())
+        VanillaOptionPricingKernelParameters::try_new(1.0, (-log_premium_step).exp(), 0.0)
             .expect("negative sell activity premium perturbation should stay valid");
 
     let negative_price = single_node_price(model_parameters);
@@ -105,6 +106,32 @@ fn grid_batch_pricing_reports_exact_node_price_activity_premium_sensitivity() {
         (node_sensitivity.sell_activity_premium_derivative - finite_difference).abs() <= 1.0e-4,
         "analytic sell activity premium sensitivity {} should match finite difference {}",
         node_sensitivity.sell_activity_premium_derivative,
+        finite_difference,
+    );
+
+    let risk_price_step = 1.0e-5_f64;
+    let mut model_parameters = base_model_parameters.clone();
+
+    model_parameters.pricing_kernel_parameters =
+        VanillaOptionPricingKernelParameters::try_new(1.0, 1.0, risk_price_step)
+            .expect("positive pressure risk price perturbation should stay valid");
+
+    let positive_price = single_node_price(model_parameters.clone());
+
+    model_parameters.pricing_kernel_parameters =
+        VanillaOptionPricingKernelParameters::try_new(1.0, 1.0, -risk_price_step)
+            .expect("negative pressure risk price perturbation should stay valid");
+
+    let negative_price = single_node_price(model_parameters);
+    let finite_difference = (positive_price - negative_price) / (2.0 * risk_price_step);
+
+    assert!(
+        (node_sensitivity.pressure_signed_imbalance_exposure_risk_price_derivative
+            - finite_difference)
+            .abs()
+            <= 1.0e-4,
+        "analytic pressure risk price sensitivity {} should match finite difference {}",
+        node_sensitivity.pressure_signed_imbalance_exposure_risk_price_derivative,
         finite_difference,
     );
 }
@@ -170,10 +197,10 @@ fn single_option_pricing_execution_input_validates_single_maturity_interval() {
                 y_minus_minus: 0.0,
             },
             LongVarianceState::unit(),
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::zero_kappa(),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
                 .expect("observed boundary state should construct"),
         )
         .expect("boundary input should construct"),

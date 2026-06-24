@@ -35,7 +35,6 @@ class CalibrationExecutionMode(StrEnum):
 class CalibrationStage(StrEnum):
     SEASONALITY = "seasonality"
     HAWKES = "hawkes"
-    OBSERVATION_MODELS = "observation_models"
     RETURN_COMPONENTS = "return_components"
     LONG_VARIANCE = "long_variance"
     NEWS_SHOCKS = "news_shocks"

@@ -519,14 +519,10 @@ fn run_fixture_case(
                 y_minus_plus: fixture_case.initial_excitation_state.y_minus_plus,
                 y_minus_minus: fixture_case.initial_excitation_state.y_minus_minus,
             },
-            mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                    .expect("zero-kappa endogenous mean reversion should construct"),
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
                 interval_factor_grid.metadata.interval_alignment_policy,
                 0.0,
-                0.0,
-                vec![0.0; fixture_case.horizon_interval_count],
                 vec![0.0; fixture_case.horizon_interval_count],
                 vec![
                     interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
@@ -537,18 +533,25 @@ fn run_fixture_case(
                 format!("invalid disabled mean-reversion runtime anchors: {source}")
             })?,
             initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0,
             )
             .map_err(|source| {
                 format!("invalid disabled mean-reversion boundary state: {source}")
             })?,
+            market_pressure_parameters:
+                janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(
+                ),
+            initial_market_pressure_state:
+                janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
             interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+            timestamp_batching_surface:
+                janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
+                ),
             calendar_registry: calendar_registry.clone(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),

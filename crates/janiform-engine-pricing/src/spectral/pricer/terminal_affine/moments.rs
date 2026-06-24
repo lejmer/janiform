@@ -64,14 +64,20 @@ pub(super) fn terminal_affine_first_log_moment(
 #[cfg(test)]
 mod tests {
     use janiform_foundations::numeric::square_root_machine_epsilon;
+    use janiform_model_kernels::market_pressure::{
+        MarketPressureParameters, MarketPressureState, MarketPressureTransitionRates,
+    };
+    use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
 
     use super::super::core::{
         TerminalAffineExpectedLogReturn, TerminalAffineExpectedLogReturnInput,
         TerminalAffineMeasurePolicy, solve_terminal_affine_expected_log_return,
     };
-    use crate::VanillaOptionPricingIntervalFactors;
     use crate::grids::SpectralThetaWarmStartKey;
-    use crate::tests::support::build_valid_vanilla_option_request;
+    use crate::tests::support::{
+        build_unit_interval_factor_grids, build_valid_vanilla_option_request,
+    };
+    use crate::{VanillaOptionPricingModelParameters, VanillaOptionPricingRequest};
 
     #[test]
     fn risk_neutral_projection_exposes_arithmetic_first_price_moment() {
@@ -92,13 +98,80 @@ mod tests {
         );
     }
 
+    #[test]
+    fn physical_projection_scales_market_pressure_anchor_drift_by_return_clock_exposure() {
+        let neutral_exposure_contribution =
+            market_pressure_anchor_drift_contribution(ReturnClockExposureParameters::neutral());
+
+        let amplified_exposure_contribution = market_pressure_anchor_drift_contribution(
+            ReturnClockExposureParameters::try_new(3.0, 3.0)
+                .expect("amplified return-clock exposure should construct"),
+        );
+
+        assert!(neutral_exposure_contribution > 0.0);
+        assert!(amplified_exposure_contribution > neutral_exposure_contribution);
+    }
+
+    fn market_pressure_anchor_drift_contribution(
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+    ) -> f64 {
+        let active_projection = solve_test_expected_projection(
+            &market_pressure_projection_request(1.0, return_clock_exposure_parameters),
+            TerminalAffineMeasurePolicy::Physical,
+        );
+
+        let inactive_projection = solve_test_expected_projection(
+            &market_pressure_projection_request(0.0, return_clock_exposure_parameters),
+            TerminalAffineMeasurePolicy::Physical,
+        );
+
+        active_projection.expected_log_return - inactive_projection.expected_log_return
+    }
+
+    fn market_pressure_projection_request(
+        anchor_drift_per_signed_balance: f64,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+    ) -> VanillaOptionPricingRequest {
+        let mut pricing_request = build_valid_vanilla_option_request();
+
+        let base_parameters = pricing_request.model_parameters.clone();
+
+        let market_pressure_parameters = MarketPressureParameters::try_new(
+            vec![1.0],
+            MarketPressureTransitionRates::single_state(),
+            anchor_drift_per_signed_balance,
+        )
+        .expect("market-pressure parameters should construct");
+
+        pricing_request
+            .boundary_input
+            .market_pressure_boundary_state =
+            MarketPressureState::neutral_for_parameters(&market_pressure_parameters)
+                .expect("market-pressure boundary state should construct");
+
+        pricing_request.model_parameters = VanillaOptionPricingModelParameters::try_new(
+            base_parameters.hawkes_kernel_parameters,
+            base_parameters.news_process_configuration,
+            base_parameters.nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
+            base_parameters.long_variance_parameters,
+            market_pressure_parameters,
+            base_parameters.pricing_kernel_parameters,
+        )
+        .expect("model parameters should construct");
+
+        pricing_request
+            .validate()
+            .expect("market-pressure projection request should validate");
+
+        pricing_request
+    }
+
     fn solve_test_expected_projection(
-        pricing_request: &crate::VanillaOptionPricingRequest,
+        pricing_request: &VanillaOptionPricingRequest,
         measure_policy: TerminalAffineMeasurePolicy,
     ) -> TerminalAffineExpectedLogReturn {
-        let interval_factor_grids = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-            .expect("interval factors should construct")];
-
+        let interval_factor_grids = build_unit_interval_factor_grids(1);
         let interval_deltas = [1.0_f64];
 
         let driver_parameters = pricing_request

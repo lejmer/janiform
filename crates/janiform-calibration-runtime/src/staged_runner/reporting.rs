@@ -83,17 +83,6 @@ pub(super) fn diagnostic_runtime_profile_entry_for_stage_report(
                     .unwrap_or(0),
             }
         }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
-            CalibrationDiagnosticRuntimeProfileEntry {
-                component_id: "stage.observation_models".to_string(),
-                elapsed_seconds,
-                evaluation_count: report
-                    .metadata
-                    .as_ref()
-                    .map(|metadata| metadata.observed_open_session_return_count)
-                    .unwrap_or(0),
-            }
-        }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             CalibrationDiagnosticRuntimeProfileEntry {
                 component_id: "stage.return_components".to_string(),
@@ -228,26 +217,6 @@ pub(super) fn retained_stage_report(
                     fitted_stage_payload,
                     metadata: report.metadata.clone(),
                     failure,
-                },
-            ))
-        }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
-            let fitted_stage_payload = report
-                .fitted_stage_payload
-                .as_ref()
-                .map(|payload| payload.without_source_activity_vector());
-
-            CalibrationStagedRunStageReport::ObservationModels(Box::new(
-                crate::stages::observation_models::ObservationModelsStageExecutionReport {
-                    schema_version: report.schema_version,
-                    stage: report.stage,
-                    status: report.status,
-                    run_id: report.run_id.clone(),
-                    execution_mode: report.execution_mode,
-                    handoff_policy: report.handoff_policy,
-                    fitted_stage_payload,
-                    metadata: report.metadata.clone(),
-                    failure: report.failure.clone(),
                 },
             ))
         }

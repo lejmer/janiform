@@ -15,6 +15,7 @@ doctest = false
 [dependencies]
 chrono = { workspace = true }
 janiform-foundations = { path = "../janiform-foundations" }
+nalgebra = { workspace = true }
 serde = { workspace = true }
 statrs = { workspace = true }
 

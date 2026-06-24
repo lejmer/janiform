@@ -1,12 +1,11 @@
-pub(crate) mod adaptive_direct_search;
 pub(crate) mod coarse_data;
 pub(crate) mod hawkes;
 pub(crate) mod joint_metrics;
 pub(crate) mod joint_refinement;
 pub(crate) mod long_variance;
 pub(crate) mod mean_reversion;
+pub(crate) mod model_selection;
 pub(crate) mod news_shocks;
-pub(crate) mod observation_models;
 pub(crate) mod optimization;
 pub(crate) mod parallelism;
 pub(crate) mod progress;

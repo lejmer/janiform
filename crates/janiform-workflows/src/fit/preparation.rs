@@ -120,13 +120,13 @@ pub struct FitPreparationConfiguration {
     /// Policy for how much tick evidence slower objectives may consume.
     #[serde(default)]
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
-    /// Optional dynamics restart budget override.
+    /// Optional dynamics candidate budget override.
     #[serde(default)]
-    pub dynamics_search_restart_candidate_budget: Option<usize>,
+    pub dynamics_search_candidate_budget: Option<usize>,
     /// Calibration search effort policy.
     #[serde(default)]
     pub calibration_effort: Option<CalibrationEffortOptions>,
-    /// Treat admissibility warnings as hard fit errors.
+    /// Treat calibration warnings as hard fit errors.
     #[serde(default)]
     pub treat_calibration_warnings_as_errors: bool,
     /// Optional joint option-refinement candidate count override.
@@ -141,12 +141,6 @@ pub struct FitPreparationConfiguration {
     /// Opt-in extended diagnostics.
     #[serde(default)]
     pub diagnostics: CalibrationDiagnosticsRequest,
-    /// Optional stylized-fact Huber cutoff override.
-    #[serde(default)]
-    pub stylized_fact_huber_cutoff: Option<f64>,
-    /// Optional stylized-fact admissibility z-threshold override.
-    #[serde(default)]
-    pub stylized_fact_admissibility_z_threshold: Option<f64>,
     /// Default mean-reversion configuration.
     pub default_endogenous_mean_reversion_configuration:
         CalibrationMarketDataMeanReversionConfiguration,
@@ -730,10 +724,10 @@ fn build_preparation_request(
             .request
             .configuration
             .tick_objective_data_usage_policy,
-        dynamics_search_restart_candidate_budget: input
+        dynamics_search_candidate_budget: input
             .request
             .configuration
-            .dynamics_search_restart_candidate_budget,
+            .dynamics_search_candidate_budget,
         calibration_effort: input.request.configuration.calibration_effort,
         treat_calibration_warnings_as_errors: input
             .request
@@ -752,11 +746,6 @@ fn build_preparation_request(
             .configuration
             .joint_refinement_audit_option_pricing_enabled,
         diagnostics: input.request.configuration.diagnostics.clone(),
-        stylized_fact_huber_cutoff: input.request.configuration.stylized_fact_huber_cutoff,
-        stylized_fact_admissibility_z_threshold: input
-            .request
-            .configuration
-            .stylized_fact_admissibility_z_threshold,
         known_news_inputs,
         mean_reversion: mean_reversion_configuration(input.request, input.workflow_scope),
     })

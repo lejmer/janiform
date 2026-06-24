@@ -1,3 +1,5 @@
+mod support;
+
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformActivityLoadings, ExponentialAffineTransformEquationSpecification,
     ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationStatus,
@@ -22,6 +24,7 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
+use janiform_model_kernels::market_pressure::MarketPressureState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -31,6 +34,7 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
+use support::neutral_market_pressure_parameters;
 
 #[test]
 fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_consumers() {
@@ -42,7 +46,7 @@ fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_co
     .expect("pricing integration settings should construct");
 
     let pricing_result =
-        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+        solve_exponential_affine_transform_with_settings(transform_input.clone(), solver_settings)
             .expect("pricing consumer solve should succeed");
     let sufficient_statistics_result =
         solve_exponential_affine_transform_for_sufficient_statistics_sampling(transform_input)
@@ -69,7 +73,7 @@ fn explicit_settings_solver_entrypoint_matches_optional_settings_entrypoint() {
     .expect("pricing integration settings should construct");
 
     let pricing_result =
-        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+        solve_exponential_affine_transform_with_settings(transform_input.clone(), solver_settings)
             .expect("pricing solve with explicit settings should succeed");
     let shared_result = solve_exponential_affine_transform_with_optional_settings(
         transform_input,
@@ -97,13 +101,13 @@ fn sufficient_statistics_consumer_calls_shared_solver_entrypoint_with_interval_p
 
     let short_interval_result =
         solve_exponential_affine_transform_for_sufficient_statistics_sampling_with_settings(
-            short_interval_input,
+            short_interval_input.clone(),
             solver_settings,
         )
         .expect("sufficient-statistics solve for short interval should succeed");
     let long_interval_result =
         solve_exponential_affine_transform_for_sufficient_statistics_sampling_with_settings(
-            long_interval_input,
+            long_interval_input.clone(),
             solver_settings,
         )
         .expect("sufficient-statistics solve for long interval should succeed");
@@ -183,6 +187,7 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("fixture gamma mark configuration should construct"),
             LongVarianceParameters::neutral(),
+            neutral_market_pressure_parameters(),
         )
         .expect("fixture equation specification should construct"),
         ExponentialAffineTransformActivityLoadings::total_activity(
@@ -192,6 +197,8 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        0.0,
         1.1,
         ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
             .expect("fixture news intensity should construct"),
@@ -204,6 +211,7 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
             y_minus_plus: 0.3,
             y_minus_minus: 0.5,
         },
+        MarketPressureState::neutral(),
     )
     .expect("fixture transform input should construct")
 }
@@ -265,6 +273,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         .expect("pricing fixture NIG configuration should construct"),
         ReturnClockExposureParameters::neutral(),
         janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
+        neutral_market_pressure_parameters(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing fixture model parameters should construct");
@@ -279,10 +288,10 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
             0,
             boundary_state,
             janiform_model_kernels::long_variance::LongVarianceState::unit(),
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-kappa endogenous fitted parameters should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::zero_kappa(),
             interval_delta,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
                 .expect("zero observed boundary state should construct"),
         )
         .expect("endogenous anchored boundary input should construct"),

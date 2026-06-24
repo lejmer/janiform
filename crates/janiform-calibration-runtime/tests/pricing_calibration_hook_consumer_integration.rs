@@ -27,6 +27,7 @@ use janiform_foundations::time::NANOS_PER_HOUR;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -167,6 +168,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             .expect("NIG shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
+        MarketPressureParameters::no_anchor_impact(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("pricing model parameters should construct");
@@ -185,10 +187,10 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
                 y_minus_minus: 0.4,
             },
             janiform_model_kernels::long_variance::LongVarianceState::unit(),
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion parameters should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::zero_kappa(),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
                 .expect("zero observed boundary state should construct"),
         )
         .expect("endogenous anchored boundary input should construct"),

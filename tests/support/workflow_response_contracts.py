@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Optional
 
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
@@ -32,6 +33,7 @@ from janiform.pricing import (
 )
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation import SeededTickEventSide
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 from janiform.simulation.coarse import (
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
@@ -42,7 +44,7 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
-    TimestampBatchingObservationModel,
+    TimestampBatchingSurface,
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
 )
@@ -55,7 +57,7 @@ from janiform.simulation.shared import (
     HawkesKernelParameters,
 )
 from tests.support.calibration import (
-    build_disabled_timestamp_batching_observation_model_payload,
+    build_disabled_timestamp_batching_surface_payload,
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
 )
@@ -355,8 +357,8 @@ def _build_simulation_direct_response_payload(
                 "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "transition_ordering_policy": "deterministic_tie_break.v1",
                 "timestamp_representation_policy": SEEDED_TIMESTAMP_REPRESENTATION_POLICY,
-                "timestamp_batching_observation_model": (
-                    build_disabled_timestamp_batching_observation_model_payload()
+                "timestamp_batching_surface": (
+                    build_disabled_timestamp_batching_surface_payload()
                 ),
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
@@ -368,8 +370,8 @@ def _build_simulation_direct_response_payload(
                 "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
                 "event_ordering_policy": "deterministic_tie_break.v1",
                 "timestamp_representation_policy": SEEDED_TIMESTAMP_REPRESENTATION_POLICY,
-                "timestamp_batching_observation_model": (
-                    build_disabled_timestamp_batching_observation_model_payload()
+                "timestamp_batching_surface": (
+                    build_disabled_timestamp_batching_surface_payload()
                 ),
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
@@ -410,7 +412,7 @@ def _build_simulation_direct_response_payload(
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
                     "anchor_value": 0.0,
-                    "pressure_state": 0.0,
+                    "market_pressure_state": 0.0,
                     "deviation_from_anchor": 0.05,
                     "cumulative_core_log_return": 0.05,
                 }
@@ -424,7 +426,7 @@ def _build_simulation_direct_response_payload(
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
                     "anchor_value": 0.0,
-                    "pressure_state": 0.0,
+                    "market_pressure_state": 0.0,
                     "deviation_from_anchor": 0.05,
                 }
             ],
@@ -501,11 +503,15 @@ def _build_simulation_boundary_response_payload(
             ),
         ),
         initial_excitation_state=_valid_excitation_state(),
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload(),
+        ),
+        initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
         interval_factor_grid=interval_factor_grid_contract,
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
@@ -668,8 +674,8 @@ def _run_simulation_invalid_response_side(_calendar_registry: CalendarRegistry) 
                 "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
                 "transition_ordering_policy": "deterministic_tie_break.v1",
                 "timestamp_representation_policy": SEEDED_TIMESTAMP_REPRESENTATION_POLICY,
-                "timestamp_batching_observation_model": (
-                    build_disabled_timestamp_batching_observation_model_payload()
+                "timestamp_batching_surface": (
+                    build_disabled_timestamp_batching_surface_payload()
                 ),
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
@@ -695,7 +701,7 @@ def _run_simulation_invalid_response_side(_calendar_registry: CalendarRegistry) 
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
                     "anchor_value": 0.0,
-                    "pressure_state": 0.0,
+                    "market_pressure_state": 0.0,
                     "deviation_from_anchor": 0.05,
                     "cumulative_core_log_return": 0.05,
                 }

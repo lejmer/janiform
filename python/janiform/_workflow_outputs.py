@@ -107,18 +107,28 @@ def simulation_output_columns(
     *,
     include_side: bool = True,
 ) -> tuple[str, ...]:
+    return _simulation_output_columns(
+        preferences,
+        include_side=include_side,
+        include_market_pressure_state=True,
+    )
+
+
+def _simulation_output_columns(
+    preferences: SimulationOutputPreferences,
+    *,
+    include_side: bool,
+    include_market_pressure_state: bool = True,
+) -> tuple[str, ...]:
     columns = [preferences.timestamp_column, simulation_output_price_column(preferences)]
     if include_side:
         columns.append(simulation_output_side_column(preferences))
 
-    columns.extend(
-        (
-            "observed_log_price",
-            "anchor_value",
-            "pressure_state",
-            "deviation_from_anchor",
-        )
-    )
+    columns.extend(("observed_log_price", "anchor_value"))
+    if include_market_pressure_state:
+        columns.append("market_pressure_state")
+
+    columns.append("deviation_from_anchor")
 
     return tuple(columns)
 
@@ -165,14 +175,14 @@ def persist_seeded_tick_simulation(
                 timezone_name=preferences.timestamp_timezone,
                 output_path=resolved_output_path,
             )
-            output_row = _seeded_tick_output_row(
+            output_row = _simulation_output_row(
                 timestamp_value=timestamp_value,
                 timestamp_column=preferences.timestamp_column,
                 price_value=preferences.reference_price * math.exp(record.observed_log_price),
                 side_value=None if record.side is None else record.side.value,
                 observed_log_price=record.observed_log_price,
                 anchor_value=record.anchor_value,
-                pressure_state=record.pressure_state,
+                market_pressure_state=record.market_pressure_state,
                 deviation_from_anchor=record.deviation_from_anchor,
                 preferences=preferences,
                 side_column=side_column,
@@ -221,7 +231,11 @@ def persist_coarse_simulation(
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
-        columns=simulation_output_columns(preferences, include_side=False),
+        columns=_simulation_output_columns(
+            preferences,
+            include_side=False,
+            include_market_pressure_state=False,
+        ),
     )
 
     try:
@@ -235,7 +249,7 @@ def persist_coarse_simulation(
                 continue
 
             record_batch.append(
-                _seeded_tick_output_row(
+                _simulation_output_row(
                     timestamp_value=_convert_timestamp_for_output(
                         record.interval_end_utc_nanos,
                         timezone_name=preferences.timestamp_timezone,
@@ -246,7 +260,7 @@ def persist_coarse_simulation(
                     side_value=None,
                     observed_log_price=record.observed_log_price_end,
                     anchor_value=record.anchor_value_end,
-                    pressure_state=record.pressure_state_end,
+                    market_pressure_state=None,
                     deviation_from_anchor=record.deviation_from_anchor_end,
                     preferences=preferences,
                     side_column=None,
@@ -291,7 +305,7 @@ def _file_format_for_simulation_path(output_path: Path, default_file_format: str
     return suffix
 
 
-def _seeded_tick_output_row(
+def _simulation_output_row(
     *,
     timestamp_value: datetime | str,
     timestamp_column: str,
@@ -299,7 +313,7 @@ def _seeded_tick_output_row(
     side_value: Optional[str],
     observed_log_price: float,
     anchor_value: float,
-    pressure_state: float,
+    market_pressure_state: Optional[float],
     deviation_from_anchor: float,
     preferences: SimulationOutputPreferences,
     side_column: Optional[str],
@@ -314,7 +328,9 @@ def _seeded_tick_output_row(
 
     output_row["observed_log_price"] = observed_log_price
     output_row["anchor_value"] = anchor_value
-    output_row["pressure_state"] = pressure_state
+    if market_pressure_state is not None:
+        output_row["market_pressure_state"] = market_pressure_state
+
     output_row["deviation_from_anchor"] = deviation_from_anchor
 
     return output_row

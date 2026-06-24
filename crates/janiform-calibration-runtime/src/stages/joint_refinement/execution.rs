@@ -41,21 +41,17 @@ pub(crate) use inputs::{
 };
 #[cfg(test)]
 pub(crate) use inputs::{sampled_observed_tick_returns, tick_shape_sample_target_count};
-#[cfg(test)]
-pub(crate) use optimization::joint_refinement_restart_full_vector_direct_search_settings;
 pub(crate) use optimization::{
-    SensitivityRepairEvaluation, SensitivityRepairSeedPolicy,
-    desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
-    optimize_restart_seeds, precheck_seed_summary_workload,
-    sensitivity_repair_screening_evaluation_budget, sensitivity_repair_seed_candidates,
+    desired_joint_refinement_candidate_budget, joint_refinement_budget_schedule,
+    optimize_candidate_seeds, precheck_seed_summary_workload,
 };
 pub(crate) use option_refinement::{
-    desired_joint_refinement_option_refinement_candidate_count,
-    pricing_block_search_coordinate_count, run_option_refinement,
+    OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT,
+    desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
 };
 #[cfg(test)]
 pub(crate) use pipeline::{
-    ensure_valid_selected_restart_outcome,
+    ensure_valid_selected_candidate_outcome,
     option_refinement_candidate_frontier_from_selected_outcomes,
 };
 pub(crate) use pricing_context::{
@@ -64,41 +60,41 @@ pub(crate) use pricing_context::{
     build_option_pricing_context, resolve_option_surface_tier_pricing_artifact,
 };
 pub(crate) use report::{
-    build_joint_finalist_seed_summaries,
+    build_joint_candidate_diagnostics, build_joint_finalist_seed_summaries,
     build_joint_refinement_like_stage_failure_report_with_runtime_profile,
-    build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
-    build_joint_simulation_summaries, option_pricing_execution_failure_message,
-    simulation_infrastructure_failure_message,
+    build_joint_refinement_stage_failure_report, build_joint_simulation_summaries,
+    option_pricing_execution_failure_message, simulation_infrastructure_failure_message,
 };
 pub(crate) use resume_state::{
-    JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
+    JointRefinementResumeStore, PersistedCandidateSelectionArtifacts,
     option_pricing_context_fingerprint,
 };
 #[cfg(test)]
 pub(crate) use selection::admissibility_threshold_from_sample_count;
 pub(crate) use selection::{
-    build_joint_candidate_frontier_diagnostics, joint_restart_outcome_is_admissible,
-    select_restart_outcomes_with_lazy_coarse_consistency,
+    build_joint_candidate_frontier_diagnostics, joint_candidate_outcome_is_admissible,
+    select_candidate_outcomes_with_lazy_coarse_consistency,
 };
 pub(crate) use shared::{
-    build_exchange_calendar_registry_artifact, build_halton_restart_id,
-    deduplicate_restart_seed_candidates, elapsed_millis, halton_parameter_vector,
+    build_exchange_calendar_registry_artifact, build_halton_candidate_id,
+    deduplicate_candidate_seeds, elapsed_millis, halton_parameter_vector,
     joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
-    ordered_parameter_bits, planned_restart_work_item_labels, with_joint_refinement_thread_pool,
+    ordered_parameter_bits, planned_candidate_work_item_labels, with_joint_refinement_thread_pool,
 };
 pub(crate) use state::{
     JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT,
-    JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JointRefinementActiveParameterLayout,
-    JointRefinementAggregatedLikelihoodContextCacheKey,
+    JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR, JOINT_REFINEMENT_PRESSURE_RISK_PRICE_LOG_DENSITY_BOUND,
+    JointRefinementActiveParameterLayout, JointRefinementAggregatedLikelihoodContextCacheKey,
     JointRefinementAggregatedLikelihoodContexts, JointRefinementCandidateEvaluation,
-    JointRefinementCoarseConsistencySummary, JointRefinementContext,
-    JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation,
-    JointRefinementFidelityTier, JointRefinementObjectiveCacheKey, JointRefinementObservedData,
+    JointRefinementCandidateOutcome, JointRefinementCoarseConsistencySummary,
+    JointRefinementContext, JointRefinementDeterministicCacheKey,
+    JointRefinementDeterministicEvaluation, JointRefinementFidelityTier,
+    JointRefinementObjectiveCacheKey, JointRefinementObservedData,
     JointRefinementObservedReturnShapeStatisticCacheKey, JointRefinementOptionPricingCacheKey,
     JointRefinementOptionTierPricingArtifact, JointRefinementProfilingState,
-    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
-    JointRefinementReturnShapeHorizon, JointRefinementReturnShapeStatisticEstimate,
-    JointRefinementSeedSummaryCacheKey, JointRefinementStageRuntimeHandoff,
+    JointRefinementRawAdmissibilityMetrics, JointRefinementReturnShapeHorizon,
+    JointRefinementReturnShapeStatisticEstimate, JointRefinementSeedSummaryCacheKey,
+    JointRefinementStageRuntimeHandoff,
 };
 #[cfg(test)]
-pub(crate) use test_support::test_joint_fitted_parameters;
+pub(crate) use test_support::{test_joint_candidate_outcome, test_joint_fitted_parameters};

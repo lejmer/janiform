@@ -1,7 +1,6 @@
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
@@ -22,6 +21,8 @@ from janiform.simulation import (
     HawkesKernelParameters,
     LongVarianceParameters,
     LongVarianceState,
+    MarketPressureParameters,
+    MarketPressureState,
     MeanReversionRuntimeIntervalAnchors,
 )
 from janiform.simulation.coarse import (
@@ -103,10 +104,24 @@ def build_news_process_configuration() -> NewsProcessConfiguration:
 
 
 def build_mean_reversion_fitted_parameters() -> MeanReversionFittedParameters:
-    return MeanReversionFittedParameters(
-        kappa=0.35,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
+    return MeanReversionFittedParameters(kappa=0.35)
+
+
+def build_market_pressure_parameters() -> MarketPressureParameters:
+    return MarketPressureParameters.from_mapping(
+        {
+            "side_imbalance_levels": [0.0],
+            "transition_rates": {
+                "upward_transition_rates": [],
+                "downward_transition_rates": [],
+            },
+            "anchor_drift_per_signed_balance": 0.0,
+        }
     )
+
+
+def build_market_pressure_state() -> MarketPressureState:
+    return MarketPressureState(state_weights=[1.0])
 
 
 def build_mean_reversion_runtime_contracts(
@@ -124,15 +139,12 @@ def build_mean_reversion_runtime_contracts(
     runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors(
         interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
         start_anchor_value=start_anchor_value,
-        start_pressure_state=0.0,
         end_anchor_values=tuple(start_anchor_value for _ in range(interval_count)),
-        end_pressure_states=tuple(0.0 for _ in range(interval_count)),
         interval_deltas=tuple(interval_delta_hours for _ in range(interval_count)),
     )
     initial_boundary_state = MeanReversionBoundaryState(
         observed_log_price=observed_log_price,
         anchor_value=start_anchor_value,
-        pressure_state=0.0,
         deviation=observed_log_price - start_anchor_value,
     )
 
@@ -155,11 +167,11 @@ def build_pricing_boundary_input() -> AnchoredVanillaOptionPricingBoundaryInput:
         hawkes_boundary_state=build_excitation_state(),
         long_variance_boundary_state=LongVarianceState.unit(),
         mean_reversion_fitted_parameters=build_mean_reversion_fitted_parameters(),
+        market_pressure_boundary_state=build_market_pressure_state(),
         interval_delta=1.0,
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.25,
             anchor_value=0.25,
-            pressure_state=0.0,
             deviation=0.0,
         ),
     )
@@ -172,6 +184,7 @@ def build_pricing_model_parameters() -> VanillaOptionPricingModelParameters:
         nig_shared_plus_shift_configuration=build_nig_shared_plus_shift_configuration(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
+        market_pressure_parameters=build_market_pressure_parameters(),
         pricing_kernel_parameters=VanillaOptionPricingKernelParameters.identity(),
     )
 
@@ -205,6 +218,7 @@ def build_sufficient_statistics_model_inputs(
                 shape_k=1.8,
             ),
             long_variance_parameters=LongVarianceParameters.neutral(),
+            market_pressure_parameters=build_market_pressure_parameters(),
         ),
         nig_shared_plus_shift_configuration=build_nig_shared_plus_shift_configuration(),
         initial_excitation_state=HawkesExcitationState(
@@ -215,6 +229,7 @@ def build_sufficient_statistics_model_inputs(
         ),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
+        initial_market_pressure_state=build_market_pressure_state(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

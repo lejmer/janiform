@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Any
 
 from janiform.calibration.market_data import (
-    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
-    CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
-    MarketDataTimestampBatchingObservationDiagnosticState,
+    CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY,
+    CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION,
+    MarketDataTimestampBatchingSurfaceDiagnosticState,
 )
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
@@ -21,10 +21,7 @@ from janiform.calibration.staged import (
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
 )
-from janiform.mean_reversion import (
-    MeanReversionAnchorModel,
-    MeanReversionFittedParameters,
-)
+from janiform.mean_reversion import MeanReversionFittedParameters
 
 
 _PREPARED_EXECUTION_PAYLOAD_PATH = (
@@ -44,7 +41,7 @@ def build_empty_mean_reversion_series_summaries_payload() -> dict[str, dict[str,
 
     return {
         "core_expected_increments": empty_summary.copy(),
-        "pressure_state_path": empty_summary.copy(),
+        "market_pressure_state_path": empty_summary.copy(),
         "boundary_anchor_values": empty_summary.copy(),
         "deviations": empty_summary.copy(),
         "residuals": empty_summary.copy(),
@@ -62,12 +59,25 @@ def build_neutral_long_variance_parameters_payload() -> dict[str, Any]:
     return {
         "mean_reversion_rate": 1.0,
         "vol_of_vol": 0.0,
+        "stationary_return_energy_rate_per_hour": 0.0,
+        "return_energy_loading": 0.0,
         "buy_event_loading": 0.0,
         "sell_event_loading": 0.0,
     }
 
 
-def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
+def build_no_anchor_impact_market_pressure_parameters_payload() -> dict[str, Any]:
+    return {
+        "side_imbalance_levels": [0.0],
+        "transition_rates": {
+            "upward_transition_rates": [],
+            "downward_transition_rates": [],
+        },
+        "anchor_drift_per_signed_balance": 0.0,
+    }
+
+
+def build_nominal_price_discretization_surface_payload() -> dict[str, Any]:
     return {
         "tick_size": None,
         "tick_size_source": "unavailable",
@@ -76,7 +86,7 @@ def build_nominal_tick_grid_observation_model_payload() -> dict[str, Any]:
     }
 
 
-def build_disabled_timestamp_batching_observation_model_payload() -> dict[str, Any]:
+def build_disabled_timestamp_batching_surface_payload() -> dict[str, Any]:
     return {
         "schema_version": "model.timestamp_batching_observation.v1",
         "mode": "disabled",
@@ -95,31 +105,31 @@ def build_disabled_timestamp_batching_observation_model_payload() -> dict[str, A
     }
 
 
-def build_disabled_timestamp_batching_observation_diagnostic_payload(
+def build_disabled_timestamp_batching_surface_diagnostic_payload(
     *,
     return_components_stage_selected: bool,
 ) -> dict[str, Any]:
-    diagnostic_state = MarketDataTimestampBatchingObservationDiagnosticState
+    diagnostic_state = MarketDataTimestampBatchingSurfaceDiagnosticState
 
     if return_components_stage_selected:
         state = diagnostic_state.DISABLED_NO_DETECTABLE_BATCHING
         message = (
-            "timestamp batching observation evaluated: "
+            "timestamp batching surface evaluated: "
             "disabled because no same-session duplicate timestamp quantum was detected"
         )
     else:
         state = diagnostic_state.NOT_EVALUATED_RETURN_COMPONENTS_NOT_SELECTED
         message = (
-            "timestamp batching observation not evaluated because return components are not "
+            "timestamp batching surface not evaluated because return components are not "
             "selected"
         )
 
     return {
-        "schema_version": CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
-        "diagnostic_policy": CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
+        "schema_version": CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION,
+        "diagnostic_policy": CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY,
         "state": state.value,
         "return_components_stage_selected": return_components_stage_selected,
-        "observation_model": build_disabled_timestamp_batching_observation_model_payload(),
+        "timestamp_batching_surface": build_disabled_timestamp_batching_surface_payload(),
         "message": message,
     }
 
@@ -240,10 +250,7 @@ def build_endogenous_mean_reversion_fitted_parameters_payload(
     *,
     kappa: float,
 ) -> dict[str, Any]:
-    return MeanReversionFittedParameters(
-        kappa=kappa,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-    ).to_payload()
+    return MeanReversionFittedParameters(kappa=kappa).to_payload()
 
 
 def build_valid_execution_input_model(
@@ -263,7 +270,6 @@ def build_valid_execution_input_model(
             selected_stages=(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
-                CalibrationStage.OBSERVATION_MODELS,
                 CalibrationStage.RETURN_COMPONENTS,
                 CalibrationStage.LONG_VARIANCE,
                 CalibrationStage.NEWS_SHOCKS,
@@ -282,7 +288,6 @@ def build_valid_execution_input_model(
             optimizer_settings_by_stage=(
                 _solver_settings(CalibrationStage.SEASONALITY),
                 _solver_settings(CalibrationStage.HAWKES),
-                _solver_settings(CalibrationStage.OBSERVATION_MODELS),
                 _solver_settings(CalibrationStage.RETURN_COMPONENTS),
                 _solver_settings(CalibrationStage.LONG_VARIANCE),
                 _solver_settings(CalibrationStage.NEWS_SHOCKS),

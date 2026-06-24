@@ -12,12 +12,10 @@ use super::return_components_inputs::{
     ReturnComponentsCandidateGenerationInputBuildInput,
     build_return_components_candidate_generation_input,
     derive_mean_reversion_open_session_grid_inputs,
-    derive_observation_models_open_session_timestamp_transitions,
 };
 use super::seasonality_input::build_seasonality_stage_input;
 use super::session_windows::required_definition_and_timezone;
 use super::tick_resolution::preprocess_tick_records;
-use crate::execution_bridge::CalibrationObservationModelsStageExecutionInput;
 
 pub fn calibrate_market_data_translation_request(
     request: MarketDataTranslationCalibrationRequest,
@@ -74,7 +72,6 @@ pub fn calibrate_market_data_translation_request(
 
     let (
         return_components_candidate_generation_input,
-        observation_models_stage_input,
         mean_reversion_open_session_price_observations,
         mean_reversion_observed_session_duration_hours,
         material_close_open_gap_count,
@@ -101,29 +98,21 @@ pub fn calibrate_market_data_translation_request(
         let mean_reversion_grid_inputs = derive_mean_reversion_open_session_grid_inputs(
             tick_summary.open_price_ticks.as_slice(),
         );
-        let observation_models_stage_input = CalibrationObservationModelsStageExecutionInput {
-            open_session_timestamp_transitions:
-                derive_observation_models_open_session_timestamp_transitions(
-                    tick_summary.open_price_ticks.as_slice(),
-                ),
-        };
 
         (
             Some(output.0),
-            Some(observation_models_stage_input),
             Some(mean_reversion_grid_inputs.0),
             Some(mean_reversion_grid_inputs.1),
             output.1,
         )
     } else {
-        (None, None, None, None, 0)
+        (None, None, None, 0)
     };
 
     Ok(MarketDataTranslationCalibrationOutput {
         seasonality_stage_input,
         hawkes_candidate_inputs,
         hawkes_event_side_codes,
-        observation_models_stage_input,
         return_components_candidate_generation_input,
         mean_reversion_open_session_price_observations,
         mean_reversion_observed_session_duration_hours,

@@ -8,7 +8,7 @@ use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnCom
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 use super::config::SeededTickEventStateSnapshotCapture;
 
@@ -56,7 +56,7 @@ pub struct SeededTickEventRecord {
     pub core_total_return_increment: f64,
     pub observed_log_price: f64,
     pub anchor_value: f64,
-    pub pressure_state: f64,
+    pub market_pressure_state: f64,
     pub deviation_from_anchor: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_snapshot: Option<SeededTickEventStateSnapshot>,
@@ -80,7 +80,7 @@ pub struct SeededFinePathMetadata {
     pub event_projection_record_schema_version: &'static str,
     pub transition_ordering_policy: &'static str,
     pub timestamp_representation_policy: &'static str,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
     pub side_encoding_policy: &'static str,
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,7 +103,7 @@ pub struct SeededFinePathRecord {
     pub core_total_return_increment: f64,
     pub observed_log_price: f64,
     pub anchor_value: f64,
-    pub pressure_state: f64,
+    pub market_pressure_state: f64,
     pub deviation_from_anchor: f64,
     pub cumulative_core_log_return: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,7 +126,7 @@ pub struct SeededTickEventTapeMetadata {
     pub state_snapshot_schema_version: &'static str,
     pub event_ordering_policy: &'static str,
     pub timestamp_representation_policy: &'static str,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
     pub side_encoding_policy: &'static str,
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,7 +261,7 @@ pub struct SeededTickSimulationInterarrivalDiagnostics {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SeededTickSimulationTimingDiagnostics {
     pub schema_version: &'static str,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
     pub latent_event_interarrivals: SeededTickSimulationInterarrivalDiagnostics,
     pub observed_timestamp_interarrivals: SeededTickSimulationInterarrivalDiagnostics,
     pub latent_interval_ownership_policy: &'static str,
@@ -411,8 +411,10 @@ impl SeededTickSimulationRunResult {
         let end_index = start_index
             .saturating_add(max_records)
             .min(self.public_transition_positions.len());
+
         let mut public_records: Vec<SeededFinePathRecord> =
             Vec::with_capacity(end_index - start_index);
+
         for public_index in start_index..end_index {
             let transition_position = self.public_transition_positions[public_index];
             public_records.push(self.fine_path[transition_position].clone());
@@ -425,6 +427,7 @@ impl SeededTickSimulationRunResult {
     pub fn event_record(&self, event_index: usize) -> Option<SeededTickEventRecord> {
         let transition_position = *self.event_transition_positions.get(event_index)?;
         let fine_path_record = self.fine_path.get(transition_position)?;
+
         let side = fine_path_record.side?;
 
         Some(SeededTickEventRecord {
@@ -435,7 +438,7 @@ impl SeededTickSimulationRunResult {
             core_total_return_increment: fine_path_record.core_total_return_increment,
             observed_log_price: fine_path_record.observed_log_price,
             anchor_value: fine_path_record.anchor_value,
-            pressure_state: fine_path_record.pressure_state,
+            market_pressure_state: fine_path_record.market_pressure_state,
             deviation_from_anchor: fine_path_record.deviation_from_anchor,
             state_snapshot: fine_path_record.state_snapshot,
         })
@@ -454,8 +457,10 @@ impl SeededTickSimulationRunResult {
         let end_index = start_index
             .saturating_add(max_records)
             .min(self.event_transition_positions.len());
+
         let mut event_records: Vec<SeededTickEventRecord> =
             Vec::with_capacity(end_index - start_index);
+
         for event_index in start_index..end_index {
             if let Some(event_record) = self.event_record(event_index) {
                 event_records.push(event_record);
@@ -476,14 +481,17 @@ impl SeededTickSimulationRunResult {
             .fine_path
             .capacity()
             .saturating_mul(size_of::<SeededFinePathRecord>());
+
         let estimated_public_projection_index_bytes = self
             .public_transition_positions
             .capacity()
             .saturating_mul(size_of::<usize>());
+
         let estimated_event_projection_index_bytes = self
             .event_transition_positions
             .capacity()
             .saturating_mul(size_of::<usize>());
+
         let estimated_debug_trace_bytes = self
             .debug_trace_output
             .as_ref()

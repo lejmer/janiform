@@ -96,6 +96,7 @@ pub fn baseline_intensity_for_stationary_total_intensity(
     }
 
     let baseline_intensity = stationary_total_intensity / total_intensity_multiplier;
+
     (baseline_intensity.is_finite() && baseline_intensity > 0.0).then_some(baseline_intensity)
 }
 
@@ -175,7 +176,7 @@ pub fn stationary_intensity_rates(
         return None;
     }
 
-    if !baseline_intensity.is_finite() || baseline_intensity <= 0.0 {
+    if !baseline_intensity.is_finite() || baseline_intensity < 0.0 {
         return None;
     }
 
@@ -224,4 +225,20 @@ pub fn stationary_intensity_rates(
         buy_event_rate_per_hour,
         sell_event_rate_per_hour,
     })
+}
+
+/// Compute the stationary buy-minus-sell event rate implied by the Hawkes first moments.
+pub fn stationary_signed_event_rate(
+    alpha: HawkesKernelLoadings,
+    beta: f64,
+    baseline_intensity: f64,
+    exogenous_source_rates: HawkesStationaryTargetSourceRates,
+) -> Option<f64> {
+    let stationary_rates =
+        stationary_intensity_rates(alpha, beta, baseline_intensity, exogenous_source_rates)?;
+
+    let signed_event_rate =
+        stationary_rates.buy_event_rate_per_hour - stationary_rates.sell_event_rate_per_hour;
+
+    signed_event_rate.is_finite().then_some(signed_event_rate)
 }

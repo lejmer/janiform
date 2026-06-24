@@ -8,7 +8,9 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverError,
 };
 use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::hawkes::{HawkesEventSide, HawkesTransitionError};
+use janiform_foundations::numeric::IntegerToF64ExactConversionError;
+use janiform_model_kernels::hawkes::HawkesTransitionError;
+use janiform_model_kernels::market_pressure::MarketPressureStateEvolutionError;
 
 use super::contracts::{
     SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsTransformSliceContext,
@@ -32,6 +34,10 @@ pub enum SufficientStatisticsTransformSliceContextError {
         interval_index: usize,
         field: &'static str,
         value: f64,
+    },
+    InvalidInitialMarketPressureState {
+        interval_index: usize,
+        error_message: String,
     },
 }
 
@@ -66,6 +72,13 @@ impl Display for SufficientStatisticsTransformSliceContextError {
             } => write!(
                 formatter,
                 "interval {interval_index} has invalid initial_excitation_state.{field}, expected finite non-negative value, found {value}"
+            ),
+            Self::InvalidInitialMarketPressureState {
+                interval_index,
+                error_message,
+            } => write!(
+                formatter,
+                "interval {interval_index} has invalid initial_market_pressure_state: {error_message}"
             ),
         }
     }
@@ -266,11 +279,30 @@ pub enum SufficientStatisticsTransformSliceSamplingError {
         value: f64,
         numerator: f64,
         denominator: f64,
-        context: SufficientStatisticsTransformSliceContext,
+        context: Box<SufficientStatisticsTransformSliceContext>,
     },
     InvalidSampledStatistics {
         interval_index: usize,
         source: SufficientStatisticsIntervalStatisticsError,
+    },
+    SampledEventCountOverflow {
+        interval_index: usize,
+    },
+    InvalidSampledEventCountExposure {
+        interval_index: usize,
+        source: IntegerToF64ExactConversionError,
+    },
+    MarketPressureTransitionFailure {
+        interval_index: usize,
+        source: MarketPressureStateEvolutionError,
+    },
+    HawkesTransitionFailure {
+        interval_index: usize,
+        source: HawkesTransitionError,
+    },
+    BoundaryStateUpdateFailure {
+        interval_index: usize,
+        source: Box<SufficientStatisticsBoundaryStateUpdateError>,
     },
 }
 
@@ -319,6 +351,38 @@ impl Display for SufficientStatisticsTransformSliceSamplingError {
                 formatter,
                 "interval {interval_index} sampled sufficient statistics are invalid: {source}"
             ),
+            Self::SampledEventCountOverflow { interval_index } => write!(
+                formatter,
+                "interval {interval_index} sampled event-count exposure overflowed while adding n_plus and n_minus"
+            ),
+            Self::InvalidSampledEventCountExposure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} sampled event-count exposure cannot be represented exactly as f64: {source}"
+            ),
+            Self::MarketPressureTransitionFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} market-pressure transition statistics are invalid: {source}"
+            ),
+            Self::HawkesTransitionFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} Hawkes transition statistics are invalid: {source}"
+            ),
+            Self::BoundaryStateUpdateFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} boundary-state transition statistics are invalid: {source}"
+            ),
         }
     }
 }
@@ -329,6 +393,10 @@ impl Error for SufficientStatisticsTransformSliceSamplingError {
             Self::InvalidSlices { source } => Some(source),
             Self::InvalidChunkingSettings { source } => Some(source),
             Self::InvalidSampledStatistics { source, .. } => Some(source),
+            Self::InvalidSampledEventCountExposure { source, .. } => Some(source),
+            Self::MarketPressureTransitionFailure { source, .. } => Some(source),
+            Self::HawkesTransitionFailure { source, .. } => Some(source),
+            Self::BoundaryStateUpdateFailure { source, .. } => Some(source.as_ref()),
             _ => None,
         }
     }
@@ -412,6 +480,13 @@ pub enum SufficientStatisticsIntervalStatisticsError {
         field: &'static str,
         value: f64,
     },
+    InvalidTerminalExcitationState {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidTerminalMarketPressureState {
+        error_message: String,
+    },
     InconsistentActivityTotal {
         total_field: &'static str,
         total: f64,
@@ -447,6 +522,14 @@ impl Display for SufficientStatisticsIntervalStatisticsError {
                     "{field} must be finite and non-negative, found {value}"
                 )
             }
+            Self::InvalidTerminalExcitationState { field, value } => write!(
+                formatter,
+                "terminal_excitation_state.{field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidTerminalMarketPressureState { error_message } => write!(
+                formatter,
+                "terminal_market_pressure_state is invalid: {error_message}"
+            ),
             Self::InconsistentActivityTotal {
                 total_field,
                 total,
@@ -472,25 +555,22 @@ pub enum SufficientStatisticsBoundaryStateUpdateError {
         field: &'static str,
         value: f64,
     },
+    InvalidMarketPressureStateBeforeUpdate {
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
+        error_message: String,
+    },
     InvalidSampledStatistics {
         snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         source: SufficientStatisticsIntervalStatisticsError,
-    },
-    InvalidScaledKernelLoading {
-        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
-        side: HawkesEventSide,
-        event_count: u64,
-        field: &'static str,
-        value: f64,
-    },
-    TransitionFailure {
-        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
-        source: HawkesTransitionError,
     },
     InvalidStateAfterUpdate {
         snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
         field: &'static str,
         value: f64,
+    },
+    InvalidMarketPressureStateAfterUpdate {
+        snapshot: Box<SufficientStatisticsBoundaryStateUpdateSnapshot>,
+        error_message: String,
     },
 }
 
@@ -508,31 +588,20 @@ impl Display for SufficientStatisticsBoundaryStateUpdateError {
                 value,
             } => write!(
                 formatter,
-                "boundary-state update failed for interval {}: state_before_update.{field} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                "boundary-state update failed for interval {}: state_before_update.excitation_state.{field} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+            Self::InvalidMarketPressureStateBeforeUpdate {
+                snapshot,
+                error_message,
+            } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: state_before_update.market_pressure_state is invalid: {error_message}; state_before_update={:?}, sampled_statistics={:?}",
                 snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
             ),
             Self::InvalidSampledStatistics { snapshot, source } => write!(
                 formatter,
                 "boundary-state update failed for interval {}: sampled_statistics are invalid: {source}; state_before_update={:?}, sampled_statistics={:?}",
-                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
-            ),
-            Self::InvalidScaledKernelLoading {
-                snapshot,
-                side,
-                event_count,
-                field,
-                value,
-            } => write!(
-                formatter,
-                "boundary-state update failed for interval {}: scaled loading {field} for side {side:?} with event_count {} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
-                snapshot.interval_index,
-                event_count,
-                snapshot.state_before_update,
-                snapshot.sampled_statistics
-            ),
-            Self::TransitionFailure { snapshot, source } => write!(
-                formatter,
-                "boundary-state update failed for interval {} during canonical transition composition: {source}; state_before_update={:?}, sampled_statistics={:?}",
                 snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
             ),
             Self::InvalidStateAfterUpdate {
@@ -541,7 +610,15 @@ impl Display for SufficientStatisticsBoundaryStateUpdateError {
                 value,
             } => write!(
                 formatter,
-                "boundary-state update failed for interval {}: state_after_update.{field} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                "boundary-state update failed for interval {}: state_after_update.excitation_state.{field} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+            Self::InvalidMarketPressureStateAfterUpdate {
+                snapshot,
+                error_message,
+            } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: state_after_update.market_pressure_state is invalid: {error_message}; state_before_update={:?}, sampled_statistics={:?}",
                 snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
             ),
         }
@@ -552,7 +629,6 @@ impl Error for SufficientStatisticsBoundaryStateUpdateError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidSampledStatistics { source, .. } => Some(source),
-            Self::TransitionFailure { source, .. } => Some(source),
             _ => None,
         }
     }

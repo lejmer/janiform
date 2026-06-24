@@ -1,16 +1,11 @@
 use janiform_affine_oracle::endogenous_anchor::{
     EndogenousAnchorIntervalFactors, derive_expected_interval_projection_from_first_moment_dynamics,
 };
-use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
-use janiform_model_kernels::mean_reversion::{
-    evolve_mean_reversion_deviation_with_decay_on_interval_grid,
-    evolve_mean_reversion_pressure_state,
-};
-use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigParameters};
+use janiform_model_kernels::market_pressure::signed_balance_exposure_scale_from_side_exposures;
+use janiform_model_kernels::mean_reversion::evolve_mean_reversion_deviation_with_decay_on_interval_grid;
 use janiform_model_kernels::return_clock::{
-    IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
-    compute_effective_return_clocks,
+    IntegratedSideActivityDecomposition, compute_effective_return_clocks,
 };
 
 use crate::characteristic::build_pricing_equation_specification;
@@ -30,12 +25,13 @@ pub(super) struct TerminalAffineMeanReversionPath {
     pub(super) interval_anchor_values_after: Vec<f64>,
     pub(super) interval_hawkes_states_before: Vec<HawkesExcitationState>,
     pub(super) interval_hawkes_states_after: Vec<HawkesExcitationState>,
+    pub(super) interval_market_pressure_exposure_scales: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct TerminalAffinePhysicalProjection {
-    core_expected_increment: f64,
     structural_state_after: HawkesExcitationState,
+    market_pressure_exposure_scale: f64,
 }
 
 pub(super) fn build_terminal_affine_mean_reversion_path(
@@ -43,15 +39,12 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
     maturity_count: usize,
     interval_deltas: &[f64],
     interval_factor_grids: &[VanillaOptionPricingIntervalFactors],
-    driver_parameters: NigBuySellDriverParameters,
 ) -> Result<TerminalAffineMeanReversionPath, VanillaOptionPricingRunError> {
     let boundary_input = &pricing_request.boundary_input;
     let observed_boundary_state = &boundary_input.observed_boundary_state;
     let mean_reversion_parameters = &boundary_input.mean_reversion_fitted_parameters;
-    let anchor_model = &mean_reversion_parameters.anchor_model;
 
     let mut current_anchor_value = observed_boundary_state.anchor_value;
-    let mut current_pressure_state = observed_boundary_state.pressure_state;
     let mut current_deviation = observed_boundary_state.deviation;
     let mut current_hawkes_state = boundary_input.hawkes_boundary_state;
 
@@ -60,6 +53,7 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
     let mut interval_anchor_values_after = Vec::with_capacity(maturity_count);
     let mut interval_hawkes_states_before = Vec::with_capacity(maturity_count);
     let mut interval_hawkes_states_after = Vec::with_capacity(maturity_count);
+    let mut interval_market_pressure_exposure_scales = Vec::with_capacity(maturity_count);
     let mut zero_return_log_price_points = Vec::with_capacity(maturity_count + 1);
 
     zero_return_log_price_points.push(observed_boundary_state.observed_log_price);
@@ -82,30 +76,9 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
             boundary_input.interval_index + interval_offset,
             current_hawkes_state,
             interval_delta,
-            driver_parameters,
         )?;
 
-        let next_pressure_state = evolve_mean_reversion_pressure_state(
-            anchor_model,
-            current_pressure_state,
-            physical_projection.core_expected_increment,
-            interval_delta,
-        )
-        .map_err(
-            |source| VanillaOptionPricingRunError::InternalNumericsFailure {
-                message: format!("terminal affine pressure-state evolution failed: {source}"),
-            },
-        )?;
-
-        let next_anchor_value = current_anchor_value
-            + anchor_model.pressure_level_gain * (next_pressure_state - current_pressure_state);
-        if !next_anchor_value.is_finite() {
-            return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
-                message: format!(
-                    "terminal affine anchor path produced a non-finite anchor at interval_offset={interval_offset}"
-                ),
-            });
-        }
+        let next_anchor_value = current_anchor_value;
 
         let next_zero_return_deviation =
             evolve_mean_reversion_deviation_with_decay_on_interval_grid(
@@ -128,9 +101,10 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
         interval_anchor_values_after.push(next_anchor_value);
         interval_hawkes_states_before.push(current_hawkes_state);
         interval_hawkes_states_after.push(physical_projection.structural_state_after);
+        interval_market_pressure_exposure_scales
+            .push(physical_projection.market_pressure_exposure_scale);
 
         current_anchor_value = next_anchor_value;
-        current_pressure_state = next_pressure_state;
         current_deviation = next_zero_return_deviation;
         current_hawkes_state = physical_projection.structural_state_after;
 
@@ -159,6 +133,7 @@ pub(super) fn build_terminal_affine_mean_reversion_path(
         interval_anchor_values_after,
         interval_hawkes_states_before,
         interval_hawkes_states_after,
+        interval_market_pressure_exposure_scales,
     })
 }
 
@@ -212,7 +187,6 @@ fn derive_terminal_affine_physical_projection(
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
     interval_delta: f64,
-    driver_parameters: NigBuySellDriverParameters,
 ) -> Result<TerminalAffinePhysicalProjection, VanillaOptionPricingRunError> {
     let endogenous_factors = EndogenousAnchorIntervalFactors::try_new(
         interval_factor_grids.seasonality_factor,
@@ -242,7 +216,7 @@ fn derive_terminal_affine_physical_projection(
 
     let projection = derive_expected_interval_projection_from_first_moment_dynamics(
         interval_index,
-        build_pricing_equation_specification(pricing_request),
+        &build_pricing_equation_specification(pricing_request),
         expected_severity_mark,
         endogenous_factors,
         hawkes_boundary_state,
@@ -252,30 +226,12 @@ fn derive_terminal_affine_physical_projection(
             message: format!("terminal affine physical interval projection failed: {source}"),
         },
     )?;
+    let expected_statistics = projection.expected_statistics;
 
-    let core_expected_increment = expected_core_return_increment_from_statistics(
-        driver_parameters,
-        projection.expected_statistics,
+    let effective_return_clocks = compute_effective_return_clocks(
         pricing_request
             .model_parameters
             .return_clock_exposure_parameters,
-        0.0,
-    )?;
-
-    Ok(TerminalAffinePhysicalProjection {
-        core_expected_increment,
-        structural_state_after: projection.structural_state_after,
-    })
-}
-
-fn expected_core_return_increment_from_statistics(
-    driver_parameters: NigBuySellDriverParameters,
-    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
-    return_clock_exposure_parameters: ReturnClockExposureParameters,
-    theta: f64,
-) -> Result<f64, VanillaOptionPricingRunError> {
-    let effective_return_clocks = compute_effective_return_clocks(
-        return_clock_exposure_parameters,
         IntegratedSideActivityDecomposition::new(
             expected_statistics.expected_baseline_a_plus,
             expected_statistics.expected_endogenous_a_plus,
@@ -287,57 +243,24 @@ fn expected_core_return_increment_from_statistics(
     )
     .map_err(
         |source| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: format!("terminal affine effective return clock is invalid: {source}"),
+            message: format!("terminal affine expected return-clock exposure failed: {source}"),
         },
     )?;
 
-    let buy_expected_increment = expected_tilted_nig_increment(
-        driver_parameters.buy_side_parameters,
+    let market_pressure_exposure_scale = signed_balance_exposure_scale_from_side_exposures(
         effective_return_clocks.buy_return_clock,
-        theta,
-    )?;
-
-    let sell_expected_increment = expected_tilted_nig_increment(
-        driver_parameters.sell_side_parameters,
         effective_return_clocks.sell_return_clock,
-        -theta,
-    )?;
-
-    Ok(buy_expected_increment - sell_expected_increment)
-}
-
-fn expected_tilted_nig_increment(
-    physical_parameters: NigParameters,
-    business_time_increment_scale: f64,
-    beta_shift: f64,
-) -> Result<f64, VanillaOptionPricingRunError> {
-    let tilted_expected_increment = NigParameters::try_new(
-        physical_parameters.alpha,
-        physical_parameters.beta + beta_shift,
-        physical_parameters.delta,
-        physical_parameters.mu,
     )
     .map_err(
         |source| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: format!("terminal affine tilted NIG parameters are invalid: {source}"),
-        },
-    )?
-    .expected_increment(business_time_increment_scale)
-    .map_err(
-        |source| VanillaOptionPricingRunError::InternalNumericsFailure {
-            message: format!("terminal affine tilted NIG expectation failed: {source}"),
+            message: format!("terminal affine market-pressure exposure scale failed: {source}"),
         },
     )?;
 
-    let physical_expected_increment = physical_parameters
-        .expected_increment(business_time_increment_scale)
-        .map_err(
-            |source| VanillaOptionPricingRunError::InternalNumericsFailure {
-                message: format!("terminal affine physical NIG expectation failed: {source}"),
-            },
-        )?;
-
-    Ok(tilted_expected_increment - physical_expected_increment)
+    Ok(TerminalAffinePhysicalProjection {
+        structural_state_after: projection.structural_state_after,
+        market_pressure_exposure_scale,
+    })
 }
 
 #[cfg(test)]

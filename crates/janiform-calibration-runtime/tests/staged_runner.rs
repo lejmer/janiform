@@ -21,7 +21,7 @@ use janiform_calibration_runtime::{
     CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     HawkesStageExecutionFailure, JointRefinementStageProgressPhase, LongVarianceStageProgressPhase,
-    MeanReversionStageProgressPhase,
+    MeanReversionStageProgressPhase, ReturnBackfitStageProgressPhase,
     run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
     run_staged_calibration_with_checkpointing_and_observer as run_staged_calibration_with_checkpointing_and_observer_core,
 };
@@ -76,6 +76,24 @@ fn run_staged_calibration_with_checkpointing_and_observer(
     )
 }
 
+fn selected_stage_count(run_contract: &CalibrationRunContract) -> usize {
+    run_contract.run_spec.selected_stages.len()
+}
+
+fn selected_stage_count_from(
+    run_contract: &CalibrationRunContract,
+    starting_stage: CalibrationStage,
+) -> usize {
+    let starting_stage_position = run_contract
+        .run_spec
+        .selected_stages
+        .iter()
+        .position(|stage| *stage == starting_stage)
+        .expect("starting stage should be selected by the run contract");
+
+    run_contract.run_spec.selected_stages.len() - starting_stage_position
+}
+
 #[test]
 fn staged_runner_pre_cancelled_token_returns_cancelled_report() {
     let run_contract = build_run_contract_with_mode_and_resume(
@@ -112,6 +130,57 @@ fn staged_runner_pre_cancelled_token_returns_cancelled_report() {
             }
         )
     }));
+}
+
+#[test]
+fn staged_runner_reports_success_when_cancelled_after_final_stage_completion() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-stage-final-completed-before-cancel",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+    let calendar_registry = calibration_stage_test_registry();
+    let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+    let cancellation_source = CancellationSource::new();
+    let cancellation_token = cancellation_source.token();
+
+    let mut observed_events = Vec::<CalibrationStagedRunObserverEvent>::new();
+    let mut observer = |event: CalibrationStagedRunObserverEvent| {
+        if matches!(
+            &event,
+            CalibrationStagedRunObserverEvent::StageCompleted {
+                stage: CalibrationStage::Finalization,
+                ..
+            }
+        ) {
+            cancellation_source.cancel();
+        }
+
+        observed_events.push(event);
+    };
+
+    let report = run_staged_calibration_with_checkpointing_and_observer_core(
+        &run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        cancellation_token,
+        Some(&mut checkpoint_store),
+        None,
+        Some(&mut observer),
+    );
+
+    assert!(report.status.is_successful(), "{report:#?}");
+    assert_eq!(
+        selected_stage_count(&run_contract),
+        report.emitted_checkpoints.len()
+    );
+    assert!(matches!(
+        observed_events.last(),
+        Some(CalibrationStagedRunObserverEvent::RunCompleted {
+            stage_report_count,
+            ..
+        }) if *stage_report_count == selected_stage_count(&run_contract)
+    ));
 }
 
 #[test]
@@ -276,6 +345,48 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
         "expected staged runner to expose baseline coarse-consistency progress labels, observed events were: {observed_events:#?}"
     );
 
+    let joint_refinement_market_pressure_refit_count = observed_events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::JointRefinement
+                        && progress.completed_units == 0
+                        && progress.progress_phase
+                            == CalibrationStageProgressPhase::JointRefinement(
+                                JointRefinementStageProgressPhase::MarketPressureRefit,
+                            )
+            )
+        })
+        .count();
+
+    assert_eq!(
+        joint_refinement_market_pressure_refit_count, 0,
+        "expected option-refinement progress to reuse fitted market-pressure state, observed events were: {observed_events:#?}"
+    );
+
+    let finalization_market_pressure_refit_count = observed_events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::Finalization
+                        && progress.completed_units == 0
+                        && progress.progress_phase
+                            == CalibrationStageProgressPhase::JointRefinement(
+                                JointRefinementStageProgressPhase::MarketPressureRefit,
+                            )
+            )
+        })
+        .count();
+
+    assert_eq!(
+        finalization_market_pressure_refit_count, 0,
+        "expected no-options finalization to reuse fitted market-pressure state, observed events were: {observed_events:#?}"
+    );
+
     let mut finalization_pre_evaluation_phase_starts = Vec::new();
     for event in &observed_events {
         let CalibrationStagedRunObserverEvent::StageProgress(progress) = event else {
@@ -334,7 +445,7 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
 }
 
 #[test]
-fn staged_runner_emits_long_variance_and_mean_reversion_progress() {
+fn staged_runner_emits_return_backfit_long_variance_and_mean_reversion_progress() {
     let run_contract = build_through_mean_reversion_run_contract_with_mode_and_resume(
         "run-stage-progress-long-variance-mean-reversion",
         CalibrationExecutionMode::Memory,
@@ -355,6 +466,45 @@ fn staged_runner_emits_long_variance_and_mean_reversion_progress() {
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    assert!(
+        observed_events.iter().any(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::ReturnBackfit
+                        && matches!(
+                            progress.progress_phase,
+                            CalibrationStageProgressPhase::ReturnBackfit(
+                                ReturnBackfitStageProgressPhase::DynamicClockReplay
+                            )
+                        )
+                        && progress.completed_units > 0
+            )
+        }),
+        "expected staged runner to forward return-backfit dynamic-clock replay progress"
+    );
+
+    assert!(
+        observed_events.iter().any(|event| {
+            matches!(
+                event,
+                CalibrationStagedRunObserverEvent::StageProgress(progress)
+                    if progress.stage == CalibrationStage::ReturnBackfit
+                        && matches!(
+                            progress.progress_phase,
+                            CalibrationStageProgressPhase::ReturnBackfit(
+                                ReturnBackfitStageProgressPhase::DeltaQuantileShapeBackfit
+                            )
+                        )
+                        && progress
+                            .current_item_label
+                            .as_deref()
+                            .is_some_and(|label| label == "evaluate delta quantile candidate")
+            )
+        }),
+        "expected staged runner to forward return-backfit delta quantile-shape progress"
+    );
 
     assert!(
         observed_events.iter().any(|event| {
@@ -402,12 +552,12 @@ fn staged_runner_emits_long_variance_and_mean_reversion_progress() {
                         && matches!(
                             progress.progress_phase,
                             CalibrationStageProgressPhase::MeanReversion(
-                                MeanReversionStageProgressPhase::PredictiveEvidence
+                                MeanReversionStageProgressPhase::CandidateSelection
                             )
                         )
             )
         }),
-        "expected staged runner to forward mean-reversion predictive evidence progress"
+        "expected staged runner to forward mean-reversion candidate selection progress"
     );
 }
 
@@ -432,10 +582,13 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
 
     assert!(report.status.is_successful(), "{report:#?}");
     assert!(report.failure.is_none());
-    assert_eq!(report.emitted_checkpoints.len(), 10);
+    assert_eq!(
+        report.emitted_checkpoints.len(),
+        selected_stage_count(&run_contract)
+    );
     assert_eq!(
         checkpoint_store.checkpoint_count_for_run(run_contract.run_spec.run_id.as_str()),
-        10
+        selected_stage_count(&run_contract)
     );
 
     let first_checkpoint = report
@@ -525,7 +678,10 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
     );
 
     assert!(report.status.is_successful(), "{report:#?}");
-    assert_eq!(report.stage_reports.len(), 10);
+    assert_eq!(
+        report.stage_reports.len(),
+        selected_stage_count(&run_contract)
+    );
 
     for stage_report in &report.stage_reports {
         match stage_report {
@@ -555,28 +711,6 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                 assert_eq!(
                     metadata.stage_seed_source,
                     CalibrationStageSeedSource::StageOverride
-                );
-                assert_eq!(
-                    metadata.stage_seed_derivation_policy,
-                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
-                );
-            }
-            CalibrationStagedRunStageReport::ObservationModels(observation_models_report) => {
-                let metadata = observation_models_report
-                    .metadata
-                    .as_ref()
-                    .expect("observation-models stage metadata should be present");
-                assert_eq!(metadata.run_global_seed, 17);
-                assert_eq!(
-                    metadata.stage_seed,
-                    derive_calibration_stage_seed_from_global_seed(
-                        17,
-                        CalibrationStage::ObservationModels
-                    )
-                );
-                assert_eq!(
-                    metadata.stage_seed_source,
-                    CalibrationStageSeedSource::DerivedFromGlobalSeed
                 );
                 assert_eq!(
                     metadata.stage_seed_derivation_policy,
@@ -676,21 +810,28 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                 );
                 assert_eq!(
                     payload.selected_candidate_id,
-                    "long_variance_clock_residual_nig_scale"
+                    "nig_delta_quantile_shape_backfit"
                 );
                 assert!(
                     payload
                         .diagnostics
-                        .variance_budget
-                        .observed_target_scale
-                        .is_some()
+                        .delta_quantile_shape_backfit
+                        .selected_aggregation_sample_count
+                        > 0
                 );
                 assert!(
                     payload
                         .diagnostics
-                        .variance_budget
-                        .backfitted_nig_contribution
-                        .is_some()
+                        .delta_quantile_shape_backfit
+                        .post_backfit_nig_delta
+                        > 0.0
+                );
+                assert!(
+                    payload
+                        .diagnostics
+                        .delta_quantile_shape_backfit
+                        .after_quantile_shape_score
+                        .is_finite()
                 );
             }
             CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report) => {
@@ -955,7 +1096,6 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
     for stage in [
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
-        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
     ] {
         let artifact_path = calibration_stage_parameter_artifact_path(
@@ -995,18 +1135,6 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         json!([])
     );
 
-    let observation_models_stage_report_json = fs::read_to_string(
-        calibration_artifact_directory.join("observation_models.stage_report.json"),
-    )
-    .expect("observation-models stage report should be readable");
-    let observation_models_stage_report: Value =
-        serde_json::from_str(observation_models_stage_report_json.as_str())
-            .expect("observation-models stage report should parse");
-    assert_eq!(
-        observation_models_stage_report["report"]["fitted_stage_payload"]["open_session_return_source_activities"],
-        json!([])
-    );
-
     let manifest_path = calibration_artifact_manifest_path(
         disk_checkpoint_directory.as_path(),
         disk_contract.run_spec.run_id.as_str(),
@@ -1023,7 +1151,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageOutput)
             .count(),
-        4
+        selected_stage_count(&disk_contract)
     );
     assert_eq!(
         manifest
@@ -1032,7 +1160,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageCheckpoint)
             .count(),
-        4
+        selected_stage_count(&disk_contract)
     );
 
     let memory_checkpoint_directory =
@@ -1062,7 +1190,6 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
     for stage in [
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
-        CalibrationStage::ObservationModels,
         CalibrationStage::ReturnComponents,
         CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
@@ -1342,7 +1469,10 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         cli_default_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(cli_default_report.stage_reports.len(), 10);
+    assert_eq!(
+        cli_default_report.stage_reports.len(),
+        selected_stage_count(&cli_default_contract)
+    );
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");
@@ -1366,7 +1496,10 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         python_override_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(python_override_report.stage_reports.len(), 10);
+    assert_eq!(
+        python_override_report.stage_reports.len(),
+        selected_stage_count(&python_override_contract)
+    );
 
     let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
     let _ = fs::remove_dir_all(python_override_checkpoint_directory);
@@ -1604,7 +1737,7 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
     assert_eq!(
         initial_report.failure,
         Some(CalibrationStagedRunFailure::MissingStageInput {
-            stage: CalibrationStage::ObservationModels
+            stage: CalibrationStage::ReturnComponents
         })
     );
 
@@ -1628,10 +1761,12 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
     );
     assert_eq!(
         resume_report.started_from_stage,
-        Some(CalibrationStage::ObservationModels)
+        Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 8);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 8);
+    let resumed_stage_count =
+        selected_stage_count_from(&resume_run_contract, CalibrationStage::ReturnComponents);
+    assert_eq!(resume_report.stage_reports.len(), resumed_stage_count);
+    assert_eq!(resume_report.emitted_checkpoints.len(), resumed_stage_count);
 }
 
 #[test]
@@ -1671,8 +1806,10 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 7);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 7);
+    let resumed_stage_count =
+        selected_stage_count_from(&resume_run_contract, CalibrationStage::ReturnComponents);
+    assert_eq!(resume_report.stage_reports.len(), resumed_stage_count);
+    assert_eq!(resume_report.emitted_checkpoints.len(), resumed_stage_count);
 }
 
 #[test]
@@ -1757,23 +1894,26 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     );
     assert_eq!(
         resume_from_last_report.started_from_stage,
-        Some(CalibrationStage::ObservationModels)
+        Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_from_last_report.stage_reports.len(), 2);
-    assert_eq!(resume_from_last_report.emitted_checkpoints.len(), 2);
+    let resumed_stage_count = selected_stage_count_from(
+        &resume_from_last_contract,
+        CalibrationStage::ReturnComponents,
+    );
+    assert_eq!(
+        resume_from_last_report.stage_reports.len(),
+        resumed_stage_count
+    );
+    assert_eq!(
+        resume_from_last_report.emitted_checkpoints.len(),
+        resumed_stage_count
+    );
     assert!(calibration_artifact_manifest_path(checkpoint_directory.as_path(), run_id).exists());
     assert!(
         !checkpoint_directory
             .join("artifacts")
             .join("pending")
             .join("calibration")
-            .exists()
-    );
-    assert!(
-        checkpoint_directory
-            .join("artifacts")
-            .join("calibration")
-            .join("observation_models.stage_report.json")
             .exists()
     );
     assert!(
@@ -1826,8 +1966,16 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         Some(CalibrationStage::Hawkes)
     );
     assert_eq!(resume_from_stage_report.failure, None);
-    assert_eq!(resume_from_stage_report.stage_reports.len(), 3);
-    assert_eq!(resume_from_stage_report.emitted_checkpoints.len(), 3);
+    let resumed_stage_count =
+        selected_stage_count_from(&resume_from_stage_contract, CalibrationStage::Hawkes);
+    assert_eq!(
+        resume_from_stage_report.stage_reports.len(),
+        resumed_stage_count
+    );
+    assert_eq!(
+        resume_from_stage_report.emitted_checkpoints.len(),
+        resumed_stage_count
+    );
 
     let _ = fs::remove_dir_all(checkpoint_directory);
     let _ = fs::remove_dir_all(second_checkpoint_directory);
@@ -1930,7 +2078,7 @@ fn normalized_report_for_reproducibility(
                     );
                     for timing_diagnostic in &mut fitted_stage_payload
                         .optimizer_diagnostics
-                        .restart_evaluation_timing_diagnostics
+                        .candidate_evaluation_timing_diagnostics
                     {
                         timing_diagnostic.elapsed_millis = 0;
                     }
@@ -1938,7 +2086,6 @@ fn normalized_report_for_reproducibility(
             }
             CalibrationStagedRunStageReport::Seasonality(_)
             | CalibrationStagedRunStageReport::Hawkes(_)
-            | CalibrationStagedRunStageReport::ObservationModels(_)
             | CalibrationStagedRunStageReport::ReturnComponents(_)
             | CalibrationStagedRunStageReport::LongVariance(_)
             | CalibrationStagedRunStageReport::NewsShocks(_)

@@ -610,7 +610,7 @@ fn block_log_density_is_finite_for_representative_configuration() {
         });
 
     assert!(
-        log_density.is_some(),
+        log_density.is_ok(),
         "mixed exact block failed with {failure_reason:?}"
     );
     assert!(log_density.expect("log density should exist").is_finite());
@@ -656,6 +656,31 @@ fn distribution_profile_fit_score_is_zero_for_identical_samples() {
 
     assert!(fit_breakdown.global_fit_score.abs() <= 1.0e-12);
     assert!(fit_breakdown.profile_fit_score.abs() <= 1.0e-12);
+}
+
+#[test]
+fn distribution_profile_fit_score_penalizes_missing_excess_kurtosis() {
+    let mut observed_returns = Vec::new();
+    let mut fitted_returns = Vec::new();
+
+    for _sample_position in 0..256 {
+        observed_returns.push(-0.0001);
+        observed_returns.push(0.0001);
+        fitted_returns.push(-0.0001);
+        fitted_returns.push(0.0001);
+    }
+
+    observed_returns.extend([-0.02, 0.02]);
+    fitted_returns.extend([-0.0001, 0.0001]);
+
+    let identical_breakdown =
+        distribution_profile_fit_score(observed_returns.as_slice(), observed_returns.as_slice());
+    let low_tail_breakdown =
+        distribution_profile_fit_score(fitted_returns.as_slice(), observed_returns.as_slice());
+
+    assert_eq!(identical_breakdown.excess_kurtosis_fit, 0.0);
+    assert!(low_tail_breakdown.excess_kurtosis_fit > identical_breakdown.excess_kurtosis_fit);
+    assert!(low_tail_breakdown.profile_fit_score > identical_breakdown.profile_fit_score);
 }
 
 #[test]

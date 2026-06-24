@@ -7,8 +7,8 @@ from .contracts import (
     SeededTickEventSide,
     SeededTickEventStateSnapshotCapture,
 )
+from ...market_pressure import MarketPressureParameters, MarketPressureState
 from ...mean_reversion import (
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -20,10 +20,11 @@ from .errors import (
 
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
-    "MeanReversionAnchorModel",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",

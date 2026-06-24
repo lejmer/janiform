@@ -3,6 +3,7 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::current_state::{
     CurrentStateEstimationError, CurrentStateEstimationOutput, MeanReversionBoundaryReplayState,
+    advance_market_pressure_state_from_observed_side, advance_market_pressure_state_to_timestamp,
     advance_mean_reversion_boundary_replay_from_observed_price,
     long_variance_stationary_mean_reversion_level, zero_hawkes_excitation_state,
 };
@@ -20,6 +22,7 @@ pub struct CurrentStateTrackerUpdateInput {
     pub kernel_parameters: HawkesKernelParameters,
     pub long_variance_parameters: LongVarianceParameters,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    pub market_pressure_parameters: MarketPressureParameters,
     pub reference_price: f64,
     pub previous_snapshot: Option<CurrentStateTrackerSnapshot>,
     pub state_time_utc_nanos: i64,
@@ -56,7 +59,7 @@ pub fn update_current_state_tracker(
     let observed_price = tracker_state
         .observed_price
         .ok_or(CurrentStateEstimationError::MissingObservedPrice)?;
-    
+
     let mean_reversion_boundary_state = tracker_state
         .mean_reversion_boundary_state
         .ok_or(CurrentStateEstimationError::MissingObservedPrice)?;
@@ -68,6 +71,7 @@ pub fn update_current_state_tracker(
             hawkes_excitation_state: tracker_state.hawkes_excitation_state,
             long_variance_state: tracker_state.long_variance_state,
             mean_reversion_boundary_state,
+            market_pressure_state: tracker_state.market_pressure_state,
         },
     })
 }
@@ -77,6 +81,7 @@ struct ReplayedTrackerState {
     hawkes_excitation_state: HawkesExcitationState,
     long_variance_state: LongVarianceState,
     mean_reversion_boundary_state: Option<MeanReversionBoundaryState>,
+    market_pressure_state: MarketPressureState,
     observed_price: Option<f64>,
 }
 
@@ -94,6 +99,13 @@ fn validate_tracker_update_input(
         .long_variance_parameters
         .validate()
         .map_err(|source| CurrentStateEstimationError::InvalidLongVarianceParameters { source })?;
+
+    input
+        .market_pressure_parameters
+        .validate()
+        .map_err(
+            |source| CurrentStateEstimationError::InvalidMarketPressureParameters { source },
+        )?;
 
     if !input.reference_price.is_finite() || input.reference_price <= 0.0 {
         return Err(CurrentStateEstimationError::InvalidReferencePrice {
@@ -141,9 +153,20 @@ fn replay_tracker_update(
     let mut mean_reversion_replay_state =
         previous_snapshot.map(|snapshot| MeanReversionBoundaryReplayState {
             timestamp_utc_nanos: snapshot.state_time_utc_nanos,
-            // Copy the small boundary state out of the durable snapshot so replay can own it.
-            boundary_state: snapshot.state.mean_reversion_boundary_state.clone(),
+            boundary_state: snapshot.state.mean_reversion_boundary_state,
         });
+    let mut market_pressure_state = previous_snapshot
+        // The replay state advances independently from the immutable previous snapshot.
+        .map(|snapshot| snapshot.state.market_pressure_state.clone())
+        .map_or_else(
+            || {
+                MarketPressureState::neutral_for_parameters(&input.market_pressure_parameters)
+                    .map_err(
+                        |source| CurrentStateEstimationError::InvalidMarketPressureState { source },
+                    )
+            },
+            Ok,
+        )?;
 
     let mut previous_timestamp_utc_nanos = tracker_start_timestamp(
         previous_snapshot,
@@ -152,7 +175,7 @@ fn replay_tracker_update(
     );
 
     let mut observed_price = previous_snapshot.map(|snapshot| snapshot.observed_price);
-    
+
     let reference_log_price = input.reference_price.ln();
 
     for (observation_index, ((&timestamp_utc_nanos, &trade_price), &trade_side)) in input
@@ -182,6 +205,14 @@ fn replay_tracker_update(
                 |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
             )?;
 
+        market_pressure_state = advance_market_pressure_state_from_observed_side(
+            &input.market_pressure_parameters,
+            &market_pressure_state,
+            previous_timestamp_utc_nanos,
+            timestamp_utc_nanos,
+            trade_side,
+        )?;
+
         mean_reversion_replay_state =
             Some(advance_mean_reversion_boundary_replay_from_observed_price(
                 mean_reversion_replay_state,
@@ -197,7 +228,7 @@ fn replay_tracker_update(
     }
 
     let observed_price = input.observed_price.or(observed_price);
-    
+
     let mean_reversion_boundary_state = match observed_price {
         Some(observed_price) => {
             let replay_state = advance_mean_reversion_boundary_replay_from_observed_price(
@@ -216,6 +247,12 @@ fn replay_tracker_update(
 
     let trailing_delta_hours =
         duration_nanos_to_hours(input.state_time_utc_nanos - previous_timestamp_utc_nanos);
+    let market_pressure_state = advance_market_pressure_state_to_timestamp(
+        &input.market_pressure_parameters,
+        &market_pressure_state,
+        previous_timestamp_utc_nanos,
+        input.state_time_utc_nanos,
+    )?;
 
     Ok(ReplayedTrackerState {
         hawkes_excitation_state: hawkes_state
@@ -230,6 +267,7 @@ fn replay_tracker_update(
                 |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
             )?,
         mean_reversion_boundary_state,
+        market_pressure_state,
         observed_price,
     })
 }
@@ -263,7 +301,15 @@ fn validate_tracker_previous_snapshot(
         .state
         .mean_reversion_boundary_state
         .validate()
-        .map_err(|source| CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source })
+        .map_err(
+            |source| CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source },
+        )?;
+
+    previous_snapshot
+        .state
+        .market_pressure_state
+        .validate()
+        .map_err(|source| CurrentStateEstimationError::InvalidMarketPressureState { source })
 }
 
 fn validate_tracker_observations(
@@ -384,7 +430,8 @@ mod tests {
         let first_snapshot = update_current_state_tracker(CurrentStateTrackerUpdateInput {
             kernel_parameters: input.kernel_parameters,
             long_variance_parameters: input.long_variance_parameters,
-            mean_reversion_fitted_parameters: input.mean_reversion_fitted_parameters.clone(),
+            mean_reversion_fitted_parameters: input.mean_reversion_fitted_parameters,
+            market_pressure_parameters: input.market_pressure_parameters.clone(),
             reference_price: input.reference_price,
             previous_snapshot: None,
             state_time_utc_nanos: NANOS_PER_HOUR,
@@ -399,6 +446,7 @@ mod tests {
             kernel_parameters: input.kernel_parameters,
             long_variance_parameters: input.long_variance_parameters,
             mean_reversion_fitted_parameters: input.mean_reversion_fitted_parameters,
+            market_pressure_parameters: input.market_pressure_parameters.clone(),
             reference_price: input.reference_price,
             previous_snapshot: Some(first_snapshot.clone()),
             state_time_utc_nanos: 3 * NANOS_PER_HOUR,
@@ -411,12 +459,17 @@ mod tests {
 
         assert_eq!(first_snapshot.state, batch_output[0].state);
         assert_eq!(second_snapshot.state, batch_output[1].state);
-        assert_ne!(
+        assert_eq!(
             second_snapshot
                 .state
-                .mean_reversion_boundary_state
-                .pressure_state,
-            0.0
+                .market_pressure_state
+                .state_weights
+                .len(),
+            2
+        );
+        assert_ne!(
+            second_snapshot.state.market_pressure_state.state_weights[0],
+            second_snapshot.state.market_pressure_state.state_weights[1]
         );
         assert_ne!(
             second_snapshot
@@ -440,7 +493,8 @@ mod tests {
         let first_snapshot = update_current_state_tracker(CurrentStateTrackerUpdateInput {
             kernel_parameters: input.kernel_parameters,
             long_variance_parameters: input.long_variance_parameters,
-            mean_reversion_fitted_parameters: input.mean_reversion_fitted_parameters.clone(),
+            mean_reversion_fitted_parameters: input.mean_reversion_fitted_parameters,
+            market_pressure_parameters: input.market_pressure_parameters.clone(),
             reference_price: input.reference_price,
             previous_snapshot: None,
             state_time_utc_nanos: NANOS_PER_HOUR,
@@ -455,6 +509,7 @@ mod tests {
             kernel_parameters: input.kernel_parameters,
             long_variance_parameters: input.long_variance_parameters,
             mean_reversion_fitted_parameters: input.mean_reversion_fitted_parameters,
+            market_pressure_parameters: input.market_pressure_parameters.clone(),
             reference_price: input.reference_price,
             previous_snapshot: Some(first_snapshot.clone()),
             state_time_utc_nanos: 2 * NANOS_PER_HOUR,
@@ -475,19 +530,29 @@ mod tests {
                 < first_snapshot.state.hawkes_excitation_state.y_plus_plus
         );
         assert_eq!(advanced_snapshot.state, batch_output[1].state);
-        assert_ne!(
+        assert_eq!(
             first_snapshot
                 .state
-                .mean_reversion_boundary_state
-                .pressure_state,
-            0.0
+                .market_pressure_state
+                .state_weights
+                .len(),
+            2
         );
-        assert_ne!(
+        assert_eq!(
             advanced_snapshot
                 .state
-                .mean_reversion_boundary_state
-                .pressure_state,
-            0.0
+                .market_pressure_state
+                .state_weights
+                .len(),
+            2
+        );
+        assert_ne!(
+            first_snapshot.state.market_pressure_state.state_weights[0],
+            first_snapshot.state.market_pressure_state.state_weights[1]
+        );
+        assert_ne!(
+            advanced_snapshot.state.market_pressure_state.state_weights[0],
+            advanced_snapshot.state.market_pressure_state.state_weights[1]
         );
         assert_ne!(
             advanced_snapshot

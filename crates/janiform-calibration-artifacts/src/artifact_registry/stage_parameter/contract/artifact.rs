@@ -11,7 +11,6 @@ use super::long_variance::validate_long_variance_stage_parameter_payload;
 use super::mean_reversion::validate_mean_reversion_stage_parameter_payload;
 use super::metadata::CalibrationStageParameterBuildMetadata;
 use super::news_shocks::validate_news_shocks_stage_parameter_payload;
-use super::observation_models::validate_observation_models_stage_parameter_payload;
 use super::optimizer::{
     CalibrationStageParameterOptimizerState, CalibrationStageParameterOptimizerStateInput,
     build_optimizer_state, validate_optimizer_state,
@@ -196,13 +195,6 @@ impl CalibrationStageParameterArtifact {
             }
             CalibrationStageParameterPayload::Hawkes(payload) => {
                 validate_hawkes_stage_parameter_payload(
-                    self.stage,
-                    payload,
-                    self.optimizer_state.as_ref(),
-                )
-            }
-            CalibrationStageParameterPayload::ObservationModels(payload) => {
-                validate_observation_models_stage_parameter_payload(
                     self.stage,
                     payload,
                     self.optimizer_state.as_ref(),

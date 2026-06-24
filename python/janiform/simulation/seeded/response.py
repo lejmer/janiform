@@ -15,7 +15,7 @@ from .contracts import (
     SeededFinePathNewsArrivalComponent,
     SeededFinePathRecord,
     SeededFinePathTransitionKind,
-    TimestampBatchingObservationModel,
+    TimestampBatchingSurface,
     SeededTickEventRecord,
     SeededTickEventSide,
     SeededTickEventStateSnapshot,
@@ -329,7 +329,10 @@ def _parse_seeded_fine_path_chunk_columns(
 
     observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
     anchor_value_column = cast(list[float], chunk_payload.anchor_value)
-    pressure_state_column = cast(list[float], chunk_payload.pressure_state)
+    market_pressure_state_column = cast(
+        list[float],
+        chunk_payload.market_pressure_state,
+    )
 
     deviation_from_anchor_column = cast(
         list[float],
@@ -403,7 +406,7 @@ def _parse_seeded_fine_path_chunk_columns(
             core_total_return_increment=core_total_return_increment_column[chunk_offset],
             observed_log_price=observed_log_price_column[chunk_offset],
             anchor_value=anchor_value_column[chunk_offset],
-            pressure_state=pressure_state_column[chunk_offset],
+            market_pressure_state=market_pressure_state_column[chunk_offset],
             deviation_from_anchor=deviation_from_anchor_column[chunk_offset],
             cumulative_core_log_return=cumulative_core_log_return_column[chunk_offset],
             state_snapshot=_build_state_snapshot(
@@ -444,7 +447,10 @@ def _parse_seeded_event_tape_chunk_columns(
 
     observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
     anchor_value_column = cast(list[float], chunk_payload.anchor_value)
-    pressure_state_column = cast(list[float], chunk_payload.pressure_state)
+    market_pressure_state_column = cast(
+        list[float],
+        chunk_payload.market_pressure_state,
+    )
 
     deviation_from_anchor_column = cast(
         list[float],
@@ -490,7 +496,7 @@ def _parse_seeded_event_tape_chunk_columns(
             core_total_return_increment=core_total_return_increment_column[chunk_offset],
             observed_log_price=observed_log_price_column[chunk_offset],
             anchor_value=anchor_value_column[chunk_offset],
-            pressure_state=pressure_state_column[chunk_offset],
+            market_pressure_state=market_pressure_state_column[chunk_offset],
             deviation_from_anchor=deviation_from_anchor_column[chunk_offset],
             state_snapshot=_build_state_snapshot(
                 y_plus_plus=state_snapshot_y_plus_plus_column[chunk_offset],
@@ -578,12 +584,12 @@ def _hydrate_native_seeded_fine_path_metadata(
             str,
             raw_payload["timestamp_representation_policy"],
         ),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+        timestamp_batching_surface=TimestampBatchingSurface.from_mapping(
             cast(
                 dict[str, Any],
-                raw_payload["timestamp_batching_observation_model"],
+                raw_payload["timestamp_batching_surface"],
             ),
-            field_path="fine_path_metadata.timestamp_batching_observation_model",
+            field_path="fine_path_metadata.timestamp_batching_surface",
         ),
         side_encoding_policy=cast(str, raw_payload["side_encoding_policy"]),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture(
@@ -608,12 +614,12 @@ def _hydrate_native_seeded_event_tape_metadata(
             str,
             raw_payload["timestamp_representation_policy"],
         ),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+        timestamp_batching_surface=TimestampBatchingSurface.from_mapping(
             cast(
                 dict[str, Any],
-                raw_payload["timestamp_batching_observation_model"],
+                raw_payload["timestamp_batching_surface"],
             ),
-            field_path="event_tape_metadata.timestamp_batching_observation_model",
+            field_path="event_tape_metadata.timestamp_batching_surface",
         ),
         side_encoding_policy=cast(str, raw_payload["side_encoding_policy"]),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture(

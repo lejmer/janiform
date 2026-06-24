@@ -44,8 +44,8 @@ name = "artifact_regression_suite"
 path = "tests/artifact_regression_suite.rs"
 
 [[test]]
-name = "core_adapters"
-path = "tests/core_adapters.rs"
+name = "core_interfaces"
+path = "tests/core_interfaces.rs"
 
 [[test]]
 name = "current_state_estimation"

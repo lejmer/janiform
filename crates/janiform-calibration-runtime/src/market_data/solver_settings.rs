@@ -5,7 +5,7 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::{GOLDEN_RATIO, strictly_positive_machine_value};
 use janiform_foundations::parallelism::resolved_cpu_count as resolve_cpu_count;
 
-use crate::stages::joint_refinement::pricing_block_search_coordinate_count;
+use crate::stages::joint_refinement::OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT;
 use crate::stages::long_variance::{
     LONG_VARIANCE_ACTIVE_PARAMETER_COUNT, LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT,
     LONG_VARIANCE_OBJECTIVE_TERM_COUNT,
@@ -96,7 +96,7 @@ fn derive_stage_solver_settings(
     let optimizer_settings = CalibrationOptimizerSettings::try_new(
         "lbfgs",
         max_iterations.max(1),
-        cpu_count.max(1),
+        resolve_cpu_count(Some(cpu_count)),
         absolute_tolerance,
         relative_tolerance,
         constraint_penalty_weight,
@@ -153,27 +153,6 @@ fn stage_solver_geometry(
                 objective_term_count,
                 support_count,
                 candidate_geometry_count: candidate_inputs.len(),
-                scale_reference: 1.0,
-            }
-        }
-        CalibrationStage::ObservationModels => {
-            let candidate_generation_input = loading_output
-                .calibration_output
-                .return_components_candidate_generation_input
-                .as_ref();
-            let observation_models_stage_input = loading_output
-                .calibration_output
-                .observation_models_stage_input
-                .as_ref();
-
-            StageSolverGeometry {
-                parameter_dimension: 1,
-                objective_term_count: 2,
-                support_count: candidate_generation_input
-                    .map_or(0, |input| input.observed_open_session_returns.len())
-                    + observation_models_stage_input
-                        .map_or(0, |input| input.open_session_timestamp_transitions.len()),
-                candidate_geometry_count: 2,
                 scale_reference: 1.0,
             }
         }
@@ -317,7 +296,7 @@ fn stage_solver_geometry(
             let option_support_count = option_surface_support_count(loading_output);
 
             StageSolverGeometry {
-                parameter_dimension: pricing_block_search_coordinate_count(),
+                parameter_dimension: OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT,
                 objective_term_count: usize::from(option_support_count > 0),
                 support_count: option_support_count,
                 candidate_geometry_count: option_support_count,
@@ -514,8 +493,6 @@ mod tests {
     };
     use crate::{
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-        CalibrationObservationModelsOpenSessionTimestampTransition,
-        CalibrationObservationModelsStageExecutionInput,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsKnownNewsCalendarInput,
         CalibrationReturnComponentsObjectiveMetricWeights,
@@ -637,20 +614,6 @@ mod tests {
                     },
                 }]),
                 hawkes_event_side_codes: None,
-                observation_models_stage_input: Some(
-                    CalibrationObservationModelsStageExecutionInput {
-                        open_session_timestamp_transitions: vec![
-                            CalibrationObservationModelsOpenSessionTimestampTransition {
-                                previous_timestamp_utc_nanos: 1,
-                                current_timestamp_utc_nanos: 1,
-                            },
-                            CalibrationObservationModelsOpenSessionTimestampTransition {
-                                previous_timestamp_utc_nanos: 1,
-                                current_timestamp_utc_nanos: 2,
-                            },
-                        ],
-                    },
-                ),
                 return_components_candidate_generation_input: Some(
                     CalibrationReturnComponentsStageCandidateGenerationInput {
                         known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {
@@ -687,15 +650,15 @@ mod tests {
                         return_clock_exposure_parameters:
                             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(
                             ),
-                        tick_grid_observation_model:
-                            janiform_calibration_artifacts::TickGridObservationModel {
+                        price_discretization_surface:
+                            janiform_calibration_artifacts::PriceDiscretizationSurface {
                                 tick_size: None,
                                 tick_size_source: "test".to_string(),
                                 inference_policy: "test".to_string(),
                                 observation_policy: "test".to_string(),
                             },
-                        timestamp_batching_observation_model:
-                            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+                        timestamp_batching_surface:
+                            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
                             ),
                         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                             continuous_distribution_fit_weight: 1.0,

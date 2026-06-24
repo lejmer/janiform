@@ -84,10 +84,23 @@
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
             "vol_of_vol": 0.0,
+            "stationary_return_energy_rate_per_hour": 0.0,
+            "return_energy_loading": 0.0,
             "buy_event_loading": 0.0,
             "sell_event_loading": 0.0
+          },
+          "market_pressure_parameters": {
+            "side_imbalance_levels": [
+              0.0
+            ],
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
           }
         },
+        "pressure_signed_imbalance_exposure_risk_price": 0.0,
         "activity_loadings": {
           "u_plus_baseline": {
             "real": 0.2,
@@ -118,6 +131,10 @@
           "real": 0.0,
           "imaginary": 0.0
         },
+        "market_pressure_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
         "seasonality_factor": 1.1,
         "news_intensity": {
           "known_news_intensity": 0.0,
@@ -139,6 +156,11 @@
           "y_plus_minus": 0.2,
           "y_minus_plus": 0.3,
           "y_minus_minus": 0.5
+        },
+        "initial_market_pressure_state": {
+          "state_weights": [
+            1.0
+          ]
         }
       },
       "expected": {
@@ -210,10 +232,23 @@
           "long_variance_parameters": {
             "mean_reversion_rate": 1.0,
             "vol_of_vol": 0.0,
+            "stationary_return_energy_rate_per_hour": 0.0,
+            "return_energy_loading": 0.0,
             "buy_event_loading": 0.0,
             "sell_event_loading": 0.0
+          },
+          "market_pressure_parameters": {
+            "side_imbalance_levels": [
+              0.0
+            ],
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
           }
         },
+        "pressure_signed_imbalance_exposure_risk_price": 0.0,
         "activity_loadings": {
           "u_plus_baseline": {
             "real": 0.2,
@@ -244,6 +279,10 @@
           "real": 0.0,
           "imaginary": 0.0
         },
+        "market_pressure_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
         "seasonality_factor": 1.1,
         "news_intensity": {
           "known_news_intensity": 0.0,
@@ -265,6 +304,11 @@
           "y_plus_minus": 0.2,
           "y_minus_plus": 0.3,
           "y_minus_minus": 0.5
+        },
+        "initial_market_pressure_state": {
+          "state_weights": [
+            1.0
+          ]
         }
       },
       "expected": {

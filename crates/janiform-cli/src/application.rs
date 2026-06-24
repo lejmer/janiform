@@ -108,18 +108,7 @@ where
     }
 
     match dispatch(&context, cli.command) {
-        Ok(exit_code) => {
-            if context.cancellation_token().is_cancelled() {
-                return write_context_error(
-                    CliError::Interrupted {
-                        source: CancellationError,
-                    },
-                    &context,
-                );
-            }
-
-            exit_code
-        }
+        Ok(exit_code) => exit_code,
         Err(error) => write_context_error(error, &context),
     }
 }

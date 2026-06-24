@@ -2,14 +2,13 @@ use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
     evolve_mean_reversion_boundary_state_on_interval_grid,
-    evolve_mean_reversion_boundary_state_with_endogenous_pressure,
 };
 
 use super::contracts::{CurrentStateEstimationError, CurrentStateEstimationInput};
 
 #[cfg(test)]
 pub(crate) const MEAN_REVERSION_CURRENT_STATE_BOUNDARY_SEED_POLICY: &str =
-    "first_observed_log_price_flat_anchor_zero_pressure_deviation.v1";
+    "first_observed_log_price_flat_anchor_zero_deviation.v1";
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MeanReversionBoundaryReplayState {
@@ -134,7 +133,7 @@ pub(crate) fn observed_log_price_from_reference_log_price(
 pub(crate) fn seed_mean_reversion_boundary_state_from_observed_log_price(
     observed_log_price: f64,
 ) -> Result<MeanReversionBoundaryState, CurrentStateEstimationError> {
-    MeanReversionBoundaryState::try_new(observed_log_price, observed_log_price, 0.0, 0.0)
+    MeanReversionBoundaryState::try_new(observed_log_price, observed_log_price, 0.0)
         .map_err(|source| CurrentStateEstimationError::InvalidMeanReversionBoundaryState { source })
 }
 
@@ -150,27 +149,13 @@ fn evolve_mean_reversion_boundary_state_to_observed_log_price(
         - boundary_state.anchor_value
         - deviation_decay_factor * boundary_state.deviation;
 
-    let evolved_state = if interval_delta == 0.0 {
-        let anchor_value = boundary_state.anchor_value;
-        let pressure_state = boundary_state.pressure_state;
-
-        evolve_mean_reversion_boundary_state_on_interval_grid(
-            boundary_state,
-            fitted_parameters.kappa,
-            interval_delta,
-            core_total_return,
-            anchor_value,
-            pressure_state,
-        )
-    } else {
-        evolve_mean_reversion_boundary_state_with_endogenous_pressure(
-            boundary_state,
-            fitted_parameters,
-            interval_delta,
-            core_total_return,
-            core_total_return,
-        )
-    };
+    let evolved_state = evolve_mean_reversion_boundary_state_on_interval_grid(
+        boundary_state,
+        fitted_parameters.kappa,
+        interval_delta,
+        core_total_return,
+        boundary_state.anchor_value,
+    );
 
     evolved_state.map_err(|source| {
         CurrentStateEstimationError::InvalidMeanReversionBoundaryStateEvolution { source }

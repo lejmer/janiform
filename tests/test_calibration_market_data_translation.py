@@ -32,7 +32,7 @@ from janiform.calibration.market_data import (
     CalibrationTickObjectiveDataUsagePolicy,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
-    MarketDataTimestampBatchingObservationDiagnosticState,
+    MarketDataTimestampBatchingSurfaceDiagnosticState,
     prepare_market_data_calibration,
 )
 from janiform.calibration.market_data.translation import (
@@ -46,13 +46,12 @@ from janiform.calibration.staged import (
     CalibrationStage,
 )
 from janiform.seasonality import SessionFilter
-from janiform.simulation import TimestampBatchingObservationMode
+from janiform.simulation import TimestampBatchingMode
 
 
 FULL_WITHOUT_OPTION_SURFACE_STAGES: tuple[CalibrationStage, ...] = (
     CalibrationStage.SEASONALITY,
     CalibrationStage.HAWKES,
-    CalibrationStage.OBSERVATION_MODELS,
     CalibrationStage.RETURN_COMPONENTS,
     CalibrationStage.LONG_VARIANCE,
     CalibrationStage.NEWS_SHOCKS,
@@ -67,10 +66,8 @@ def _mean_reversion_grid_candidates(
     mean_reversion_stage_input: dict[str, Any],
 ) -> tuple[dict[str, Any], ...]:
     assert set(mean_reversion_stage_input) == {
-        "predictive_evidence_alpha",
         "grid_candidates",
     }
-    assert mean_reversion_stage_input["predictive_evidence_alpha"] == pytest.approx(0.05)
 
     return tuple(mean_reversion_stage_input["grid_candidates"])
 
@@ -148,7 +145,7 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         "diagnostics",
         "joint_refinement_calibration_effort",
         "joint_refinement_audit_option_pricing_enabled",
-        "treat_inadmissible_calibration_warning_as_error",
+        "treat_invalid_candidate_fallback_warning_as_error",
         "tick_objective_data_usage_policy",
     }
     assert (
@@ -1220,24 +1217,25 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         "workflow_scope_selection",
         "known_news_window_filtering",
         "hawkes_candidate_generation",
-        "observation_models_input_generation",
+        "market_data_surface_preparation",
         "return_components_candidate_generation",
     )
     assert prepared.diagnostics.known_news_event_count == 2
     assert prepared.diagnostics.known_news_events_outside_source_window_count == 1
-    assert prepared.diagnostics.timestamp_batching_observation.state == (
-        MarketDataTimestampBatchingObservationDiagnosticState.DEFERRED_TO_OBSERVATION_MODELS_STAGE
+    assert prepared.diagnostics.timestamp_batching_surface.state == (
+        MarketDataTimestampBatchingSurfaceDiagnosticState.DISABLED_NO_DETECTABLE_BATCHING
     )
     assert (
-        prepared.diagnostics.timestamp_batching_observation.return_components_stage_selected
+        prepared.diagnostics.timestamp_batching_surface.return_components_stage_selected
         is True
     )
     assert (
-        prepared.diagnostics.timestamp_batching_observation.observation_model.mode
-        == TimestampBatchingObservationMode.DISABLED
+        prepared.diagnostics.timestamp_batching_surface.timestamp_batching_surface.mode
+        == TimestampBatchingMode.DISABLED
     )
-    assert prepared.diagnostics.timestamp_batching_observation.message == (
-        "timestamp batching observation fit is deferred to the observation-models calibration stage"
+    assert prepared.diagnostics.timestamp_batching_surface.message == (
+        "timestamp batching surface evaluated: disabled because no same-session duplicate "
+        "timestamp quantum was detected"
     )
     assert prepared.provenance.tick_data_summary.file_format == CalibrationInputFileFormat.CSV
     assert prepared.provenance.known_news_summary is not None

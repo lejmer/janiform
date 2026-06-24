@@ -279,6 +279,7 @@ fn run_staged_with_observer(
 ) -> Result<(CalibrationStagedRunReport, Duration), WorkflowError> {
     let scope_id = workflow_scope_id(execution_input);
     let scope_label = workflow_scope_label_for_input(execution_input);
+
     let mut observer_error: Option<WorkflowError> = None;
     let mut progress_gate = VolatileProgressGate::default();
 
@@ -323,6 +324,7 @@ fn run_staged_with_observer(
             &mut staged_observer,
         )
     };
+
     let execution_duration = execution_started_at.elapsed();
 
     if let Some(observer_error) = observer_error {
@@ -353,7 +355,7 @@ fn should_observe_staged_event(
         return true;
     }
 
-    if progress.restart_evaluation_timing_diagnostic.is_some() {
+    if progress.candidate_evaluation_timing_diagnostic.is_some() {
         return true;
     }
 
@@ -470,7 +472,7 @@ fn observe_run_events(input: RunEventObservationInput<'_, '_>) -> Result<(), Wor
     }
 
     if let CalibrationStagedRunObserverEvent::StageProgress(progress) = input.event
-        && progress.restart_evaluation_timing_diagnostic.is_some()
+        && progress.candidate_evaluation_timing_diagnostic.is_some()
     {
         input
             .event_writer
@@ -494,7 +496,6 @@ fn write_execution_artifacts(
     )?;
 
     observe_output_materialization_progress(input.progress_adapter, "writing fit report")?;
-
     write_pretty_json(input.paths.report_path.as_path(), &report_payload)?;
 
     observe_output_materialization_progress(
@@ -525,9 +526,7 @@ fn write_execution_artifacts(
     )?;
 
     observe_output_materialization_progress(input.progress_adapter, "writing fitted model")?;
-
     write_pretty_json(input.paths.model_path.as_path(), &model_payload)?;
-
     observe_output_materialization_progress(input.progress_adapter, "recording model artifact")?;
 
     append_artifact_event(
@@ -557,9 +556,9 @@ mod tests {
             &mut progress_gate,
             &return_components_stage_progress_event(
                 ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+                0,
                 1,
-                1,
-                Some("proxy EM search points ready"),
+                Some("build proxy EM search points"),
                 None,
                 None,
             )
@@ -578,13 +577,13 @@ mod tests {
     }
 
     #[test]
-    fn progress_gate_observes_restart_work_item_start_without_eval_metrics() {
+    fn progress_gate_observes_population_work_item_start_without_eval_metrics() {
         let mut progress_gate = VolatileProgressGate::default();
 
         assert!(should_observe_staged_event(
             &mut progress_gate,
             &joint_refinement_progress_event(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 Some("baseline"),
                 Some(1),
                 Some(1),
@@ -593,7 +592,7 @@ mod tests {
         assert!(should_observe_staged_event(
             &mut progress_gate,
             &joint_refinement_progress_event(
-                JointRefinementStageProgressPhase::RestartOptimization,
+                JointRefinementStageProgressPhase::PopulationRefinement,
                 Some("midpoint"),
                 None,
                 None,
@@ -645,12 +644,10 @@ mod tests {
                 stage_progress_percent: None,
                 aggregate_progress_percent: None,
                 current_item_label: current_item_label.map(str::to_string),
-                current_restart_id: None,
+                current_candidate_id: None,
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
-                active_restart_count: None,
-                completed_outer_cycles: None,
-                total_outer_cycles: None,
+                active_candidate_count: None,
                 current_evaluation_count,
                 total_evaluation_budget: None,
                 evaluation_progress_percent,
@@ -661,16 +658,17 @@ mod tests {
                 valid_completed_units: None,
                 cumulative_local_evaluation_count: None,
                 current_global_loss: None,
-                current_restart_best_global_loss: None,
+                current_candidate_best_global_loss: None,
+                current_final_global_loss: None,
                 current_candidate_assessment: None,
-                best_restart_id: None,
+                best_candidate_id: None,
                 best_global_loss: None,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
-                restart_evaluation_timing_diagnostic: None,
+                candidate_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))
@@ -678,7 +676,7 @@ mod tests {
 
     fn joint_refinement_progress_event(
         phase: JointRefinementStageProgressPhase,
-        restart_id: Option<&str>,
+        candidate_id: Option<&str>,
         current_evaluation_count: Option<usize>,
         evaluation_progress_percent: Option<usize>,
     ) -> CalibrationStagedRunObserverEvent {
@@ -693,13 +691,11 @@ mod tests {
                 total_units: 6,
                 stage_progress_percent: None,
                 aggregate_progress_percent: None,
-                current_item_label: restart_id.map(str::to_string),
-                current_restart_id: restart_id.map(str::to_string),
+                current_item_label: candidate_id.map(str::to_string),
+                current_candidate_id: candidate_id.map(str::to_string),
                 current_work_item_status: None,
                 planned_work_item_labels: Vec::new(),
-                active_restart_count: Some(5),
-                completed_outer_cycles: None,
-                total_outer_cycles: Some(1),
+                active_candidate_count: Some(5),
                 current_evaluation_count,
                 total_evaluation_budget: Some(59),
                 evaluation_progress_percent,
@@ -710,16 +706,17 @@ mod tests {
                 valid_completed_units: Some(0),
                 cumulative_local_evaluation_count: Some(0),
                 current_global_loss: None,
-                current_restart_best_global_loss: None,
+                current_candidate_best_global_loss: None,
+                current_final_global_loss: None,
                 current_candidate_assessment: None,
-                best_restart_id: None,
+                best_candidate_id: None,
                 best_global_loss: None,
                 current_coarse_consistency_fit: None,
                 best_coarse_consistency_fit: None,
                 exact_closed_form_buy_count: None,
                 exact_closed_form_sell_count: None,
                 exact_tilted_mixed_count: None,
-                restart_evaluation_timing_diagnostic: None,
+                candidate_evaluation_timing_diagnostic: None,
                 current_convergence_ratio: None,
             },
         ))

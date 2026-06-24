@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use super::loading::MarketDataLoadingProgressEvent;
-use super::timestamp_observation_diagnostics::CalibrationTimestampBatchingObservationDiagnostic;
+use super::timestamp_batching_surface_diagnostics::CalibrationTimestampBatchingSurfaceDiagnostic;
 
 /// Market-data preparation phase reported after source loading.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,8 +61,8 @@ pub enum MarketDataPreparationProgressEvent {
     Loading(MarketDataLoadingProgressEvent),
     /// Post-loading preparation phase progress.
     Preparing(MarketDataPreparationProgressPhase),
-    /// Timestamp batching observation diagnostic surfaced during preparation.
-    TimestampBatchingObservation(CalibrationTimestampBatchingObservationDiagnostic),
+    /// Timestamp batching surface diagnostic surfaced during preparation.
+    TimestampBatchingSurface(CalibrationTimestampBatchingSurfaceDiagnostic),
 }
 
 impl MarketDataPreparationProgressEvent {
@@ -71,8 +71,8 @@ impl MarketDataPreparationProgressEvent {
         match self {
             Self::Loading(event) => event.latest_signal(),
             Self::Preparing(phase) => phase.latest_signal().to_string(),
-            Self::TimestampBatchingObservation(_) => {
-                "recording timestamp batching observation diagnostics".to_string()
+            Self::TimestampBatchingSurface(_) => {
+                "recording timestamp batching surface diagnostics".to_string()
             }
         }
     }
@@ -136,11 +136,11 @@ impl<'a> MarketDataPreparationProgressContext<'a> {
         self.emit(MarketDataPreparationProgressEvent::Preparing(phase))
     }
 
-    pub(crate) fn emit_timestamp_batching_observation(
+    pub(crate) fn emit_timestamp_batching_surface(
         &mut self,
-        diagnostic: CalibrationTimestampBatchingObservationDiagnostic,
+        diagnostic: CalibrationTimestampBatchingSurfaceDiagnostic,
     ) -> Result<(), MarketDataPreparationProgressError> {
-        self.emit(MarketDataPreparationProgressEvent::TimestampBatchingObservation(diagnostic))
+        self.emit(MarketDataPreparationProgressEvent::TimestampBatchingSurface(diagnostic))
     }
 
     fn emit(
@@ -157,13 +157,13 @@ impl<'a> MarketDataPreparationProgressContext<'a> {
 
 #[cfg(test)]
 mod tests {
-    use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+    use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
-    use super::super::timestamp_observation_diagnostics::{
-        CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY,
-        CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION,
-        CalibrationTimestampBatchingObservationDiagnostic,
-        CalibrationTimestampBatchingObservationDiagnosticState,
+    use super::super::timestamp_batching_surface_diagnostics::{
+        CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY,
+        CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION,
+        CalibrationTimestampBatchingSurfaceDiagnostic,
+        CalibrationTimestampBatchingSurfaceDiagnosticState,
     };
     use super::{MarketDataPreparationProgressEvent, MarketDataPreparationProgressPhase};
 
@@ -192,22 +192,23 @@ mod tests {
 
     #[test]
     fn preparation_progress_event_uses_active_timestamp_batching_diagnostic_signal() {
-        let event = MarketDataPreparationProgressEvent::TimestampBatchingObservation(
-            CalibrationTimestampBatchingObservationDiagnostic {
-                schema_version: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION
+        let event = MarketDataPreparationProgressEvent::TimestampBatchingSurface(
+            CalibrationTimestampBatchingSurfaceDiagnostic {
+                schema_version: CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION
                     .to_string(),
-                diagnostic_policy: CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY
+                diagnostic_policy: CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY
                     .to_string(),
-                state: CalibrationTimestampBatchingObservationDiagnosticState::DisabledNoDetectableBatching,
+                state:
+                    CalibrationTimestampBatchingSurfaceDiagnosticState::DisabledNoDetectableBatching,
                 return_components_stage_selected: true,
-                observation_model: TimestampBatchingObservationModel::disabled(),
-                message: "timestamp batching observation evaluated".to_string(),
+                timestamp_batching_surface: TimestampBatchingSurface::disabled(),
+                message: "timestamp batching surface evaluated".to_string(),
             },
         );
 
         assert_eq!(
             event.latest_signal(),
-            "recording timestamp batching observation diagnostics"
+            "recording timestamp batching surface diagnostics"
         );
     }
 }

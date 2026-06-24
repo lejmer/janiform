@@ -1321,13 +1321,20 @@ fn build_run_config_with_options(
             mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
+            market_pressure_parameters:
+                janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(
+                ),
+            initial_market_pressure_state:
+                janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
             interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+            timestamp_batching_surface:
+                janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
+                ),
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1554,13 +1561,18 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
+        market_pressure_parameters:
+            janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1607,13 +1619,18 @@ fn build_one_interval_ordering_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
+        market_pressure_parameters:
+            janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1659,13 +1676,18 @@ fn build_two_interval_boundary_adjacent_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
+        market_pressure_parameters:
+            janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1680,13 +1702,10 @@ fn disabled_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ) {
     (
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionFittedParameters::zero_kappa(),
         MeanReversionRuntimeIntervalAnchors::try_new(
             interval_factor_grid.metadata.interval_alignment_policy,
             0.0,
-            0.0,
-            vec![0.0; interval_factor_grid.interval_indices.len()],
             vec![0.0; interval_factor_grid.interval_indices.len()],
             vec![
                 interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
@@ -1694,7 +1713,7 @@ fn disabled_mean_reversion_runtime_inputs(
             ],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
 }
@@ -1939,6 +1958,7 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             }
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
+            | SimulationRandomnessSubstreamDomain::MarketPressureDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment
@@ -2006,6 +2026,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
             | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::LongVarianceDiffusion
+            | SimulationRandomnessSubstreamDomain::MarketPressureDiffusion
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::TimestampBatchingObservation
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment

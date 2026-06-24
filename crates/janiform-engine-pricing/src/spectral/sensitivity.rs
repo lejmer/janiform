@@ -11,6 +11,7 @@ pub(crate) struct NodePriceSharedPlusShiftSensitivity {
     pub(crate) delta_beta_derivative: f64,
     pub(crate) buy_activity_premium_derivative: f64,
     pub(crate) sell_activity_premium_derivative: f64,
+    pub(crate) pressure_signed_imbalance_exposure_risk_price_derivative: f64,
 }
 
 impl NodePriceSharedPlusShiftSensitivity {
@@ -30,6 +31,8 @@ impl NodePriceSharedPlusShiftSensitivity {
             delta_beta_derivative: self.delta_beta_derivative,
             buy_activity_premium_derivative: self.buy_activity_premium_derivative,
             sell_activity_premium_derivative: self.sell_activity_premium_derivative,
+            pressure_signed_imbalance_exposure_risk_price_derivative: self
+                .pressure_signed_imbalance_exposure_risk_price_derivative,
         }
     }
 }
@@ -47,6 +50,9 @@ impl Add for NodePriceSharedPlusShiftSensitivity {
                 + other.buy_activity_premium_derivative,
             sell_activity_premium_derivative: self.sell_activity_premium_derivative
                 + other.sell_activity_premium_derivative,
+            pressure_signed_imbalance_exposure_risk_price_derivative: self
+                .pressure_signed_imbalance_exposure_risk_price_derivative
+                + other.pressure_signed_imbalance_exposure_risk_price_derivative,
         }
     }
 }
@@ -59,6 +65,7 @@ pub(crate) struct NodePriceSharedPlusShiftComplexSensitivity {
     pub(crate) delta_beta_derivative: ComplexScalar,
     pub(crate) buy_activity_premium_derivative: ComplexScalar,
     pub(crate) sell_activity_premium_derivative: ComplexScalar,
+    pub(crate) pressure_signed_imbalance_exposure_risk_price_derivative: ComplexScalar,
 }
 
 impl NodePriceSharedPlusShiftComplexSensitivity {
@@ -70,6 +77,7 @@ impl NodePriceSharedPlusShiftComplexSensitivity {
             delta_beta_derivative: ComplexScalar::new(0.0, 0.0),
             buy_activity_premium_derivative: ComplexScalar::new(0.0, 0.0),
             sell_activity_premium_derivative: ComplexScalar::new(0.0, 0.0),
+            pressure_signed_imbalance_exposure_risk_price_derivative: ComplexScalar::new(0.0, 0.0),
         }
     }
 }

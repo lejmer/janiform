@@ -11,7 +11,6 @@
     "selected_stages": [
       "seasonality",
       "hawkes",
-      "observation_models",
       "return_components",
       "long_variance",
       "news_shocks",
@@ -41,17 +40,6 @@
       },
       {
         "stage": "hawkes",
-        "optimizer_settings": {
-          "solver_name": "lbfgs",
-          "max_iterations": 250,
-          "cpu_count": 1,
-          "absolute_tolerance": 1e-08,
-          "relative_tolerance": 1e-06,
-          "constraint_penalty_weight": 10.0
-        }
-      },
-      {
-        "stage": "observation_models",
         "optimizer_settings": {
           "solver_name": "lbfgs",
           "max_iterations": 250,
@@ -182,22 +170,10 @@
       }
     }
   ],
-  "observation_models_stage_input": {
-    "open_session_timestamp_transitions": [
-      {
-        "previous_timestamp_utc_nanos": 1770046200000000000,
-        "current_timestamp_utc_nanos": 1770046200000000000
-      },
-      {
-        "previous_timestamp_utc_nanos": 1770046200000000000,
-        "current_timestamp_utc_nanos": 1770048300000000000
-      },
-      {
-        "previous_timestamp_utc_nanos": 1770048300000000000,
-        "current_timestamp_utc_nanos": 1770123600000000000
-      }
-    ]
-  },
+  "hawkes_event_side_codes": [
+    1,
+    2
+  ],
   "return_components_candidate_generation_input": {
     "known_news_calendar": {
       "source_window": {
@@ -276,13 +252,13 @@
       "buy_excitation_return_clock_scale": 1.0,
       "sell_excitation_return_clock_scale": 1.0
     },
-    "tick_grid_observation_model": {
+    "price_discretization_surface": {
       "tick_size": null,
       "tick_size_source": "unavailable",
       "inference_policy": "unit_test_no_tick_grid_inference.v1",
       "observation_policy": "continuous_price_observation.v1"
     },
-    "timestamp_batching_observation_model": {
+    "timestamp_batching_surface": {
       "schema_version": "model.timestamp_batching_observation.v1",
       "mode": "disabled",
       "bucket_width_nanos": null,
@@ -303,7 +279,6 @@
     }
   },
   "mean_reversion_stage_input": {
-    "predictive_evidence_alpha": 0.05,
     "grid_candidates": [
       {
         "calibration_grid_kind": "synthetic_daily_close_grid.v1",

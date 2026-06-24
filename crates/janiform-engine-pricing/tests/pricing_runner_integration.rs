@@ -17,8 +17,9 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
 use janiform_model_kernels::news::{
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -45,10 +46,10 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
                     y_minus_minus: 0.0,
                 },
                 LongVarianceState::unit(),
-                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                    .expect("zero-gain mean reversion fit should construct"),
+                MarketPressureState::neutral(),
+                MeanReversionFittedParameters::zero_kappa(),
                 1.0,
-                MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+                MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
                     .expect("zero observed boundary state should construct"),
             )
             .expect("endogenous boundary input should construct"),
@@ -120,8 +121,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
 }
 
 #[test]
-fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero_kappa_endogenous_fit()
- {
+fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero_kappa_fit() {
     let hawkes_boundary_state = HawkesExcitationState {
         y_plus_plus: 0.0,
         y_plus_minus: 0.0,
@@ -152,10 +152,10 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
             0,
             hawkes_boundary_state,
             LongVarianceState::unit(),
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion fit should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::zero_kappa(),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
                 .expect("zero observed boundary state should construct"),
         )
         .expect("zero-anchor boundary input should construct"),
@@ -171,13 +171,10 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
             0,
             hawkes_boundary_state,
             LongVarianceState::unit(),
-            MeanReversionFittedParameters::try_new(
-                0.0,
-                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-            )
-            .expect("flat zero-kappa fitted parameters should construct"),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::zero_kappa(),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.25, 0.0, -0.25)
+            MeanReversionBoundaryState::try_new(0.0, 0.25, -0.25)
                 .expect("observed boundary state should construct"),
         )
         .expect("flat-anchor boundary input should construct"),
@@ -235,10 +232,10 @@ fn vanilla_option_grid_batch_pricing_populates_shared_grids() {
             y_minus_minus: 0.0,
         },
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion fit should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::zero_kappa(),
         1.0,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
@@ -309,10 +306,10 @@ fn vanilla_option_grid_batch_pricing_populates_rectangular_multi_maturity_grids(
             y_minus_minus: 0.0,
         },
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion fit should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::zero_kappa(),
         1.0,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
@@ -384,10 +381,10 @@ fn vanilla_option_grid_batch_pricing_preserves_zero_rate_put_call_parity() {
             y_minus_minus: 0.0,
         },
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion fit should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::zero_kappa(),
         24.0,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
@@ -463,10 +460,10 @@ fn vanilla_option_grid_batch_pricing_reuses_one_terminal_measure_change_per_matu
             y_minus_minus: 0.0,
         },
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion fit should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::zero_kappa(),
         1.0,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
@@ -520,10 +517,10 @@ fn vanilla_option_surface_pricing_populates_shared_grid() {
             y_minus_minus: 0.0,
         },
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion fit should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::zero_kappa(),
         1.0,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
@@ -699,7 +696,12 @@ fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
             .expect("NIG shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         LongVarianceParameters::neutral(),
+        neutral_market_pressure_parameters(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")
+}
+
+fn neutral_market_pressure_parameters() -> MarketPressureParameters {
+    MarketPressureParameters::no_anchor_impact()
 }

@@ -1739,7 +1739,7 @@
                   "type": "string",
                   "value": "simulation.seeded_tick_event.timing_diagnostics.v1"
                 },
-                "timestamp_batching_observation_model": {
+                "timestamp_batching_surface": {
                   "fields": {
                     "bucket_width_nanos": {
                       "type": "null"
@@ -1806,7 +1806,7 @@
                 "observed_timestamp_utc_nanos": {
                   "type": "int"
                 },
-                "pressure_state": {
+                "market_pressure_state": {
                   "type": "float"
                 },
                 "side": {
@@ -1851,7 +1851,7 @@
               "type": "string",
               "value": "simulation.seeded_tick_event.state_snapshot.v1"
             },
-            "timestamp_batching_observation_model": {
+            "timestamp_batching_surface": {
               "fields": {
                 "bucket_width_nanos": {
                   "type": "null"
@@ -1922,7 +1922,7 @@
                 "observed_timestamp_utc_nanos": {
                   "type": "int"
                 },
-                "pressure_state": {
+                "market_pressure_state": {
                   "type": "float"
                 },
                 "return_components": {
@@ -1992,7 +1992,7 @@
                 "observed_timestamp_utc_nanos": {
                   "type": "int"
                 },
-                "pressure_state": {
+                "market_pressure_state": {
                   "type": "float"
                 },
                 "return_components": {
@@ -2060,7 +2060,7 @@
             "state_snapshot_capture_point_policy": {
               "type": "null"
             },
-            "timestamp_batching_observation_model": {
+            "timestamp_batching_surface": {
               "fields": {
                 "bucket_width_nanos": {
                   "type": "null"
@@ -2185,7 +2185,7 @@
                   "type": "string",
                   "value": "simulation.seeded_tick_event.timing_diagnostics.v1"
                 },
-                "timestamp_batching_observation_model": {
+                "timestamp_batching_surface": {
                   "fields": {
                     "bucket_width_nanos": {
                       "type": "null"
@@ -2252,7 +2252,7 @@
                 "observed_timestamp_utc_nanos": {
                   "type": "int"
                 },
-                "pressure_state": {
+                "market_pressure_state": {
                   "type": "float"
                 },
                 "side": {
@@ -2297,7 +2297,7 @@
               "type": "string",
               "value": "simulation.seeded_tick_event.state_snapshot.v1"
             },
-            "timestamp_batching_observation_model": {
+            "timestamp_batching_surface": {
               "fields": {
                 "bucket_width_nanos": {
                   "type": "null"
@@ -2368,7 +2368,7 @@
                 "observed_timestamp_utc_nanos": {
                   "type": "int"
                 },
-                "pressure_state": {
+                "market_pressure_state": {
                   "type": "float"
                 },
                 "return_components": {
@@ -2436,7 +2436,7 @@
             "state_snapshot_capture_point_policy": {
               "type": "null"
             },
-            "timestamp_batching_observation_model": {
+            "timestamp_batching_surface": {
               "fields": {
                 "bucket_width_nanos": {
                   "type": "null"

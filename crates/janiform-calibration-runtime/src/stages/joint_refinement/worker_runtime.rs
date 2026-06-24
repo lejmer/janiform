@@ -10,6 +10,8 @@ use janiform_foundations::cancellation::{
 };
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
+use crate::stages::parallelism::resolved_stage_cpu_count;
+
 use super::execution::JointRefinementSeedSummary;
 use super::summary_simulation::{
     CloseSessionRequest, InitializeSessionRequest, InitializeSessionResponse,
@@ -103,7 +105,7 @@ impl JointRefinementSummarySimulationScheduler {
         };
 
         Ok(Self {
-            cpu_count: cpu_count.max(1),
+            cpu_count: resolved_stage_cpu_count(cpu_count),
             backend,
             session_context: session_context.clone(),
             session_state,

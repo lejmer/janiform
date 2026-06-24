@@ -15,8 +15,8 @@ from .contracts import (
     SeededTickSimulationDiagnostics,
     SeededTickSimulationIntervalFactorGridSummary,
     SeededTickSimulationRequest,
-    TimestampBatchingObservationMode,
-    TimestampBatchingObservationModel,
+    TimestampBatchingMode,
+    TimestampBatchingSurface,
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from .response import (
@@ -28,6 +28,7 @@ from .response import (
     validate_seeded_tick_simulation_response,
 )
 from .runtime import run_seeded_tick_event_simulation
+from ...market_pressure import MarketPressureParameters, MarketPressureState
 from ...long_variance import LongVarianceParameters, LongVarianceState
 from ..shared import (
     HawkesExcitationState,
@@ -39,6 +40,8 @@ from ..shared import (
 )
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY",
     "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
     "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
@@ -64,8 +67,8 @@ __all__ = [
     "SeededTickSimulationRequest",
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",
-    "TimestampBatchingObservationMode",
-    "TimestampBatchingObservationModel",
+    "TimestampBatchingMode",
+    "TimestampBatchingSurface",
     "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "deserialize_seeded_tick_simulation_response",
     "run_seeded_tick_event_simulation",

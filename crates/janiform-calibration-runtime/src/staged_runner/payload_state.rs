@@ -3,7 +3,6 @@ use super::{
     CALIBRATION_LONG_VARIANCE_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_NEWS_SHOCKS_STAGE_OUTPUT_SCHEMA_VERSION,
-    CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_BACKFIT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CalibrationInMemoryStagePayloadState, CalibrationStageParameterArtifact,
@@ -55,25 +54,15 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     seasonality_artifact_reference: payload.seasonality_artifact_reference.clone(),
                 });
         }
-        CalibrationStageParameterPayload::ObservationModels(payload) => {
-            payload_state.observation_models_stage_payload = Some(
-                crate::stages::observation_models::ObservationModelsStageFittedPayload {
-                    schema_version: CALIBRATION_OBSERVATION_MODELS_STAGE_OUTPUT_SCHEMA_VERSION,
-                    timestamp_batching_observation_model: payload
-                        .timestamp_batching_observation_model
-                        .clone(),
-                    open_session_return_source_activities: Vec::new(),
-                    diagnostics: payload.diagnostics.clone(),
-                },
-            );
-        }
         CalibrationStageParameterPayload::ReturnComponents(payload) => {
             payload_state.return_components_stage_payload = Some(
                 crate::stages::return_components::ReturnComponentsStageFittedPayload {
                     schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
                     selected_candidate_id: payload.selected_candidate_id.clone(),
+                    source_window_open_exposure_hours: payload.source_window_open_exposure_hours,
                     fitted_parameters: payload.fitted_parameters.clone(),
                     candidate_diagnostics: Vec::new(),
+                    market_pressure_selection_diagnostics: Vec::new(),
                     candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
                     objective_weighting_policy:
                         CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
@@ -85,7 +74,9 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                         surprise_news_arrival_family_count: 1,
                         return_jump_mark_scale_family_count: 1,
                         activity_coupling_family_count: 1,
+                        market_pressure_family_count: 1,
                     },
+                    market_pressure_runtime_state: None,
                     activity_input_transport: payload.activity_input_transport,
                     activity_selected_hawkes_candidate_id: payload
                         .activity_selected_hawkes_candidate_id
@@ -137,8 +128,10 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     selected_candidate_id: payload
                         .effective_return_components_selected_candidate_id
                         .clone(),
+                    source_window_open_exposure_hours: payload.source_window_open_exposure_hours,
                     fitted_parameters: payload.effective_fitted_parameters.clone(),
                     candidate_diagnostics: Vec::new(),
+                    market_pressure_selection_diagnostics: Vec::new(),
                     candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
                     objective_weighting_policy:
                         CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
@@ -151,7 +144,9 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                             surprise_news_arrival_family_count: 1,
                             return_jump_mark_scale_family_count: 1,
                             activity_coupling_family_count: 1,
+                            market_pressure_family_count: 1,
                         },
+                    market_pressure_runtime_state: None,
                     activity_input_transport:
                         janiform_calibration_artifacts::CalibrationStageHandoffTransport::InMemoryOutput,
                     activity_selected_hawkes_candidate_id: None,
@@ -182,7 +177,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
             payload_state.mean_reversion_stage_payload = Some(
                 crate::stages::mean_reversion::MeanReversionStageFittedPayload {
                     schema_version: CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
-                    fitted_parameters: payload.fitted_parameters.clone(),
+                    fitted_parameters: payload.fitted_parameters,
                     diagnostics: payload.diagnostics.clone(),
                     return_components_input_transport: payload.return_components_input_transport,
                     return_components_selected_candidate_id: payload
@@ -231,9 +226,6 @@ pub(super) fn update_in_memory_payload_state(
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
             payload_state.hawkes_stage_payload = report.fitted_stage_payload.clone();
-        }
-        CalibrationStagedRunStageReport::ObservationModels(report) => {
-            payload_state.observation_models_stage_payload = report.fitted_stage_payload.clone();
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             payload_state.return_components_stage_payload = report.fitted_stage_payload.clone();

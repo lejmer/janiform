@@ -9,6 +9,7 @@ from janiform.interval_factor_grids import (
     provide_interval_factor_grid,
 )
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation.coarse import (
@@ -22,7 +23,7 @@ from janiform.simulation.coarse import (
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
-    TimestampBatchingObservationModel,
+    TimestampBatchingSurface,
     run_seeded_tick_event_simulation,
 )
 from janiform.simulation.seeded.contracts import (
@@ -32,6 +33,7 @@ from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelParameters,
 )
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 
 START_TIME_UTC: datetime = datetime(2026, 2, 2, tzinfo=UTC)
 
@@ -91,6 +93,34 @@ def test_seeded_behavior_validation_suppresses_surprise_news_fine_path_records_w
             and record.market_state.value == "closed"
         )
         for record in payload.fine_path
+    )
+
+
+def test_seeded_native_column_chunks_expose_market_pressure_state(
+    calendar_registry,
+) -> None:
+    payload = _run_seeded_case(
+        calendar_registry=calendar_registry,
+        seed=91_008,
+        kernel_parameters=_symmetric_kernel_parameters(),
+        horizon_interval_count=1,
+        seasonality_factor=25.0,
+        news_intensity=0.0,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+    )
+
+    fine_path_records = list(payload.fine_path)
+    event_tape_records = list(payload.event_tape)
+
+    assert fine_path_records
+    assert event_tape_records
+    assert all(
+        isinstance(record.market_pressure_state, float)
+        for record in fine_path_records
+    )
+    assert all(
+        isinstance(record.market_pressure_state, float)
+        for record in event_tape_records
     )
 
 
@@ -374,10 +404,14 @@ def _run_seeded_case(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload(),
+        ),
+        initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
     )
 
     return run_seeded_tick_event_simulation(request)

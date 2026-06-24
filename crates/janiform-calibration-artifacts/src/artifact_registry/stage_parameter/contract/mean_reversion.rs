@@ -96,17 +96,6 @@ pub(super) fn validate_mean_reversion_stage_parameter_payload(
         }
     })?;
 
-    payload
-        .diagnostics
-        .anchor_parameter_estimates
-        .validate()
-        .map_err(|source| {
-            CalibrationStageParameterArtifactValidationError::InvalidMeanReversionParameters {
-                stage,
-                error_message: source.to_string(),
-            }
-        })?;
-
     validate_mean_reversion_stage_parameter_boundary(payload)?;
     validate_optimizer_state_absence(stage, optimizer_state)
 }

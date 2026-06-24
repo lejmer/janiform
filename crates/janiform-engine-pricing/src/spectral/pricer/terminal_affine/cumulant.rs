@@ -10,6 +10,7 @@ use janiform_affine_oracle::affine_oracle::{
 use janiform_foundations::complex_math::{ComplexScalar, complex_multiply};
 
 use crate::characteristic::build_pricing_equation_specification;
+use crate::pricing_kernel::VanillaOptionPricingKernelParameters;
 use crate::progress::PricingProgressEvent;
 
 use super::super::{VanillaOptionPricingIntervalFactors, VanillaOptionPricingRunError};
@@ -21,6 +22,7 @@ pub(super) struct TerminalAffineCumulantEvaluation {
     pub(super) argument_derivative: ComplexScalar,
     pub(super) buy_activity_premium_derivative: ComplexScalar,
     pub(super) sell_activity_premium_derivative: ComplexScalar,
+    pub(super) pressure_signed_imbalance_exposure_risk_price_derivative: ComplexScalar,
 }
 
 #[derive(Default)]
@@ -114,6 +116,9 @@ fn evaluate_terminal_affine_cumulant(
                 context.interval_factor_grids[interval_offset],
                 context.interval_deltas[interval_offset],
                 context.mean_reversion_path.interval_return_weights[interval_offset],
+                context
+                    .mean_reversion_path
+                    .interval_market_pressure_exposure_scales[interval_offset],
                 argument,
             )
         })
@@ -125,6 +130,12 @@ fn evaluate_terminal_affine_cumulant(
             .pricing_request
             .boundary_input
             .long_variance_boundary_state,
+        // The schedule request owns its initial pressure state independently from pricing input.
+        initial_market_pressure_state: context
+            .pricing_request
+            .boundary_input
+            .market_pressure_boundary_state
+            .clone(),
         intervals,
     };
 
@@ -164,6 +175,8 @@ fn cumulant_evaluation_from_schedule_output(
         argument_derivative: output.argument_derivative,
         buy_activity_premium_derivative: output.buy_activity_premium_derivative,
         sell_activity_premium_derivative: output.sell_activity_premium_derivative,
+        pressure_signed_imbalance_exposure_risk_price_derivative: output
+            .pressure_signed_imbalance_exposure_risk_price_derivative,
     }
 }
 
@@ -172,6 +185,7 @@ fn build_terminal_affine_schedule_interval_input(
     interval_factor_grids: VanillaOptionPricingIntervalFactors,
     interval_delta: f64,
     interval_return_weight: f64,
+    market_pressure_exposure_scale: f64,
     argument: TerminalAffineCumulantArgument,
 ) -> Result<ExponentialAffineScheduleIntervalInput, VanillaOptionPricingRunError> {
     let weighted_argument = argument.fourier_argument().scale(interval_return_weight);
@@ -217,13 +231,19 @@ fn build_terminal_affine_schedule_interval_input(
         weighted_argument_tangent,
     );
 
-    let activity_transform_inputs = build_terminal_affine_activity_transform_inputs(
+    let activity_transform_inputs = build_terminal_affine_pricing_kernel_transform_inputs(
         context,
         buy_side_characteristic_exponent,
         sell_side_characteristic_exponent,
         buy_side_characteristic_exponent_tangent,
         sell_side_characteristic_exponent_tangent,
         interval_return_weight,
+        market_pressure_exposure_scale,
+    );
+    let pricing_kernel_parameters = effective_pricing_kernel_parameters(context);
+    let market_pressure_return_weight = terminal_affine_market_pressure_return_weight(
+        interval_return_weight,
+        market_pressure_exposure_scale,
     );
 
     let news_intensity = interval_factor_grids
@@ -241,6 +261,9 @@ fn build_terminal_affine_schedule_interval_input(
             activity_transform_inputs.z_plus,
             activity_transform_inputs.z_minus,
             argument.return_loading(interval_return_weight),
+            argument.return_loading(market_pressure_return_weight),
+            pricing_kernel_parameters.pressure_signed_imbalance_exposure_risk_price
+                * market_pressure_exposure_scale,
             interval_factor_grids.seasonality_factor,
             news_intensity,
             context
@@ -255,6 +278,11 @@ fn build_terminal_affine_schedule_interval_input(
                 .surprise_component_mark_scales,
             interval_delta,
             context.pricing_request.boundary_input.hawkes_boundary_state,
+            context
+                .pricing_request
+                .boundary_input
+                .market_pressure_boundary_state
+                .clone(),
         );
 
     Ok(ExponentialAffineScheduleIntervalInput {
@@ -262,27 +290,31 @@ fn build_terminal_affine_schedule_interval_input(
         argument_tangent: activity_transform_inputs.argument_tangent,
         buy_activity_premium_tangent: activity_transform_inputs.buy_activity_premium_tangent,
         sell_activity_premium_tangent: activity_transform_inputs.sell_activity_premium_tangent,
+        pressure_signed_imbalance_exposure_risk_price_tangent: activity_transform_inputs
+            .pressure_signed_imbalance_exposure_risk_price_tangent,
     })
 }
 
 #[derive(Debug, Clone, Copy)]
-struct TerminalAffineActivityTransformInputs {
+struct TerminalAffinePricingKernelTransformInputs {
     activity_loadings: ExponentialAffineTransformActivityLoadings,
     z_plus: ComplexScalar,
     z_minus: ComplexScalar,
     argument_tangent: ExponentialAffineTransformInputTangent,
     buy_activity_premium_tangent: ExponentialAffineTransformInputTangent,
     sell_activity_premium_tangent: ExponentialAffineTransformInputTangent,
+    pressure_signed_imbalance_exposure_risk_price_tangent: ExponentialAffineTransformInputTangent,
 }
 
-fn build_terminal_affine_activity_transform_inputs(
+fn build_terminal_affine_pricing_kernel_transform_inputs(
     context: &TerminalAffineMaturityContext<'_>,
     buy_side_characteristic_exponent: ComplexScalar,
     sell_side_characteristic_exponent: ComplexScalar,
     buy_side_characteristic_exponent_tangent: ComplexScalar,
     sell_side_characteristic_exponent_tangent: ComplexScalar,
     interval_return_weight: f64,
-) -> TerminalAffineActivityTransformInputs {
+    market_pressure_exposure_scale: f64,
+) -> TerminalAffinePricingKernelTransformInputs {
     let exposure_parameters = context
         .pricing_request
         .model_parameters
@@ -304,10 +336,11 @@ fn build_terminal_affine_activity_transform_inputs(
     let sell_endogenous_loading_tangent = sell_side_characteristic_exponent_tangent
         .scale(-exposure_parameters.sell_excitation_return_clock_scale);
 
-    let pricing_kernel_parameters = context
-        .pricing_request
-        .model_parameters
-        .pricing_kernel_parameters;
+    let pricing_kernel_parameters = effective_pricing_kernel_parameters(context);
+    let market_pressure_return_weight = terminal_affine_market_pressure_return_weight(
+        interval_return_weight,
+        market_pressure_exposure_scale,
+    );
 
     let buy_kernel_inputs = pricing_kernel_parameters.buy_terminal_density_transform_inputs(
         buy_endogenous_loading,
@@ -319,7 +352,7 @@ fn build_terminal_affine_activity_transform_inputs(
         ComplexScalar::new(1.0, 0.0),
     );
 
-    TerminalAffineActivityTransformInputs {
+    TerminalAffinePricingKernelTransformInputs {
         activity_loadings: ExponentialAffineTransformActivityLoadings::new(
             buy_baseline_loading,
             buy_kernel_inputs.u_input,
@@ -340,6 +373,10 @@ fn build_terminal_affine_activity_transform_inputs(
             news_return_loading: TerminalAffineCumulantArgument::return_loading_tangent(
                 interval_return_weight,
             ),
+            market_pressure_return_loading: TerminalAffineCumulantArgument::return_loading_tangent(
+                market_pressure_return_weight,
+            ),
+            pressure_signed_imbalance_exposure_risk_price: 0.0,
         },
         buy_activity_premium_tangent: ExponentialAffineTransformInputTangent {
             activity_loadings: ExponentialAffineTransformActivityLoadings::new(
@@ -351,6 +388,8 @@ fn build_terminal_affine_activity_transform_inputs(
             z_plus: buy_kernel_inputs.log_activity_premium_z_derivative,
             z_minus: ComplexScalar::new(0.0, 0.0),
             news_return_loading: ComplexScalar::new(0.0, 0.0),
+            market_pressure_return_loading: ComplexScalar::new(0.0, 0.0),
+            pressure_signed_imbalance_exposure_risk_price: 0.0,
         },
         sell_activity_premium_tangent: ExponentialAffineTransformInputTangent {
             activity_loadings: ExponentialAffineTransformActivityLoadings::new(
@@ -362,6 +401,50 @@ fn build_terminal_affine_activity_transform_inputs(
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: sell_kernel_inputs.log_activity_premium_z_derivative,
             news_return_loading: ComplexScalar::new(0.0, 0.0),
+            market_pressure_return_loading: ComplexScalar::new(0.0, 0.0),
+            pressure_signed_imbalance_exposure_risk_price: 0.0,
         },
+        pressure_signed_imbalance_exposure_risk_price_tangent:
+            ExponentialAffineTransformInputTangent {
+                activity_loadings: ExponentialAffineTransformActivityLoadings::new(
+                    ComplexScalar::new(0.0, 0.0),
+                    ComplexScalar::new(0.0, 0.0),
+                    ComplexScalar::new(0.0, 0.0),
+                    ComplexScalar::new(0.0, 0.0),
+                ),
+                z_plus: ComplexScalar::new(0.0, 0.0),
+                z_minus: ComplexScalar::new(0.0, 0.0),
+                news_return_loading: ComplexScalar::new(0.0, 0.0),
+                market_pressure_return_loading: ComplexScalar::new(0.0, 0.0),
+                pressure_signed_imbalance_exposure_risk_price: match context.measure_policy {
+                    super::core::TerminalAffineMeasurePolicy::Physical => 0.0,
+                    super::core::TerminalAffineMeasurePolicy::RiskNeutralMartingale => {
+                        market_pressure_exposure_scale
+                    }
+                },
+            },
+    }
+}
+
+fn terminal_affine_market_pressure_return_weight(
+    interval_return_weight: f64,
+    market_pressure_exposure_scale: f64,
+) -> f64 {
+    interval_return_weight * market_pressure_exposure_scale
+}
+
+fn effective_pricing_kernel_parameters(
+    context: &TerminalAffineMaturityContext<'_>,
+) -> VanillaOptionPricingKernelParameters {
+    match context.measure_policy {
+        super::core::TerminalAffineMeasurePolicy::Physical => {
+            VanillaOptionPricingKernelParameters::identity()
+        }
+        super::core::TerminalAffineMeasurePolicy::RiskNeutralMartingale => {
+            context
+                .pricing_request
+                .model_parameters
+                .pricing_kernel_parameters
+        }
     }
 }

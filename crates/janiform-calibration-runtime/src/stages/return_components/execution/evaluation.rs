@@ -22,8 +22,8 @@ use super::diagnostics::{
     collect_return_components_exact_candidate_constraint_violations,
 };
 use super::signals::{
-    ReturnComponentsStageActivityCalibrationContext, derive_continuous_fit_business_time_scales,
-    sort_candidate_generation_signals, summarize_candidate_generation_signals,
+    ReturnComponentsStageActivityCalibrationContext, sort_candidate_generation_signals,
+    summarize_candidate_generation_signals,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -58,7 +58,7 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
             .as_slice(),
         &prepared_candidate_generation_input
             .candidate_generation_input
-            .tick_grid_observation_model,
+            .price_discretization_surface,
     );
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
@@ -95,6 +95,64 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
 pub(crate) struct ReturnComponentsStageJointRefinementObservedSignalPreparation {
     pub continuous_return_calibration_sample:
         continuous_fit::ReturnComponentsStageContinuousReturnCalibrationSample,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ReturnComponentsStageContinuousReturnCalibrationPreparation {
+    pub(crate) sorted_signals: super::signals::ReturnComponentsStageSortedSignalInputs,
+    pub(crate) calibration_sample:
+        continuous_fit::ReturnComponentsStageContinuousReturnCalibrationSample,
+}
+
+pub(crate) fn prepare_continuous_return_calibration_inputs(
+    candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
+) -> Result<
+    ReturnComponentsStageContinuousReturnCalibrationPreparation,
+    ReturnComponentsStageCandidateGenerationInputError,
+> {
+    candidate_generation_input.validate()?;
+
+    let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
+        candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+        candidate_generation_input
+            .realized_known_news_return_samples
+            .as_slice(),
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .as_slice(),
+        &candidate_generation_input.price_discretization_surface,
+    );
+
+    let fitted_surprise_episode_selection_layer =
+        surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
+            candidate_generation_input
+                .detected_intraday_jump_candidates
+                .as_slice(),
+            fitted_signal_partition_layer.continuous_return_filter_threshold,
+        );
+
+    let sorted_signals = sort_candidate_generation_signals(
+        candidate_generation_input,
+        &[],
+        fitted_signal_partition_layer,
+        &fitted_surprise_episode_selection_layer,
+    );
+
+    let (_, calibration_sample) = summarize_candidate_generation_signals(
+        candidate_generation_input,
+        &sorted_signals,
+        activity_calibration_context,
+    );
+
+    Ok(
+        ReturnComponentsStageContinuousReturnCalibrationPreparation {
+            sorted_signals,
+            calibration_sample,
+        },
+    )
 }
 
 pub fn evaluate_return_components_exact_candidate(
@@ -146,46 +204,19 @@ pub fn evaluate_return_components_exact_candidate(
         }
     });
 
-    let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
-        candidate_generation_input
-            .observed_open_session_returns
-            .as_slice(),
-        candidate_generation_input
-            .realized_known_news_return_samples
-            .as_slice(),
-        candidate_generation_input
-            .detected_intraday_jump_candidates
-            .as_slice(),
-        &candidate_generation_input.tick_grid_observation_model,
-    );
-    let fitted_surprise_episode_selection_layer =
-        surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
-            candidate_generation_input
-                .detected_intraday_jump_candidates
-                .as_slice(),
-            fitted_signal_partition_layer.continuous_return_filter_threshold,
-        );
-
-    let sorted_signals = sort_candidate_generation_signals(
+    let continuous_return_preparation = prepare_continuous_return_calibration_inputs(
         &candidate_generation_input,
-        &[],
-        fitted_signal_partition_layer,
-        &fitted_surprise_episode_selection_layer,
-    );
-
-    let continuous_fit_business_time_scales =
-        derive_continuous_fit_business_time_scales(&sorted_signals, activity_calibration_context);
-
-    let continuous_return_calibration_sample =
-        continuous_fit::build_continuous_return_calibration_sample(
-            &sorted_signals,
-            continuous_fit_business_time_scales.as_slice(),
-            candidate_generation_input.open_session_sell_share_proxy,
-        );
+        activity_calibration_context,
+    )
+    .map_err(|source| {
+        ReturnComponentsStageExactCandidateEvaluationError::InvalidCandidateGenerationInput {
+            error_message: source.to_string(),
+        }
+    })?;
 
     let continuous_return_evaluation = continuous_fit::evaluate_continuous_nig_candidate(
         fitted_parameters.nig_shared_plus_shift_configuration,
-        &continuous_return_calibration_sample,
+        &continuous_return_preparation.calibration_sample,
         observed_summary_statistics,
         stage_seed,
     );
@@ -316,13 +347,13 @@ pub fn evaluate_return_components_exact_candidate(
             super::super::contracts::ReturnComponentsStageContinuousReturnSampleDiagnostic {
                 observed_returns:
                     continuous_fit::continuous_return_calibration_sample_observed_returns(
-                        &continuous_return_calibration_sample,
+                        &continuous_return_preparation.calibration_sample,
                     )
                     .to_vec(),
                 fitted_returns: continuous_return_evaluation.fitted_returns.clone(),
                 business_time_scales:
                     continuous_fit::continuous_return_calibration_sample_business_time_scales(
-                        &continuous_return_calibration_sample,
+                        &continuous_return_preparation.calibration_sample,
                     )
                     .to_vec(),
             },

@@ -17,10 +17,10 @@ use crate::stages::seasonality::{CalibrationStageExecutionStatus, FourierBusines
 use janiform_calibration_artifacts::{
     CalibrationEffortOptions, CalibrationExecutionMode, CalibrationLossTermDiagnostic,
     CalibrationOptimizerSettings, CalibrationStage, CalibrationStagePayloadSource,
-    CalibrationStageSeedSource, JointRefinementStageCarryInput,
-    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
-    JointRefinementStageOptimizerDiagnostics, JointRefinementStageOptionCalibrationDiagnostics,
-    JointRefinementStageRestartEvaluationTimingDiagnostic, JointRefinementStageRuntimeProfile,
+    CalibrationStageSeedSource, JointRefinementStageCandidateEvaluationTimingDiagnostic,
+    JointRefinementStageCarryInput, JointRefinementStageFittedParameters,
+    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
+    JointRefinementStageOptionCalibrationDiagnostics, JointRefinementStageRuntimeProfile,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,8 +71,8 @@ pub struct JointRefinementStageExecutionInput {
     pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     pub calibration_effort: Option<CalibrationEffortOptions>,
-    pub restart_candidate_budget_override: Option<usize>,
-    pub treat_inadmissible_calibration_warning_as_error: bool,
+    pub candidate_budget_override: Option<usize>,
+    pub treat_invalid_candidate_fallback_warning_as_error: bool,
     pub option_refinement_candidate_count_override: Option<usize>,
     pub option_refinement_wall_clock_budget_millis: Option<u64>,
     pub audit_option_pricing_enabled: bool,
@@ -92,10 +92,11 @@ pub enum JointRefinementStageProgressPhase {
     BaselineLocalEvaluation,
     BaselineFinalEvaluation,
     BaselineCoarseConsistencyEvaluation,
-    RestartSeedGeneration,
-    RestartCandidateScreening,
-    RestartOptimization,
+    CandidateSeedGeneration,
+    CandidateScreening,
+    PopulationRefinement,
     CoarseConsistencyEvaluation,
+    MarketPressureRefit,
     OptionSearchTierRefinement,
     OptionSelectionTierEvaluation,
     OptionAuditTierEvaluation,
@@ -114,10 +115,11 @@ const JOINT_REFINEMENT_PROGRESS_PHASES: &[JointRefinementStageProgressPhase] = &
     JointRefinementStageProgressPhase::BaselineLocalEvaluation,
     JointRefinementStageProgressPhase::BaselineFinalEvaluation,
     JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
-    JointRefinementStageProgressPhase::RestartSeedGeneration,
-    JointRefinementStageProgressPhase::RestartCandidateScreening,
-    JointRefinementStageProgressPhase::RestartOptimization,
+    JointRefinementStageProgressPhase::CandidateSeedGeneration,
+    JointRefinementStageProgressPhase::CandidateScreening,
+    JointRefinementStageProgressPhase::PopulationRefinement,
     JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+    JointRefinementStageProgressPhase::MarketPressureRefit,
     JointRefinementStageProgressPhase::OptionSearchTierRefinement,
     JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
     JointRefinementStageProgressPhase::OptionAuditTierEvaluation,
@@ -167,15 +169,19 @@ const JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1: &[(JointRefinementStageProgress
         JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
         4,
     ),
-    (JointRefinementStageProgressPhase::RestartSeedGeneration, 4),
     (
-        JointRefinementStageProgressPhase::RestartCandidateScreening,
+        JointRefinementStageProgressPhase::CandidateSeedGeneration,
         4,
     ),
-    (JointRefinementStageProgressPhase::RestartOptimization, 56),
+    (JointRefinementStageProgressPhase::CandidateScreening, 4),
+    (JointRefinementStageProgressPhase::PopulationRefinement, 56),
     (
         JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
         4,
+    ),
+    (
+        JointRefinementStageProgressPhase::MarketPressureRefit,
+        JOINT_REFINEMENT_SINGLE_PASS_SETUP_WEIGHT_UNITS,
     ),
     (
         JointRefinementStageProgressPhase::OptionSearchTierRefinement,
@@ -200,12 +206,10 @@ pub struct JointRefinementStageProgressUpdate {
     pub total_units: usize,
     pub aggregate_progress_percent: Option<usize>,
     pub current_item_label: Option<String>,
-    pub current_restart_id: Option<String>,
+    pub current_candidate_id: Option<String>,
     pub current_work_item_status: Option<String>,
     pub planned_work_item_labels: Vec<String>,
-    pub active_restart_count: Option<usize>,
-    pub completed_outer_cycles: Option<usize>,
-    pub total_outer_cycles: Option<usize>,
+    pub active_candidate_count: Option<usize>,
     pub current_evaluation_count: Option<usize>,
     pub total_evaluation_budget: Option<usize>,
     pub evaluation_progress_percent: Option<usize>,
@@ -216,17 +220,18 @@ pub struct JointRefinementStageProgressUpdate {
     pub valid_completed_units: Option<usize>,
     pub cumulative_local_evaluation_count: Option<usize>,
     pub current_global_loss: Option<f64>,
-    pub current_restart_best_global_loss: Option<f64>,
+    pub current_candidate_best_global_loss: Option<f64>,
+    pub current_final_global_loss: Option<f64>,
     pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
-    pub best_restart_id: Option<String>,
+    pub best_candidate_id: Option<String>,
     pub best_global_loss: Option<f64>,
     pub current_coarse_consistency_fit: Option<f64>,
     pub best_coarse_consistency_fit: Option<f64>,
     pub exact_closed_form_buy_count: Option<usize>,
     pub exact_closed_form_sell_count: Option<usize>,
     pub exact_tilted_mixed_count: Option<usize>,
-    pub restart_evaluation_timing_diagnostic:
-        Option<JointRefinementStageRestartEvaluationTimingDiagnostic>,
+    pub candidate_evaluation_timing_diagnostic:
+        Option<JointRefinementStageCandidateEvaluationTimingDiagnostic>,
 }
 
 impl JointRefinementStageProgressUpdate {
@@ -241,12 +246,10 @@ impl JointRefinementStageProgressUpdate {
             total_units,
             aggregate_progress_percent: None,
             current_item_label: None,
-            current_restart_id: None,
+            current_candidate_id: None,
             current_work_item_status: None,
             planned_work_item_labels: Vec::new(),
-            active_restart_count: None,
-            completed_outer_cycles: None,
-            total_outer_cycles: None,
+            active_candidate_count: None,
             current_evaluation_count: None,
             total_evaluation_budget: None,
             evaluation_progress_percent: None,
@@ -257,16 +260,17 @@ impl JointRefinementStageProgressUpdate {
             valid_completed_units: None,
             cumulative_local_evaluation_count: None,
             current_global_loss: None,
-            current_restart_best_global_loss: None,
+            current_candidate_best_global_loss: None,
+            current_final_global_loss: None,
             current_candidate_assessment: None,
-            best_restart_id: None,
+            best_candidate_id: None,
             best_global_loss: None,
             current_coarse_consistency_fit: None,
             best_coarse_consistency_fit: None,
             exact_closed_form_buy_count: None,
             exact_closed_form_sell_count: None,
             exact_tilted_mixed_count: None,
-            restart_evaluation_timing_diagnostic: None,
+            candidate_evaluation_timing_diagnostic: None,
         }
     }
 
@@ -284,7 +288,7 @@ impl JointRefinementStageProgressUpdate {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JointRefinementProgressCandidateAssessment {
-    /// Candidate is currently the leading restart among admissible candidates.
+    /// Candidate is currently the leading candidate among admissible candidates.
     Champion,
     /// Candidate completed final checks inside the admissibility contract.
     Admissible,
@@ -350,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn joint_refinement_stage_progress_orders_baseline_coarse_before_restart_seed_generation() {
+    fn joint_refinement_stage_progress_orders_baseline_coarse_before_candidate_seed_generation() {
         let baseline_coarse_progress = JointRefinementStageProgressUpdate::new(
             JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
             1,
@@ -358,21 +362,21 @@ mod tests {
         )
         .stage_progress_percent();
 
-        let restart_seed_progress = JointRefinementStageProgressUpdate::new(
-            JointRefinementStageProgressPhase::RestartSeedGeneration,
+        let candidate_seed_progress = JointRefinementStageProgressUpdate::new(
+            JointRefinementStageProgressPhase::CandidateSeedGeneration,
             0,
             1,
         )
         .stage_progress_percent();
 
         assert_eq!(baseline_coarse_progress, 20);
-        assert_eq!(restart_seed_progress, 20);
+        assert_eq!(candidate_seed_progress, 20);
     }
 
     #[test]
-    fn joint_refinement_stage_progress_uses_restart_aggregate_percent() {
+    fn joint_refinement_stage_progress_uses_population_refinement_aggregate_percent() {
         let mut progress_update = JointRefinementStageProgressUpdate::new(
-            JointRefinementStageProgressPhase::RestartOptimization,
+            JointRefinementStageProgressPhase::PopulationRefinement,
             18,
             22,
         );

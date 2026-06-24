@@ -1,18 +1,20 @@
-use janiform_foundations::linear_algebra::non_negative_least_squares_2;
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero, compute_finite_median_or_zero, pearson_correlation, sample_variance,
+    compute_finite_median_or_zero, pearson_correlation, sample_variance,
 };
 use janiform_foundations::time::{NANOS_PER_HOUR, duration_nanos_to_hours};
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
+use crate::stages::long_variance::feedback::{
+    event_loading_fit_coverage_ratio, return_energy_loading_estimate, side_event_loading_estimate,
+};
 use crate::stages::long_variance::metrics::{
-    finite_long_variance_squared_returns, long_variance_interval_side_event_counts,
+    finite_long_variance_squared_returns, mean_long_variance_squared_return,
 };
 use crate::stages::long_variance::policy::{
-    LONG_VARIANCE_STANDARD_CIR_VARIANCE_PROXY_BOUNDARY, LongVarianceSideEventLoadings,
+    LONG_VARIANCE_STANDARD_CIR_VARIANCE_PROXY_BOUNDARY, LongVarianceFeedbackLoadings,
     LongVarianceStationaryEventRates, long_variance_mean_reversion_rate_calibration_upper_bound,
-    project_long_variance_event_loadings_to_stationary_budget,
+    project_long_variance_feedback_loadings_to_stationary_budget,
 };
 
 const UTC_HOUR_BUCKET_COUNT: usize = 24;
@@ -31,6 +33,10 @@ pub(crate) struct LongVarianceParameterEstimationDiagnostics {
     pub(crate) event_loading_fit_candidate_pair_count: usize,
     pub(crate) event_loading_fit_pair_count: usize,
     pub(crate) event_loading_fit_coverage_ratio: f64,
+    pub(crate) stationary_return_energy_rate_per_hour: f64,
+    pub(crate) return_energy_fit_candidate_pair_count: usize,
+    pub(crate) return_energy_fit_pair_count: usize,
+    pub(crate) return_energy_fit_coverage_ratio: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,13 +45,6 @@ pub(crate) struct LongVariancePersistenceLagDiagnostic {
     pub(crate) pair_count: usize,
     pub(crate) correlation: Option<f64>,
     pub(crate) implied_mean_reversion_rate: Option<f64>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct LongVarianceEventLoadingEstimation {
-    event_loadings: LongVarianceSideEventLoadings,
-    candidate_pair_count: usize,
-    fit_pair_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,10 +71,19 @@ pub(crate) fn estimate_long_variance_parameters(
     let mean_reversion_rate =
         persistence_decay_rate.min(long_variance_mean_reversion_rate_calibration_upper_bound());
 
-    let event_loading_estimation = side_event_loading_estimate(activity_intervals);
+    let event_loading_estimation =
+        side_event_loading_estimate(activity_intervals, mean_reversion_rate);
+    let return_energy_loading_estimation =
+        return_energy_loading_estimate(return_intervals, mean_reversion_rate);
 
-    let event_loadings = project_long_variance_event_loadings_to_stationary_budget(
-        event_loading_estimation.event_loadings,
+    let feedback_loadings = project_long_variance_feedback_loadings_to_stationary_budget(
+        LongVarianceFeedbackLoadings {
+            stationary_return_energy_rate_per_hour: return_energy_loading_estimation
+                .stationary_return_energy_rate_per_hour,
+            return_energy_loading: return_energy_loading_estimation.return_energy_loading,
+            buy_event_loading: event_loading_estimation.event_loadings.buy_event_loading,
+            sell_event_loading: event_loading_estimation.event_loadings.sell_event_loading,
+        },
         stationary_event_rates,
         mean_reversion_rate,
     );
@@ -86,8 +94,10 @@ pub(crate) fn estimate_long_variance_parameters(
     let parameters = LongVarianceParameters::try_new(
         mean_reversion_rate,
         vol_of_vol,
-        event_loadings.buy_event_loading,
-        event_loadings.sell_event_loading,
+        feedback_loadings.stationary_return_energy_rate_per_hour,
+        feedback_loadings.return_energy_loading,
+        feedback_loadings.buy_event_loading,
+        feedback_loadings.sell_event_loading,
     )
     .unwrap_or(baseline_parameters);
 
@@ -101,6 +111,15 @@ pub(crate) fn estimate_long_variance_parameters(
             event_loading_fit_coverage_ratio: event_loading_fit_coverage_ratio(
                 event_loading_estimation.fit_pair_count,
                 event_loading_estimation.candidate_pair_count,
+            ),
+            stationary_return_energy_rate_per_hour: parameters
+                .stationary_return_energy_rate_per_hour,
+            return_energy_fit_candidate_pair_count: return_energy_loading_estimation
+                .candidate_pair_count,
+            return_energy_fit_pair_count: return_energy_loading_estimation.fit_pair_count,
+            return_energy_fit_coverage_ratio: event_loading_fit_coverage_ratio(
+                return_energy_loading_estimation.fit_pair_count,
+                return_energy_loading_estimation.candidate_pair_count,
             ),
         },
     }
@@ -285,90 +304,6 @@ fn utc_hour_bucket(timestamp_utc_nanos: i64) -> usize {
         .rem_euclid(UTC_HOUR_BUCKET_COUNT as i64) as usize
 }
 
-fn side_event_loading_estimate(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> LongVarianceEventLoadingEstimation {
-    let candidate_pair_count = intervals.len().saturating_sub(1);
-
-    let Some(mean_squared_return) = mean_squared_return(intervals) else {
-        return empty_event_loading_estimation(candidate_pair_count);
-    };
-
-    let mut pair_buy_counts = Vec::new();
-    let mut pair_sell_counts = Vec::new();
-    let mut response = Vec::new();
-
-    for interval_pair in intervals.windows(2) {
-        let current_interval = interval_pair[0];
-        let next_interval = interval_pair[1];
-
-        if current_interval.interval_end_utc_nanos != next_interval.interval_start_utc_nanos
-            || !next_interval.log_return.is_finite()
-        {
-            continue;
-        }
-
-        let next_squared_return = next_interval.log_return * next_interval.log_return;
-        if !next_squared_return.is_finite() {
-            continue;
-        }
-
-        let side_counts = long_variance_interval_side_event_counts(current_interval);
-
-        pair_buy_counts.push(side_counts.buy_count);
-        pair_sell_counts.push(side_counts.sell_count);
-        response.push(next_squared_return / mean_squared_return - 1.0);
-    }
-
-    if response.is_empty() {
-        return empty_event_loading_estimation(candidate_pair_count);
-    }
-
-    let mean_buy_count = arithmetic_mean_or_zero(pair_buy_counts.as_slice());
-    let mean_sell_count = arithmetic_mean_or_zero(pair_sell_counts.as_slice());
-
-    let mut rows = Vec::new();
-
-    for (buy_count, sell_count) in pair_buy_counts.iter().zip(pair_sell_counts.iter()) {
-        rows.push([*buy_count - mean_buy_count, *sell_count - mean_sell_count]);
-    }
-
-    let Some(coefficients) = non_negative_least_squares_2(rows.as_slice(), response.as_slice())
-    else {
-        return empty_event_loading_estimation(candidate_pair_count);
-    };
-
-    LongVarianceEventLoadingEstimation {
-        event_loadings: LongVarianceSideEventLoadings {
-            buy_event_loading: coefficients[0],
-            sell_event_loading: coefficients[1],
-        },
-        candidate_pair_count,
-        fit_pair_count: response.len(),
-    }
-}
-
-fn empty_event_loading_estimation(
-    candidate_pair_count: usize,
-) -> LongVarianceEventLoadingEstimation {
-    LongVarianceEventLoadingEstimation {
-        event_loadings: LongVarianceSideEventLoadings {
-            buy_event_loading: 0.0,
-            sell_event_loading: 0.0,
-        },
-        candidate_pair_count,
-        fit_pair_count: 0,
-    }
-}
-
-fn event_loading_fit_coverage_ratio(fit_pair_count: usize, candidate_pair_count: usize) -> f64 {
-    if candidate_pair_count == 0 {
-        return 0.0;
-    }
-
-    fit_pair_count as f64 / candidate_pair_count as f64
-}
-
 fn long_variance_vol_of_vol_estimate(
     mean_reversion_rate: f64,
     hourly_intervals: &[JointRefinementAggregatedIntervalObservation],
@@ -377,7 +312,7 @@ fn long_variance_vol_of_vol_estimate(
         return None;
     }
 
-    let mean_squared_return = mean_squared_return(hourly_intervals)?;
+    let mean_squared_return = mean_long_variance_squared_return(hourly_intervals)?;
 
     let normalized_squared_returns = finite_long_variance_squared_returns(hourly_intervals)
         .into_iter()
@@ -395,16 +330,6 @@ fn long_variance_vol_of_vol_estimate(
     Some((2.0 * mean_reversion_rate * projected_variance_proxy).sqrt())
 }
 
-fn mean_squared_return(intervals: &[JointRefinementAggregatedIntervalObservation]) -> Option<f64> {
-    let squared_returns = finite_long_variance_squared_returns(intervals);
-    if squared_returns.is_empty() {
-        return None;
-    }
-
-    let mean_squared_return = arithmetic_mean_or_zero(squared_returns.as_slice());
-    (mean_squared_return.is_finite() && mean_squared_return > 0.0).then_some(mean_squared_return)
-}
-
 #[cfg(test)]
 mod tests {
     use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
@@ -417,7 +342,7 @@ mod tests {
     };
     use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
     use crate::stages::long_variance::policy::{
-        LongVarianceStationaryEventRates, long_variance_event_feedback_drift_budget,
+        LongVarianceStationaryEventRates, long_variance_feedback_drift_budget,
         long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate,
     };
 
@@ -752,9 +677,13 @@ mod tests {
         ];
 
         let raw_event_loadings =
-            super::side_event_loading_estimate(activity_intervals.as_slice()).event_loadings;
+            crate::stages::long_variance::feedback::side_event_loading_estimate(
+                activity_intervals.as_slice(),
+                LongVarianceParameters::neutral().mean_reversion_rate,
+            )
+            .event_loadings;
 
-        let event_feedback_budget = long_variance_event_feedback_drift_budget(
+        let event_feedback_budget = long_variance_feedback_drift_budget(
             LongVarianceParameters::neutral().mean_reversion_rate,
         )
         .expect("neutral long variance mean reversion should have a feedback budget");

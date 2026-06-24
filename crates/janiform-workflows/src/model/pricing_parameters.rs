@@ -32,6 +32,12 @@ pub(crate) fn build_physical_vanilla_option_model_parameters(
             .fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
+        // Physical pricing model parameters own the pressure contract.
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .market_pressure_parameters
+            .clone(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .map_err(|source| validation_error("model_parameters", source.to_string()))
@@ -60,6 +66,12 @@ pub(crate) fn build_risk_neutral_vanilla_option_model_parameters(
             .fitted_parameters
             .return_components_fitted_parameters
             .long_variance_parameters,
+        // Risk-neutral pricing model parameters own the pressure contract.
+        context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .market_pressure_parameters
+            .clone(),
         context.fitted_parameters.pricing_kernel_parameters(),
     )
     .map_err(|source| validation_error("model_parameters", source.to_string()))

@@ -49,12 +49,14 @@ def run_seeded_tick_event_simulation(
         mean_reversion_fitted_parameters=request.mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=request.mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=request.initial_mean_reversion_boundary_state,
+        market_pressure_parameters=request.market_pressure_parameters,
+        initial_market_pressure_state=request.initial_market_pressure_state,
         interval_factor_grid_summary=request.interval_factor_grid_summary,
         return_clock_exposure_parameters=request.return_clock_exposure_parameters,
         long_variance_parameters=request.long_variance_parameters,
         initial_long_variance_state=request.initial_long_variance_state,
         observed_price_tick_size=request.observed_price_tick_size,
-        timestamp_batching_observation_model=request.timestamp_batching_observation_model,
+        timestamp_batching_surface=request.timestamp_batching_surface,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
         max_records_per_chunk=request.max_records_per_chunk,
@@ -109,6 +111,12 @@ def run_seeded_tick_event_simulation(
                 "initial_mean_reversion_boundary_state": (
                     normalized_request.initial_mean_reversion_boundary_state.to_payload()
                 ),
+                "market_pressure_parameters": (
+                    normalized_request.market_pressure_parameters.to_payload()
+                ),
+                "initial_market_pressure_state": (
+                    normalized_request.initial_market_pressure_state.to_payload()
+                ),
                 "return_clock_exposure_parameters": (
                     normalized_request.return_clock_exposure_parameters.to_payload()
                 ),
@@ -117,8 +125,8 @@ def run_seeded_tick_event_simulation(
                     normalized_request.initial_long_variance_state.to_payload()
                 ),
                 "observed_price_tick_size": normalized_request.observed_price_tick_size,
-                "timestamp_batching_observation_model": (
-                    normalized_request.timestamp_batching_observation_model.to_payload()
+                "timestamp_batching_surface": (
+                    normalized_request.timestamp_batching_surface.to_payload()
                 ),
                 "debug_trace_enabled": normalized_request.debug_trace_enabled,
                 "sample_every_nth_transition": normalized_request.sample_every_nth_transition,

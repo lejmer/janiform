@@ -15,10 +15,13 @@ pub(crate) use diagnostics::{
 pub use evaluation::evaluate_return_components_exact_candidate;
 pub(crate) use evaluation::{
     ReturnComponentsStageJointRefinementObservedSignalPreparation,
+    prepare_continuous_return_calibration_inputs,
     prepare_observed_signal_inputs_for_joint_refinement,
 };
 pub(crate) use signals::ReturnComponentsStageSortedSignalInputs;
-pub(crate) use signals::resolve_activity_calibration_context;
+pub(crate) use signals::{
+    resolve_activity_calibration_context, resolve_activity_calibration_context_from_hawkes_payload,
+};
 pub use stage::run_return_components_calibration_stage;
 pub(crate) use stage::run_return_components_calibration_stage_with_progress_observer;
 
@@ -28,8 +31,8 @@ pub(crate) use close_open_gap::derive_close_open_gap_candidates;
 pub(crate) use diagnostics::{
     build_activity_coupling_diagnostic, build_gap_diagnostic, build_jump_diagnostic,
     build_price_range_sanity_diagnostic, build_surprise_arrival_diagnostic,
-    default_return_clock_exposure_parameters, default_surprise_deterministic_intensity_profile,
-    default_tick_grid_observation_model,
+    default_price_discretization_surface, default_return_clock_exposure_parameters,
+    default_surprise_deterministic_intensity_profile,
 };
 #[cfg(test)]
 pub(crate) use signals::{

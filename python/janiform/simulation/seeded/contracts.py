@@ -16,13 +16,16 @@ from ..shared import (
 )
 from ..shared.contracts import _parse_seeded_tick_state_snapshot_capture
 from ..shared.errors import SIMULATION_ERROR_FACTORY, _simulation_error
-from ..timestamp_observation import (
-    TimestampBatchingObservationMode,
-    TimestampBatchingObservationModel,
+from ..timestamp_batching_surface import (
+    TimestampBatchingMode,
+    TimestampBatchingSurface,
+)
+from ...market_pressure import (
+    MarketPressureParameters,
+    MarketPressureState,
 )
 from ...long_variance import LongVarianceParameters, LongVarianceState
 from ...mean_reversion import (
-    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -102,10 +105,16 @@ class SeededTickSimulationIntervalFactorGridSummary(ContractModel):
             )
 
         if len(self.seasonality_factor) != self.interval_count:
-            raise _simulation_error("interval_factor_grid_summary.seasonality_factor", "must contain one entry per interval")
+            raise _simulation_error(
+                "interval_factor_grid_summary.seasonality_factor",
+                "must contain one entry per interval",
+            )
 
         if len(self.news_intensity) != self.interval_count:
-            raise _simulation_error("interval_factor_grid_summary.news_intensity", "must contain one entry per interval")
+            raise _simulation_error(
+                "interval_factor_grid_summary.news_intensity",
+                "must contain one entry per interval",
+            )
 
         for interval_index, interval_start_utc_nanos in enumerate(self.interval_start_utc_nanos):
             if interval_start_utc_nanos < 0:
@@ -142,7 +151,9 @@ class SeededTickSimulationIntervalFactorGridSummary(ContractModel):
             )
 
     @staticmethod
-    def from_contract(interval_factor_grid: IntervalFactorGridContract) -> SeededTickSimulationIntervalFactorGridSummary:
+    def from_contract(
+        interval_factor_grid: IntervalFactorGridContract,
+    ) -> SeededTickSimulationIntervalFactorGridSummary:
         return SeededTickSimulationIntervalFactorGridSummary(
             schema_version=interval_factor_grid.schema_version,
             exchange_code=interval_factor_grid.exchange_code,
@@ -269,11 +280,13 @@ class SeededTickSimulationRequest(ContractModel):
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
+    market_pressure_parameters: MarketPressureParameters
+    initial_market_pressure_state: MarketPressureState
     interval_factor_grid_summary: SeededTickSimulationIntervalFactorGridSummary
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
-    timestamp_batching_observation_model: TimestampBatchingObservationModel
+    timestamp_batching_surface: TimestampBatchingSurface
     observed_price_tick_size: Optional[float] = None
     debug_trace_enabled: bool = False
     sample_every_nth_transition: int = 1
@@ -338,12 +351,12 @@ class SeededTickSimulationRequest(ContractModel):
             )
 
         if not isinstance(
-            self.timestamp_batching_observation_model,
-            TimestampBatchingObservationModel,
+            self.timestamp_batching_surface,
+            TimestampBatchingSurface,
         ):
             raise _simulation_error(
-                "timestamp_batching_observation_model",
-                "must be a TimestampBatchingObservationModel",
+                "timestamp_batching_surface",
+                "must be a TimestampBatchingSurface",
             )
 
         if (
@@ -365,6 +378,24 @@ class SeededTickSimulationRequest(ContractModel):
                     "must match "
                     "mean_reversion_runtime_interval_anchors.start_anchor_value"
                 ),
+            )
+
+        if not isinstance(
+            self.market_pressure_parameters,
+            MarketPressureParameters,
+        ):
+            raise _simulation_error(
+                "market_pressure_parameters",
+                "must be an MarketPressureParameters",
+            )
+
+        if not isinstance(
+            self.initial_market_pressure_state,
+            MarketPressureState,
+        ):
+            raise _simulation_error(
+                "initial_market_pressure_state",
+                "must be an MarketPressureState",
             )
 
         if self.sample_every_nth_transition <= 0:
@@ -396,11 +427,13 @@ class SeededTickSimulationRequest(ContractModel):
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
         initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
+        market_pressure_parameters: MarketPressureParameters,
+        initial_market_pressure_state: MarketPressureState,
         interval_factor_grid: IntervalFactorGridContract,
         return_clock_exposure_parameters: ReturnClockExposureParameters,
         long_variance_parameters: LongVarianceParameters,
         initial_long_variance_state: LongVarianceState,
-        timestamp_batching_observation_model: TimestampBatchingObservationModel,
+        timestamp_batching_surface: TimestampBatchingSurface,
         observed_price_tick_size: Optional[float] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
@@ -424,12 +457,16 @@ class SeededTickSimulationRequest(ContractModel):
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-            interval_factor_grid_summary=SeededTickSimulationIntervalFactorGridSummary.from_contract(interval_factor_grid),
+            market_pressure_parameters=market_pressure_parameters,
+            initial_market_pressure_state=initial_market_pressure_state,
+            interval_factor_grid_summary=SeededTickSimulationIntervalFactorGridSummary.from_contract(
+                interval_factor_grid
+            ),
             return_clock_exposure_parameters=return_clock_exposure_parameters,
             long_variance_parameters=long_variance_parameters,
             initial_long_variance_state=initial_long_variance_state,
             observed_price_tick_size=observed_price_tick_size,
-            timestamp_batching_observation_model=timestamp_batching_observation_model,
+            timestamp_batching_surface=timestamp_batching_surface,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
@@ -562,6 +599,24 @@ class SeededTickSimulationRequest(ContractModel):
                 ),
                 field_path="initial_mean_reversion_boundary_state",
             ),
+            market_pressure_parameters=MarketPressureParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "market_pressure_parameters",
+                    "market_pressure_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="market_pressure_parameters",
+            ),
+            initial_market_pressure_state=MarketPressureState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "initial_market_pressure_state",
+                    "initial_market_pressure_state",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="initial_market_pressure_state",
+            ),
             interval_factor_grid_summary=SeededTickSimulationIntervalFactorGridSummary.from_mapping(
                 require_mapping(
                     raw_payload,
@@ -612,15 +667,15 @@ class SeededTickSimulationRequest(ContractModel):
                 and raw_payload["observed_price_tick_size"] is not None
                 else None
             ),
-            timestamp_batching_observation_model=(
-                TimestampBatchingObservationModel.from_mapping(
+            timestamp_batching_surface=(
+                TimestampBatchingSurface.from_mapping(
                     require_mapping(
                         raw_payload,
-                        "timestamp_batching_observation_model",
-                        "timestamp_batching_observation_model",
+                        "timestamp_batching_surface",
+                        "timestamp_batching_surface",
                         SIMULATION_ERROR_FACTORY,
                     ),
-                    field_path="timestamp_batching_observation_model",
+                    field_path="timestamp_batching_surface",
                 )
             ),
             debug_trace_enabled=raw_debug_trace_enabled,
@@ -701,7 +756,7 @@ class SeededTickEventRecord(ContractModel):
     core_total_return_increment: float
     observed_log_price: float
     anchor_value: float
-    pressure_state: float
+    market_pressure_state: float
     deviation_from_anchor: float
     state_snapshot: Optional[SeededTickEventStateSnapshot] = None
 
@@ -768,10 +823,10 @@ class SeededTickEventRecord(ContractModel):
                 f"{field_path}.anchor_value",
                 SIMULATION_ERROR_FACTORY,
             ),
-            pressure_state=require_finite_number(
+            market_pressure_state=require_finite_number(
                 raw_payload,
-                "pressure_state",
-                f"{field_path}.pressure_state",
+                "market_pressure_state",
+                f"{field_path}.market_pressure_state",
                 SIMULATION_ERROR_FACTORY,
             ),
             deviation_from_anchor=require_finite_number(
@@ -793,7 +848,7 @@ class SeededTickEventTapeMetadata(ContractModel):
     state_snapshot_schema_version: str
     event_ordering_policy: str
     timestamp_representation_policy: str
-    timestamp_batching_observation_model: TimestampBatchingObservationModel
+    timestamp_batching_surface: TimestampBatchingSurface
     side_encoding_policy: str
     state_snapshot_capture: SeededTickEventStateSnapshotCapture
     state_snapshot_capture_point_policy: Optional[str] = None
@@ -826,7 +881,12 @@ class SeededTickEventTapeMetadata(ContractModel):
             )
 
         return SeededTickEventTapeMetadata(
-            schema_version=require_string(raw_payload, "schema_version", f"{field_path}.schema_version", SIMULATION_ERROR_FACTORY),
+            schema_version=require_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
             event_record_schema_version=require_string(
                 raw_payload,
                 "event_record_schema_version",
@@ -851,14 +911,14 @@ class SeededTickEventTapeMetadata(ContractModel):
                 f"{field_path}.timestamp_representation_policy",
                 SIMULATION_ERROR_FACTORY,
             ),
-            timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+            timestamp_batching_surface=TimestampBatchingSurface.from_mapping(
                 require_mapping(
                     raw_payload,
-                    "timestamp_batching_observation_model",
-                    f"{field_path}.timestamp_batching_observation_model",
+                    "timestamp_batching_surface",
+                    f"{field_path}.timestamp_batching_surface",
                     SIMULATION_ERROR_FACTORY,
                 ),
-                field_path=f"{field_path}.timestamp_batching_observation_model",
+                field_path=f"{field_path}.timestamp_batching_surface",
             ),
             side_encoding_policy=require_string(
                 raw_payload,
@@ -890,7 +950,7 @@ class SeededFinePathMetadata(ContractModel):
     event_projection_record_schema_version: str
     transition_ordering_policy: str
     timestamp_representation_policy: str
-    timestamp_batching_observation_model: TimestampBatchingObservationModel
+    timestamp_batching_surface: TimestampBatchingSurface
     side_encoding_policy: str
     state_snapshot_capture: SeededTickEventStateSnapshotCapture
     state_snapshot_capture_point_policy: Optional[str] = None
@@ -923,7 +983,12 @@ class SeededFinePathMetadata(ContractModel):
             )
 
         return SeededFinePathMetadata(
-            schema_version=require_string(raw_payload, "schema_version", f"{field_path}.schema_version", SIMULATION_ERROR_FACTORY),
+            schema_version=require_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
             path_record_schema_version=require_string(
                 raw_payload,
                 "path_record_schema_version",
@@ -948,14 +1013,14 @@ class SeededFinePathMetadata(ContractModel):
                 f"{field_path}.timestamp_representation_policy",
                 SIMULATION_ERROR_FACTORY,
             ),
-            timestamp_batching_observation_model=TimestampBatchingObservationModel.from_mapping(
+            timestamp_batching_surface=TimestampBatchingSurface.from_mapping(
                 require_mapping(
                     raw_payload,
-                    "timestamp_batching_observation_model",
-                    f"{field_path}.timestamp_batching_observation_model",
+                    "timestamp_batching_surface",
+                    f"{field_path}.timestamp_batching_surface",
                     SIMULATION_ERROR_FACTORY,
                 ),
-                field_path=f"{field_path}.timestamp_batching_observation_model",
+                field_path=f"{field_path}.timestamp_batching_surface",
             ),
             side_encoding_policy=require_string(
                 raw_payload,
@@ -981,7 +1046,7 @@ class SeededFinePathRecord(ContractModel):
     core_total_return_increment: float
     observed_log_price: float
     anchor_value: float
-    pressure_state: float
+    market_pressure_state: float
     deviation_from_anchor: float
     cumulative_core_log_return: float
     state_snapshot: Optional[SeededTickEventStateSnapshot] = None
@@ -1120,10 +1185,10 @@ class SeededFinePathRecord(ContractModel):
                 f"{field_path}.anchor_value",
                 SIMULATION_ERROR_FACTORY,
             ),
-            pressure_state=require_finite_number(
+            market_pressure_state=require_finite_number(
                 raw_payload,
-                "pressure_state",
-                f"{field_path}.pressure_state",
+                "market_pressure_state",
+                f"{field_path}.market_pressure_state",
                 SIMULATION_ERROR_FACTORY,
             ),
             deviation_from_anchor=require_finite_number(
@@ -1167,7 +1232,7 @@ def _project_event_tape_from_fine_path(
                 core_total_return_increment=fine_path_record.core_total_return_increment,
                 observed_log_price=fine_path_record.observed_log_price,
                 anchor_value=fine_path_record.anchor_value,
-                pressure_state=fine_path_record.pressure_state,
+                market_pressure_state=fine_path_record.market_pressure_state,
                 deviation_from_anchor=fine_path_record.deviation_from_anchor,
                 state_snapshot=fine_path_record.state_snapshot,
             )
@@ -1348,28 +1413,24 @@ def build_endogenous_seeded_mean_reversion_runtime_inputs(
     return (
         MeanReversionFittedParameters(
             kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(
-                reference_interval_hours=interval_delta_hours,
-            ),
         ),
         MeanReversionRuntimeIntervalAnchors(
             interval_alignment_policy=interval_factor_grid.interval_alignment_policy,
             start_anchor_value=0.0,
-            start_pressure_state=0.0,
             end_anchor_values=tuple(0.0 for _ in range(interval_count)),
-            end_pressure_states=tuple(0.0 for _ in range(interval_count)),
             interval_deltas=tuple(interval_delta_hours for _ in range(interval_count)),
         ),
         MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
-            pressure_state=0.0,
             deviation=0.0,
         ),
     )
 
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY",
     "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
     "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
@@ -1385,6 +1446,6 @@ __all__ = [
     "SeededTickSimulationDiagnostics",
     "SeededTickSimulationIntervalFactorGridSummary",
     "SeededTickSimulationRequest",
-    "TimestampBatchingObservationMode",
-    "TimestampBatchingObservationModel",
+    "TimestampBatchingMode",
+    "TimestampBatchingSurface",
 ]

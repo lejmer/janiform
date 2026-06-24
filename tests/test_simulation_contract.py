@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.return_clock import ReturnClockExposureParameters
@@ -27,13 +28,16 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
-    TimestampBatchingObservationModel,
+    TimestampBatchingSurface,
     deserialize_seeded_tick_simulation_response,
     run_seeded_tick_event_simulation,
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
-from tests.support.calibration import build_disabled_timestamp_batching_observation_model_payload
+from tests.support.calibration import (
+    build_disabled_timestamp_batching_surface_payload,
+    build_no_anchor_impact_market_pressure_parameters_payload,
+)
 from tests.support.simulation import (
     build_endogenous_mean_reversion_runtime_contracts,
     build_seeded_timing_diagnostics_payload,
@@ -80,9 +84,13 @@ def test_simulation_request_model_validates_construction() -> None:
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload(),
+        ),
+        initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
         interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.POST_EVENT_TRANSITION,
     )
 
@@ -110,9 +118,13 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+            market_pressure_parameters=MarketPressureParameters.from_mapping(
+                build_no_anchor_impact_market_pressure_parameters_payload(),
+            ),
+            initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
             interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
             return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
-            timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+            timestamp_batching_surface=TimestampBatchingSurface.disabled(),
             sample_every_nth_transition=0,
         )
 
@@ -138,9 +150,7 @@ def test_mean_reversion_runtime_interval_anchors_roundtrip_serialization_is_dete
     interval_anchors = MeanReversionRuntimeIntervalAnchors(
         interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
         start_anchor_value=4.2,
-        start_pressure_state=0.0,
         end_anchor_values=(4.1, 4.0),
-        end_pressure_states=(0.0, 0.0),
         interval_deltas=(1.0, 1.0),
     )
 
@@ -153,12 +163,11 @@ def test_mean_reversion_runtime_interval_anchors_roundtrip_serialization_is_dete
 def test_mean_reversion_boundary_state_rejects_observed_anchor_invariant_drift() -> None:
     with pytest.raises(
         ValueError,
-        match="deviation: must equal observed_log_price - anchor_value",
+        match="deviation: anchor_value \\+ deviation must equal observed_log_price",
     ):
         MeanReversionBoundaryState(
             observed_log_price=5.0,
             anchor_value=1.5,
-            pressure_state=0.0,
             deviation=3.7,
         )
 
@@ -195,9 +204,13 @@ def test_simulation_entrypoint_rejects_request_without_runtime_interval_factor_g
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload(),
+        ),
+        initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
         interval_factor_grid_summary=_valid_interval_factor_grid_summary(),
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
     )
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
@@ -301,8 +314,8 @@ def _valid_response_payload() -> dict[str, Any]:
             "timestamp_representation_policy": (
                 "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             ),
-            "timestamp_batching_observation_model": (
-                build_disabled_timestamp_batching_observation_model_payload()
+            "timestamp_batching_surface": (
+                build_disabled_timestamp_batching_surface_payload()
             ),
             "side_encoding_policy": "buy_sell.v1",
             "state_snapshot_capture": "disabled",
@@ -316,8 +329,8 @@ def _valid_response_payload() -> dict[str, Any]:
             "timestamp_representation_policy": (
                 "latent_event_time_and_observed_timestamp_utc_nanos.v1"
             ),
-            "timestamp_batching_observation_model": (
-                build_disabled_timestamp_batching_observation_model_payload()
+            "timestamp_batching_surface": (
+                build_disabled_timestamp_batching_surface_payload()
             ),
             "side_encoding_policy": "buy_sell.v1",
             "state_snapshot_capture": "disabled",
@@ -358,7 +371,7 @@ def _valid_response_payload() -> dict[str, Any]:
                 "core_total_return_increment": 0.1,
                 "observed_log_price": 0.1,
                 "anchor_value": 0.0,
-                "pressure_state": 0.0,
+                "market_pressure_state": 0.0,
                 "deviation_from_anchor": 0.1,
                 "cumulative_core_log_return": 0.1,
             }
@@ -372,7 +385,7 @@ def _valid_response_payload() -> dict[str, Any]:
                 "core_total_return_increment": 0.1,
                 "observed_log_price": 0.1,
                 "anchor_value": 0.0,
-                "pressure_state": 0.0,
+                "market_pressure_state": 0.0,
                 "deviation_from_anchor": 0.1,
             }
         ],

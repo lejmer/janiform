@@ -1,6 +1,7 @@
 use janiform::model::factors::interval_factor_grid::IntervalFactorGrid;
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::model::long_variance::LongVarianceState;
+use janiform::model::market_pressure::MarketPressureState;
 use janiform::simulation::MeanReversionBoundaryState;
 
 use crate::error::WorkflowError;
@@ -10,7 +11,7 @@ use super::request::{
     DEFAULT_FORECAST_INITIAL_PRICE, ForecastInitialState, ForecastWorkflowRequest, validation_error,
 };
 
-const MODEL_DEFAULT_INITIAL_STATE_POLICY: &str = "model_reference_price_log_coordinate_stationary_hawkes_unit_long_variance_zero_pressure_deviation.v1";
+const MODEL_DEFAULT_INITIAL_STATE_POLICY: &str = "model_reference_price_log_coordinate_stationary_hawkes_unit_long_variance_neutral_market_pressure_zero_deviation.v1";
 const EXPLICIT_CURRENT_STATE_POLICY: &str = "explicit_current_state.v1";
 
 pub(super) struct ResolvedForecastInitialState {
@@ -20,6 +21,7 @@ pub(super) struct ResolvedForecastInitialState {
     pub(super) excitation_state: HawkesExcitationState,
     pub(super) long_variance_state: LongVarianceState,
     pub(super) mean_reversion_boundary_state: MeanReversionBoundaryState,
+    pub(super) market_pressure_state: MarketPressureState,
 }
 
 pub(super) fn resolve_forecast_initial_state(
@@ -27,7 +29,6 @@ pub(super) fn resolve_forecast_initial_state(
     context: &FittedModelContext,
     interval_factor_grid: &IntervalFactorGrid,
     reference_price: f64,
-    horizon_interval_count: usize,
 ) -> Result<ResolvedForecastInitialState, WorkflowError> {
     match request.state.as_ref() {
         Some(state) => resolve_explicit_initial_state(state, reference_price),
@@ -36,7 +37,6 @@ pub(super) fn resolve_forecast_initial_state(
             context,
             interval_factor_grid,
             reference_price,
-            horizon_interval_count,
         ),
     }
 }
@@ -60,6 +60,11 @@ pub(super) fn validate_forecast_initial_state(
         .map_err(|source| {
             validation_error("state.mean_reversion_boundary_state", source.to_string())
         })?;
+
+    state
+        .market_pressure_state
+        .validate()
+        .map_err(|source| validation_error("state.market_pressure_state", source.to_string()))?;
 
     Ok(())
 }
@@ -85,7 +90,9 @@ fn resolve_explicit_initial_state(
         policy: EXPLICIT_CURRENT_STATE_POLICY,
         excitation_state: state.hawkes_excitation_state,
         long_variance_state: state.long_variance_state,
-        mean_reversion_boundary_state: state.mean_reversion_boundary_state.clone(),
+        mean_reversion_boundary_state: state.mean_reversion_boundary_state,
+        // Forecast initial state owns the pressure-state distribution.
+        market_pressure_state: state.market_pressure_state.clone(),
     })
 }
 
@@ -94,7 +101,6 @@ fn resolve_model_default_initial_state(
     context: &FittedModelContext,
     interval_factor_grid: &IntervalFactorGrid,
     reference_price: f64,
-    horizon_interval_count: usize,
 ) -> Result<ResolvedForecastInitialState, WorkflowError> {
     let initial_price = request
         .initial_price
@@ -122,9 +128,14 @@ fn resolve_model_default_initial_state(
         interval_factor_grid,
         excitation_state,
         initial_model_log_price,
-        context.interval_delta,
-        horizon_interval_count,
     )?;
+    let market_pressure_state = MarketPressureState::neutral_for_parameters(
+        &context
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .market_pressure_parameters,
+    )
+    .map_err(|source| validation_error("market_pressure_state", source.to_string()))?;
 
     Ok(ResolvedForecastInitialState {
         initial_price,
@@ -133,5 +144,6 @@ fn resolve_model_default_initial_state(
         excitation_state,
         long_variance_state: LongVarianceState::unit(),
         mean_reversion_boundary_state,
+        market_pressure_state,
     })
 }

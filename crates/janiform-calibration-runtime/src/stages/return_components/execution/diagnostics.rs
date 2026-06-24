@@ -1,7 +1,6 @@
 use janiform_calibration_artifacts::{
-    ReturnComponentsStageFittedParameters,
+    PriceDiscretizationSurface, ReturnComponentsStageFittedParameters,
     SurpriseNewsDeterministicIntensityProfile as SurpriseIntensityProfile,
-    TickGridObservationModel,
 };
 use janiform_foundations::numeric::{
     round_positive_to_domain, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
@@ -12,7 +11,7 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, SharedNewsMarkLawCo
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 #[cfg(test)]
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 use super::super::constants::{
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
@@ -284,32 +283,27 @@ pub(crate) fn theoretical_net_process_moments(
     configuration: NigSharedPlusShiftConfiguration,
     open_session_sell_share_proxy: f64,
 ) -> Option<(f64, f64, f64, f64)> {
-    let buy_unit_cumulants = nig_unit_cumulants(
-        configuration.alpha,
-        configuration.beta_0,
-        configuration.delta,
-        configuration.mu,
-    )?;
+    let driver_parameters = configuration.derive_driver_parameters().ok()?;
 
-    let sell_unit_cumulants = nig_unit_cumulants(
-        configuration.alpha,
-        configuration.derived_sell_beta(),
-        configuration.delta,
-        configuration.mu,
-    )?;
+    let buy_unit_cumulants = driver_parameters.buy_side_parameters.unit_cumulants()?;
+
+    let sell_unit_cumulants = driver_parameters.sell_side_parameters.unit_cumulants()?;
 
     let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
     let buy_weight = 1.0 - sell_weight;
 
     let mean_return = 0.0;
 
-    let variance = buy_weight * buy_unit_cumulants.1 + sell_weight * sell_unit_cumulants.1;
+    let variance =
+        buy_weight * buy_unit_cumulants.variance + sell_weight * sell_unit_cumulants.variance;
     if !variance.is_finite() || variance <= return_components_stage_positive_domain_floor() {
         return None;
     }
 
-    let third_cumulant = buy_weight * buy_unit_cumulants.2 - sell_weight * sell_unit_cumulants.2;
-    let fourth_cumulant = buy_weight * buy_unit_cumulants.3 + sell_weight * sell_unit_cumulants.3;
+    let third_cumulant = buy_weight * buy_unit_cumulants.third_cumulant
+        - sell_weight * sell_unit_cumulants.third_cumulant;
+    let fourth_cumulant = buy_weight * buy_unit_cumulants.fourth_cumulant
+        + sell_weight * sell_unit_cumulants.fourth_cumulant;
 
     let skewness = third_cumulant / variance.powf(1.5);
     let excess_kurtosis = fourth_cumulant / (variance * variance);
@@ -424,7 +418,7 @@ pub(crate) fn summarize_return_distribution(
 pub(super) fn collect_return_components_stage_constraint_violations(
     candidate_input: &ReturnComponentsStageCandidateInput,
 ) -> Vec<ReturnComponentsStageConstraintViolationDiagnostic> {
-    let tick_grid_observation_model = default_tick_grid_observation_model();
+    let price_discretization_surface = default_price_discretization_surface();
 
     let mut violations = collect_return_components_exact_candidate_constraint_violations(
         &ReturnComponentsStageFittedParameters {
@@ -436,10 +430,11 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             return_clock_exposure_parameters: candidate_input.return_clock_exposure_parameters,
             long_variance_parameters:
                 janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
-            tick_grid_observation_model,
-            timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
-            mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+            // Constraint diagnostics build an owned fitted-parameter contract.
+            market_pressure_parameters: candidate_input.market_pressure_parameters.clone(),
+            price_discretization_surface,
+            timestamp_batching_surface: TimestampBatchingSurface::disabled(),
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         },
     );
 
@@ -640,8 +635,8 @@ pub(crate) fn default_return_clock_exposure_parameters() -> ReturnClockExposureP
     ReturnClockExposureParameters::neutral()
 }
 
-pub(crate) fn default_tick_grid_observation_model() -> TickGridObservationModel {
-    TickGridObservationModel {
+pub(crate) fn default_price_discretization_surface() -> PriceDiscretizationSurface {
+    PriceDiscretizationSurface {
         tick_size: None,
         tick_size_source: "unavailable".to_string(),
         inference_policy: "not_inferred_for_candidate_diagnostics.v1".to_string(),
@@ -668,20 +663,4 @@ fn fitted_mean_abs_return_for_gamma_normal_component(
     return_jump_drift.abs()
         + return_jump_volatility.max(0.0)
             * shared_mark_law_mean_abs_gamma_normal_volatility_multiplier(shared_mark_law_template)
-}
-
-fn nig_unit_cumulants(alpha: f64, beta: f64, delta: f64, mu: f64) -> Option<(f64, f64, f64, f64)> {
-    let gamma_squared = alpha * alpha - beta * beta;
-    if !gamma_squared.is_finite() || gamma_squared <= 0.0 {
-        return None;
-    }
-
-    let gamma = gamma_squared.sqrt();
-
-    let kappa_1 = mu + delta * beta / gamma;
-    let kappa_2 = delta * alpha * alpha / gamma.powi(3);
-    let kappa_3 = 3.0 * delta * beta * alpha * alpha / gamma.powi(5);
-    let kappa_4 = 3.0 * delta * alpha * alpha * (alpha * alpha + 4.0 * beta * beta) / gamma.powi(7);
-
-    Some((kappa_1, kappa_2, kappa_3, kappa_4))
 }

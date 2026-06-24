@@ -259,8 +259,8 @@ def _fit_preparation_configuration_payload(
         "tick_objective_data_usage_policy": (
             _enum_value(preparation.tick_objective_data_usage_policy)
         ),
-        "dynamics_search_restart_candidate_budget": (
-            preparation.dynamics_search_restart_candidate_budget
+        "dynamics_search_candidate_budget": (
+            preparation.dynamics_search_candidate_budget
         ),
         "calibration_effort": preparation.calibration_effort.to_payload(),
         "treat_calibration_warnings_as_errors": (
@@ -276,10 +276,6 @@ def _fit_preparation_configuration_payload(
             preparation.joint_refinement_audit_option_pricing_enabled
         ),
         "diagnostics": preparation.diagnostics.to_payload(),
-        "stylized_fact_huber_cutoff": preparation.stylized_fact_huber_cutoff,
-        "stylized_fact_admissibility_z_threshold": (
-            preparation.stylized_fact_admissibility_z_threshold
-        ),
         "default_endogenous_mean_reversion_configuration": (
             preparation.default_endogenous_mean_reversion_configuration.to_payload()
         ),

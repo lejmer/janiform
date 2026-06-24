@@ -86,14 +86,6 @@ pub(crate) fn build_nig_search_candidates_with_progress(
 
         emit_return_components_progress(
             progress_sender,
-            ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
-            moment_candidate_count,
-            moment_candidate_count,
-            Some("moment seed candidates ready"),
-        );
-
-        emit_return_components_progress(
-            progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
             0,
             1,
@@ -110,14 +102,6 @@ pub(crate) fn build_nig_search_candidates_with_progress(
 
         let proxy_em_diagnostic = proxy_em_output.diagnostic;
         let em_search_points = proxy_em_output.search_points;
-
-        emit_return_components_progress(
-            progress_sender,
-            ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
-            1,
-            1,
-            Some("proxy EM search points ready"),
-        );
 
         emit_return_components_progress(
             progress_sender,
@@ -156,14 +140,6 @@ pub(crate) fn build_nig_search_candidates_with_progress(
 
         emit_return_components_progress(
             progress_sender,
-            ReturnComponentsStageProgressPhase::ContinuousNigSearchRegimeGeneration,
-            1,
-            1,
-            Some("search regimes ready"),
-        );
-
-        emit_return_components_progress(
-            progress_sender,
             ReturnComponentsStageProgressPhase::ContinuousNigBasinSeedGeneration,
             0,
             1,
@@ -174,14 +150,6 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             seed_frontier_candidates.as_slice(),
             broad_search_regimes.as_slice(),
             fit_budgets.basin_seed_candidate_count,
-        );
-
-        emit_return_components_progress(
-            progress_sender,
-            ReturnComponentsStageProgressPhase::ContinuousNigBasinSeedGeneration,
-            1,
-            1,
-            Some("basin seed candidates ready"),
         );
 
         emit_return_components_progress(
@@ -202,10 +170,10 @@ pub(crate) fn build_nig_search_candidates_with_progress(
 
         emit_return_components_progress(
             progress_sender,
-            ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
-            seed_candidates.len(),
-            seed_candidates.len(),
-            Some("basin seed optimization complete"),
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinDiagnostics,
+            0,
+            1,
+            Some("select distinct basin candidates"),
         );
 
         let retained_basin_candidates = retain_distinct_basin_candidates(
@@ -226,14 +194,6 @@ pub(crate) fn build_nig_search_candidates_with_progress(
             retained_basin_candidates.as_slice(),
             calibration_sample,
             stage_seed,
-        );
-
-        emit_return_components_progress(
-            progress_sender,
-            ReturnComponentsStageProgressPhase::ContinuousNigBasinDiagnostics,
-            1,
-            1,
-            Some("basin diagnostics ready"),
         );
 
         let mut optimized_candidates: Vec<OptimizedNigCandidate> = retained_basin_candidates

@@ -4,8 +4,8 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationObjectivePolicy,
-    CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationEffortOptions, CalibrationExecutionMode, CalibrationRunDataInputs,
+    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageSolverSettings,
 };
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
@@ -30,15 +30,13 @@ use super::solver_settings::{
     DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
     resolve_solver_settings_by_stage,
 };
-use super::timestamp_observation_diagnostics::{
-    CalibrationTimestampBatchingObservationDiagnostic, timestamp_batching_observation_diagnostic,
+use super::timestamp_batching_surface_diagnostics::{
+    CalibrationTimestampBatchingSurfaceDiagnostic, timestamp_batching_surface_diagnostic,
 };
 use crate::diagnostics::types::CalibrationDiagnosticsRequest;
 use crate::stages::mean_reversion::{
-    default_mean_reversion_predictive_evidence_alpha,
     mean_reversion_full_model_required_source_observation_count,
-    mean_reversion_predictive_evidence_alpha_is_valid,
-    mean_reversion_pressure_gain_required_source_observation_count,
+    mean_reversion_random_walk_required_source_observation_count,
 };
 use crate::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationJointRefinementCarryInput,
@@ -148,8 +146,6 @@ pub struct CalibrationMarketDataKnownNewsInput {
 pub struct CalibrationMarketDataMeanReversionConfiguration {
     #[serde(default)]
     pub calibration_grid_interval_hours: Option<f64>,
-    #[serde(default)]
-    pub predictive_evidence_alpha: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -192,7 +188,7 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     #[serde(default)]
-    pub dynamics_search_restart_candidate_budget: Option<usize>,
+    pub dynamics_search_candidate_budget: Option<usize>,
     #[serde(default)]
     pub calibration_effort: Option<CalibrationEffortOptions>,
     #[serde(default)]
@@ -205,10 +201,6 @@ pub struct CalibrationMarketDataPreparationRequest {
     pub joint_refinement_audit_option_pricing_enabled: bool,
     #[serde(default)]
     pub diagnostics: CalibrationDiagnosticsRequest,
-    #[serde(default)]
-    pub stylized_fact_huber_cutoff: Option<f64>,
-    #[serde(default)]
-    pub stylized_fact_admissibility_z_threshold: Option<f64>,
     #[serde(default)]
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     #[serde(default)]
@@ -233,7 +225,7 @@ pub struct CalibrationMarketDataPreparationDiagnostics {
     pub workflow_scope: CalibrationMarketDataWorkflowScope,
     pub selected_stages: Vec<CalibrationStage>,
     pub executed_calibration_steps: Vec<String>,
-    pub timestamp_batching_observation: CalibrationTimestampBatchingObservationDiagnostic,
+    pub timestamp_batching_surface: CalibrationTimestampBatchingSurfaceDiagnostic,
     pub tick_record_count: usize,
     pub coarse_data_record_count: usize,
     pub coarse_data_return_interval_count: usize,
@@ -338,13 +330,12 @@ fn validate_joint_refinement_option_refinement_wall_clock_budget(
     Ok(())
 }
 
-fn validate_dynamics_search_restart_candidate_budget(
+fn validate_dynamics_search_candidate_budget(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
-    if request.dynamics_search_restart_candidate_budget == Some(0) {
+    if request.dynamics_search_candidate_budget == Some(0) {
         return Err(CalibrationMarketDataPreparationError::from(
-            "dynamics_search_restart_candidate_budget must be greater than zero when provided"
-                .to_string(),
+            "dynamics_search_candidate_budget must be greater than zero when provided".to_string(),
         ));
     }
 
@@ -471,7 +462,7 @@ fn prepare_market_data_calibration_plan_with_context(
     cpu_count: Option<usize>,
     progress: &mut MarketDataPreparationProgressContext<'_>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_dynamics_search_candidate_budget(&request)?;
     validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
@@ -510,7 +501,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     session_resolution: MarketDataSessionResolutionPayload,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    validate_dynamics_search_restart_candidate_budget(&request)?;
+    validate_dynamics_search_candidate_budget(&request)?;
     validate_calibration_effort(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_option_refinement_wall_clock_budget(&request)?;
@@ -564,7 +555,6 @@ fn selected_stages_for_scope(
         CalibrationMarketDataWorkflowScope::FullWithoutOptionSurface => vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -576,7 +566,6 @@ fn selected_stages_for_scope(
         CalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -597,26 +586,6 @@ fn build_dataset_reference(run_id: &str, dataset_role: &str, provenance_label: &
         sanitize_ascii_identifier_component(provenance_label)
             .unwrap_or_else(|| "unknown".to_string())
     )
-}
-
-fn calibration_objective_policy_from_request(
-    request: &CalibrationMarketDataPreparationRequest,
-) -> Result<CalibrationObjectivePolicy, CalibrationMarketDataPreparationError> {
-    let default_policy = CalibrationObjectivePolicy::default();
-
-    CalibrationObjectivePolicy::try_new(
-        request
-            .stylized_fact_huber_cutoff
-            .unwrap_or(default_policy.stylized_fact_huber_cutoff),
-        request
-            .stylized_fact_admissibility_z_threshold
-            .unwrap_or(default_policy.admissibility_z_threshold),
-    )
-    .map_err(|source| {
-        CalibrationMarketDataPreparationError::from(format!(
-            "invalid calibration objective policy: {source}"
-        ))
-    })
 }
 
 fn stable_seed_from_run_id(run_id: &str) -> u64 {
@@ -655,7 +624,7 @@ fn executed_calibration_steps(
         CalibrationMarketDataWorkflowScope::SeasonalityOnly
     ) {
         calibration_steps.push("hawkes_candidate_generation".to_string());
-        calibration_steps.push("observation_models_input_generation".to_string());
+        calibration_steps.push("market_data_surface_preparation".to_string());
         calibration_steps.push("return_components_candidate_generation".to_string());
     }
 
@@ -883,22 +852,12 @@ fn mean_reversion_stage_input_from_request(
 
     let default_mean_reversion_configuration = CalibrationMarketDataMeanReversionConfiguration {
         calibration_grid_interval_hours: None,
-        predictive_evidence_alpha: None,
     };
 
     let mean_reversion_configuration = request
         .mean_reversion
         .as_ref()
         .unwrap_or(&default_mean_reversion_configuration);
-
-    let predictive_evidence_alpha = mean_reversion_configuration
-        .predictive_evidence_alpha
-        .unwrap_or_else(default_mean_reversion_predictive_evidence_alpha);
-    if !mean_reversion_predictive_evidence_alpha_is_valid(predictive_evidence_alpha) {
-        return Err(CalibrationMarketDataPreparationError::from(format!(
-            "mean_reversion.predictive_evidence_alpha must be finite and in (0, 1], found {predictive_evidence_alpha}"
-        )));
-    }
 
     let boundary_observations = return_components_input
         .map(|input| input.observed_close_open_boundary_observations.as_slice())
@@ -972,7 +931,6 @@ fn mean_reversion_stage_input_from_request(
     }
 
     Ok(Some(CalibrationMeanReversionStageExecutionInput {
-        predictive_evidence_alpha,
         grid_candidates,
     }))
 }
@@ -1535,7 +1493,7 @@ fn resolve_mean_reversion_grid_observation_candidates(
         .filter(|candidate_grid| {
             mean_reversion_grid_has_required_source_observation_coverage(
                 candidate_grid,
-                mean_reversion_pressure_gain_required_source_observation_count(),
+                mean_reversion_random_walk_required_source_observation_count(),
             )
         })
         .cloned()
@@ -1774,15 +1732,15 @@ fn prepared_market_data_plan_from_loading_output(
         .return_components_candidate_generation_input
         .as_ref();
 
-    let timestamp_batching_observation =
-        timestamp_batching_observation_diagnostic(selected_stages.as_slice(), None);
+    let timestamp_batching_surface = timestamp_batching_surface_diagnostic(
+        selected_stages.as_slice(),
+        return_components_input.map(|input| &input.timestamp_batching_surface),
+    );
 
     // The same diagnostic is both emitted to observers and retained in the
     // preparation payload so progress and artifacts agree.
-    progress.emit_timestamp_batching_observation(timestamp_batching_observation.clone())?;
+    progress.emit_timestamp_batching_surface(timestamp_batching_surface.clone())?;
     progress.emit_phase(MarketDataPreparationProgressPhase::PreparingCalibrationInputs)?;
-
-    let objective_policy = calibration_objective_policy_from_request(&request)?;
 
     let prepared_option_pricing_input = joint_refinement_option_pricing_input_from_request(
         &request,
@@ -1814,7 +1772,6 @@ fn prepared_market_data_plan_from_loading_output(
         )
         .map_err(CalibrationMarketDataPreparationError::from)?,
     )
-    .with_objective_policy(objective_policy)
     .build()
     .map_err(|source| {
         CalibrationMarketDataPreparationError::from(format!(
@@ -1841,10 +1798,6 @@ fn prepared_market_data_plan_from_loading_output(
             .calibration_output
             .hawkes_event_side_codes
             .clone(),
-        observation_models_stage_input: loading_output
-            .calibration_output
-            .observation_models_stage_input
-            .clone(),
         return_components_candidate_generation_input: loading_output
             .calibration_output
             .return_components_candidate_generation_input
@@ -1856,10 +1809,9 @@ fn prepared_market_data_plan_from_loading_output(
             &selected_stages,
             &loading_output,
         )?,
-        joint_refinement_restart_candidate_budget_override: request
-            .dynamics_search_restart_candidate_budget,
+        joint_refinement_candidate_budget_override: request.dynamics_search_candidate_budget,
         joint_refinement_calibration_effort: request.calibration_effort,
-        treat_inadmissible_calibration_warning_as_error: request
+        treat_invalid_candidate_fallback_warning_as_error: request
             .treat_calibration_warnings_as_errors,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,
@@ -1883,7 +1835,7 @@ fn prepared_market_data_plan_from_loading_output(
             loading_output.option_surface_summary.is_some(),
             loading_output.known_news_summary.is_some(),
         ),
-        timestamp_batching_observation,
+        timestamp_batching_surface,
         tick_record_count: loading_output.tick_data_summary.retained_row_count,
         coarse_data_record_count: loading_output
             .coarse_data_summary

@@ -72,7 +72,6 @@ pub const fn stage_label(stage: CalibrationStage) -> &'static str {
     match stage {
         CalibrationStage::Seasonality => "Fit seasonality",
         CalibrationStage::Hawkes => "Fit event activity",
-        CalibrationStage::ObservationModels => "Fit observation models",
         CalibrationStage::ReturnComponents => "Fit return distribution",
         CalibrationStage::LongVariance => "Fit long variance",
         CalibrationStage::NewsShocks => "Fit news shocks",
@@ -99,7 +98,6 @@ pub fn stage_label_from_token(stage: &str) -> String {
     let label = match stage {
         "seasonality" => "Fit seasonality",
         "hawkes" => "Fit event activity",
-        "observation_models" => "Fit observation models",
         "return_components" => "Fit return distribution",
         "long_variance" => "Fit long variance",
         "news_shocks" => "Fit news shocks",

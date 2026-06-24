@@ -4,10 +4,12 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, TYPE_CHECKING
 
+from ...._native_api import native_module
 from ...._timestamps import nanoseconds_to_hours
 from ....calendar import CalendarRegistry
 from ....interval_factor_grids.workflow import _parse_interval_duration_nanos
 from ....long_variance import LongVarianceParameters
+from ....market_pressure import MarketPressureParameters, MarketPressureState
 from ....mean_reversion import MeanReversionFittedParameters
 from ....pricing import (
     GammaSeverityMarkConfiguration,
@@ -22,11 +24,11 @@ from ...market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
 )
-from ..state import CurrentStateEstimationRequest
 from .input_inference import tick_data_input_inference_from_model_metadata
 from .shared import PreparedModelRuntimeFactors
 
 if TYPE_CHECKING:
+    from ..state import CurrentStateEstimationRequest
     from ....model import JaniformModel
 
 
@@ -42,6 +44,30 @@ def mean_reversion_fitted_parameters_for_model(
             )
         ),
         field_path="return_components.fitted_parameters.mean_reversion_fitted_parameters",
+    )
+
+
+def market_pressure_parameters_for_model(
+    model: JaniformModel,
+) -> MarketPressureParameters:
+    return MarketPressureParameters.from_mapping(
+        dict(
+            require_payload_mapping(
+                return_components_fitted_parameters_payload(model),
+                "market_pressure_parameters",
+                "return_components.fitted_parameters.market_pressure_parameters",
+            )
+        ),
+        field_path="return_components.fitted_parameters.market_pressure_parameters",
+    )
+
+
+def neutral_market_pressure_state_for_parameters(
+    market_pressure_parameters: MarketPressureParameters,
+) -> MarketPressureState:
+    return MarketPressureState.from_mapping(
+        native_module().neutral_market_pressure_state(market_pressure_parameters.to_payload()),
+        field_path="market_pressure_state",
     )
 
 
@@ -148,6 +174,7 @@ def prepare_model_runtime_factors_for_model(
             field_path="return_components.fitted_parameters.long_variance_parameters",
             error_factory=calibration_error,
         ),
+        market_pressure_parameters=market_pressure_parameters_for_model(model),
     )
 
 

@@ -15,41 +15,41 @@ use super::coarse_consistency::{
     build_joint_candidate_coarse_consistency_artifacts,
 };
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementRestartOutcome,
+    JointRefinementActiveParameterLayout, JointRefinementCandidateOutcome, JointRefinementContext,
     ordered_parameter_bits,
 };
 
 #[derive(Debug, Clone)]
-struct JointRefinementRestartOutcomeGroup<'a> {
+struct JointRefinementCandidateOutcomeGroup<'a> {
     parameter_bits: Vec<u64>,
-    representative: &'a JointRefinementRestartOutcome,
-    restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
+    representative: &'a JointRefinementCandidateOutcome,
+    candidate_outcomes: Vec<&'a JointRefinementCandidateOutcome>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct JointRefinementCandidateOrderingState<'a> {
     pareto_rank: usize,
-    restart_outcome: &'a JointRefinementRestartOutcome,
+    candidate_outcome: &'a JointRefinementCandidateOutcome,
     admissible: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementLazyCoarseConsistencySelection<'a> {
-    pub(crate) selected_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
-    pub(crate) coarse_consistency_artifacts_by_restart_id:
+    pub(crate) selected_candidate_outcomes: Vec<&'a JointRefinementCandidateOutcome>,
+    pub(crate) coarse_consistency_artifacts_by_candidate_id:
         BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
 }
 
 #[derive(Debug, Default, Clone)]
 struct LazyCoarseConsistencyCache {
-    artifacts_by_restart_id: BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
+    artifacts_by_candidate_id: BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
     artifacts_by_parameter_bits: BTreeMap<Vec<u64>, JointRefinementCoarseConsistencyArtifacts>,
 }
 
 #[derive(Debug, Default, Clone)]
 struct LazyCoarseConsistencyProgressState {
     completed_units: usize,
-    best_restart_id: Option<String>,
+    best_candidate_id: Option<String>,
     best_global_loss: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
 }
@@ -57,7 +57,7 @@ struct LazyCoarseConsistencyProgressState {
 impl LazyCoarseConsistencyProgressState {
     fn record(
         &mut self,
-        restart_id: &str,
+        candidate_id: &str,
         current_global_loss: f64,
         current_artifacts: Option<&JointRefinementCoarseConsistencyArtifacts>,
     ) -> Option<f64> {
@@ -67,7 +67,7 @@ impl LazyCoarseConsistencyProgressState {
             Some(current_best) if current_global_loss >= current_best => {}
             _ => {
                 self.best_global_loss = Some(current_global_loss);
-                self.best_restart_id = Some(restart_id.to_string());
+                self.best_candidate_id = Some(candidate_id.to_string());
             }
         }
 
@@ -90,30 +90,30 @@ pub(crate) fn admissibility_threshold_from_sample_count(sample_count: usize) -> 
     1.0 + (sample_count.max(1) as f64).recip().sqrt()
 }
 
-pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
-    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
+pub(crate) fn select_candidate_outcomes_with_lazy_coarse_consistency<'a>(
+    candidate_outcomes: &'a [&'a JointRefinementCandidateOutcome],
     context: &JointRefinementContext,
     baseline_artifacts: Option<&JointRefinementCoarseConsistencyArtifacts>,
-    selected_restart_count: usize,
+    selected_candidate_count: usize,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> JointRefinementLazyCoarseConsistencySelection<'a> {
-    let selected_restart_count = selected_restart_count.max(1);
+    let selected_candidate_count = selected_candidate_count.max(1);
 
-    let restart_groups = build_joint_restart_outcome_groups(restart_outcomes);
+    let candidate_groups = build_joint_candidate_outcome_groups(candidate_outcomes);
 
-    let representative_restart_outcomes =
-        representative_restart_outcomes(restart_groups.as_slice());
+    let representative_candidate_outcomes =
+        representative_candidate_outcomes(candidate_groups.as_slice());
 
     let optimistic_candidate_states =
-        build_joint_candidate_ordering_states(representative_restart_outcomes.as_slice());
+        build_joint_candidate_ordering_states(representative_candidate_outcomes.as_slice());
 
     let has_optimistically_admissible_candidate = optimistic_candidate_states
         .iter()
         .any(|candidate_state| candidate_state.admissible);
 
-    let mut ranked_restart_candidates = optimistic_candidate_states.clone();
+    let mut ranked_candidate_seeds = optimistic_candidate_states.clone();
 
-    ranked_restart_candidates.sort_by(|left, right| {
+    ranked_candidate_seeds.sort_by(|left, right| {
         compare_joint_candidate_ordering_states(
             *left,
             *right,
@@ -123,52 +123,53 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
 
     let Some(baseline_artifacts) = baseline_artifacts else {
         return JointRefinementLazyCoarseConsistencySelection {
-            selected_restart_outcomes: select_ranked_restart_outcomes_without_coarse_consistency(
-                restart_outcomes,
-                restart_groups.as_slice(),
-                ranked_restart_candidates.as_slice(),
-                selected_restart_count,
-            ),
-            coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
+            selected_candidate_outcomes:
+                select_ranked_candidate_outcomes_without_coarse_consistency(
+                    candidate_outcomes,
+                    candidate_groups.as_slice(),
+                    ranked_candidate_seeds.as_slice(),
+                    selected_candidate_count,
+                ),
+            coarse_consistency_artifacts_by_candidate_id: BTreeMap::new(),
         };
     };
 
-    let total_ranked_restart_groups = ranked_restart_candidates.len();
+    let total_ranked_candidate_groups = ranked_candidate_seeds.len();
 
     let mut coarse_consistency_cache = LazyCoarseConsistencyCache::default();
 
     seed_baseline_coarse_consistency(
         &mut coarse_consistency_cache,
-        restart_groups.as_slice(),
+        candidate_groups.as_slice(),
         baseline_artifacts,
     );
 
     emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
         progress_sender,
         completed_units: 0,
-        total_units: total_ranked_restart_groups,
+        total_units: total_ranked_candidate_groups,
         current_item_label: None,
         current_global_loss: None,
-        best_restart_id: None,
+        best_candidate_id: None,
         best_global_loss: None,
         current_coarse_consistency_fit: None,
         best_coarse_consistency_fit: None,
     });
 
     let mut progress_state = LazyCoarseConsistencyProgressState::default();
-    let mut admissible_restart_outcomes = Vec::new();
-    let mut fallback_restart_outcomes = Vec::new();
+    let mut admissible_candidate_outcomes = Vec::new();
+    let mut fallback_candidate_outcomes = Vec::new();
 
-    for candidate_state in ranked_restart_candidates {
-        let Some(restart_group) = find_restart_group(
-            restart_groups.as_slice(),
-            candidate_state.restart_outcome.restart_id.as_str(),
+    for candidate_state in ranked_candidate_seeds {
+        let Some(candidate_group) = find_candidate_group(
+            candidate_groups.as_slice(),
+            candidate_state.candidate_outcome.candidate_id.as_str(),
         ) else {
             continue;
         };
 
         let current_global_loss = candidate_state
-            .restart_outcome
+            .candidate_outcome
             .final_evaluation
             .breakdown
             .global_loss;
@@ -176,20 +177,20 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
             progress_sender,
             completed_units: progress_state.completed_units,
-            total_units: total_ranked_restart_groups,
-            current_item_label: Some(candidate_state.restart_outcome.restart_id.as_str()),
+            total_units: total_ranked_candidate_groups,
+            current_item_label: Some(candidate_state.candidate_outcome.candidate_id.as_str()),
             current_global_loss: Some(current_global_loss),
-            best_restart_id: progress_state.best_restart_id.as_deref(),
+            best_candidate_id: progress_state.best_candidate_id.as_deref(),
             best_global_loss: progress_state.best_global_loss,
             current_coarse_consistency_fit: None,
             best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
         });
 
         let current_artifacts = if candidate_state.admissible {
-            resolve_restart_group_coarse_consistency(
+            resolve_candidate_group_coarse_consistency(
                 &mut coarse_consistency_cache,
                 context,
-                restart_group,
+                candidate_group,
                 progress_sender,
             )
         } else {
@@ -197,7 +198,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         };
 
         let current_coarse_consistency_fit = progress_state.record(
-            candidate_state.restart_outcome.restart_id.as_str(),
+            candidate_state.candidate_outcome.candidate_id.as_str(),
             current_global_loss,
             current_artifacts.as_ref(),
         );
@@ -205,182 +206,182 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         emit_coarse_consistency_progress(CoarseConsistencyProgressEmissionInput {
             progress_sender,
             completed_units: progress_state.completed_units,
-            total_units: total_ranked_restart_groups,
-            current_item_label: Some(candidate_state.restart_outcome.restart_id.as_str()),
+            total_units: total_ranked_candidate_groups,
+            current_item_label: Some(candidate_state.candidate_outcome.candidate_id.as_str()),
             current_global_loss: Some(current_global_loss),
-            best_restart_id: progress_state.best_restart_id.as_deref(),
+            best_candidate_id: progress_state.best_candidate_id.as_deref(),
             best_global_loss: progress_state.best_global_loss,
             current_coarse_consistency_fit,
             best_coarse_consistency_fit: progress_state.best_coarse_consistency_fit,
         });
 
         if candidate_state.admissible
-            && let Some(selected_restart_outcome) = find_restart_outcome(
-                restart_outcomes,
-                restart_group.representative.restart_id.as_str(),
+            && let Some(selected_candidate_outcome) = find_candidate_outcome(
+                candidate_outcomes,
+                candidate_group.representative.candidate_id.as_str(),
             )
         {
-            admissible_restart_outcomes.push(selected_restart_outcome);
+            admissible_candidate_outcomes.push(selected_candidate_outcome);
 
-            if admissible_restart_outcomes.len() >= selected_restart_count {
+            if admissible_candidate_outcomes.len() >= selected_candidate_count {
                 return JointRefinementLazyCoarseConsistencySelection {
-                    selected_restart_outcomes: admissible_restart_outcomes,
-                    coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
-                        .artifacts_by_restart_id,
+                    selected_candidate_outcomes: admissible_candidate_outcomes,
+                    coarse_consistency_artifacts_by_candidate_id: coarse_consistency_cache
+                        .artifacts_by_candidate_id,
                 };
             }
-        } else if let Some(fallback_restart_outcome) = find_restart_outcome(
-            restart_outcomes,
-            restart_group.representative.restart_id.as_str(),
+        } else if let Some(fallback_candidate_outcome) = find_candidate_outcome(
+            candidate_outcomes,
+            candidate_group.representative.candidate_id.as_str(),
         ) {
-            fallback_restart_outcomes.push(fallback_restart_outcome);
+            fallback_candidate_outcomes.push(fallback_candidate_outcome);
         }
     }
 
-    let selected_restart_outcomes = selected_restart_outcomes_from_ranked_buckets(
-        admissible_restart_outcomes,
-        fallback_restart_outcomes,
-        selected_restart_count,
+    let selected_candidate_outcomes = selected_candidate_outcomes_from_ranked_buckets(
+        admissible_candidate_outcomes,
+        fallback_candidate_outcomes,
+        selected_candidate_count,
     );
 
     JointRefinementLazyCoarseConsistencySelection {
-        selected_restart_outcomes,
-        coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
-            .artifacts_by_restart_id,
+        selected_candidate_outcomes,
+        coarse_consistency_artifacts_by_candidate_id: coarse_consistency_cache
+            .artifacts_by_candidate_id,
     }
 }
 
-fn select_ranked_restart_outcomes_without_coarse_consistency<'a>(
-    restart_outcomes: &[&'a JointRefinementRestartOutcome],
-    restart_groups: &[JointRefinementRestartOutcomeGroup<'a>],
-    ranked_restart_candidates: &[JointRefinementCandidateOrderingState<'a>],
-    selected_restart_count: usize,
-) -> Vec<&'a JointRefinementRestartOutcome> {
-    let mut admissible_restart_outcomes = Vec::new();
-    let mut fallback_restart_outcomes = Vec::new();
+fn select_ranked_candidate_outcomes_without_coarse_consistency<'a>(
+    candidate_outcomes: &[&'a JointRefinementCandidateOutcome],
+    candidate_groups: &[JointRefinementCandidateOutcomeGroup<'a>],
+    ranked_candidate_seeds: &[JointRefinementCandidateOrderingState<'a>],
+    selected_candidate_count: usize,
+) -> Vec<&'a JointRefinementCandidateOutcome> {
+    let mut admissible_candidate_outcomes = Vec::new();
+    let mut fallback_candidate_outcomes = Vec::new();
 
-    for candidate_state in ranked_restart_candidates {
-        let Some(restart_group) = find_restart_group(
-            restart_groups,
-            candidate_state.restart_outcome.restart_id.as_str(),
+    for candidate_state in ranked_candidate_seeds {
+        let Some(candidate_group) = find_candidate_group(
+            candidate_groups,
+            candidate_state.candidate_outcome.candidate_id.as_str(),
         ) else {
             continue;
         };
 
         if candidate_state.admissible
-            && let Some(selected_restart_outcome) = find_restart_outcome(
-                restart_outcomes,
-                restart_group.representative.restart_id.as_str(),
+            && let Some(selected_candidate_outcome) = find_candidate_outcome(
+                candidate_outcomes,
+                candidate_group.representative.candidate_id.as_str(),
             )
         {
-            admissible_restart_outcomes.push(selected_restart_outcome);
-        } else if let Some(fallback_restart_outcome) = find_restart_outcome(
-            restart_outcomes,
-            restart_group.representative.restart_id.as_str(),
+            admissible_candidate_outcomes.push(selected_candidate_outcome);
+        } else if let Some(fallback_candidate_outcome) = find_candidate_outcome(
+            candidate_outcomes,
+            candidate_group.representative.candidate_id.as_str(),
         ) {
-            fallback_restart_outcomes.push(fallback_restart_outcome);
+            fallback_candidate_outcomes.push(fallback_candidate_outcome);
         }
     }
 
-    selected_restart_outcomes_from_ranked_buckets(
-        admissible_restart_outcomes,
-        fallback_restart_outcomes,
-        selected_restart_count,
+    selected_candidate_outcomes_from_ranked_buckets(
+        admissible_candidate_outcomes,
+        fallback_candidate_outcomes,
+        selected_candidate_count,
     )
 }
 
-fn selected_restart_outcomes_from_ranked_buckets<'a>(
-    mut selected_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
-    fallback_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
-    selected_restart_count: usize,
-) -> Vec<&'a JointRefinementRestartOutcome> {
-    for fallback_restart_outcome in fallback_restart_outcomes {
-        if selected_restart_outcomes.len() >= selected_restart_count {
+fn selected_candidate_outcomes_from_ranked_buckets<'a>(
+    mut selected_candidate_outcomes: Vec<&'a JointRefinementCandidateOutcome>,
+    fallback_candidate_outcomes: Vec<&'a JointRefinementCandidateOutcome>,
+    selected_candidate_count: usize,
+) -> Vec<&'a JointRefinementCandidateOutcome> {
+    for fallback_candidate_outcome in fallback_candidate_outcomes {
+        if selected_candidate_outcomes.len() >= selected_candidate_count {
             break;
         }
 
-        if selected_restart_outcomes
+        if selected_candidate_outcomes
             .iter()
-            .any(|selected_restart_outcome| {
-                selected_restart_outcome.restart_id == fallback_restart_outcome.restart_id
+            .any(|selected_candidate_outcome| {
+                selected_candidate_outcome.candidate_id == fallback_candidate_outcome.candidate_id
             })
         {
             continue;
         }
 
-        selected_restart_outcomes.push(fallback_restart_outcome);
+        selected_candidate_outcomes.push(fallback_candidate_outcome);
     }
 
-    selected_restart_outcomes
+    selected_candidate_outcomes
 }
 
-fn representative_restart_outcomes<'a>(
-    restart_groups: &[JointRefinementRestartOutcomeGroup<'a>],
-) -> Vec<&'a JointRefinementRestartOutcome> {
-    restart_groups
+fn representative_candidate_outcomes<'a>(
+    candidate_groups: &[JointRefinementCandidateOutcomeGroup<'a>],
+) -> Vec<&'a JointRefinementCandidateOutcome> {
+    candidate_groups
         .iter()
-        .map(|restart_group| restart_group.representative)
+        .map(|candidate_group| candidate_group.representative)
         .collect()
 }
 
-fn find_restart_group<'a>(
-    restart_groups: &'a [JointRefinementRestartOutcomeGroup<'a>],
-    restart_id: &str,
-) -> Option<&'a JointRefinementRestartOutcomeGroup<'a>> {
-    restart_groups
+fn find_candidate_group<'a>(
+    candidate_groups: &'a [JointRefinementCandidateOutcomeGroup<'a>],
+    candidate_id: &str,
+) -> Option<&'a JointRefinementCandidateOutcomeGroup<'a>> {
+    candidate_groups
         .iter()
-        .find(|restart_group| restart_group.representative.restart_id == restart_id)
+        .find(|candidate_group| candidate_group.representative.candidate_id == candidate_id)
 }
 
-fn find_restart_outcome<'a>(
-    restart_outcomes: &[&'a JointRefinementRestartOutcome],
-    restart_id: &str,
-) -> Option<&'a JointRefinementRestartOutcome> {
-    restart_outcomes
+fn find_candidate_outcome<'a>(
+    candidate_outcomes: &[&'a JointRefinementCandidateOutcome],
+    candidate_id: &str,
+) -> Option<&'a JointRefinementCandidateOutcome> {
+    candidate_outcomes
         .iter()
         .copied()
-        .find(|restart_outcome| restart_outcome.restart_id == restart_id)
+        .find(|candidate_outcome| candidate_outcome.candidate_id == candidate_id)
 }
 
 fn seed_baseline_coarse_consistency(
     coarse_consistency_cache: &mut LazyCoarseConsistencyCache,
-    restart_groups: &[JointRefinementRestartOutcomeGroup<'_>],
+    candidate_groups: &[JointRefinementCandidateOutcomeGroup<'_>],
     baseline_artifacts: &JointRefinementCoarseConsistencyArtifacts,
 ) {
-    for restart_group in restart_groups {
-        if restart_group
-            .restart_outcomes
+    for candidate_group in candidate_groups {
+        if candidate_group
+            .candidate_outcomes
             .iter()
-            .any(|restart_outcome| restart_outcome.restart_id == "baseline")
+            .any(|candidate_outcome| candidate_outcome.candidate_id == "baseline")
         {
             coarse_consistency_cache.artifacts_by_parameter_bits.insert(
-                restart_group.parameter_bits.clone(),
+                candidate_group.parameter_bits.clone(),
                 baseline_artifacts.clone(),
             );
 
-            assign_coarse_consistency_artifacts_to_restart_group(
-                &mut coarse_consistency_cache.artifacts_by_restart_id,
-                restart_group,
+            assign_coarse_consistency_artifacts_to_candidate_group(
+                &mut coarse_consistency_cache.artifacts_by_candidate_id,
+                candidate_group,
                 baseline_artifacts,
             );
         }
     }
 }
 
-fn resolve_restart_group_coarse_consistency(
+fn resolve_candidate_group_coarse_consistency(
     coarse_consistency_cache: &mut LazyCoarseConsistencyCache,
     context: &JointRefinementContext,
-    restart_group: &JointRefinementRestartOutcomeGroup<'_>,
+    candidate_group: &JointRefinementCandidateOutcomeGroup<'_>,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Option<JointRefinementCoarseConsistencyArtifacts> {
     if let Some(artifacts) = coarse_consistency_cache
         .artifacts_by_parameter_bits
-        .get(&restart_group.parameter_bits)
+        .get(&candidate_group.parameter_bits)
         .cloned()
     {
-        assign_coarse_consistency_artifacts_to_restart_group(
-            &mut coarse_consistency_cache.artifacts_by_restart_id,
-            restart_group,
+        assign_coarse_consistency_artifacts_to_candidate_group(
+            &mut coarse_consistency_cache.artifacts_by_candidate_id,
+            candidate_group,
             &artifacts,
         );
 
@@ -389,26 +390,26 @@ fn resolve_restart_group_coarse_consistency(
 
     let resolved_artifacts = build_joint_candidate_coarse_consistency_artifacts(
         context,
-        &restart_group
+        &candidate_group
             .representative
             .final_evaluation
             .fitted_parameters,
-        Some(restart_group.parameter_bits.as_slice()),
+        Some(candidate_group.parameter_bits.as_slice()),
         Some(JointRefinementCoarseConsistencyProgress {
             sender: progress_sender,
             phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
-            current_item_label: Some(restart_group.representative.restart_id.as_str()),
+            current_item_label: Some(candidate_group.representative.candidate_id.as_str()),
         }),
     )?;
 
     coarse_consistency_cache.artifacts_by_parameter_bits.insert(
-        restart_group.parameter_bits.clone(),
+        candidate_group.parameter_bits.clone(),
         resolved_artifacts.clone(),
     );
 
-    assign_coarse_consistency_artifacts_to_restart_group(
-        &mut coarse_consistency_cache.artifacts_by_restart_id,
-        restart_group,
+    assign_coarse_consistency_artifacts_to_candidate_group(
+        &mut coarse_consistency_cache.artifacts_by_candidate_id,
+        candidate_group,
         &resolved_artifacts,
     );
 
@@ -416,16 +417,16 @@ fn resolve_restart_group_coarse_consistency(
 }
 
 pub(crate) fn build_joint_candidate_frontier_diagnostics(
-    restart_outcomes: &[JointRefinementRestartOutcome],
+    candidate_outcomes: &[JointRefinementCandidateOutcome],
     context: &JointRefinementContext,
 ) -> Vec<JointRefinementStageCandidateDiagnostic> {
-    if restart_outcomes.is_empty() {
+    if candidate_outcomes.is_empty() {
         return Vec::new();
     }
 
-    let restart_outcome_refs = restart_outcomes.iter().collect::<Vec<_>>();
+    let candidate_outcome_refs = candidate_outcomes.iter().collect::<Vec<_>>();
 
-    let candidate_states = build_joint_candidate_ordering_states(restart_outcome_refs.as_slice());
+    let candidate_states = build_joint_candidate_ordering_states(candidate_outcome_refs.as_slice());
 
     let has_admissible_candidate = candidate_states
         .iter()
@@ -433,31 +434,31 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
 
     let mut ranked_candidates = candidate_states
         .iter()
-        .map(|candidate_state| (*candidate_state, candidate_state.restart_outcome))
+        .map(|candidate_state| (*candidate_state, candidate_state.candidate_outcome))
         .collect::<Vec<_>>();
 
     ranked_candidates.sort_by(|left, right| {
         compare_joint_candidate_ordering_states(left.0, right.0, has_admissible_candidate)
     });
 
-    let lexicographic_rank_by_restart_id: BTreeMap<&str, usize> = ranked_candidates
+    let lexicographic_rank_by_candidate_id: BTreeMap<&str, usize> = ranked_candidates
         .iter()
         .enumerate()
-        .map(|(position, (_, outcome))| (outcome.restart_id.as_str(), position + 1))
+        .map(|(position, (_, outcome))| (outcome.candidate_id.as_str(), position + 1))
         .collect();
 
-    restart_outcomes
+    candidate_outcomes
         .iter()
         .map(|outcome| {
             let candidate_state = candidate_states
                 .iter()
                 .find(|candidate_state| {
-                    candidate_state.restart_outcome.restart_id == outcome.restart_id
+                    candidate_state.candidate_outcome.candidate_id == outcome.candidate_id
                 })
                 .copied()
                 .unwrap_or(JointRefinementCandidateOrderingState {
                     pareto_rank: usize::MAX,
-                    restart_outcome: outcome,
+                    candidate_outcome: outcome,
                     admissible: false,
                 });
 
@@ -471,13 +472,13 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
                 .or_else(|| outcome.local_evaluation.invalid_reason.clone());
 
             JointRefinementStageCandidateDiagnostic {
-                candidate_id: format!("joint_refinement_{}", outcome.restart_id),
+                candidate_id: format!("joint_refinement_{}", outcome.candidate_id),
                 valid,
                 admissible: candidate_state.admissible,
                 pareto_rank: candidate_state.pareto_rank,
-                lexicographic_rank: *lexicographic_rank_by_restart_id
-                    .get(outcome.restart_id.as_str())
-                    .unwrap_or(&(restart_outcomes.len() + 1)),
+                lexicographic_rank: *lexicographic_rank_by_candidate_id
+                    .get(outcome.candidate_id.as_str())
+                    .unwrap_or(&(candidate_outcomes.len() + 1)),
                 scalar_tie_break: outcome.final_evaluation.breakdown.global_loss,
                 local_evaluation_count: outcome.local_evaluation_count,
                 stop_reason: outcome.stop_reason.clone(),
@@ -493,19 +494,19 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
         .collect()
 }
 
-pub(crate) fn joint_restart_outcome_is_admissible(
-    restart_outcome: &JointRefinementRestartOutcome,
+pub(crate) fn joint_candidate_outcome_is_admissible(
+    candidate_outcome: &JointRefinementCandidateOutcome,
 ) -> bool {
-    restart_outcome
+    candidate_outcome
         .final_evaluation
         .breakdown
         .admissibility
         .admissible
 }
 
-fn joint_restart_outcome_dominates(
-    left: &JointRefinementRestartOutcome,
-    right: &JointRefinementRestartOutcome,
+fn joint_candidate_outcome_dominates(
+    left: &JointRefinementCandidateOutcome,
+    right: &JointRefinementCandidateOutcome,
 ) -> bool {
     let left_metrics = joint_primary_metrics_from_breakdown(&left.final_evaluation.breakdown);
     let right_metrics = joint_primary_metrics_from_breakdown(&right.final_evaluation.breakdown);
@@ -523,79 +524,79 @@ fn joint_restart_outcome_dominates(
     all_not_worse && any_strictly_better
 }
 
-fn build_joint_restart_outcome_groups<'a>(
-    restart_outcomes: &[&'a JointRefinementRestartOutcome],
-) -> Vec<JointRefinementRestartOutcomeGroup<'a>> {
-    let grouped_restart_outcomes = restart_outcomes.iter().copied().fold(
-        BTreeMap::<Vec<u64>, Vec<&JointRefinementRestartOutcome>>::new(),
-        |mut grouped_restart_outcomes, restart_outcome| {
-            grouped_restart_outcomes
+fn build_joint_candidate_outcome_groups<'a>(
+    candidate_outcomes: &[&'a JointRefinementCandidateOutcome],
+) -> Vec<JointRefinementCandidateOutcomeGroup<'a>> {
+    let grouped_candidate_outcomes = candidate_outcomes.iter().copied().fold(
+        BTreeMap::<Vec<u64>, Vec<&JointRefinementCandidateOutcome>>::new(),
+        |mut grouped_candidate_outcomes, candidate_outcome| {
+            grouped_candidate_outcomes
                 .entry(ordered_parameter_bits(
-                    restart_outcome.parameter_vector.as_slice(),
+                    candidate_outcome.parameter_vector.as_slice(),
                 ))
                 .or_default()
-                .push(restart_outcome);
-            grouped_restart_outcomes
+                .push(candidate_outcome);
+            grouped_candidate_outcomes
         },
     );
 
-    grouped_restart_outcomes
+    grouped_candidate_outcomes
         .into_iter()
-        .filter_map(|(parameter_bits, grouped_restart_outcomes)| {
-            let representative = grouped_restart_outcomes
+        .filter_map(|(parameter_bits, grouped_candidate_outcomes)| {
+            let representative = grouped_candidate_outcomes
                 .iter()
                 .copied()
-                .min_by(|left, right| left.restart_id.cmp(&right.restart_id))?;
-            Some(JointRefinementRestartOutcomeGroup {
+                .min_by(|left, right| left.candidate_id.cmp(&right.candidate_id))?;
+            Some(JointRefinementCandidateOutcomeGroup {
                 parameter_bits,
                 representative,
-                restart_outcomes: grouped_restart_outcomes,
+                candidate_outcomes: grouped_candidate_outcomes,
             })
         })
         .collect()
 }
 
-fn assign_coarse_consistency_artifacts_to_restart_group(
-    coarse_consistency_artifacts_by_restart_id: &mut BTreeMap<
+fn assign_coarse_consistency_artifacts_to_candidate_group(
+    coarse_consistency_artifacts_by_candidate_id: &mut BTreeMap<
         String,
         JointRefinementCoarseConsistencyArtifacts,
     >,
-    restart_group: &JointRefinementRestartOutcomeGroup<'_>,
+    candidate_group: &JointRefinementCandidateOutcomeGroup<'_>,
     artifacts: &JointRefinementCoarseConsistencyArtifacts,
 ) {
-    for restart_outcome in &restart_group.restart_outcomes {
-        coarse_consistency_artifacts_by_restart_id
-            .insert(restart_outcome.restart_id.clone(), artifacts.clone());
+    for candidate_outcome in &candidate_group.candidate_outcomes {
+        coarse_consistency_artifacts_by_candidate_id
+            .insert(candidate_outcome.candidate_id.clone(), artifacts.clone());
     }
 }
 
 fn build_joint_candidate_ordering_states<'a>(
-    restart_outcomes: &[&'a JointRefinementRestartOutcome],
+    candidate_outcomes: &[&'a JointRefinementCandidateOutcome],
 ) -> Vec<JointRefinementCandidateOrderingState<'a>> {
-    let pareto_ranks = pareto_ranks(restart_outcomes);
+    let pareto_ranks = pareto_ranks(candidate_outcomes);
 
-    restart_outcomes
+    candidate_outcomes
         .iter()
         .enumerate()
         .map(
             |(position, outcome)| JointRefinementCandidateOrderingState {
                 pareto_rank: pareto_ranks[position],
-                restart_outcome: outcome,
+                candidate_outcome: outcome,
                 admissible: outcome.local_evaluation.invalid_reason.is_none()
                     && outcome.final_evaluation.invalid_reason.is_none()
-                    && joint_restart_outcome_is_admissible(outcome),
+                    && joint_candidate_outcome_is_admissible(outcome),
             },
         )
         .collect()
 }
 
-fn pareto_ranks(restart_outcomes: &[&JointRefinementRestartOutcome]) -> Vec<usize> {
-    restart_outcomes
+fn pareto_ranks(candidate_outcomes: &[&JointRefinementCandidateOutcome]) -> Vec<usize> {
+    candidate_outcomes
         .iter()
         .map(|candidate| {
-            1 + restart_outcomes
+            1 + candidate_outcomes
                 .iter()
-                .filter(|other| joint_restart_outcome_dominates(other, candidate))
+                .filter(|other| joint_candidate_outcome_dominates(other, candidate))
                 .count()
         })
         .collect()
@@ -608,13 +609,13 @@ fn compare_joint_candidate_ordering_states(
 ) -> std::cmp::Ordering {
     compare_joint_candidate_breakdowns(JointCandidateBreakdownComparisonInput {
         left_pareto_rank: left.pareto_rank,
-        left_breakdown: &left.restart_outcome.final_evaluation.breakdown,
+        left_breakdown: &left.candidate_outcome.final_evaluation.breakdown,
         left_admissible: left.admissible,
-        left_restart_id: left.restart_outcome.restart_id.as_str(),
+        left_candidate_id: left.candidate_outcome.candidate_id.as_str(),
         right_pareto_rank: right.pareto_rank,
-        right_breakdown: &right.restart_outcome.final_evaluation.breakdown,
+        right_breakdown: &right.candidate_outcome.final_evaluation.breakdown,
         right_admissible: right.admissible,
-        right_restart_id: right.restart_outcome.restart_id.as_str(),
+        right_candidate_id: right.candidate_outcome.candidate_id.as_str(),
         has_admissible_candidate,
     })
 }
@@ -682,6 +683,10 @@ pub(crate) fn joint_parameter_name_by_index(
             "long_variance.vol_of_vol",
         ),
         (
+            active_parameter_layout.long_variance_return_energy_loading_index,
+            "long_variance.return_energy_loading",
+        ),
+        (
             active_parameter_layout.long_variance_buy_event_loading_index,
             "long_variance.buy_event_loading",
         ),
@@ -714,7 +719,7 @@ struct CoarseConsistencyProgressEmissionInput<'a> {
     total_units: usize,
     current_item_label: Option<&'a str>,
     current_global_loss: Option<f64>,
-    best_restart_id: Option<&'a str>,
+    best_candidate_id: Option<&'a str>,
     best_global_loss: Option<f64>,
     current_coarse_consistency_fit: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
@@ -727,7 +732,7 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
         total_units,
         current_item_label,
         current_global_loss,
-        best_restart_id,
+        best_candidate_id,
         best_global_loss,
         current_coarse_consistency_fit,
         best_coarse_consistency_fit,
@@ -737,7 +742,7 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),
             current_global_loss,
-            best_restart_id: best_restart_id.map(str::to_string),
+            best_candidate_id: best_candidate_id.map(str::to_string),
             best_global_loss,
             current_coarse_consistency_fit,
             best_coarse_consistency_fit,
@@ -753,7 +758,7 @@ fn emit_coarse_consistency_progress(input: CoarseConsistencyProgressEmissionInpu
 #[cfg(test)]
 mod tests {
     use janiform_calibration_artifacts::{
-        CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationObjectivePolicy,
+        CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic,
         JointRefinementStageObjectiveBreakdown,
     };
 
@@ -761,55 +766,56 @@ mod tests {
 
     use super::super::test_support::test_joint_fitted_parameters;
     use super::super::{
-        JointRefinementCandidateEvaluation, JointRefinementRawAdmissibilityMetrics,
-        JointRefinementRestartOutcome,
+        JointRefinementCandidateEvaluation, JointRefinementCandidateOutcome,
+        JointRefinementRawAdmissibilityMetrics,
     };
     use super::{
-        build_joint_candidate_ordering_states, build_joint_restart_outcome_groups,
-        compare_joint_candidate_ordering_states, representative_restart_outcomes,
-        select_ranked_restart_outcomes_without_coarse_consistency,
+        build_joint_candidate_ordering_states, build_joint_candidate_outcome_groups,
+        compare_joint_candidate_ordering_states, representative_candidate_outcomes,
+        select_ranked_candidate_outcomes_without_coarse_consistency,
     };
 
     #[test]
-    fn missing_baseline_coarse_consistency_selects_valid_ranked_fallback_restart() {
-        let weaker_restart = build_test_restart_outcome("weaker_restart", 3.0);
-        let stronger_restart = build_test_restart_outcome("stronger_restart", 1.0);
-        let restart_outcomes = vec![&weaker_restart, &stronger_restart];
-        let restart_groups = build_joint_restart_outcome_groups(restart_outcomes.as_slice());
+    fn missing_baseline_coarse_consistency_selects_valid_ranked_fallback_candidate() {
+        let weaker_candidate = build_test_candidate_outcome("weaker_candidate", 3.0);
+        let stronger_candidate = build_test_candidate_outcome("stronger_candidate", 1.0);
+        let candidate_outcomes = vec![&weaker_candidate, &stronger_candidate];
+        let candidate_groups = build_joint_candidate_outcome_groups(candidate_outcomes.as_slice());
 
-        let representative_restart_outcomes =
-            representative_restart_outcomes(restart_groups.as_slice());
+        let representative_candidate_outcomes =
+            representative_candidate_outcomes(candidate_groups.as_slice());
 
-        let mut ranked_restart_candidates =
-            build_joint_candidate_ordering_states(representative_restart_outcomes.as_slice());
+        let mut ranked_candidate_seeds =
+            build_joint_candidate_ordering_states(representative_candidate_outcomes.as_slice());
 
-        let has_admissible_candidate = ranked_restart_candidates
+        let has_admissible_candidate = ranked_candidate_seeds
             .iter()
             .any(|candidate_state| candidate_state.admissible);
 
-        ranked_restart_candidates.sort_by(|left, right| {
+        ranked_candidate_seeds.sort_by(|left, right| {
             compare_joint_candidate_ordering_states(*left, *right, has_admissible_candidate)
         });
 
-        let selected_restart_outcomes = select_ranked_restart_outcomes_without_coarse_consistency(
-            restart_outcomes.as_slice(),
-            restart_groups.as_slice(),
-            ranked_restart_candidates.as_slice(),
-            1,
-        );
+        let selected_candidate_outcomes =
+            select_ranked_candidate_outcomes_without_coarse_consistency(
+                candidate_outcomes.as_slice(),
+                candidate_groups.as_slice(),
+                ranked_candidate_seeds.as_slice(),
+                1,
+            );
 
-        let selected_restart_ids = selected_restart_outcomes
+        let selected_candidate_ids = selected_candidate_outcomes
             .iter()
-            .map(|restart_outcome| restart_outcome.restart_id.as_str())
+            .map(|candidate_outcome| candidate_outcome.candidate_id.as_str())
             .collect::<Vec<_>>();
 
-        assert_eq!(selected_restart_ids, vec!["stronger_restart"]);
+        assert_eq!(selected_candidate_ids, vec!["stronger_candidate"]);
     }
 
-    fn build_test_restart_outcome(
-        restart_id: &str,
+    fn build_test_candidate_outcome(
+        candidate_id: &str,
         global_loss: f64,
-    ) -> JointRefinementRestartOutcome {
+    ) -> JointRefinementCandidateOutcome {
         let breakdown = build_test_inadmissible_breakdown(global_loss);
 
         let evaluation = JointRefinementCandidateEvaluation {
@@ -821,8 +827,8 @@ mod tests {
             invalid_reason: None,
         };
 
-        JointRefinementRestartOutcome {
-            restart_id: restart_id.to_string(),
+        JointRefinementCandidateOutcome {
+            candidate_id: candidate_id.to_string(),
             parameter_vector: vec![global_loss],
             local_evaluation: evaluation.clone(),
             final_evaluation: evaluation,
@@ -835,22 +841,24 @@ mod tests {
         global_loss: f64,
     ) -> JointRefinementStageObjectiveBreakdown {
         JointRefinementStageObjectiveBreakdown {
-            policy: CalibrationObjectivePolicy::default(),
             family_losses: vec![CalibrationLossFamilyDiagnostic {
                 family_id: "test_fit".to_string(),
-                term_count: 1,
+                coordinate_count: 1,
+                rank: 1,
+                whitened_coordinates: vec![global_loss.sqrt()],
                 loss: global_loss,
                 max_standardized_residual: global_loss,
                 worst_term_id: Some("test_fit".to_string()),
+                unidentified: false,
             }],
             term_diagnostics: Vec::new(),
-            hard_constraint_diagnostics: Vec::new(),
+            domain_margin_diagnostics: Vec::new(),
             global_loss,
             admissibility: CalibrationLossAdmissibility {
                 admissible: false,
                 max_standardized_residual: global_loss,
                 excess_loss: global_loss,
-                blockers: vec!["test_fit".to_string()],
+                warnings: vec!["test_fit".to_string()],
             },
         }
     }

@@ -14,7 +14,7 @@ use crate::market_data_progress::{
     MarketDataLoadingProgressGate, market_data_loading_progress_measure,
     market_data_loading_progress_signal, market_data_loading_run_event,
     market_data_preparation_progress_signal, market_data_preparation_run_event,
-    market_data_timestamp_batching_observation_run_event, should_emit_market_data_loading_progress,
+    market_data_timestamp_batching_surface_run_event, should_emit_market_data_loading_progress,
 };
 
 use super::execution::{fit_workflow_paths, run_staged_fit_execution_workflow};
@@ -130,12 +130,12 @@ pub fn run_fit_workflow(
 
                 machine_event_sink(&run_event)
             }
-            MarketDataPreparationProgressEvent::TimestampBatchingObservation(diagnostic) => {
+            MarketDataPreparationProgressEvent::TimestampBatchingSurface(diagnostic) => {
                 let Some(machine_event_sink) = machine_event_sink.as_mut() else {
                     return Ok(());
                 };
 
-                let run_event = market_data_timestamp_batching_observation_run_event(
+                let run_event = market_data_timestamp_batching_surface_run_event(
                     run_id,
                     WorkflowRef::labeled(fit_workflow_id(), fit_workflow_label()),
                     &diagnostic,

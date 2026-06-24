@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use janiform::model::hawkes::HawkesExcitationState;
 use janiform::model::long_variance::LongVarianceState;
+use janiform::model::market_pressure::MarketPressureState;
 use janiform::simulation::MeanReversionBoundaryState;
 use janiform_foundations::time::{
     deserialize_optional_utc_datetime, deserialize_utc_datetime, serialize_utc_datetime,
@@ -105,6 +106,8 @@ pub struct ForecastInitialState {
     pub long_variance_state: LongVarianceState,
     /// Current mean-reversion boundary state in model log-price coordinates.
     pub mean_reversion_boundary_state: MeanReversionBoundaryState,
+    /// Current market pressure state.
+    pub market_pressure_state: MarketPressureState,
 }
 
 /// Forecast request for a persisted model artifact payload.

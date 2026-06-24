@@ -228,6 +228,24 @@ Read and follow `docs/contributing/python-conventions.md`. Agents must adhere to
 - Do not use ";" in comments. It is almost never used by humans, especially coders. AI agents tend to overuse this in comments. Here we have a hard rule: NEVER USE THEM!
 - Only standard keyboard symbols. Absolutely **no** emojis :)
 
+## Reader-Facing Artifacts
+
+When writing anything that may be read outside the current conversation you are engaging in with the human that you collaborate with, write it as a standalone project artifact. This includes code comments, public docs, developer docs, design notes, examples, schemas, error messages, CLI help text, test names, inline explanations, and so on.
+
+Do not leak conversational context into artifacts. A future reader should not need to know what the user asked, what was changed during a session, what was discussed in chat, etc.
+
+Prefer positive, current-state descriptions:
+
+- Write what the code, model, contract, or document defines.
+- Do not explain by contrasting against removed, rejected, or previously discussed designs unless the artifact is explicitly a migration note, changelog, ADR, or historical design record.
+- Avoid phrases such as "now", "previously", "old", "new", "instead of", "rather than", "there is no", "we decided", "the user wanted", "as discussed", "this change" etc., in stable docs and comments.
+- If a negative statement is necessary, make sure it answers a real reader question created by the surrounding artifact, not an internal implementation-history concern.
+- Code comments should explain non-obvious local reasoning, invariants, or domain constraints. They should not narrate the edit.
+- User-facing docs should describe the product or model as it is intended to be understood.
+- Developer-facing docs should describe durable architecture, contracts, invariants, and maintenance rules, not the conversation that produced them.
+
+Before finishing a task that changes comments or docs, scan the changed text for conversational phrasing and rewrite it into standalone current-state language.
+
 ## Available Tooling
 
 - `./scripts/bootstrap-linux.sh .venv-linux` for Linux/WSL-based bootstrapping (if no venv exists)

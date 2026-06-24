@@ -1,6 +1,8 @@
 """Public sufficient-statistics contracts and workflow helpers."""
 
 from .contracts import (
+    MarketPressureParameters,
+    MarketPressureState,
     SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
     SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION,
     SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
@@ -29,6 +31,8 @@ from .workflow import (
 )
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION",
     "SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
     "SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION",

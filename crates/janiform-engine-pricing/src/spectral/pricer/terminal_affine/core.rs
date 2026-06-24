@@ -53,10 +53,12 @@ pub(super) struct TerminalAffineThetaSolution {
     pub(super) martingale_tolerance: f64,
     buy_activity_premium_theta_derivative: f64,
     sell_activity_premium_theta_derivative: f64,
+    pressure_signed_imbalance_exposure_risk_price_theta_derivative: f64,
 }
 
 pub(super) struct TerminalAffineMaturityContext<'a> {
     pub(super) pricing_request: &'a VanillaOptionPricingRequest,
+    pub(super) measure_policy: TerminalAffineMeasurePolicy,
     pub(super) maturity_count: usize,
     pub(super) maturity_interval: f64,
     pub(super) mean_reversion_path: TerminalAffineMeanReversionPath,
@@ -128,7 +130,6 @@ pub(crate) fn solve_terminal_affine_maturity_law(
         solve_input.maturity_count,
         solve_input.interval_deltas,
         solve_input.interval_factor_grids,
-        solve_input.driver_parameters,
     )?;
 
     let spectral_domain = resolve_terminal_affine_spectral_domain(
@@ -139,6 +140,7 @@ pub(crate) fn solve_terminal_affine_maturity_law(
 
     let context = TerminalAffineMaturityContext {
         pricing_request: solve_input.pricing_request,
+        measure_policy: solve_input.measure_policy,
         maturity_count: solve_input.maturity_count,
         maturity_interval: solve_input.maturity_interval,
         mean_reversion_path,
@@ -176,6 +178,7 @@ pub(crate) fn solve_terminal_affine_maturity_law(
             theta_solution.theta,
             theta_solution.buy_activity_premium_theta_derivative,
             theta_solution.sell_activity_premium_theta_derivative,
+            theta_solution.pressure_signed_imbalance_exposure_risk_price_theta_derivative,
         );
     }
 
@@ -240,11 +243,11 @@ pub(crate) fn solve_terminal_affine_expected_log_return(
         solve_input.maturity_count,
         solve_input.interval_deltas,
         solve_input.interval_factor_grids,
-        solve_input.driver_parameters,
     )?;
 
     let context = TerminalAffineMaturityContext {
         pricing_request: solve_input.pricing_request,
+        measure_policy: solve_input.measure_policy,
         maturity_count: solve_input.maturity_count,
         maturity_interval: solve_input.maturity_interval,
         mean_reversion_path,
@@ -272,6 +275,7 @@ pub(crate) fn solve_terminal_affine_expected_log_return(
             theta_solution.theta,
             theta_solution.buy_activity_premium_theta_derivative,
             theta_solution.sell_activity_premium_theta_derivative,
+            theta_solution.pressure_signed_imbalance_exposure_risk_price_theta_derivative,
         );
     }
 
@@ -410,6 +414,11 @@ fn solve_terminal_affine_martingale_theta(
         .subtract(denominator.sell_activity_premium_derivative)
         .real;
 
+    let pressure_risk_residual_derivative = numerator
+        .pressure_signed_imbalance_exposure_risk_price_derivative
+        .subtract(denominator.pressure_signed_imbalance_exposure_risk_price_derivative)
+        .real;
+
     Ok(TerminalAffineThetaSolution {
         theta,
         denominator,
@@ -420,6 +429,8 @@ fn solve_terminal_affine_martingale_theta(
         buy_activity_premium_theta_derivative: -buy_residual_derivative / residual_theta_derivative,
         sell_activity_premium_theta_derivative: -sell_residual_derivative
             / residual_theta_derivative,
+        pressure_signed_imbalance_exposure_risk_price_theta_derivative:
+            -pressure_risk_residual_derivative / residual_theta_derivative,
     })
 }
 
@@ -457,6 +468,7 @@ fn solve_terminal_affine_physical_theta(
         martingale_tolerance: terminal_affine_martingale_root_tolerance(),
         buy_activity_premium_theta_derivative: 0.0,
         sell_activity_premium_theta_derivative: 0.0,
+        pressure_signed_imbalance_exposure_risk_price_theta_derivative: 0.0,
     })
 }
 
@@ -698,6 +710,14 @@ fn terminal_affine_frequency_sensitivity(
                 .scale(theta_solution.sell_activity_premium_theta_derivative),
         );
 
+    let pressure_risk_log_derivative =
+        numerator
+            .pressure_signed_imbalance_exposure_risk_price_derivative
+            .subtract(denominator.pressure_signed_imbalance_exposure_risk_price_derivative)
+            .plus(numerator_minus_denominator_argument_derivative.scale(
+                theta_solution.pressure_signed_imbalance_exposure_risk_price_theta_derivative,
+            ));
+
     NodePriceSharedPlusShiftComplexSensitivity {
         alpha_derivative: ComplexScalar::new(0.0, 0.0),
         beta_0_derivative: ComplexScalar::new(0.0, 0.0),
@@ -707,6 +727,10 @@ fn terminal_affine_frequency_sensitivity(
         sell_activity_premium_derivative: complex_multiply(
             characteristic_value,
             sell_log_derivative,
+        ),
+        pressure_signed_imbalance_exposure_risk_price_derivative: complex_multiply(
+            characteristic_value,
+            pressure_risk_log_derivative,
         ),
     }
 }
@@ -720,11 +744,10 @@ mod tests {
         TerminalAffineMaturitySolveInput, TerminalAffineMeasurePolicy,
         TerminalAffineSpectralDomainInput, solve_terminal_affine_maturity_law,
     };
-    use crate::tests::support::build_valid_vanilla_option_request;
-    use crate::{
-        VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
-        VanillaOptionPricingModelParameters,
+    use crate::tests::support::{
+        build_unit_interval_factor_grids, build_valid_vanilla_option_request,
     };
+    use crate::{VanillaOptionPayoffType, VanillaOptionPricingModelParameters};
 
     #[test]
     fn terminal_affine_measure_change_normalizes_characteristic_and_martingale() {
@@ -769,9 +792,7 @@ mod tests {
     fn solve_test_maturity_law(
         pricing_request: crate::VanillaOptionPricingRequest,
     ) -> super::SolvedMaturityLaw {
-        let interval_factor_grids = [VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-            .expect("interval factors should construct")];
-
+        let interval_factor_grids = build_unit_interval_factor_grids(1);
         let interval_deltas = [1.0_f64];
         let payoff_types = [VanillaOptionPayoffType::Call];
 
@@ -822,13 +843,14 @@ mod tests {
             base_parameters.nig_shared_plus_shift_configuration,
             base_parameters.return_clock_exposure_parameters,
             long_variance_parameters,
+            base_parameters.market_pressure_parameters,
             base_parameters.pricing_kernel_parameters,
         )
         .expect("model parameters should construct")
     }
 
     fn active_long_variance_parameters() -> LongVarianceParameters {
-        LongVarianceParameters::try_new(5.0, 0.35, 0.03, 0.04)
+        LongVarianceParameters::try_new(5.0, 0.35, 0.0, 0.0, 0.03, 0.04)
             .expect("active long-variance parameters should construct")
     }
 }

@@ -1,3 +1,5 @@
+mod support;
+
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -65,6 +67,7 @@ use janiform_verification::{
     aggregate_seeded_tick_run_to_coarse_comparable_path,
     build_coarse_seeded_tick_consistency_report,
 };
+use support::neutral_market_pressure_parameters;
 
 #[test]
 fn seeded_tick_aggregation_matches_coarse_interval_boundaries_and_routing_presence() {
@@ -612,7 +615,7 @@ fn build_coarse_model_inputs(
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+        timestamp_batching_surface: janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
         calendar_registry_artifact: build_calendar_registry_artifact(),
         exchange_code: "XNYS".to_string(),
     })
@@ -635,13 +638,18 @@ fn build_seeded_model_inputs(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
+        market_pressure_parameters:
+            janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         interval_factor_grid,
         return_clock_exposure_parameters:
             janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
         observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
         calendar_registry: ExchangeCalendarRegistry::from_artifact(
             build_calendar_registry_artifact(),
         )
@@ -664,13 +672,10 @@ fn disabled_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ) {
     (
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionFittedParameters::zero_kappa(),
         MeanReversionRuntimeIntervalAnchors::try_new(
             interval_factor_grid.metadata.interval_alignment_policy,
             0.0,
-            0.0,
-            vec![0.0; interval_factor_grid.interval_indices.len()],
             vec![0.0; interval_factor_grid.interval_indices.len()],
             vec![
                 interval_factor_grid.interval_duration_nanos as f64 / NANOS_PER_HOUR as f64;
@@ -678,7 +683,7 @@ fn disabled_mean_reversion_runtime_inputs(
             ],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
 }
@@ -693,6 +698,7 @@ fn build_sufficient_statistics_model_inputs(
             GammaSeverityMarkConfiguration::try_new(1.8)
                 .expect("sufficient-statistics gamma severity configuration should construct"),
             LongVarianceParameters::neutral(),
+            neutral_market_pressure_parameters(),
         )
         .expect("equation specification should construct"),
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
@@ -700,24 +706,20 @@ fn build_sufficient_statistics_model_inputs(
         )
         .expect("nig configuration should construct"),
         initial_excitation_state: default_initial_excitation_state(),
+        initial_market_pressure_state:
+            janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
         long_variance_parameters: LongVarianceParameters::neutral(),
         initial_long_variance_state: LongVarianceState::unit(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-kappa endogenous mean reversion should construct"),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
-            0.0,
-            vec![0.0; interval_count],
             vec![0.0; interval_count],
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-            0.0, 0.0, 0.0, 0.0,
-        )
-        .expect("disabled mean-reversion boundary state should construct"),
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     })
     .expect("sufficient-statistics model inputs should construct")
 }
@@ -871,13 +873,12 @@ fn with_open_jump_override(
         original_record.interval_index,
         original_record.interval_start_utc_nanos,
         original_record.interval_end_utc_nanos,
-        original_record.sufficient_statistics,
+        original_record.sufficient_statistics.clone(),
         updated_return_components,
         updated_total_return,
         original_record.observed_interval_return,
         original_record.observed_log_price_end,
         original_record.anchor_value_end,
-        original_record.pressure_state_end,
         original_record.deviation_from_anchor_end,
     )
     .expect("updated coarse path record should validate");

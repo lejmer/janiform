@@ -6,12 +6,8 @@ use janiform_calibration_artifacts::JointRefinementStageOptionReducedModelDiagno
 use super::objective_gradient::JointRefinementOptionNodeResidualSensitivity;
 use super::residual_jacobian::weighted_option_residual_jacobian_rows;
 
-const OPTION_REDUCED_MODEL_PARAMETER_LABELS: &[&str] =
-    &["log_buy_activity_premium", "log_sell_activity_premium"];
-
-pub(crate) fn option_reduced_model_parameter_count() -> usize {
-    OPTION_REDUCED_MODEL_PARAMETER_LABELS.len()
-}
+const OPTION_REDUCED_MODEL_ACTIVITY_PARAMETER_LABELS: [&str; 2] =
+    ["log_buy_activity_premium", "log_sell_activity_premium"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionReducedModelArtifact {
@@ -154,16 +150,21 @@ pub(crate) fn populate_reduced_model_runtime_estimates(
 }
 
 fn reduced_model_parameter_labels(gradient_dimension: usize) -> Vec<String> {
-    if gradient_dimension == OPTION_REDUCED_MODEL_PARAMETER_LABELS.len() {
-        return OPTION_REDUCED_MODEL_PARAMETER_LABELS
-            .iter()
-            .map(|label| (*label).to_string())
-            .collect();
+    (0..gradient_dimension)
+        .map(reduced_model_parameter_label)
+        .collect()
+}
+
+fn reduced_model_parameter_label(parameter_position: usize) -> String {
+    if let Some(label) = OPTION_REDUCED_MODEL_ACTIVITY_PARAMETER_LABELS.get(parameter_position) {
+        return (*label).to_string();
     }
 
-    (0..gradient_dimension)
-        .map(|parameter_index| format!("parameter_{parameter_index}"))
-        .collect()
+    if parameter_position == OPTION_REDUCED_MODEL_ACTIVITY_PARAMETER_LABELS.len() {
+        return "pressure_signed_imbalance_exposure_risk_price".to_string();
+    }
+
+    format!("option_pricing_parameter_{parameter_position}")
 }
 
 fn effective_rank_for_energy(cumulative_rank_energy: &[f64], threshold: f64) -> usize {
@@ -176,7 +177,7 @@ fn effective_rank_for_energy(cumulative_rank_energy: &[f64], threshold: f64) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{build_option_reduced_model_artifact, option_reduced_model_parameter_count};
+    use super::build_option_reduced_model_artifact;
     use crate::stages::joint_refinement::execution::option_refinement::objective_gradient::JointRefinementOptionNodeResidualSensitivity;
 
     #[test]
@@ -197,12 +198,39 @@ mod tests {
         ])
         .expect("reduced model artifact should construct");
 
-        assert_eq!(option_reduced_model_parameter_count(), 2);
         assert_eq!(
             artifact.local_parameter_labels,
             vec![
                 "log_buy_activity_premium".to_string(),
                 "log_sell_activity_premium".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn option_reduced_model_labels_pressure_risk_price_coordinate() {
+        let artifact = build_option_reduced_model_artifact(&[
+            JointRefinementOptionNodeResidualSensitivity {
+                expiry_timestamp_utc_nanos: 10,
+                maturity_weight: 1,
+                spread_normalized_residual: 1.0,
+                spread_normalized_residual_gradient: vec![0.5, -0.25, 0.0],
+            },
+            JointRefinementOptionNodeResidualSensitivity {
+                expiry_timestamp_utc_nanos: 10,
+                maturity_weight: 1,
+                spread_normalized_residual: -1.0,
+                spread_normalized_residual_gradient: vec![0.25, 0.5, 0.0],
+            },
+        ])
+        .expect("reduced model artifact should construct");
+
+        assert_eq!(
+            artifact.local_parameter_labels,
+            vec![
+                "log_buy_activity_premium".to_string(),
+                "log_sell_activity_premium".to_string(),
+                "pressure_signed_imbalance_exposure_risk_price".to_string(),
             ]
         );
     }

@@ -8,6 +8,9 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::{
     LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
 };
+use janiform_model_kernels::market_pressure::{
+    MarketPressureState, MarketPressureStateValidationError,
+};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
     MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
@@ -339,6 +342,9 @@ pub enum SufficientStatisticsModelInputsError {
     InvalidInitialLongVarianceState {
         source: LongVarianceStateError,
     },
+    InvalidInitialMarketPressureState {
+        source: MarketPressureStateValidationError,
+    },
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
@@ -381,6 +387,10 @@ impl std::fmt::Display for SufficientStatisticsModelInputsError {
                 formatter,
                 "model_inputs.initial_long_variance_state is invalid: {source}"
             ),
+            Self::InvalidInitialMarketPressureState { source } => write!(
+                formatter,
+                "model_inputs.initial_market_pressure_state is invalid: {source}"
+            ),
             Self::InvalidMeanReversionFittedParameters { source } => write!(
                 formatter,
                 "model_inputs.mean_reversion_fitted_parameters is invalid: {source}"
@@ -411,6 +421,7 @@ impl std::error::Error for SufficientStatisticsModelInputsError {
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidInitialLongVarianceState { source } => Some(source),
+            Self::InvalidInitialMarketPressureState { source } => Some(source),
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
             Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source),
@@ -424,6 +435,7 @@ pub struct SufficientStatisticsModelInputs {
     pub equation_specification: ExponentialAffineTransformEquationSpecification,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub initial_excitation_state: HawkesExcitationState,
+    pub initial_market_pressure_state: MarketPressureState,
     pub long_variance_parameters: LongVarianceParameters,
     pub initial_long_variance_state: LongVarianceState,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
@@ -454,6 +466,12 @@ impl SufficientStatisticsModelInputs {
         validate_excitation_state(self.initial_excitation_state).map_err(|(field, value)| {
             SufficientStatisticsModelInputsError::InvalidInitialState { field, value }
         })?;
+
+        self.initial_market_pressure_state
+            .validate_for_parameters(&self.equation_specification.market_pressure_parameters)
+            .map_err(|source| {
+                SufficientStatisticsModelInputsError::InvalidInitialMarketPressureState { source }
+            })?;
 
         self.long_variance_parameters.validate().map_err(|source| {
             SufficientStatisticsModelInputsError::InvalidLongVarianceParameters { source }
@@ -502,21 +520,6 @@ impl SufficientStatisticsModelInputs {
             );
         }
 
-        if self.initial_mean_reversion_boundary_state.pressure_state
-            != self
-                .mean_reversion_runtime_interval_anchors
-                .start_pressure_state
-        {
-            return Err(
-                SufficientStatisticsModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
-                    boundary_anchor_value: self.initial_mean_reversion_boundary_state.pressure_state,
-                    runtime_start_anchor_value: self
-                        .mean_reversion_runtime_interval_anchors
-                        .start_pressure_state,
-                },
-            );
-        }
-
         Ok(())
     }
 }
@@ -554,6 +557,7 @@ struct SufficientStatisticsModelInputsPayload {
     equation_specification: ExponentialAffineTransformEquationSpecification,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     initial_excitation_state: HawkesExcitationState,
+    initial_market_pressure_state: MarketPressureState,
     long_variance_parameters: LongVarianceParameters,
     initial_long_variance_state: LongVarianceState,
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
@@ -572,6 +576,7 @@ impl<'de> Deserialize<'de> for SufficientStatisticsModelInputs {
             equation_specification: payload.equation_specification,
             nig_shared_plus_shift_configuration: payload.nig_shared_plus_shift_configuration,
             initial_excitation_state: payload.initial_excitation_state,
+            initial_market_pressure_state: payload.initial_market_pressure_state,
             long_variance_parameters: payload.long_variance_parameters,
             initial_long_variance_state: payload.initial_long_variance_state,
             mean_reversion_fitted_parameters: payload.mean_reversion_fitted_parameters,

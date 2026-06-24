@@ -3,9 +3,9 @@ use crate::{
     PricingIntegrationProjectionRule, PricingIntegrationQualityDiagnostics,
     PricingIntegrationQualityGate, PricingIntervalSchedule, PricingIntervalScheduleMetadata,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingKernelParameters, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input,
+    VanillaOptionPricingIntervalFactors, VanillaOptionPricingKernelParameters,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
 };
 use crate::{
     PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
@@ -24,6 +24,7 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
@@ -94,6 +95,17 @@ pub(crate) fn build_uniform_runtime_interval_schedule(
     .expect("uniform runtime interval schedule should construct")
 }
 
+pub(crate) fn build_unit_interval_factor_grids(
+    interval_count: usize,
+) -> Vec<VanillaOptionPricingIntervalFactors> {
+    (0..interval_count)
+        .map(|_| {
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                .expect("unit interval factors should construct")
+        })
+        .collect()
+}
+
 pub(super) fn endogenous_boundary_input(
     interval_delta: f64,
     hawkes_boundary_state: HawkesExcitationState,
@@ -102,10 +114,10 @@ pub(super) fn endogenous_boundary_input(
         0,
         hawkes_boundary_state,
         LongVarianceState::unit(),
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion parameters should construct"),
+        MarketPressureState::neutral(),
+        MeanReversionFittedParameters::zero_kappa(),
         interval_delta,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("endogenous pricing boundary input should construct")
@@ -158,6 +170,7 @@ pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
             .expect("nig shared-plus-shift configuration should construct"),
         janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
         LongVarianceParameters::neutral(),
+        MarketPressureParameters::no_anchor_impact(),
         VanillaOptionPricingKernelParameters::identity(),
     )
     .expect("model parameters should construct")
@@ -290,6 +303,7 @@ pub(super) fn oracle_output_with_transform_value(
             ComplexScalar::new(0.0, 0.0),
             ComplexScalar::new(0.0, 0.0),
         ),
+        ComplexScalar::new(0.0, 0.0),
         transform_value,
     )
     .expect("oracle output helper payload should validate")

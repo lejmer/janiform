@@ -11,230 +11,71 @@
 \maketitle
 
 \noindent\textbf{Status.} Draft\\
-\textbf{Plan item.} Affine transform ansatz
-\(\big(F=\exp(C+\mathbf D\cdot\mathbf y_0+VZ_0)\big)\)\\
-\textbf{Depends on.} \texttt{01\_long\_variance\_normalization.tex},
-\texttt{02\_first\_moment\_guard.tex},
-\texttt{03\_conditional\_cf\_mgf\_trading\_block.tex},
-\texttt{15\_fourier\_business\_time\_clock\_interval\_factor\_grid.tex}\\
-\textbf{Feeds.} Affine schedule transform, Riccati system, terminal pricing measure, sufficient-statistics consistency
+\textbf{Plan item.} Affine transform ansatz\\
+\textbf{Depends on.} Conditional trading block, news transform, long-variance normalization\\
+\textbf{Feeds.} Riccati system, affine domain constraints, terminal pricing measure
 
 \section{Purpose}
 
-Show why the schedule-level transform remains exponential-affine in the
-initial Hawkes state and the initial long-variance state.
-This is the closure argument that justifies solving deterministic equations for
-\((C,\mathbf D,V)\) instead of simulating the latent event and variance state.
+State the exponential-affine form used for interval transforms when market
+pressure is a finite-state signed-balance CTMC.
 
 \section{Setup}
 
-Work on one schedule interval \([0,\Delta]\) with interval-grid seasonality
-factor \(s_k\), known-news equivalent rate \(\nu_k^{\mathrm{known}}\), and
-surprise-news rate \(\nu_k^{\mathrm{surprise}}\).
-Condition on the initial state
+Let \(\mathbf Y_t\) be the Hawkes reaction state, \(Z_t\) the long-variance
+state, and \(\Omega_t\in\{1,\ldots,K_\Omega\}\) the pressure state.
+The pressure support value in state \(k\) is \(b_k\in[-1,1]\), the physical
+pressure generator is \(\mathcal G^\Omega\), and the non-negative
+signed-balance exposure scale on the interval is \(e^\Omega\).
+
+For a transform return loading \(r_\Omega\) and pressure exposure risk price
+\(\rho_\Omega\), define the pressure diagonal loading
 \[
-    \mathcal F_0^{Y,Z}
+    \ell_k^\Omega
     =
-    \sigma(\mathbf Y_0,Z_0),
-    \qquad
-    \mathbf y_0=(Y_0^{++},Y_0^{+-},Y_0^{-+},Y_0^{--}).
+    (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_k.
 \]
+For physical moment and simulation transforms, \(\rho_\Omega=0\).
 
-The transform is
+\section{Ansatz}
+
+For terminal pressure values \(\mathbf f^\Omega(0)\), the interval transform
+has the form
 \[
-    \begin{aligned}
-    F(&u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q
-        \mid \mathbf y_0,Z_0)\\
-    &=
-    \mathbb E\!\left[
-        e^{-u_+^BB_Z^+-u_+^EE^+
-        -u_-^BB_Z^--u_-^EE^-+\xi Z_\Delta}
-        z_+^{N^+}z_-^{N^-}
-        e^{q(M_\Delta+G_\Delta)}
-        \mid \mathbf Y_0=\mathbf y_0,Z_0
-    \right].
-    \end{aligned}
-\]
-
-For a standalone terminal interval, the terminal Hawkes and long-variance
-loadings are zero.
-In a schedule recursion they are inherited from later intervals,
-so \(V(0)=\xi\) and \(\mathbf D(0)\) may be nonzero.
-
-\section{Notation}
-
-\begin{tabularx}{\textwidth}{lXX}
-\toprule
-Symbol & Meaning & Units or domain\\
-\midrule
-\(\mathbf Y_t\) & Hawkes excitation state in order \((++,+-,-+,--)\) & Non-negative state\\
-\(Z_t\) & Long-variance state scaling baseline return clocks & Positive boundary state\\
-\(C(\tau)\) & Scalar cumulant loading after backward elapsed time \(\tau\) & Complex finite\\
-\(\mathbf D(\tau)\) & Hawkes-state loading vector & Complex finite vector\\
-\(V(\tau)\) & Long-variance loading & Complex finite\\
-\(\mathbf k_+\) & Hawkes jump loading for a buy event & Non-negative vector\\
-\(\mathbf k_-\) & Hawkes jump loading for a sell event & Non-negative vector\\
-\(\mathbf r\) & News activity-shock loading vector & Non-negative vector\\
-\(u_\pm^B,u_\pm^E\) & Baseline and endogenous activity clock loadings & Complex finite\\
-\(z_\pm\) & Event-count transform multipliers & Complex finite\\
-\(q\) & News return transform argument & Complex transform domain\\
-\bottomrule
-\end{tabularx}
-
-\section{Assumptions used}
-
-\begin{tabularx}{\textwidth}{XXX}
-\toprule
-Assumption & Where it is used & Why it is needed\\
-\midrule
-Trade intensities are affine in the Hawkes state plus an interval-grid deterministic baseline.
-& Event terms are split into a constant baseline part and state-linear endogenous coefficients.
-& This is what makes the generator map an exponential-affine test function to an affine multiple of itself.\\
-Hawkes events shift \(\mathbf Y\) by fixed vectors \(\mathbf k_+\) and \(\mathbf k_-\).
-& Evaluating the post-event test function.
-& Fixed jumps multiply the test function by exponentials of linear loadings.\\
-Trade events shift \(Z\) by fixed non-negative loadings \(\chi_+\) and \(\chi_-\).
-& Event multipliers include \(V\chi_\pm\).
-& The long-variance jump contribution remains exponential-affine.\\
-The continuous long-variance dynamics are square-root affine.
-& Applying the drift and diffusion generator to \(e^{VZ}\).
-& The generator produces only constant and \(Z\)-linear terms.\\
-News arrivals have deterministic interval intensities and independent gamma-normal marks.
-& Averaging over news marks conditional on the current state.
-& The news contribution enters \(C\) through a mark transform, not through a new state variable.\\
-Primitive innovations are conditionally independent given the current state.
-& Multiplying the local event, news, and diffusion contributions.
-& Without this, the generator would need additional joint-state terms.\\
-\bottomrule
-\end{tabularx}
-
-\section{Result}
-
-\noindent\textbf{Identity.} On every admissible schedule interval,
-\[
-    F(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-,\xi,q\mid \mathbf y_0,Z_0)
+    F_k(\tau,\mathbf y,z)
     =
-    \exp\!\left(C(\Delta)+\mathbf D(\Delta)\cdot\mathbf y_0+V(\Delta)Z_0\right),
+    \exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right)
+    f_k^\Omega(\tau),
 \]
-where \(C(0)=0\), \(V(0)=\xi\), and \(\mathbf D(0)\) is the terminal Hawkes
-loading inherited from later schedule intervals.
+where \(k\) is the pressure state at the interval start in backward time.
+For an initial pressure distribution \(\mathbf p^\Omega_0\), the pressure
+factor is \(\mathbf p^\Omega_0\cdot\mathbf f^\Omega(\Delta)\).
 
-\section{Derivation}
+\section{Pressure factor}
 
-For backward elapsed time \(\tau\), define the test function
+The finite-state pressure factor evolves by the backward Kolmogorov equation
 \[
-    f_\tau(\mathbf y,z)
+    \partial_\tau\mathbf f^\Omega(\tau)
     =
-    \exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right).
+    \left(\mathcal G^\Omega+\operatorname{diag}(\ell_1^\Omega,\ldots,\ell_{K_\Omega}^\Omega)\right)
+    \mathbf f^\Omega(\tau).
 \]
-
-Affine closure follows by applying the conditional generator over an
-infinitesimal interval and checking that every contribution has the form
+Thus
 \[
-    \frac{\mathcal A f_\tau(\mathbf y,z)}{f_\tau(\mathbf y,z)}
+    \mathbf f^\Omega(\Delta)
     =
-    a_0(\tau)+\mathbf a_Y(\tau)\cdot\mathbf y+a_Z(\tau)z.
-\]
-Then \(\partial_\tau f_\tau/f_\tau\) can match this expression by choosing
-\[
-    C'(\tau)=a_0(\tau),
-    \qquad
-    \mathbf D'(\tau)=\mathbf a_Y(\tau),
-    \qquad
-    V'(\tau)=a_Z(\tau).
-\]
-
-The deterministic Hawkes decay gives
-\[
-    \sum_{ij}(-\beta y_{ij})\partial_{y_{ij}}f_\tau
-    =
-    \left[-\beta\mathbf D(\tau)\cdot\mathbf y\right]f_\tau,
-\]
-which is linear in \(\mathbf y\).
-
-A buy event changes \(\mathbf y\) by \(\mathbf k_+\), changes \(z\) by
-\(\chi_+\), and contributes the event-count multiplier \(z_+\).
-The post-event  test function divided by the pre-event test function is
-\[
-    z_+\exp\!\left(\mathbf D(\tau)\cdot\mathbf k_+ + V(\tau)\chi_+\right).
-\]
-The corresponding sell multiplier is
-\[
-    z_-\exp\!\left(\mathbf D(\tau)\cdot\mathbf k_- + V(\tau)\chi_-\right).
-\]
-Both multipliers are independent of the current state, so multiplying them by
-the affine buy and sell intensities yields only constant and \(\mathbf y\)-linear
-terms.
-
-The baseline return-clock loadings contribute
-\[
-    -s_k\bar\lambda\left(u_+^B+u_-^B\right)z,
-\]
-because \(B_Z^+\) and \(B_Z^-\) both accrue against the same
-long-variance-scaled interval-grid baseline opportunity.
-The endogenous activity loadings contribute
-\(-u_+^E(Y^{++}+Y^{+-})\) and
-\(-u_-^E(Y^{-+}+Y^{--})\).
-These terms are again affine in \((\mathbf y,z)\).
-
-The continuous long-variance generator gives
-\[
-    \kappa_z(\bar z-z)\partial_z f_\tau
-    +
-    \frac{1}{2}\sigma_z^2 z\partial_{zz} f_\tau
-    =
-    \left(
-    \kappa_z\bar z V(\tau)
-    -\kappa_z V(\tau)z
-    +
-    \frac{1}{2}\sigma_z^2V(\tau)^2z
-    \right)f_\tau,
-\]
-which contributes one constant term and one \(z\)-linear term.
-
-At a news arrival of component \(c\), the Hawkes state shifts by
-\(\mathbf r a_c U\) and the return receives
-\[
-    \zeta_c=m_c U+\sigma_c\sqrt U\,N.
-    \]
-    Conditional on a news arrival, the mark multiplier is
-    \[
-    \mathbb E\!\left[
     \exp\!\left(
-        (\mathbf D(\tau)\cdot\mathbf r)a_c U
-        +q m_c U+q\sigma_c\sqrt U\,N
-    \right)
-    \right],
+        \Delta\left(\mathcal G^\Omega+\operatorname{diag}(\boldsymbol\ell^\Omega)\right)
+    \right)\mathbf f^\Omega(0).
 \]
-which depends on \(\mathbf D(\tau)\) and \(q\), but not on the current
-\(\mathbf y\) or \(z\).
-Since the news arrival intensities are deterministic on the schedule
-interval, news contributes only to the scalar loading \(C(\tau)\).
 
-All generator terms therefore close on \(1\), the four Hawkes-state
-coordinates, and \(Z\).
-Matching coefficients proves the exponential-affine representation.
+\section{Separation}
 
-\section{Domain and validity}
-
-The ansatz is valid while all transform arguments are finite, the
-gamma-normal news mark transform is inside its moment domain, and the
-long-variance Riccati equation has no finite-time pole on
-\([0,\Delta]\).
-The state inputs satisfy \(\mathbf y_0\ge 0\) componentwise and
-\(Z_0>0\).
-The Hawkes kernel must satisfy the model's non-negativity and stability
-conditions, and the long-variance parameters must satisfy the first-moment
-guard from \texttt{02\_first\_moment\_guard.tex}.
-
-\section{Consequences}
-
-\begin{itemize}
-    \item The full schedule transform can be computed by deterministic backward propagation of \((C,\mathbf D,V)\).
-    \item Interval composition only needs to pass terminal loadings forward as the next interval's inherited \(\mathbf D(0)\) and \(V(0)\).
-    \item News changes the scalar cumulant and the domain restriction, but it does not require an additional affine state coordinate.
-    \item Event feedback into long variance appears through the event Hamiltonians via \(V\chi_\pm\).
-\end{itemize}
+The Hawkes and long-variance affine terms remain exponential-affine because the
+pressure state changes side composition and anchor drift but does not add a
+Hawkes jump loading. The pressure contribution is finite-dimensional and
+multiplies the usual affine factor rather than appearing as a scalar loading in
+the Hawkes event Hamiltonians.
 
 \section{Checks}
 
@@ -242,18 +83,15 @@ guard from \texttt{02\_first\_moment\_guard.tex}.
 \toprule
 Check & Expected result & Evidence location\\
 \midrule
-Schedule exponent evaluation
-& The final exponent is \(C+\mathbf D\cdot\mathbf y_0+VZ_0\).
-& \texttt{AffineState::evaluated\_at} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
-Schedule interval composition
-& Later-interval \(\mathbf D\) and \(V\) loadings are inherited as terminal loadings for the previous interval.
-& \texttt{solve\_exponential\_affine\_schedule\_cumulant} in \texttt{crates/janiform-affine-oracle/src/affine\_oracle/schedule/core.rs}\\
-Standalone closure consistency
-& With neutral long-variance loading, the schedule cumulant matches the one-interval affine transform value.
-& Test \texttt{schedule\_cumulant\_matches\_one\_interval\_transform\_value}\\
-Sensitivity closure
-& Tangent propagation stays in the same affine state coordinates and matches finite differences.
-& Test \texttt{schedule\_cumulant\_argument\_tangent\_matches\_finite\_difference}\\
+Finite-state pressure factor
+& Pressure transform is a matrix exponential over support states.
+& \texttt{market\_pressure\_transform\_values}\\
+Initial pressure distribution
+& Boundary probabilities weight pressure transform values.
+& \texttt{market\_pressure\_transform\_log\_factor}\\
+Pressure-risk tangent
+& The derivative is the diagonal exposure loading \(-e^\Omega b_k\).
+& \texttt{market\_pressure\_transform\_values\_and\_derivative}\\
 \bottomrule
 \end{tabularx}
 

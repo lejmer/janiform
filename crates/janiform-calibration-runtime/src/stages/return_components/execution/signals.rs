@@ -51,8 +51,12 @@ pub(crate) struct ReturnComponentsStageActivityCalibrationContext {
 pub(crate) fn resolve_activity_calibration_context(
     activity_input: &CalibrationStagePayloadSource<HawkesStageFittedPayload>,
 ) -> Option<ReturnComponentsStageActivityCalibrationContext> {
-    let hawkes_payload = activity_input.payload()?;
+    resolve_activity_calibration_context_from_hawkes_payload(activity_input.payload()?)
+}
 
+pub(crate) fn resolve_activity_calibration_context_from_hawkes_payload(
+    hawkes_payload: &HawkesStageFittedPayload,
+) -> Option<ReturnComponentsStageActivityCalibrationContext> {
     let selected_candidate = hawkes_payload
         .candidate_diagnostics
         .iter()

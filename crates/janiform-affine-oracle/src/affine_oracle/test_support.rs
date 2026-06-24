@@ -2,6 +2,7 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::long_variance::LongVarianceParameters;
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::contracts::ExponentialAffineTransformEquationSpecification;
@@ -28,6 +29,7 @@ pub(crate) fn valid_equation_specification() -> ExponentialAffineTransformEquati
         GammaSeverityMarkConfiguration::try_new(1.8)
             .expect("valid gamma configuration should construct"),
         LongVarianceParameters::neutral(),
+        MarketPressureParameters::no_anchor_impact(),
     )
     .expect("valid equation specification should construct")
 }

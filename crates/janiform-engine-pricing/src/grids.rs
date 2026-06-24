@@ -42,6 +42,7 @@ pub struct VanillaOptionNodePriceSensitivity {
     pub delta_beta_derivative: f64,
     pub buy_activity_premium_derivative: f64,
     pub sell_activity_premium_derivative: f64,
+    pub pressure_signed_imbalance_exposure_risk_price_derivative: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -561,6 +562,7 @@ pub(crate) struct SpectralThetaWarmStartEntry {
     pub(crate) theta: f64,
     pub(crate) buy_activity_premium_theta_derivative: f64,
     pub(crate) sell_activity_premium_theta_derivative: f64,
+    pub(crate) pressure_signed_imbalance_exposure_risk_price_theta_derivative: f64,
 }
 
 impl SpectralThetaWarmStartState {
@@ -580,10 +582,12 @@ impl SpectralThetaWarmStartState {
         theta: f64,
         buy_activity_premium_theta_derivative: f64,
         sell_activity_premium_theta_derivative: f64,
+        pressure_signed_imbalance_exposure_risk_price_theta_derivative: f64,
     ) {
         if theta.is_finite()
             && buy_activity_premium_theta_derivative.is_finite()
             && sell_activity_premium_theta_derivative.is_finite()
+            && pressure_signed_imbalance_exposure_risk_price_theta_derivative.is_finite()
         {
             self.theta_solution_by_maturity.insert(
                 warm_start_key,
@@ -591,6 +595,7 @@ impl SpectralThetaWarmStartState {
                     theta,
                     buy_activity_premium_theta_derivative,
                     sell_activity_premium_theta_derivative,
+                    pressure_signed_imbalance_exposure_risk_price_theta_derivative,
                 },
             );
         }

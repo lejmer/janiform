@@ -56,11 +56,11 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
         .decision
         .selected_candidate_id
         .clone();
-    let selected_restart_id = selected_candidate_id
+    let selected_candidate_id = selected_candidate_id
         .strip_prefix("finalization_")
         .or_else(|| selected_candidate_id.strip_prefix("joint_refinement_"))
         .unwrap_or(selected_candidate_id.as_str());
-    let selected_joint_candidate_id = format!("joint_refinement_{selected_restart_id}");
+    let selected_joint_candidate_id = format!("joint_refinement_{selected_candidate_id}");
     let selected_joint_candidate = diagnostic_bundle
         .candidate_frontier
         .frontier_entries
@@ -78,7 +78,7 @@ fn joint_refinement_diagnostics_bundle_exposes_real_observed_simulated_metric_pa
     let activity_level_metric = selected_joint_candidate
         .family_metrics
         .iter()
-        .find(|metric| metric.metric_id == "activity_level.total_count")
+        .find(|metric| metric.metric_id == "activity_level_timing.total_count")
         .expect("joint activity-level metric should be emitted");
     assert_eq!(activity_level_metric.target_family, "activity_level_timing");
     assert!(activity_level_metric.observed_value > 0.0);

@@ -112,7 +112,7 @@ fn method_comparison_harness_matches_expected_fixture_behavior() {
 
     for fixture_case in &fixture_document.cases {
         let report = compare_exponential_affine_transform_integration_methods(
-            fixture_case.input,
+            fixture_case.input.clone(),
             fixture_document.policy.clone(),
         )
         .unwrap_or_else(|source| {
@@ -222,7 +222,7 @@ fn method_comparison_reports_are_deterministic_for_fixture_cases() {
 
     for fixture_case in &fixture_document.cases {
         let first_report = compare_exponential_affine_transform_integration_methods(
-            fixture_case.input,
+            fixture_case.input.clone(),
             fixture_document.policy.clone(),
         )
         .unwrap_or_else(|source| {
@@ -233,7 +233,7 @@ fn method_comparison_reports_are_deterministic_for_fixture_cases() {
         });
 
         let second_report = compare_exponential_affine_transform_integration_methods(
-            fixture_case.input,
+            fixture_case.input.clone(),
             fixture_document.policy.clone(),
         )
         .unwrap_or_else(|source| {
@@ -316,7 +316,7 @@ fn print_method_comparison_outputs_for_fixture_update() {
 
     for fixture_case in &fixture_document.cases {
         let report = compare_exponential_affine_transform_integration_methods(
-            fixture_case.input,
+            fixture_case.input.clone(),
             fixture_document.policy.clone(),
         )
         .unwrap_or_else(|source| {

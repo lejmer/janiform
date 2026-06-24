@@ -1351,29 +1351,30 @@ fn build_run_config(
         SeededTickSimulationModelInputs {
             kernel_parameters,
             initial_excitation_state,
-            mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                    .expect("zero-kappa endogenous mean reversion should construct"),
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::zero_kappa(),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
                 interval_factor_grid.metadata.interval_alignment_policy,
                 0.0,
-                0.0,
-                vec![0.0; interval_count],
                 vec![0.0; interval_count],
                 vec![interval_duration_nanos as f64 / NANOS_PER_HOUR as f64; interval_count],
             )
             .expect("disabled mean-reversion runtime anchors should construct"),
             initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0,
             )
             .expect("disabled mean-reversion boundary state should construct"),
+            market_pressure_parameters:
+                janiform_model_kernels::market_pressure::MarketPressureParameters::no_anchor_impact(
+                ),
+            initial_market_pressure_state:
+                janiform_model_kernels::market_pressure::MarketPressureState::neutral(),
             interval_factor_grid,
             return_clock_exposure_parameters:
                 janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
             long_variance_parameters: LongVarianceParameters::neutral(),
             initial_long_variance_state: LongVarianceState::unit(),
             observed_price_tick_size: None,
-        timestamp_batching_observation_model: janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(),
+        timestamp_batching_surface: janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(),
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),

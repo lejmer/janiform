@@ -6,6 +6,9 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::long_variance::{
     LongVarianceState, LongVarianceStateError, LongVarianceStationaryLevelError,
 };
+use janiform_model_kernels::market_pressure::{
+    MarketPressureState, MarketPressureStateEvolutionError, MarketPressureStateValidationError,
+};
 use janiform_model_kernels::news::NewsActivityLoadingRateError;
 
 use super::super::contracts::{
@@ -24,6 +27,8 @@ pub struct ExponentialAffineTransformInputTangent {
     pub z_plus: ComplexScalar,
     pub z_minus: ComplexScalar,
     pub news_return_loading: ComplexScalar,
+    pub market_pressure_return_loading: ComplexScalar,
+    pub pressure_signed_imbalance_exposure_risk_price: f64,
 }
 
 impl ExponentialAffineTransformInputTangent {
@@ -39,6 +44,8 @@ impl ExponentialAffineTransformInputTangent {
             z_plus: ComplexScalar::new(0.0, 0.0),
             z_minus: ComplexScalar::new(0.0, 0.0),
             news_return_loading: ComplexScalar::new(0.0, 0.0),
+            market_pressure_return_loading: ComplexScalar::new(0.0, 0.0),
+            pressure_signed_imbalance_exposure_risk_price: 0.0,
         }
     }
 
@@ -51,6 +58,14 @@ impl ExponentialAffineTransformInputTangent {
         ensure_finite_complex_tangent("z_plus", self.z_plus)?;
         ensure_finite_complex_tangent("z_minus", self.z_minus)?;
         ensure_finite_complex_tangent("news_return_loading", self.news_return_loading)?;
+        ensure_finite_complex_tangent(
+            "market_pressure_return_loading",
+            self.market_pressure_return_loading,
+        )?;
+        ensure_finite_scalar_tangent(
+            "pressure_signed_imbalance_exposure_risk_price",
+            self.pressure_signed_imbalance_exposure_risk_price,
+        )?;
 
         Ok(())
     }
@@ -66,6 +81,10 @@ pub enum ExponentialAffineTransformInputTangentError {
         field: &'static str,
         value: ComplexScalar,
     },
+    InvalidScalarField {
+        field: &'static str,
+        value: f64,
+    },
 }
 
 impl Display for ExponentialAffineTransformInputTangentError {
@@ -78,6 +97,9 @@ impl Display for ExponentialAffineTransformInputTangentError {
                 formatter,
                 "{field} tangent must be finite as a complex scalar, found {value:?}"
             ),
+            Self::InvalidScalarField { field, value } => {
+                write!(formatter, "{field} tangent must be finite, found {value}")
+            }
         }
     }
 }
@@ -86,23 +108,25 @@ impl Error for ExponentialAffineTransformInputTangentError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidActivityLoadings { source } => Some(source),
-            Self::InvalidComplexField { .. } => None,
+            Self::InvalidComplexField { .. } | Self::InvalidScalarField { .. } => None,
         }
     }
 }
 
 /// One validated interval input in a schedule-level affine cumulant request.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExponentialAffineScheduleIntervalInput {
     pub transform_input: ExponentialAffineTransformInput,
     pub argument_tangent: ExponentialAffineTransformInputTangent,
     pub buy_activity_premium_tangent: ExponentialAffineTransformInputTangent,
     pub sell_activity_premium_tangent: ExponentialAffineTransformInputTangent,
+    pub pressure_signed_imbalance_exposure_risk_price_tangent:
+        ExponentialAffineTransformInputTangent,
 }
 
 impl ExponentialAffineScheduleIntervalInput {
     /// Validates the base transform input and all tangent inputs.
-    pub fn validate(self) -> Result<(), ExponentialAffineScheduleCumulantError> {
+    pub fn validate(&self) -> Result<(), ExponentialAffineScheduleCumulantError> {
         self.transform_input
             .validate()
             .map_err(|source| ExponentialAffineScheduleCumulantError::InvalidInput { source })?;
@@ -132,6 +156,15 @@ impl ExponentialAffineScheduleIntervalInput {
                 },
             )?;
 
+        self.pressure_signed_imbalance_exposure_risk_price_tangent
+            .validate()
+            .map_err(
+                |source| ExponentialAffineScheduleCumulantError::InvalidInputTangent {
+                    tangent: "pressure_signed_imbalance_exposure_risk_price",
+                    source,
+                },
+            )?;
+
         Ok(())
     }
 }
@@ -141,6 +174,7 @@ impl ExponentialAffineScheduleIntervalInput {
 pub struct ExponentialAffineScheduleCumulantRequest {
     pub initial_state: HawkesExcitationState,
     pub initial_long_variance_state: LongVarianceState,
+    pub initial_market_pressure_state: MarketPressureState,
     pub intervals: Vec<ExponentialAffineScheduleIntervalInput>,
 }
 
@@ -155,6 +189,12 @@ impl ExponentialAffineScheduleCumulantRequest {
                 ExponentialAffineScheduleCumulantError::InvalidInitialLongVarianceState { source }
             })?;
 
+        self.initial_market_pressure_state
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineScheduleCumulantError::InvalidInitialMarketPressureState { source }
+            })?;
+
         if self.intervals.is_empty() {
             return Err(ExponentialAffineScheduleCumulantError::EmptySchedule);
         }
@@ -162,6 +202,19 @@ impl ExponentialAffineScheduleCumulantRequest {
         for interval in &self.intervals {
             interval.validate()?;
         }
+
+        let initial_market_pressure_parameters = &self
+            .intervals
+            .first()
+            .ok_or(ExponentialAffineScheduleCumulantError::EmptySchedule)?
+            .transform_input
+            .equation_specification
+            .market_pressure_parameters;
+        self.initial_market_pressure_state
+            .validate_for_parameters(initial_market_pressure_parameters)
+            .map_err(|source| {
+                ExponentialAffineScheduleCumulantError::InvalidInitialMarketPressureState { source }
+            })?;
 
         Ok(())
     }
@@ -174,6 +227,7 @@ pub struct ExponentialAffineScheduleCumulantOutput {
     pub argument_derivative: ComplexScalar,
     pub buy_activity_premium_derivative: ComplexScalar,
     pub sell_activity_premium_derivative: ComplexScalar,
+    pub pressure_signed_imbalance_exposure_risk_price_derivative: ComplexScalar,
     pub interval_count: usize,
     pub completed_step_count: usize,
     pub rhs_evaluation_count: usize,
@@ -197,6 +251,12 @@ pub enum ExponentialAffineScheduleCumulantError {
     },
     InvalidInitialLongVarianceState {
         source: LongVarianceStateError,
+    },
+    InvalidInitialMarketPressureState {
+        source: MarketPressureStateValidationError,
+    },
+    InvalidMarketPressureProjection {
+        source: MarketPressureStateEvolutionError,
     },
     InvalidStationaryIntensityMultipliers,
     InvalidLongVarianceStationaryLevel {
@@ -242,6 +302,14 @@ impl Display for ExponentialAffineScheduleCumulantError {
             Self::InvalidInitialLongVarianceState { source } => write!(
                 formatter,
                 "initial_long_variance_state is invalid: {source}"
+            ),
+            Self::InvalidInitialMarketPressureState { source } => write!(
+                formatter,
+                "initial_market_pressure_state is invalid: {source}"
+            ),
+            Self::InvalidMarketPressureProjection { source } => write!(
+                formatter,
+                "schedule market-pressure projection is invalid: {source}"
             ),
             Self::InvalidStationaryIntensityMultipliers => write!(
                 formatter,
@@ -297,6 +365,8 @@ impl Error for ExponentialAffineScheduleCumulantError {
         match self {
             Self::InvalidInput { source } => Some(source),
             Self::InvalidInitialLongVarianceState { source } => Some(source),
+            Self::InvalidInitialMarketPressureState { source } => Some(source),
+            Self::InvalidMarketPressureProjection { source } => Some(source),
             Self::InvalidLongVarianceStationaryLevel { source } => Some(source),
             Self::InvalidNewsActivityLoadingRate { source } => Some(source),
             Self::InvalidInputTangent { source, .. } => Some(source),
@@ -350,6 +420,19 @@ fn ensure_finite_complex_tangent(
     if !value.is_finite() {
         return Err(
             ExponentialAffineTransformInputTangentError::InvalidComplexField { field, value },
+        );
+    }
+
+    Ok(())
+}
+
+fn ensure_finite_scalar_tangent(
+    field: &'static str,
+    value: f64,
+) -> Result<(), ExponentialAffineTransformInputTangentError> {
+    if !value.is_finite() {
+        return Err(
+            ExponentialAffineTransformInputTangentError::InvalidScalarField { field, value },
         );
     }
 

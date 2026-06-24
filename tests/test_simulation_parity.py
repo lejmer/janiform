@@ -8,6 +8,7 @@ from janiform.interval_factor_grids import (
     provide_interval_factor_grid,
 )
 from janiform.long_variance import LongVarianceParameters, LongVarianceState
+from janiform.market_pressure import MarketPressureParameters, MarketPressureState
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.return_clock import ReturnClockExposureParameters
 from janiform.simulation.coarse import (
@@ -20,7 +21,7 @@ from janiform.simulation.coarse import (
 )
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
-    TimestampBatchingObservationModel,
+    TimestampBatchingSurface,
     run_seeded_tick_event_simulation,
 )
 from janiform.simulation.seeded.contracts import (
@@ -30,6 +31,7 @@ from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelParameters,
 )
+from tests.support.calibration import build_no_anchor_impact_market_pressure_parameters_payload
 from tests.support.fixture_validation import SeededTickSimulationParityCase
 
 
@@ -156,7 +158,11 @@ def _run_seeded_case(
         return_clock_exposure_parameters=ReturnClockExposureParameters.neutral(),
         long_variance_parameters=LongVarianceParameters.neutral(),
         initial_long_variance_state=LongVarianceState.unit(),
-        timestamp_batching_observation_model=TimestampBatchingObservationModel.disabled(),
+        market_pressure_parameters=MarketPressureParameters.from_mapping(
+            build_no_anchor_impact_market_pressure_parameters_payload()
+        ),
+        initial_market_pressure_state=MarketPressureState(state_weights=[1.0]),
+        timestamp_batching_surface=TimestampBatchingSurface.disabled(),
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from math import isfinite
 from typing import Any, Optional
 
 from .contracts import (
@@ -34,7 +33,6 @@ from ...contracts.base import (
     require_datetime_utc,
     require_mapping,
     require_non_empty_string,
-    require_positive_finite_number,
     require_positive_integer,
     require_sequence,
     require_string,
@@ -71,7 +69,7 @@ class MarketDataCalibrationRequest(ContractModel):
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy = field(
         default_factory=default_pricing_interval_schedule_policy
     )
-    dynamics_search_restart_candidate_budget: Optional[int] = None
+    dynamics_search_candidate_budget: Optional[int] = None
     calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT
     treat_calibration_warnings_as_errors: bool = False
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
@@ -80,8 +78,6 @@ class MarketDataCalibrationRequest(ContractModel):
     diagnostics: CalibrationDiagnosticsRequest = field(
         default_factory=CalibrationDiagnosticsRequest
     )
-    stylized_fact_huber_cutoff: Optional[float] = None
-    stylized_fact_admissibility_z_threshold: Optional[float] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
     tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy = (
@@ -194,11 +190,11 @@ class MarketDataCalibrationRequest(ContractModel):
             )
 
         if (
-            self.dynamics_search_restart_candidate_budget is not None
-            and self.dynamics_search_restart_candidate_budget <= 0
+            self.dynamics_search_candidate_budget is not None
+            and self.dynamics_search_candidate_budget <= 0
         ):
             raise calibration_error(
-                "dynamics_search_restart_candidate_budget",
+                "dynamics_search_candidate_budget",
                 "must be greater than zero when provided",
             )
 
@@ -226,30 +222,6 @@ class MarketDataCalibrationRequest(ContractModel):
                 "must be greater than zero when provided",
             )
 
-        if (
-            self.stylized_fact_huber_cutoff is not None
-            and (
-                not isfinite(self.stylized_fact_huber_cutoff)
-                or self.stylized_fact_huber_cutoff <= 0.0
-            )
-        ):
-            raise calibration_error(
-                "stylized_fact_huber_cutoff",
-                "must be finite and greater than zero when provided",
-            )
-
-        if (
-            self.stylized_fact_admissibility_z_threshold is not None
-            and (
-                not isfinite(self.stylized_fact_admissibility_z_threshold)
-                or self.stylized_fact_admissibility_z_threshold <= 0.0
-            )
-        ):
-            raise calibration_error(
-                "stylized_fact_admissibility_z_threshold",
-                "must be finite and greater than zero when provided",
-            )
-
         match self.workflow_scope:
             case CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
                 selected_stages = (CalibrationStage.SEASONALITY,)
@@ -257,7 +229,6 @@ class MarketDataCalibrationRequest(ContractModel):
                 selected_stages = (
                     CalibrationStage.SEASONALITY,
                     CalibrationStage.HAWKES,
-                    CalibrationStage.OBSERVATION_MODELS,
                     CalibrationStage.RETURN_COMPONENTS,
                     CalibrationStage.LONG_VARIANCE,
                     CalibrationStage.NEWS_SHOCKS,
@@ -271,7 +242,6 @@ class MarketDataCalibrationRequest(ContractModel):
                 selected_stages = (
                     CalibrationStage.SEASONALITY,
                     CalibrationStage.HAWKES,
-                    CalibrationStage.OBSERVATION_MODELS,
                     CalibrationStage.RETURN_COMPONENTS,
                     CalibrationStage.LONG_VARIANCE,
                     CalibrationStage.NEWS_SHOCKS,
@@ -436,15 +406,15 @@ class MarketDataCalibrationRequest(ContractModel):
                 and raw_payload["pricing_interval_schedule_policy"] is not None
                 else default_pricing_interval_schedule_policy()
             ),
-            dynamics_search_restart_candidate_budget=(
+            dynamics_search_candidate_budget=(
                 require_positive_integer(
                     raw_payload,
-                    "dynamics_search_restart_candidate_budget",
-                    "dynamics_search_restart_candidate_budget",
+                    "dynamics_search_candidate_budget",
+                    "dynamics_search_candidate_budget",
                     calibration_error,
                 )
-                if "dynamics_search_restart_candidate_budget" in raw_payload
-                and raw_payload["dynamics_search_restart_candidate_budget"] is not None
+                if "dynamics_search_candidate_budget" in raw_payload
+                and raw_payload["dynamics_search_candidate_budget"] is not None
                 else None
             ),
             calibration_effort=(
@@ -516,28 +486,6 @@ class MarketDataCalibrationRequest(ContractModel):
                 if "diagnostics" in raw_payload
                 and raw_payload["diagnostics"] is not None
                 else CalibrationDiagnosticsRequest()
-            ),
-            stylized_fact_huber_cutoff=(
-                require_positive_finite_number(
-                    raw_payload,
-                    "stylized_fact_huber_cutoff",
-                    "stylized_fact_huber_cutoff",
-                    calibration_error,
-                )
-                if "stylized_fact_huber_cutoff" in raw_payload
-                and raw_payload["stylized_fact_huber_cutoff"] is not None
-                else None
-            ),
-            stylized_fact_admissibility_z_threshold=(
-                require_positive_finite_number(
-                    raw_payload,
-                    "stylized_fact_admissibility_z_threshold",
-                    "stylized_fact_admissibility_z_threshold",
-                    calibration_error,
-                )
-                if "stylized_fact_admissibility_z_threshold" in raw_payload
-                and raw_payload["stylized_fact_admissibility_z_threshold"] is not None
-                else None
             ),
             known_news_inputs=(
                 CalibrationKnownNewsInput.from_mapping(

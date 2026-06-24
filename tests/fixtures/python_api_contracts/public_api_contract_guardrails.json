@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "95f94ba61e85233dde0cc5c11f6ac89521d5dadf9ebf34ffecad6a506b17c34c",
+  "approved_snapshot_sha256": "bb5f9b0f5f457d37397e12a8f1a2dd030e843e0cf9e38a6505b18bb638305c53",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -727,7 +727,7 @@
       "docs_updated": [
         "docs/reference/python-api.md"
       ],
-      "rationale": "High-level simulation now treats observed continuation data as the default live-state continuation boundary for both seeded and coarse backends, and the seeded response records the full mean-reversion boundary state including pressure_state so continuation behavior can be inspected from exported simulation outputs.",
+      "rationale": "High-level simulation now treats observed continuation data as the default live-state continuation boundary for both seeded and coarse backends, and the seeded response records the market-pressure state alongside the mean-reversion boundary so continuation behavior can be inspected from exported simulation outputs.",
       "snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
       "summary": "Approve live-state continuation defaults and exported seeded pressure-state boundary fields."
     },
@@ -1621,22 +1621,6 @@
       ]
     },
     {
-      "approved_on": "2026-06-04",
-      "docs_updated": [
-        "docs/reference/cli.md",
-        "docs/reference/python-api.md",
-        "docs/workflows/calibration-diagnostics.md",
-        "docs/workflows/fit-models.md"
-      ],
-      "rationale": "Mean-reversion calibration now exposes an advanced predictive evidence alpha override while Rust owns automatic grid evaluation and the asset-agnostic predictive evidence gate.",
-      "snapshot_sha256": "94b60a47f03474487a51c7bc04b38b2d42936d76cebdb523d9db3df0ac5243a3",
-      "summary": "Expose mean-reversion predictive evidence alpha in the Python calibration boundary.",
-      "updated_surfaces": [
-        "janiform.calibration.market_data",
-        "janiform.calibration.market_data.contracts"
-      ]
-    },
-    {
       "approved_on": "2026-06-07",
       "docs_updated": [
         "docs/reference/python-api.md"
@@ -1718,7 +1702,7 @@
       "summary": "Expose market-data timestamp batching inference diagnostics.",
       "updated_surfaces": [
         "janiform.calibration.market_data",
-        "janiform.calibration.market_data.timestamp_observation",
+        "janiform.calibration.market_data.timestamp_batching_surface",
         "janiform.calibration.market_data.translation",
         "janiform.calibration.market_data.workflow"
       ]
@@ -1739,9 +1723,9 @@
     },
     {
       "approved_on": "2026-06-16",
-      "summary": "Add the observation-models calibration stage to public calibration contracts.",
       "rationale": "Timestamp batching and Hawkes source-activity attribution are calibrated as a first-class stage between Hawkes and return-components calibration, so the public stage enum and market-data diagnostics expose that workflow boundary directly.",
       "snapshot_sha256": "7a03fff6b7fcf03693de80f2d937f891a54209ac67420afd5b8cd501c368955c",
+      "summary": "Add the observation-models calibration stage to public calibration contracts.",
       "updated_surfaces": [
         "janiform.calibration.staged",
         "janiform.calibration.market_data"
@@ -1749,9 +1733,9 @@
     },
     {
       "approved_on": "2026-06-18",
-      "summary": "Add fitted-model forecast results and remove observed-options physical-distribution diagnostics.",
       "rationale": "Model-based forecasting is now exposed as a first-class Python result surface with persisted forecast bundles, while the old observed-options physical-distribution diagnostic is removed because it was a pricing diagnostic rather than a forecast workflow.",
       "snapshot_sha256": "bef51b8e89fdcdcbc817bbe47329085768fa0adf802a8d6eb25dc15b9e0e97f4",
+      "summary": "Add fitted-model forecast results and remove observed-options physical-distribution diagnostics.",
       "updated_surfaces": [
         "janiform.forecast",
         "janiform.model",
@@ -1762,12 +1746,147 @@
     },
     {
       "approved_on": "2026-06-19",
-      "summary": "Add state-conditioned fitted-model forecasts and tracker snapshots.",
       "rationale": "Forecasts now accept the fitted-model current-state contract and expose a state tracker so users can update Hawkes, long-variance, and mean-reversion state from signed ticks before computing conditional terminal distributions, while the no-state forecast keeps a model-only default boundary.",
       "snapshot_sha256": "95f94ba61e85233dde0cc5c11f6ac89521d5dadf9ebf34ffecad6a506b17c34c",
+      "summary": "Add state-conditioned fitted-model forecasts and tracker snapshots.",
       "updated_surfaces": [
         "janiform.calibration.fit.state",
         "janiform.model"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "The public Python contracts now expose market-pressure Omega state and parameters as first-class model inputs while mean reversion keeps only the temporary observed-state deviation contract.",
+      "snapshot_sha256": "2d42f92ef3e865ead5b963c71d433392a708efdbcd5236ea4e3290cbf5660d90",
+      "summary": "Replace mean-reversion pressure contracts with market pressure state.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.mean_reversion",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "Mean-reversion calibration now uses the Rust BIC selector directly after removing the old predictive-evidence validation path, so Python no longer exposes an ignored predictive evidence alpha request field.",
+      "snapshot_sha256": "3dc087a38c970d838bf3bc1fa93161d93556bd0a38f89693a39617d59c1954ee",
+      "summary": "Remove the mean-reversion predictive evidence alpha public parameter.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "The public Omega factor is named for the latent economic concept it represents, so the Python surface uses market-pressure modules, contracts, fields, and state columns throughout the supported API.",
+      "snapshot_sha256": "efff344dc2e3243a079ed93da68b7b1451dcdfd202016b4043ca081ec361146e",
+      "summary": "Rename public Omega contracts to market pressure.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-20",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market pressure is represented by a latent side-balance state distribution with explicit support, physical transition rates, and state weights.",
+      "snapshot_sha256": "49c7d74a0a115d015d8136718c8611de2f9c6f25f9e5ff34f7471b98c24f4ea1",
+      "summary": "Expose side-balance CTMC market-pressure contracts.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-20",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "Market-data preparation now owns the price discretization and timestamp batching surfaces, while return-components owns Hawkes return source responsibilities. The removed observation-models stage and renamed timestamp batching surface diagnostics are intentional pre-v0.1 breaking API changes.",
+      "snapshot_sha256": "cb2c5d9f5433ed20e604d7f0488ee5ba3d86a52b228c3a0aa7a1adbc21e1ec81",
+      "summary": "Replace observation-model public API names with market-data surface diagnostics."
+    },
+    {
+      "approved_on": "2026-06-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-pressure dynamics are physical fitted dynamics, while option pricing carries the economically explicit signed-imbalance exposure risk price in the vanilla option pricing kernel. The public contract removes the static pressure measure mapping from model dynamics and exposes the pressure-risk price with the other pricing-kernel parameters.",
+      "snapshot_sha256": "7b3f4e2b5d3c16ec06a4fc0aace3648e24fefc4063590acab88e7d3717c8a231",
+      "summary": "Move market-pressure measure change into the pricing kernel.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-21",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "The calibration objective now scores coherent objective families with covariance geometry. The previous scalar stylized-fact Huber cutoff and diagnostic-family admissibility threshold are no longer part of the public request surface.",
+      "snapshot_sha256": "e1081fc19dda28d257f2069f8ec6a467226851428a1e19d374f7c35dd8fa0b4f",
+      "summary": "Remove scalar stylized-fact objective policy knobs from calibration requests.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data"
+      ]
+    },
+    {
+      "approved_on": "2026-06-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Restart search effort is controlled by candidate count and restart-pool budget scales. The unused poll-round effort fields are removed from the public calibration request surface.",
+      "snapshot_sha256": "5c46473f38ecfb48efcfc423d735c534bd34a3b22110a541720349d711d7fab4",
+      "summary": "Remove unused poll-round effort controls from calibration requests.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
+      ]
+    },
+    {
+      "approved_on": "2026-06-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-pressure fitted dynamics expose one physical transition-rate set and one anchor drift coefficient, so the Python contract stores those fields directly on market-pressure parameters.",
+      "snapshot_sha256": "e8894eac31905211b5bab73addd3be401e415c50b0aa345073c83af2820f70c1",
+      "summary": "Flatten market-pressure parameter measure fields.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-25",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "Joint refinement effort controls use candidate terminology across the Python request contracts, estimator constructor, calibration effort payload, and CLI flag surface.",
+      "snapshot_sha256": "bb5f9b0f5f457d37397e12a8f1a2dd030e843e0cf9e38a6505b18bb638305c53",
+      "summary": "Rename joint refinement candidate-budget controls.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
       ]
     }
   ],

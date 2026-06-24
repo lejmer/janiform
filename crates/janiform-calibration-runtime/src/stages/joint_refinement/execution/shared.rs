@@ -18,23 +18,23 @@ pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
         .collect::<Vec<_>>()
 }
 
-pub(crate) fn planned_restart_work_item_labels<'a>(
-    restart_ids: impl IntoIterator<Item = &'a str>,
+pub(crate) fn planned_candidate_work_item_labels<'a>(
+    candidate_ids: impl IntoIterator<Item = &'a str>,
 ) -> Vec<String> {
-    restart_ids.into_iter().map(str::to_string).collect()
+    candidate_ids.into_iter().map(str::to_string).collect()
 }
 
 pub(crate) fn elapsed_millis(started_at: Instant) -> u64 {
     started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
-pub(crate) fn deduplicate_restart_seed_candidates(
-    restart_candidates: Vec<(String, Vec<f64>)>,
+pub(crate) fn deduplicate_candidate_seeds(
+    candidate_seeds: Vec<(String, Vec<f64>)>,
 ) -> Vec<(String, Vec<f64>)> {
     let mut deduplicated_candidates = Vec::new();
     let mut seen_parameter_bits = Vec::new();
 
-    for (restart_id, candidate_vector) in restart_candidates {
+    for (candidate_id, candidate_vector) in candidate_seeds {
         let parameter_bits = ordered_parameter_bits(candidate_vector.as_slice());
 
         if seen_parameter_bits
@@ -45,7 +45,7 @@ pub(crate) fn deduplicate_restart_seed_candidates(
         }
 
         seen_parameter_bits.push(parameter_bits);
-        deduplicated_candidates.push((restart_id, candidate_vector));
+        deduplicated_candidates.push((candidate_id, candidate_vector));
     }
 
     deduplicated_candidates
@@ -72,7 +72,7 @@ pub(crate) fn halton_parameter_vector(
         .collect()
 }
 
-pub(crate) fn build_halton_restart_id(position: usize) -> String {
+pub(crate) fn build_halton_candidate_id(position: usize) -> String {
     format!("halton_{position:02}")
 }
 

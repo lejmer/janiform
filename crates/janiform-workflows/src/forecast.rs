@@ -2,6 +2,7 @@ mod artifacts;
 mod cdf_projection;
 mod cos_distribution;
 mod distribution;
+mod distribution_grid;
 mod expected_path;
 mod initial_state;
 mod numeric;
@@ -11,6 +12,8 @@ mod range_progress;
 mod request;
 mod runtime;
 mod support;
+#[cfg(test)]
+mod test_support;
 mod workflow;
 
 pub use artifacts::{load_forecast_bundle_manifest, save_forecast_bundle};

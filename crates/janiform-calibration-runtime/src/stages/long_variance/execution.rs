@@ -51,11 +51,12 @@ use crate::stages::tick_objective_data::{
 };
 
 const LONG_VARIANCE_ESTIMATION_POLICY: &str = concat!(
-    "fixed_lag_median_return_persistence_with_future_activity_loading_",
+    "fixed_lag_median_return_persistence_with_future_activity_and_energy_loading_",
     "and_standard_cir_dispersion_projection.v1",
 );
-const LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY: &str = "unit_stationary_mean_with_mean_normalized_seasonal_baseline_and_uncompensated_event_feedback.v1";
-pub(crate) const LONG_VARIANCE_ACTIVE_PARAMETER_COUNT: usize = 4;
+const LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY: &str =
+    "unit_stationary_mean_with_mean_normalized_seasonal_baseline_and_uncompensated_feedback.v1";
+pub(crate) const LONG_VARIANCE_ACTIVE_PARAMETER_COUNT: usize = 5;
 pub(crate) const LONG_VARIANCE_OBJECTIVE_TERM_COUNT: usize =
     LONG_VARIANCE_HORIZON_DEFINITIONS.len() * LONG_VARIANCE_HORIZON_MOMENT_METRIC_COUNT;
 pub(crate) const LONG_VARIANCE_CANDIDATE_GEOMETRY_COUNT: usize =
@@ -587,6 +588,13 @@ fn long_variance_stage_diagnostics(
         event_loading_fit_pair_count: parameter_estimation_diagnostics.event_loading_fit_pair_count,
         event_loading_fit_coverage_ratio: parameter_estimation_diagnostics
             .event_loading_fit_coverage_ratio,
+        stationary_return_energy_rate_per_hour: parameter_estimation_diagnostics
+            .stationary_return_energy_rate_per_hour,
+        return_energy_fit_candidate_pair_count: parameter_estimation_diagnostics
+            .return_energy_fit_candidate_pair_count,
+        return_energy_fit_pair_count: parameter_estimation_diagnostics.return_energy_fit_pair_count,
+        return_energy_fit_coverage_ratio: parameter_estimation_diagnostics
+            .return_energy_fit_coverage_ratio,
         selected_candidate_id: selected_candidate_id.to_string(),
         horizon_diagnostics: LONG_VARIANCE_HORIZON_DEFINITIONS
             .iter()

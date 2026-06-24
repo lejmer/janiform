@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from ....market_pressure import MarketPressureParameters, MarketPressureState
 from ....calendar import CalendarRegistry
 from ....interval_factor_grids import IntervalFactorGridContract
 from ....long_variance import LongVarianceParameters, LongVarianceState
@@ -40,6 +41,7 @@ class PreparedModelRuntimeFactors:
     news_process_configuration: NewsProcessConfiguration
     return_clock_exposure_parameters: ReturnClockExposureParameters
     long_variance_parameters: LongVarianceParameters
+    market_pressure_parameters: MarketPressureParameters
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +51,7 @@ class PreparedModelPricingRuntimeInput:
     effective_boundary_state: HawkesExcitationState
     effective_long_variance_state: LongVarianceState
     effective_observed_boundary_state: MeanReversionBoundaryState
+    effective_market_pressure_state: MarketPressureState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     model_parameters: VanillaOptionPricingModelParameters
 

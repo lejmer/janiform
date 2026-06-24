@@ -17,6 +17,7 @@ from ....simulation import SeededTickEventSide
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationTickDataColumnMapping
 from .._runtime.payloads import (
+    market_pressure_parameters_for_model,
     current_state_tick_data_column_mapping_for_model,
     hawkes_kernel_parameters_for_model,
     long_variance_parameters_for_model,
@@ -73,6 +74,7 @@ def estimate_current_state_for_model(
         hawkes_kernel_parameters_for_model(model).to_payload(),
         long_variance_parameters_for_model(model).to_payload(),
         mean_reversion_fitted_parameters_for_model(model).to_payload(),
+        market_pressure_parameters_for_model(model).to_payload(),
         model_reference_price(model),
         datetime_to_utc_nanos(state_time_utc),
         observed_log_return,

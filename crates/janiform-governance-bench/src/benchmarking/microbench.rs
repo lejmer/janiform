@@ -110,7 +110,7 @@ pub struct MicrobenchmarkFixtureSet {
     pub policy: OraclePricerSufficientStatisticsBenchmarkPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PreparedOracleSolverBenchmarkCase {
     pub profile_id: &'static str,
     pub transform_input: ExponentialAffineTransformInput,
@@ -169,7 +169,7 @@ impl MicrobenchmarkFixtureSet {
         let transform_input = build_oracle_transform_input(
             profile,
             &self.policy,
-            equation_specification,
+            &equation_specification,
             derive_invocation_seed(oracle_seed, 1),
         )
         .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
@@ -239,7 +239,7 @@ impl MicrobenchmarkFixtureSet {
         let solved_slices = build_sufficient_statistics_transform_slices(
             profile,
             &self.policy,
-            equation_specification,
+            &equation_specification,
             solver_settings,
             sufficient_statistics_seed,
         )

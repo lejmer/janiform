@@ -8,7 +8,6 @@ mod long_variance;
 mod mean_reversion;
 mod metadata;
 mod news_shocks;
-mod observation_models;
 mod optimizer;
 mod payload;
 mod persistence;
@@ -38,9 +37,6 @@ pub use mean_reversion::{
 };
 pub use metadata::CalibrationStageParameterBuildMetadata;
 pub use news_shocks::{NewsShocksStageParameterArtifactInput, NewsShocksStageParameterPayload};
-pub use observation_models::{
-    ObservationModelsStageParameterArtifactInput, ObservationModelsStageParameterPayload,
-};
 pub use optimizer::{
     CalibrationStageParameterOptimizerAdapterMetadata, CalibrationStageParameterOptimizerState,
     CalibrationStageParameterOptimizerStateInput,

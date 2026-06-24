@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use crate::{
+    AnchoredVanillaOptionPricingBoundaryInput, AnchoredVanillaOptionPricingBoundaryInputError,
     VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
@@ -18,6 +19,13 @@ use crate::{
     build_vanilla_option_pricing_run_result,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::long_variance::LongVarianceState;
+use janiform_model_kernels::market_pressure::{
+    MarketPressureState, MarketPressureStateValidationError,
+};
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
 
 use super::support::{
     build_reference_integration_diagnostics_source, build_reference_market_inputs,
@@ -25,6 +33,7 @@ use super::support::{
     build_uniform_runtime_interval_schedule, build_valid_vanilla_option_request,
     disabled_boundary_input, valid_model_parameters,
 };
+
 #[test]
 fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
     let request = build_valid_vanilla_option_request();
@@ -66,19 +75,16 @@ fn vanilla_option_request_deserialization_requires_interval_delta() {
             "long_variance_boundary_state": {
                 "level": 1.0
             },
+            "market_pressure_boundary_state": {
+                "state_weights": [1.0]
+            },
             "mean_reversion_fitted_parameters": {
-                "kappa": 0.0,
-                "anchor_model": {
-                    "reference_interval_hours": 1.0,
-                    "pressure_persistence_per_reference_interval": 0.0,
-                    "pressure_level_gain": 0.0
-                }
+                "kappa": 0.0
             },
             "interval_delta": 1.0,
             "observed_boundary_state": {
                 "observed_log_price": 0.0,
                 "anchor_value": 0.0,
-                "pressure_state": 0.0,
                 "deviation": 0.0
             }
         },
@@ -118,6 +124,51 @@ fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
     .expect("non-hourly interval delta should be accepted");
 
     assert_eq!(request.interval_delta, 0.5);
+}
+
+#[test]
+fn vanilla_option_request_rejects_market_pressure_state_support_mismatch() {
+    let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
+        0,
+        HawkesExcitationState {
+            y_plus_plus: 0.2,
+            y_plus_minus: 0.1,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.4,
+        },
+        LongVarianceState::unit(),
+        MarketPressureState::try_new(vec![0.5, 0.5]).expect("state weights should validate"),
+        MeanReversionFittedParameters::zero_kappa(),
+        1.0,
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("zero observed boundary state should construct"),
+    )
+    .expect("boundary input validates state shape independently");
+
+    let error = VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        boundary_input,
+        valid_model_parameters(),
+        1.0,
+    )
+    .expect_err("request must reject a pressure state that does not match model support");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingRequestError::InvalidBoundaryInput {
+            source:
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidMarketPressureBoundaryState {
+                    source: MarketPressureStateValidationError::StateCountMismatch {
+                        expected_state_count: 1,
+                        actual_state_count: 2,
+                    }
+                }
+        }
+    ));
 }
 
 #[test]

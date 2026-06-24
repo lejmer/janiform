@@ -75,7 +75,6 @@ pub use stage_parameter::{
     LongVarianceStageParameterArtifactInput, LongVarianceStageParameterPayload,
     MeanReversionStageParameterArtifactInput, MeanReversionStageParameterPayload,
     NewsShocksStageParameterArtifactInput, NewsShocksStageParameterPayload,
-    ObservationModelsStageParameterArtifactInput, ObservationModelsStageParameterPayload,
     ReturnBackfitStageParameterArtifactInput, ReturnBackfitStageParameterPayload,
     ReturnComponentsStageParameterArtifactInput, ReturnComponentsStageParameterPayload,
     SeasonalityStageParameterArtifactInput, SeasonalityStageParameterPayload,

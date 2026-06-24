@@ -53,8 +53,8 @@ pub enum MarketDataLoadingProgressPhase {
     FinalizingRecords,
     /// Cross-source calibration inputs are being assembled.
     BuildingCalibrationInputs,
-    /// Observed timestamp batching behavior is being inferred from loaded tick records.
-    InferringTimestampBatchingObservation,
+    /// Timestamp batching surface is being inferred from loaded tick records.
+    InferringTimestampBatchingSurface,
 }
 
 impl MarketDataLoadingProgressPhase {
@@ -65,9 +65,7 @@ impl MarketDataLoadingProgressPhase {
             Self::NormalizingRecords => "normalizing_records",
             Self::FinalizingRecords => "finalizing_records",
             Self::BuildingCalibrationInputs => "building_calibration_inputs",
-            Self::InferringTimestampBatchingObservation => {
-                "inferring_timestamp_batching_observation"
-            }
+            Self::InferringTimestampBatchingSurface => "inferring_timestamp_batching_surface",
         }
     }
 
@@ -78,9 +76,7 @@ impl MarketDataLoadingProgressPhase {
             Self::NormalizingRecords => "normalizing records",
             Self::FinalizingRecords => "finalizing normalized records",
             Self::BuildingCalibrationInputs => "building calibration input candidates",
-            Self::InferringTimestampBatchingObservation => {
-                "inferring observed timestamp batching model"
-            }
+            Self::InferringTimestampBatchingSurface => "inferring timestamp batching surface",
         }
     }
 }
@@ -419,22 +415,22 @@ mod tests {
     fn timestamp_batching_inference_progress_uses_active_signal_without_record_count() {
         let event = MarketDataLoadingProgressEvent::new(
             MarketDataLoadingSource::TickData,
-            MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation,
+            MarketDataLoadingProgressPhase::InferringTimestampBatchingSurface,
             0,
             None,
         );
 
         assert_eq!(
             event.phase.phase_id(),
-            "inferring_timestamp_batching_observation"
+            "inferring_timestamp_batching_surface"
         );
         assert_eq!(
             event.latest_signal(),
-            "tick data: inferring observed timestamp batching model"
+            "tick data: inferring timestamp batching surface"
         );
         assert_eq!(
             event.phase_signal(),
-            "tick data: inferring observed timestamp batching model"
+            "tick data: inferring timestamp batching surface"
         );
     }
 

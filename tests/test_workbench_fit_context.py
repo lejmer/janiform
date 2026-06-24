@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
-from janiform.mean_reversion import MeanReversionAnchorModel, MeanReversionFittedParameters
+from janiform.mean_reversion import MeanReversionFittedParameters
 from tests.support.calibration import build_empty_mean_reversion_series_summaries_payload
 from tools.workbench import load_workbench_artifacts
 from tools.workbench import plots as workbench_plots
@@ -707,10 +707,7 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
                 ]
             )
 
-    mean_reversion_payload = MeanReversionFittedParameters(
-        kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-    ).to_payload()
+    mean_reversion_payload = MeanReversionFittedParameters(kappa=0.25).to_payload()
 
     class _FakeModel:
         metadata = {
@@ -2101,7 +2098,8 @@ def test_mean_reversion_variance_growth_figure_reports_endogenous_diagnostics_su
     )
 
     assert figure.axes[0].texts[0].get_text().startswith(
-        "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose enough runtime inputs"
+        "Mean-reversion anchor diagnostics are unavailable because the loaded model "
+        "does not expose enough runtime inputs"
     )
     assert "stage decision: endogenous_anchor_runtime_projection_required.v1" in figure.axes[2].texts[0].get_text()
     assert "source observations: 4" in figure.axes[2].texts[0].get_text()
@@ -2174,7 +2172,8 @@ def test_mean_reversion_future_change_figure_reports_endogenous_diagnostics_summ
     )
 
     assert figure.axes[0].texts[0].get_text().startswith(
-        "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose enough runtime inputs"
+        "Mean-reversion anchor diagnostics are unavailable because the loaded model "
+        "does not expose enough runtime inputs"
     )
     assert "retained observations: 0" in figure.axes[1].texts[0].get_text()
     assert "coverage ratio: 0" in figure.axes[1].texts[0].get_text()
@@ -2804,7 +2803,6 @@ def _mean_reversion_model_parameters() -> dict[str, Any]:
                 "return_components_fitted_parameters": {
                     "mean_reversion_fitted_parameters": MeanReversionFittedParameters(
                         kappa=0.4,
-                        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                     ).to_payload()
                 }
             }
@@ -2834,29 +2832,19 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
             "retained_observation_count": 0,
             "coverage_ratio": 0.0,
         },
-        "anchor_parameter_estimates": {
-            "reference_interval_hours": 24.0,
-            "pressure_persistence_per_reference_interval": 0.0,
-            "pressure_level_gain": 0.0,
-        },
         "anchor_origin_level": None,
         "phi_reference": 1.0,
         "kappa": 0.0,
         "residual_sum_of_squares": 0.0,
         "quasi_log_likelihood": None,
         "information_criterion_bic": None,
-        "model_selection_policy": "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1",
+        "model_selection_policy": "gaussian_quasi_likelihood_bic_mean_reversion_model_selection.v1",
         "deviation_sample_count": 0,
         "regression_pair_count": 0,
         "least_squares_rank": 0,
         "evaluated_candidates": [
             {
                 "candidate_family": "random_walk_null",
-                "anchor_model": {
-                    "reference_interval_hours": 24.0,
-                    "pressure_persistence_per_reference_interval": 0.0,
-                    "pressure_level_gain": 0.0,
-                },
                 "anchor_origin_level": None,
                 "phi_reference": 1.0,
                 "kappa": 0.0,
@@ -2870,7 +2858,6 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
                 "series_summaries": (
                     build_empty_mean_reversion_series_summaries_payload()
                 ),
-                "predictive_evidence": None,
                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
             }
         ],
@@ -2886,11 +2873,6 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
                 "evaluated_candidates": [
                     {
                         "candidate_family": "random_walk_null",
-                        "anchor_model": {
-                            "reference_interval_hours": 24.0,
-                            "pressure_persistence_per_reference_interval": 0.0,
-                            "pressure_level_gain": 0.0,
-                        },
                         "anchor_origin_level": None,
                         "phi_reference": 1.0,
                         "kappa": 0.0,
@@ -2904,7 +2886,6 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
                         "series_summaries": (
                             build_empty_mean_reversion_series_summaries_payload()
                         ),
-                        "predictive_evidence": None,
                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                     }
                 ],
@@ -2916,10 +2897,7 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
 
 
 def _endogenous_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
-    return MeanReversionFittedParameters(
-        kappa=0.0,
-        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-    ).to_payload()
+    return MeanReversionFittedParameters(kappa=0.0).to_payload()
 
 
 class _FakeAxis:

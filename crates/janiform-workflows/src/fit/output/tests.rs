@@ -92,7 +92,6 @@ fn checkpoint_metadata(
         execution_stage_order: vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ObservationModels,
             CalibrationStage::ReturnComponents,
             CalibrationStage::LongVariance,
             CalibrationStage::NewsShocks,
@@ -115,13 +114,12 @@ fn completed_stage_position(stage: CalibrationStage) -> usize {
     match stage {
         CalibrationStage::Seasonality => 0,
         CalibrationStage::Hawkes => 1,
-        CalibrationStage::ObservationModels => 2,
-        CalibrationStage::ReturnComponents => 3,
-        CalibrationStage::LongVariance => 4,
-        CalibrationStage::NewsShocks => 5,
-        CalibrationStage::ReturnBackfit => 6,
-        CalibrationStage::MeanReversion => 7,
-        CalibrationStage::JointRefinement => 8,
+        CalibrationStage::ReturnComponents => 2,
+        CalibrationStage::LongVariance => 3,
+        CalibrationStage::NewsShocks => 4,
+        CalibrationStage::ReturnBackfit => 5,
+        CalibrationStage::MeanReversion => 6,
+        CalibrationStage::JointRefinement => 7,
         CalibrationStage::OptionRefinement => 9,
         CalibrationStage::Finalization => 10,
     }

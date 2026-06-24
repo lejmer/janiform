@@ -1,5 +1,7 @@
 use janiform_foundations::parallelism::distribute_cpu_count_across_workers;
 
+use crate::stages::parallelism::resolved_stage_cpu_count;
+
 use super::super::{JointRefinementContext, joint_refinement_parallel_worker_count};
 
 pub(super) fn option_refinement_candidate_parallelism(
@@ -26,7 +28,7 @@ fn resolved_option_refinement_candidate_parallelism(
 ) -> usize {
     available_stage_thread_count
         .max(1)
-        .min(total_pricing_cpu_count.max(1))
+        .min(resolved_stage_cpu_count(total_pricing_cpu_count))
         .min(candidate_count.max(1))
 }
 

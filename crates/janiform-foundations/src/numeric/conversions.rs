@@ -7,7 +7,7 @@ pub struct IntegerToF64ExactConversionError {
     /// Field or contract name being converted.
     pub field: &'static str,
     /// Original integer value.
-    pub value: usize,
+    pub value: u64,
 }
 
 impl Display for IntegerToF64ExactConversionError {
@@ -28,14 +28,25 @@ pub fn usize_to_f64_exact(
     field: &'static str,
 ) -> Result<f64, IntegerToF64ExactConversionError> {
     let Ok(value_u64) = u64::try_from(value) else {
-        return Err(IntegerToF64ExactConversionError { field, value });
+        return Err(IntegerToF64ExactConversionError {
+            field,
+            value: u64::MAX,
+        });
     };
 
+    u64_to_f64_exact(value_u64, field)
+}
+
+/// Convert a `u64` to `f64` only when the integer is exactly representable.
+pub fn u64_to_f64_exact(
+    value: u64,
+    field: &'static str,
+) -> Result<f64, IntegerToF64ExactConversionError> {
     let exact_upper_bound = 1_u64 << f64::MANTISSA_DIGITS;
 
-    if value_u64 > exact_upper_bound {
+    if value > exact_upper_bound {
         return Err(IntegerToF64ExactConversionError { field, value });
     }
 
-    Ok(value_u64 as f64)
+    Ok(value as f64)
 }

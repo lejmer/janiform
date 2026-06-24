@@ -3,12 +3,18 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters,
     HawkesStationaryTargetSourceRates,
 };
-use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceState};
+use janiform_model_kernels::long_variance::{
+    LongVarianceParameters, LongVarianceState, return_energy_increment_from_log_return,
+};
 
 use super::contracts::{
     CurrentStateEstimationBatchInput, CurrentStateEstimationBatchItem,
     CurrentStateEstimationBatchProgressEvent, CurrentStateEstimationError,
     CurrentStateEstimationInput, CurrentStateEstimationOutput,
+};
+use super::market_pressure::{
+    advance_market_pressure_state_from_observed_side, advance_market_pressure_state_to_timestamp,
+    replay_market_pressure_state,
 };
 use super::mean_reversion::{
     MeanReversionBoundaryReplayState, advance_mean_reversion_boundary_replay,
@@ -30,6 +36,13 @@ pub fn estimate_current_state_from_observed_data(
         .long_variance_parameters
         .validate()
         .map_err(|source| CurrentStateEstimationError::InvalidLongVarianceParameters { source })?;
+
+    input
+        .market_pressure_parameters
+        .validate()
+        .map_err(
+            |source| CurrentStateEstimationError::InvalidMarketPressureParameters { source },
+        )?;
 
     if input.observation_timestamp_utc_nanos.is_empty() {
         return Err(CurrentStateEstimationError::EmptyObservations);
@@ -77,15 +90,27 @@ pub fn estimate_current_state_from_observed_data(
         input.long_variance_parameters,
         input.state_time_utc_nanos,
         &input.observation_timestamp_utc_nanos,
+        &input.observation_trade_prices,
         &input.observation_trade_sides,
     )?;
 
     let mean_reversion_boundary_state = replay_mean_reversion_state_from_single_input(&input)?;
 
+    let market_pressure_state = replay_market_pressure_state(
+        input.kernel_parameters,
+        &input.market_pressure_parameters,
+        input.reference_price,
+        input.state_time_utc_nanos,
+        input.observation_timestamp_utc_nanos.as_slice(),
+        input.observation_trade_prices.as_slice(),
+        input.observation_trade_sides.as_slice(),
+    )?;
+
     Ok(CurrentStateEstimationOutput {
         hawkes_excitation_state,
         long_variance_state,
         mean_reversion_boundary_state,
+        market_pressure_state,
     })
 }
 
@@ -110,6 +135,13 @@ pub fn estimate_current_states_from_observed_data_with_observer(
         .long_variance_parameters
         .validate()
         .map_err(|source| CurrentStateEstimationError::InvalidLongVarianceParameters { source })?;
+
+    input
+        .market_pressure_parameters
+        .validate()
+        .map_err(
+            |source| CurrentStateEstimationError::InvalidMarketPressureParameters { source },
+        )?;
 
     if input.state_times_utc_nanos.is_empty() {
         return Err(CurrentStateEstimationError::EmptyStateTimes);
@@ -183,7 +215,13 @@ pub fn estimate_current_states_from_observed_data_with_observer(
     let mut previous_timestamp_utc_nanos = input.observation_timestamp_utc_nanos[0];
     let mut observation_index = 0usize;
     let mut observed_price = None::<f64>;
+    let mut previous_observation_trade_price = None::<f64>;
     let mut mean_reversion_replay_state = None::<MeanReversionBoundaryReplayState>;
+    let mut current_market_pressure_state =
+        janiform_model_kernels::market_pressure::MarketPressureState::neutral_for_parameters(
+            &input.market_pressure_parameters,
+        )
+        .map_err(|source| CurrentStateEstimationError::InvalidMarketPressureState { source })?;
     let mut state_items = Vec::with_capacity(input.state_times_utc_nanos.len());
 
     let reference_log_price = input.reference_price.ln();
@@ -205,12 +243,23 @@ pub fn estimate_current_states_from_observed_data_with_observer(
                 input.kernel_parameters.alpha,
             );
 
+            let trade_price = input.observation_trade_prices[observation_index];
+
             current_long_variance_state = current_long_variance_state
                 .apply_mean_reversion_drift(
                     input.long_variance_parameters,
                     stationary_long_variance_level,
                     delta_hours,
                 )
+                .and_then(|state| match previous_observation_trade_price {
+                    Some(previous_trade_price) => state.apply_return_energy_jump(
+                        input.long_variance_parameters,
+                        return_energy_increment_from_log_return(
+                            trade_price.ln() - previous_trade_price.ln(),
+                        )?,
+                    ),
+                    None => Ok(state),
+                })
                 .and_then(|state| {
                     state.apply_event_jump(
                         input.long_variance_parameters,
@@ -220,6 +269,14 @@ pub fn estimate_current_states_from_observed_data_with_observer(
                 .map_err(|source| {
                     CurrentStateEstimationError::InvalidLongVarianceStateTransition { source }
                 })?;
+
+            current_market_pressure_state = advance_market_pressure_state_from_observed_side(
+                &input.market_pressure_parameters,
+                &current_market_pressure_state,
+                previous_timestamp_utc_nanos,
+                timestamp_utc_nanos,
+                input.observation_trade_sides[observation_index],
+            )?;
 
             mean_reversion_replay_state =
                 Some(advance_mean_reversion_boundary_replay_from_observed_price(
@@ -232,8 +289,8 @@ pub fn estimate_current_states_from_observed_data_with_observer(
                 )?);
 
             previous_timestamp_utc_nanos = timestamp_utc_nanos;
-            observed_price = Some(input.observation_trade_prices[observation_index]);
-
+            previous_observation_trade_price = Some(trade_price);
+            observed_price = Some(trade_price);
             observation_index += 1;
         }
 
@@ -277,11 +334,15 @@ pub fn estimate_current_states_from_observed_data_with_observer(
             state_time_utc_nanos,
             observed_log_return,
         )?;
+        let market_pressure_state = advance_market_pressure_state_to_timestamp(
+            &input.market_pressure_parameters,
+            &current_market_pressure_state,
+            previous_timestamp_utc_nanos,
+            state_time_utc_nanos,
+        )?;
 
         // Copy the small boundary state into the output while retaining replay state for later boundaries.
-        let mean_reversion_boundary_state = state_time_mean_reversion_replay_state
-            .boundary_state
-            .clone();
+        let mean_reversion_boundary_state = state_time_mean_reversion_replay_state.boundary_state;
 
         mean_reversion_replay_state = Some(state_time_mean_reversion_replay_state);
 
@@ -292,6 +353,7 @@ pub fn estimate_current_states_from_observed_data_with_observer(
                 hawkes_excitation_state,
                 long_variance_state,
                 mean_reversion_boundary_state,
+                market_pressure_state,
             },
         });
 
@@ -429,6 +491,7 @@ fn replay_long_variance_state(
     long_variance_parameters: LongVarianceParameters,
     state_time_utc_nanos: i64,
     observation_timestamp_utc_nanos: &[i64],
+    observation_trade_prices: &[f64],
     observation_trade_sides: &[HawkesEventSide],
 ) -> Result<LongVarianceState, CurrentStateEstimationError> {
     let stationary_long_variance_level =
@@ -436,9 +499,11 @@ fn replay_long_variance_state(
 
     let mut current_state = LongVarianceState::unit();
     let mut previous_timestamp_utc_nanos = observation_timestamp_utc_nanos[0];
+    let mut previous_trade_price = None::<f64>;
 
-    for (&timestamp_utc_nanos, &trade_side) in observation_timestamp_utc_nanos
+    for ((&timestamp_utc_nanos, &trade_price), &trade_side) in observation_timestamp_utc_nanos
         .iter()
+        .zip(observation_trade_prices.iter())
         .zip(observation_trade_sides.iter())
     {
         let delta_hours =
@@ -450,12 +515,22 @@ fn replay_long_variance_state(
                 stationary_long_variance_level,
                 delta_hours,
             )
+            .and_then(|state| match previous_trade_price {
+                Some(previous_trade_price) => state.apply_return_energy_jump(
+                    long_variance_parameters,
+                    return_energy_increment_from_log_return(
+                        trade_price.ln() - previous_trade_price.ln(),
+                    )?,
+                ),
+                None => Ok(state),
+            })
             .and_then(|state| state.apply_event_jump(long_variance_parameters, trade_side))
             .map_err(
                 |source| CurrentStateEstimationError::InvalidLongVarianceStateTransition { source },
             )?;
 
         previous_timestamp_utc_nanos = timestamp_utc_nanos;
+        previous_trade_price = Some(trade_price);
     }
 
     let trailing_delta_hours =
@@ -507,7 +582,7 @@ mod tests {
     fn batch_mean_reversion_replay_uses_named_flat_first_observation_seed() {
         assert_eq!(
             MEAN_REVERSION_CURRENT_STATE_BOUNDARY_SEED_POLICY,
-            "first_observed_log_price_flat_anchor_zero_pressure_deviation.v1"
+            "first_observed_log_price_flat_anchor_zero_deviation.v1"
         );
 
         let input = batch_input_fixture(vec![0]);
@@ -525,15 +600,20 @@ mod tests {
     }
 
     #[test]
-    fn batch_mean_reversion_replay_propagates_pressure_and_deviation() {
+    fn batch_state_replay_propagates_market_pressure_state_and_deviation() {
         let input = batch_input_fixture(vec![3 * NANOS_PER_HOUR]);
 
         let batch_output = estimate_current_states_from_observed_data(input)
             .expect("batch current-state estimation should succeed");
 
-        let boundary_state = &batch_output[0].state.mean_reversion_boundary_state;
+        let output_state = &batch_output[0].state;
+        let boundary_state = &output_state.mean_reversion_boundary_state;
 
-        assert_ne!(boundary_state.pressure_state, 0.0);
+        assert_eq!(output_state.market_pressure_state.state_weights.len(), 2);
+        assert_ne!(
+            output_state.market_pressure_state.state_weights[0],
+            output_state.market_pressure_state.state_weights[1]
+        );
         assert_ne!(boundary_state.deviation, 0.0);
 
         boundary_state

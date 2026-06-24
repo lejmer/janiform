@@ -22,7 +22,7 @@ from janiform.calibration.staged import CalibrationStage, StagedCalibrationRespo
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.model import JaniformModel
 from tests.support.calibration import (
-    build_disabled_timestamp_batching_observation_diagnostic_payload,
+    build_disabled_timestamp_batching_surface_diagnostic_payload,
     build_structural_seasonality_parameters_payload,
     stage_report_by_stage,
 )
@@ -194,10 +194,6 @@ class _PreparedExecutionHandle:
                     }
                 ],
             }
-            if mean_reversion.predictive_evidence_alpha is not None:
-                mean_reversion_stage_input["predictive_evidence_alpha"] = (
-                    mean_reversion.predictive_evidence_alpha
-                )
 
             payload["mean_reversion_stage_input"] = mean_reversion_stage_input
 
@@ -523,8 +519,8 @@ def _preparation_diagnostics_payload(
         "workflow_scope": _workflow_scope_value(configuration),
         "selected_stages": list(selected_stages),
         "executed_calibration_steps": [],
-        "timestamp_batching_observation": (
-            build_disabled_timestamp_batching_observation_diagnostic_payload(
+        "timestamp_batching_surface": (
+            build_disabled_timestamp_batching_surface_diagnostic_payload(
                 return_components_stage_selected=return_components_stage_selected,
             )
         ),

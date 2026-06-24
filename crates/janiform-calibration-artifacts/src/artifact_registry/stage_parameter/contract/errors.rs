@@ -85,6 +85,11 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         field: &'static str,
     },
+    InvalidStageParameterField {
+        stage: CalibrationStage,
+        field: &'static str,
+        error_message: String,
+    },
     MissingSeasonalityClockModel,
     MissingOptimizerState {
         stage: CalibrationStage,
@@ -96,7 +101,7 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         error_message: String,
     },
-    InvalidTimestampBatchingObservationModel {
+    InvalidTimestampBatchingSurface {
         stage: CalibrationStage,
         error_message: String,
     },
@@ -183,6 +188,14 @@ impl Display for CalibrationStageParameterArtifactValidationError {
                 formatter,
                 "stage parameter artifact for `{stage:?}` requires non-empty field `{field}`"
             ),
+            Self::InvalidStageParameterField {
+                stage,
+                field,
+                error_message,
+            } => write!(
+                formatter,
+                "stage parameter artifact for `{stage:?}` uses invalid field `{field}`: {error_message}"
+            ),
             Self::MissingSeasonalityClockModel => write!(
                 formatter,
                 "seasonality stage parameter artifact requires a fitted clock model"
@@ -202,12 +215,12 @@ impl Display for CalibrationStageParameterArtifactValidationError {
                 formatter,
                 "stage parameter artifact for `{stage:?}` uses invalid optimizer_state: {error_message}"
             ),
-            Self::InvalidTimestampBatchingObservationModel {
+            Self::InvalidTimestampBatchingSurface {
                 stage,
                 error_message,
             } => write!(
                 formatter,
-                "stage parameter artifact for `{stage:?}` uses invalid timestamp_batching_observation_model: {error_message}"
+                "stage parameter artifact for `{stage:?}` uses invalid timestamp_batching_surface: {error_message}"
             ),
             Self::InvalidMeanReversionParameters {
                 stage,

@@ -5,13 +5,12 @@ use support::shared::{
     CalibrationRunContract, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageGraph, CalibrationStageHandoffTransport,
     CalibrationStageParameterBuildMetadata, CalibrationStageSolverSettings,
-    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors, MeanReversionStageCalibrationGrid,
-    MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
-    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
-    MeanReversionStageParameterArtifactInput, MeanReversionStageSeriesSummary,
-    build_calibration_stage_parameter_artifact, build_data_inputs,
-    build_endogenous_mean_reversion_parameters, build_solver_settings,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
+    MeanReversionStageCandidateSeriesDiagnostics, MeanReversionStageDiagnostics,
+    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
+    MeanReversionStageSeriesSummary, build_calibration_stage_parameter_artifact, build_data_inputs,
+    build_mean_reversion_parameters, build_solver_settings,
     load_calibration_stage_parameter_artifact_from_disk,
     persist_calibration_stage_parameter_artifact_to_run_directory,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
@@ -20,20 +19,12 @@ use support::shared::{
 
 #[test]
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
-    let fitted_parameters = build_endogenous_mean_reversion_parameters();
+    let fitted_parameters = build_mean_reversion_parameters();
 
     let serialized = serde_json::to_value(&fitted_parameters)
         .expect("mean reversion fitted parameters should serialize");
 
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
-    assert_eq!(
-        serialized["anchor_model"],
-        serde_json::json!({
-            "reference_interval_hours": 24.0,
-            "pressure_persistence_per_reference_interval": 0.5,
-            "pressure_level_gain": 0.75,
-        })
-    );
 
     let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
         .expect("mean reversion fitted parameters should deserialize");
@@ -47,10 +38,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
 
 #[test]
 fn mean_reversion_fitted_parameters_reject_negative_kappa() {
-    let fitted_parameters = MeanReversionFittedParameters {
-        kappa: -0.01,
-        anchor_model: MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
-    };
+    let fitted_parameters = MeanReversionFittedParameters { kappa: -0.01 };
 
     let error = fitted_parameters
         .validate()
@@ -64,30 +52,11 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 }
 
 #[test]
-fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
-    let anchor_model = serde_json::from_value::<MeanReversionAnchorModel>(serde_json::json!({
-        "reference_interval_hours": 24.0,
-        "pressure_persistence_per_reference_interval": 0.5,
-        "pressure_level_gain": 1.0,
-        "anchor_value": 0.0,
-    }))
-    .expect_err("endogenous mean-reversion anchor must reject exogenous values");
-
-    assert!(
-        anchor_model
-            .to_string()
-            .contains("unknown field `anchor_value`")
-    );
-}
-
-#[test]
 fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
     let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
         "explicit_runtime_interval_grid_alignment.v1",
         4.2,
-        0.3,
         vec![4.1, 4.0],
-        vec![0.2, 0.1],
         vec![1.0, 1.0],
     )
     .expect("runtime interval anchors should validate");
@@ -166,7 +135,7 @@ fn mean_reversion_series_summary_compacts_diagnostic_values() {
 
 #[test]
 fn mean_reversion_boundary_state_rejects_invariant_drift() {
-    let error = MeanReversionBoundaryState::try_new(5.0, 1.5, 0.0, 3.7)
+    let error = MeanReversionBoundaryState::try_new(5.0, 1.5, 3.7)
         .expect_err("boundary state must reject deviation drift");
 
     assert!(
@@ -207,7 +176,7 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
         stage_solver_settings_for_stage(&run_contract.run_spec, CalibrationStage::MeanReversion)
             .expect("mean-reversion solver settings should exist");
 
-    let fitted_parameters = build_endogenous_mean_reversion_parameters();
+    let fitted_parameters = build_mean_reversion_parameters();
 
     let calibration_grid = MeanReversionStageCalibrationGrid {
         calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
@@ -218,48 +187,39 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
     };
 
     let candidate_diagnostics = MeanReversionStageCandidateDiagnostics {
-        candidate_family: "endogenous_core_pressure_level_mean_reversion".to_string(),
-        anchor_model: fitted_parameters.anchor_model.clone(),
+        candidate_family: "temporary_observed_level_mean_reversion".to_string(),
         anchor_origin_level: Some(4.2),
         phi_reference: 0.85,
         kappa: fitted_parameters.kappa,
         residual_sum_of_squares: 0.2,
         quasi_log_likelihood: Some(-1.5),
         information_criterion_bic: Some(5.0),
-        parameter_count: 4,
+        parameter_count: 2,
         least_squares_rank: 2,
         deviation_sample_count: 4,
         regression_pair_count: 3,
         series_summaries: MeanReversionStageCandidateSeriesDiagnostics {
-            core_expected_increments: MeanReversionStageSeriesSummary::from_values(&[
-                0.1, 0.1, 0.1,
-            ]),
-            pressure_state_path: MeanReversionStageSeriesSummary::from_values(&[
-                0.0, 0.1, 0.15, 0.175,
-            ]),
             boundary_anchor_values: MeanReversionStageSeriesSummary::from_values(&[
                 4.2, 4.3, 4.4, 4.5,
             ]),
             deviations: MeanReversionStageSeriesSummary::from_values(&[0.0, -0.1, -0.2, -0.3]),
             residuals: MeanReversionStageSeriesSummary::from_values(&[-0.1, -0.115, -0.13]),
         },
-        predictive_evidence: None,
-        stage_decision_reason: "endogenous_core_pressure_level_stage_contract_roundtrip_fixture.v1"
+        stage_decision_reason: "temporary_observed_level_stage_contract_roundtrip_fixture.v1"
             .to_string(),
     };
 
     let diagnostics = MeanReversionStageDiagnostics {
-        selected_candidate_family: "endogenous_core_pressure_level_mean_reversion".to_string(),
+        selected_candidate_family: "temporary_observed_level_mean_reversion".to_string(),
         calibration_grid: calibration_grid.clone(),
-        anchor_parameter_estimates: fitted_parameters.anchor_model.clone(),
         anchor_origin_level: Some(4.2),
         phi_reference: 0.85,
         kappa: fitted_parameters.kappa,
         residual_sum_of_squares: 0.2,
         quasi_log_likelihood: Some(-1.5),
         information_criterion_bic: Some(5.0),
-        model_selection_policy:
-            "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1".to_string(),
+        model_selection_policy: "gaussian_quasi_likelihood_bic_mean_reversion_model_selection.v1"
+            .to_string(),
         deviation_sample_count: 4,
         regression_pair_count: 3,
         least_squares_rank: 2,
@@ -267,10 +227,10 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
         evaluated_grids: vec![MeanReversionStageGridDiagnostics {
             calibration_grid,
             evaluated_candidates: vec![candidate_diagnostics],
-            stage_decision_reason:
-                "endogenous_core_pressure_level_stage_contract_roundtrip_fixture.v1".to_string(),
+            stage_decision_reason: "temporary_observed_level_stage_contract_roundtrip_fixture.v1"
+                .to_string(),
         }],
-        stage_decision_reason: "endogenous_core_pressure_level_stage_contract_roundtrip_fixture.v1"
+        stage_decision_reason: "temporary_observed_level_stage_contract_roundtrip_fixture.v1"
             .to_string(),
     };
 
@@ -289,7 +249,7 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
                         .to_string(),
                 solver_settings,
             },
-            fitted_parameters: fitted_parameters.clone(),
+            fitted_parameters,
             diagnostics,
             return_components_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
             return_components_selected_candidate_id: Some("return_candidate_balanced".to_string()),

@@ -545,10 +545,10 @@ mod tests {
                 y_minus_minus: 4.0,
             },
             long_variance_state: janiform::model::long_variance::LongVarianceState::unit(),
+            market_pressure_state: janiform::model::market_pressure::MarketPressureState::neutral(),
             mean_reversion_boundary_state: janiform::simulation::MeanReversionBoundaryState {
                 observed_log_price: 0.02,
                 anchor_value: 0.015,
-                pressure_state: 0.1,
                 deviation: 0.005,
             },
         }

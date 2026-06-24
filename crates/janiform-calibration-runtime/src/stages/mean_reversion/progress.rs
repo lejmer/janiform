@@ -7,7 +7,6 @@ use crate::stages::progress::StageProgressUpdate;
 pub enum MeanReversionStageProgressPhase {
     InputPreflight,
     GridEvaluation,
-    PredictiveEvidence,
     CandidateSelection,
     ReportAssembly,
 }

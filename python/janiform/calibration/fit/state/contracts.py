@@ -10,6 +10,7 @@ from typing import Any, Optional
 import pandas
 
 from ...._timestamps import utc_nanos_to_datetime
+from ....market_pressure import MarketPressureState
 from ....contracts import ContractModel
 from ....contracts.base import (
     require_mapping,
@@ -81,6 +82,7 @@ class CurrentStateEstimationResult(ContractModel):
     hawkes_excitation_state: HawkesExcitationState
     long_variance_state: LongVarianceState
     mean_reversion_boundary_state: MeanReversionBoundaryState
+    market_pressure_state: MarketPressureState
 
     def __post_init__(self) -> None:
         if not isinstance(self.hawkes_excitation_state, HawkesExcitationState):
@@ -99,6 +101,12 @@ class CurrentStateEstimationResult(ContractModel):
             raise calibration_error(
                 "mean_reversion_boundary_state",
                 "must be a MeanReversionBoundaryState",
+            )
+
+        if not isinstance(self.market_pressure_state, MarketPressureState):
+            raise calibration_error(
+                "market_pressure_state",
+                "must be an MarketPressureState",
             )
 
     @staticmethod
@@ -127,6 +135,10 @@ class CurrentStateEstimationResult(ContractModel):
             mean_reversion_boundary_state=MeanReversionBoundaryState.from_mapping(
                 payload.get("mean_reversion_boundary_state"),
                 field_path=f"{field_path}.mean_reversion_boundary_state",
+            ),
+            market_pressure_state=MarketPressureState.from_mapping(
+                payload.get("market_pressure_state"),
+                field_path=f"{field_path}.market_pressure_state",
             ),
         )
 

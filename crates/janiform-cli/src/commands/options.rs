@@ -31,8 +31,6 @@ pub(crate) enum CalibrationStageOption {
     Seasonality,
     #[value(help = "Resume from the Hawkes activity stage.")]
     Hawkes,
-    #[value(help = "Resume from the observation-model stage.")]
-    ObservationModels,
     #[value(help = "Resume from the return-component stage.")]
     ReturnComponents,
     #[value(help = "Resume from the long-variance stage.")]

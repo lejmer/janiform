@@ -10,6 +10,7 @@ from ....._native_progress import native_terminal_progress_mode
 from ....._workflow_outputs import generate_workflow_run_id
 from ....._workflow_progress import WorkflowProgressMode, resolve_workflow_progress_mode
 from .....long_variance import LongVarianceState
+from .....market_pressure import MarketPressureState
 from .....pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     PricingIntervalSchedule,
@@ -51,6 +52,7 @@ from .support import (
 from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
 from ..payloads import (
     mean_reversion_fitted_parameters_for_model,
+    neutral_market_pressure_state_for_parameters,
     prepare_model_runtime_factors_for_model,
 )
 from ..shared import PreparedModelPricingRuntimeInput
@@ -340,6 +342,9 @@ def prepare_model_pricing_execution_input(
                 hawkes_boundary_state=runtime_input.effective_boundary_state,
                 long_variance_boundary_state=runtime_input.effective_long_variance_state,
                 mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+                market_pressure_boundary_state=(
+                    runtime_input.effective_market_pressure_state
+                ),
                 interval_delta=finalized_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
                 observed_boundary_state=runtime_input.effective_observed_boundary_state,
             ),
@@ -400,6 +405,9 @@ def prepare_model_pricing_runtime_input(
     if boundary_state is not None:
         effective_boundary_state = boundary_state
         effective_long_variance_state = LongVarianceState.unit()
+        effective_market_pressure_state = neutral_market_pressure_state_for_parameters(
+            runtime_factors.market_pressure_parameters
+        )
 
         (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
             model,
@@ -420,9 +428,13 @@ def prepare_model_pricing_runtime_input(
             effective_boundary_state = pricing_state.hawkes_excitation_state
             effective_long_variance_state = pricing_state.long_variance_state
             effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
+            effective_market_pressure_state = pricing_state.market_pressure_state
         else:
             effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
             effective_long_variance_state = LongVarianceState.unit()
+            effective_market_pressure_state = neutral_market_pressure_state_for_parameters(
+                runtime_factors.market_pressure_parameters
+            )
 
             (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
                 model,
@@ -438,6 +450,7 @@ def prepare_model_pricing_runtime_input(
         effective_boundary_state=effective_boundary_state,
         effective_long_variance_state=effective_long_variance_state,
         effective_observed_boundary_state=effective_observed_boundary_state,
+        effective_market_pressure_state=effective_market_pressure_state,
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         model_parameters=VanillaOptionPricingModelParameters(
             hawkes_kernel_parameters=runtime_factors.kernel_parameters,
@@ -445,6 +458,7 @@ def prepare_model_pricing_runtime_input(
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
             return_clock_exposure_parameters=runtime_factors.return_clock_exposure_parameters,
             long_variance_parameters=runtime_factors.long_variance_parameters,
+            market_pressure_parameters=runtime_factors.market_pressure_parameters,
             pricing_kernel_parameters=runtime_factors.pricing_kernel_parameters,
         ),
     )
@@ -522,6 +536,7 @@ def prepare_model_grid_batch_pricing_native_input(
             hawkes_boundary_state=runtime_input.effective_boundary_state,
             long_variance_boundary_state=runtime_input.effective_long_variance_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+            market_pressure_boundary_state=runtime_input.effective_market_pressure_state,
             interval_delta=finalized_runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
         ).to_payload(),
@@ -593,6 +608,7 @@ def prepare_model_surface_pricing_native_input(
             hawkes_boundary_state=runtime_input.effective_boundary_state,
             long_variance_boundary_state=runtime_input.effective_long_variance_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+            market_pressure_boundary_state=runtime_input.effective_market_pressure_state,
             interval_delta=finalized_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
         ).to_payload(),

@@ -93,13 +93,14 @@ pub(super) fn prepare_observed_snapshots(
                 .fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
-            // Intentional copy because the batch estimator owns validated
-            // fitted parameters while the workflow context remains reusable.
             mean_reversion_fitted_parameters: context
                 .fitted_parameters
                 .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .clone(),
+                .mean_reversion_fitted_parameters,
+            market_pressure_parameters: context
+                .fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters,
             reference_price,
             state_times_utc_nanos: valuation_times,
             observation_timestamp_utc_nanos: tick_state_columns.timestamp_utc_nanos,

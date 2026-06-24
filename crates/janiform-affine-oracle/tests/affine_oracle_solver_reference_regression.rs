@@ -211,22 +211,26 @@ fn affine_oracle_solver_runs_are_deterministic_for_fixed_reference_cases() {
             .solver_settings
             .to_core(&fixture_case.fixture_id);
 
-        let first_result =
-            solve_exponential_affine_transform_with_settings(fixture_case.input, solver_settings)
-                .unwrap_or_else(|source| {
-                    panic!(
-                        "fixture {} ({}) first solve failed: {}",
-                        fixture_case.fixture_id, fixture_case.description, source
-                    )
-                });
-        let second_result =
-            solve_exponential_affine_transform_with_settings(fixture_case.input, solver_settings)
-                .unwrap_or_else(|source| {
-                    panic!(
-                        "fixture {} ({}) second solve failed: {}",
-                        fixture_case.fixture_id, fixture_case.description, source
-                    )
-                });
+        let first_result = solve_exponential_affine_transform_with_settings(
+            fixture_case.input.clone(),
+            solver_settings,
+        )
+        .unwrap_or_else(|source| {
+            panic!(
+                "fixture {} ({}) first solve failed: {}",
+                fixture_case.fixture_id, fixture_case.description, source
+            )
+        });
+        let second_result = solve_exponential_affine_transform_with_settings(
+            fixture_case.input.clone(),
+            solver_settings,
+        )
+        .unwrap_or_else(|source| {
+            panic!(
+                "fixture {} ({}) second solve failed: {}",
+                fixture_case.fixture_id, fixture_case.description, source
+            )
+        });
 
         assert_eq!(
             first_result, second_result,
@@ -251,14 +255,16 @@ fn affine_oracle_reference_cases_match_expected_outputs_within_tolerance() {
         let solver_settings = fixture_case
             .solver_settings
             .to_core(&fixture_case.fixture_id);
-        let observed_result =
-            solve_exponential_affine_transform_with_settings(fixture_case.input, solver_settings)
-                .unwrap_or_else(|source| {
-                    panic!(
-                        "fixture {} ({}) solve failed: {}",
-                        fixture_case.fixture_id, fixture_case.description, source
-                    )
-                });
+        let observed_result = solve_exponential_affine_transform_with_settings(
+            fixture_case.input.clone(),
+            solver_settings,
+        )
+        .unwrap_or_else(|source| {
+            panic!(
+                "fixture {} ({}) solve failed: {}",
+                fixture_case.fixture_id, fixture_case.description, source
+            )
+        });
 
         assert_eq!(
             observed_result.status,
@@ -368,14 +374,16 @@ fn print_reference_outputs_for_fixture_update() {
         let solver_settings = fixture_case
             .solver_settings
             .to_core(&fixture_case.fixture_id);
-        let observed_result =
-            solve_exponential_affine_transform_with_settings(fixture_case.input, solver_settings)
-                .unwrap_or_else(|source| {
-                    panic!(
-                        "fixture {} ({}) solve failed: {}",
-                        fixture_case.fixture_id, fixture_case.description, source
-                    )
-                });
+        let observed_result = solve_exponential_affine_transform_with_settings(
+            fixture_case.input.clone(),
+            solver_settings,
+        )
+        .unwrap_or_else(|source| {
+            panic!(
+                "fixture {} ({}) solve failed: {}",
+                fixture_case.fixture_id, fixture_case.description, source
+            )
+        });
 
         let observed_output = observed_result.output.unwrap_or_else(|| {
             panic!(

@@ -6,7 +6,6 @@ use super::known_news_samples::{
 };
 use super::shared::{
     BTreeMap, CalibrationMeanReversionStageObservation,
-    CalibrationObservationModelsOpenSessionTimestampTransition,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -21,10 +20,12 @@ use super::shared::{
     ResolvedKnownNewsRecord, TradeSign, Tz, fit_shared_news_mark_law_from_shock_samples,
     median_abs, round_to,
 };
-use janiform_calibration_artifacts::TickGridObservationModel;
+use janiform_calibration_artifacts::PriceDiscretizationSurface;
 use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::return_clock::ReturnClockExposureParameters;
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::{
+    TIMESTAMP_BATCHING_INFERRED_BUCKET_SOURCE, TimestampBatchingSurface,
+};
 
 const TICK_GRID_OBSERVATION_POLICY: &str = "nearest_reference_price_normalized_cumulative_latent_price_rounding_preserves_sub_tick_residuals.v1";
 const TICK_SIZE_INFERENCE_POLICY: &str =
@@ -75,11 +76,12 @@ pub(super) fn build_return_components_candidate_generation_input(
         open_price_tick_timestamps.as_slice(),
     );
 
-    let tick_grid_observation_model = tick_grid_observation_model(
+    let price_discretization_surface = price_discretization_surface(
         open_price_ticks,
         reference_price,
         return_components_settings.tick_size,
     )?;
+    let timestamp_batching_surface = timestamp_batching_surface(open_price_ticks)?;
 
     let close_open_boundary_observations = derive_close_open_boundary_observations(
         definition,
@@ -160,8 +162,8 @@ pub(super) fn build_return_components_candidate_generation_input(
         open_session_sell_share_proxy: round_to(open_tick_sell_share, 6),
         shared_mark_law_template,
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
-        tick_grid_observation_model,
-        timestamp_batching_observation_model: TimestampBatchingObservationModel::disabled(),
+        price_discretization_surface,
+        timestamp_batching_surface,
         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             surprise_arrival_fit_weight: 1.0,
@@ -280,11 +282,11 @@ pub(super) fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> 
     same_session_returns
 }
 
-fn tick_grid_observation_model(
+fn price_discretization_surface(
     open_price_ticks: &[OpenTickRecord],
     reference_price: Option<f64>,
     provided_tick_size: Option<f64>,
-) -> Result<TickGridObservationModel, MarketDataTranslationCalibrationError> {
+) -> Result<PriceDiscretizationSurface, MarketDataTranslationCalibrationError> {
     let (tick_size, tick_size_source) = match provided_tick_size {
         Some(tick_size) => (
             Some(reference_price_normalized_tick_size(
@@ -305,7 +307,7 @@ fn tick_grid_observation_model(
         },
     };
 
-    Ok(TickGridObservationModel {
+    Ok(PriceDiscretizationSurface {
         tick_size,
         tick_size_source: tick_size_source.to_string(),
         inference_policy: TICK_SIZE_INFERENCE_POLICY.to_string(),
@@ -353,23 +355,91 @@ pub(super) fn infer_tick_size_from_open_prices(open_price_ticks: &[OpenTickRecor
         .min_by(f64::total_cmp)
 }
 
-pub(super) fn derive_observation_models_open_session_timestamp_transitions(
+pub(super) fn timestamp_batching_surface(
     open_price_ticks: &[OpenTickRecord],
-) -> Vec<CalibrationObservationModelsOpenSessionTimestampTransition> {
-    open_price_ticks
-        .iter()
-        .zip(open_price_ticks.iter().skip(1))
-        .filter(|(previous_tick, current_tick)| {
-            previous_tick.session_open_utc_nanos == current_tick.session_open_utc_nanos
-                && previous_tick.session_close_utc_nanos == current_tick.session_close_utc_nanos
-        })
-        .map(|(previous_tick, current_tick)| {
-            CalibrationObservationModelsOpenSessionTimestampTransition {
-                previous_timestamp_utc_nanos: previous_tick.timestamp_utc_nanos,
-                current_timestamp_utc_nanos: current_tick.timestamp_utc_nanos,
+) -> Result<TimestampBatchingSurface, MarketDataTranslationCalibrationError> {
+    let fit = timestamp_batching_surface_fit(open_price_ticks);
+
+    if fit.same_timestamp_continuation_count == 0 {
+        return Ok(TimestampBatchingSurface::disabled());
+    }
+
+    let Some(bucket_width_nanos) = fit.positive_timestamp_quantum_nanos else {
+        return Ok(TimestampBatchingSurface::disabled());
+    };
+
+    TimestampBatchingSurface::fixed_bucket_floor(
+        bucket_width_nanos,
+        TIMESTAMP_BATCHING_INFERRED_BUCKET_SOURCE,
+        fit.same_timestamp_continuation_count,
+        fit.same_session_observation_transition_count,
+    )
+    .map_err(
+        |source| MarketDataTranslationCalibrationError::InvalidTimestampBatchingSurface {
+            error_message: source.to_string(),
+        },
+    )
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TimestampBatchingSurfaceFit {
+    positive_timestamp_quantum_nanos: Option<i64>,
+    same_timestamp_continuation_count: u64,
+    same_session_observation_transition_count: u64,
+}
+
+fn timestamp_batching_surface_fit(
+    open_price_ticks: &[OpenTickRecord],
+) -> TimestampBatchingSurfaceFit {
+    let mut fit = TimestampBatchingSurfaceFit::default();
+
+    for (previous_tick, current_tick) in
+        open_price_ticks.iter().zip(open_price_ticks.iter().skip(1))
+    {
+        if previous_tick.session_open_utc_nanos != current_tick.session_open_utc_nanos
+            || previous_tick.session_close_utc_nanos != current_tick.session_close_utc_nanos
+        {
+            continue;
+        }
+
+        let timestamp_delta_nanos =
+            current_tick.timestamp_utc_nanos - previous_tick.timestamp_utc_nanos;
+
+        if timestamp_delta_nanos < 0 {
+            continue;
+        }
+
+        fit.same_session_observation_transition_count = fit
+            .same_session_observation_transition_count
+            .saturating_add(1);
+
+        if timestamp_delta_nanos == 0 {
+            fit.same_timestamp_continuation_count =
+                fit.same_timestamp_continuation_count.saturating_add(1);
+
+            continue;
+        }
+
+        fit.positive_timestamp_quantum_nanos = Some(match fit.positive_timestamp_quantum_nanos {
+            Some(current_quantum_nanos) => {
+                gcd_positive_i64(current_quantum_nanos, timestamp_delta_nanos)
             }
-        })
-        .collect()
+            None => timestamp_delta_nanos,
+        });
+    }
+
+    fit
+}
+
+fn gcd_positive_i64(mut left_value: i64, mut right_value: i64) -> i64 {
+    while right_value != 0 {
+        let remainder = left_value % right_value;
+
+        left_value = right_value;
+        right_value = remainder;
+    }
+
+    left_value
 }
 
 pub(super) fn derive_shared_mark_law_template(

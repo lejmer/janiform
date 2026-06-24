@@ -101,25 +101,26 @@ pub(crate) use janiform_calibration_artifacts::{
     CalibrationValidationMetricSourceKind, CalibrationValidationMetricStageOutputLink,
     CalibrationValidationMetricStatus, CalibrationValidationMetricThresholdMetadata,
     CalibrationValidationObservedValue, HawkesStageFittedParameters,
-    HawkesStageParameterArtifactInput, HawkesStageParameterPayload, JointRefinementStageCarryInput,
+    HawkesStageParameterArtifactInput, HawkesStageParameterPayload,
+    JointRefinementStageCandidateDiagnostics, JointRefinementStageCarryInput,
     JointRefinementStageFittedParameters, JointRefinementStageLabeledCount,
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     JointRefinementStageOptionAggregateDiagnostic,
     JointRefinementStageOptionCalibrationDiagnostics, JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionSnapshotMetadata, JointRefinementStageParameterArtifactInput,
     JointRefinementStageParameterPayload, JointRefinementStagePricingBlockFittedParameters,
-    JointRefinementStageRestartDiagnostics, JointRefinementStageRuntimeProfile,
-    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
-    MeanReversionStageCandidateSeriesDiagnostics, MeanReversionStageDiagnostics,
-    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
-    MeanReversionStageParameterPayload, MeanReversionStageSeriesSummary,
+    JointRefinementStageRuntimeProfile, MeanReversionStageCalibrationGrid,
+    MeanReversionStageCandidateDiagnostics, MeanReversionStageCandidateSeriesDiagnostics,
+    MeanReversionStageDiagnostics, MeanReversionStageGridDiagnostics,
+    MeanReversionStageParameterArtifactInput, MeanReversionStageParameterPayload,
+    MeanReversionStageSeriesSummary, PriceDiscretizationSurface,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageParameterArtifactInput,
     ReturnComponentsStageParameterPayload, SeasonalityStageParameterArtifactInput,
     SeasonalityStageParameterPayload, SurpriseNewsDeterministicIntensityProfile,
-    TickGridObservationModel, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
-    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
-    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    build_calibration_stage_parameter_artifact, calibration_artifact_manifest_path,
+    calibration_artifact_manifest_reference, calibration_checkpoint_run_directory,
+    calibration_committed_artifact_run_directory,
     calibration_committed_artifact_runs_root_directory, calibration_dataset_snapshot_artifact_path,
     calibration_dataset_snapshot_artifact_reference, calibration_experiment_index_path,
     calibration_experiment_index_path_for_root, calibration_experiment_index_root_directory,
@@ -154,9 +155,9 @@ use janiform_market_time::business_time_clock::{
     FOURIER_BUSINESS_TIME_CLOCK_NORMALIZATION_POLICY, FOURIER_BUSINESS_TIME_CLOCK_SELECTION_POLICY,
     FourierBusinessTimeClockModel, zero_order_harmonic_series_by_axis,
 };
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 pub(crate) use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
 use janiform_model_kernels::news::{
     KnownNewsArrivalConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
@@ -313,12 +314,9 @@ pub(crate) fn build_valid_run_spec_with_mode(
     .expect("run spec should validate")
 }
 
-pub(crate) fn build_endogenous_mean_reversion_parameters() -> MeanReversionFittedParameters {
-    MeanReversionFittedParameters::try_new(
-        0.25,
-        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 0.75),
-    )
-    .expect("mean reversion fitted parameters should validate")
+pub(crate) fn build_mean_reversion_parameters() -> MeanReversionFittedParameters {
+    MeanReversionFittedParameters::try_new(0.25)
+        .expect("mean reversion fitted parameters should validate")
 }
 
 pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
@@ -783,17 +781,17 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
         },
         return_clock_exposure_parameters: ReturnClockExposureParameters::neutral(),
         long_variance_parameters: janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
-        tick_grid_observation_model: TickGridObservationModel {
+        market_pressure_parameters: MarketPressureParameters::no_anchor_impact(),
+        price_discretization_surface: PriceDiscretizationSurface {
             tick_size: None,
             tick_size_source: "test".to_string(),
             inference_policy: "test".to_string(),
             observation_policy: "test".to_string(),
         },
-        timestamp_batching_observation_model:
-            janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel::disabled(
+        timestamp_batching_surface:
+            janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface::disabled(
             ),
-        mean_reversion_fitted_parameters:
-            build_endogenous_mean_reversion_parameters(),
+        mean_reversion_fitted_parameters: build_mean_reversion_parameters(),
     };
 
     build_calibration_stage_parameter_artifact(
@@ -813,7 +811,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 random_seed: stage_seed_metadata.stage_seed,
                 selection_policy:
                     "validity_then_weighted_objective_then_lexicographic_tie_break.v1".to_string(),
-                penalty_policy: "hard_constraint_violation_additive_penalty.v1".to_string(),
+                penalty_policy: "domain_margin_violation_additive_penalty.v1".to_string(),
                 bounds_policy: "candidate_family_cartesian_product.v1".to_string(),
                 solver_settings: solver_settings.clone(),
                 input_candidate_count: 12,
@@ -822,6 +820,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 selected_candidate_penalized_objective: 1.25,
             },
             selected_candidate_id: "return_candidate_balanced".to_string(),
+            source_window_open_exposure_hours: 1.0,
             fitted_parameters,
             candidate_generation_policy:
                 "return_components.candidate_generation.layered_family_search.v1".to_string(),

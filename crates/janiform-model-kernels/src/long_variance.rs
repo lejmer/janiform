@@ -11,6 +11,11 @@ use crate::hawkes::{
     HawkesEventSide, HawkesKernelParameters, HawkesStationaryIntensityMultipliers,
     HawkesStationaryIntensityRates, HawkesStationaryTargetSourceRates, stationary_intensity_rates,
 };
+use crate::nig::NigBuySellDriverParameters;
+use crate::return_clock::{
+    IntegratedSideActivityDecomposition, ReturnClockExposureParameters,
+    compute_effective_return_clocks,
+};
 
 // With zero diffusion and zero event loadings, unit initial state remains fixed for any
 // positive mean-reversion rate. The neutral contract uses one inverse hour as its valid
@@ -23,6 +28,8 @@ const NEUTRAL_LONG_VARIANCE_MEAN_REVERSION_RATE: f64 = 1.0;
 pub struct LongVarianceParameters {
     pub mean_reversion_rate: f64,
     pub vol_of_vol: f64,
+    pub stationary_return_energy_rate_per_hour: f64,
+    pub return_energy_loading: f64,
     pub buy_event_loading: f64,
     pub sell_event_loading: f64,
 }
@@ -33,6 +40,8 @@ impl LongVarianceParameters {
         Self {
             mean_reversion_rate: NEUTRAL_LONG_VARIANCE_MEAN_REVERSION_RATE,
             vol_of_vol: 0.0,
+            stationary_return_energy_rate_per_hour: 0.0,
+            return_energy_loading: 0.0,
             buy_event_loading: 0.0,
             sell_event_loading: 0.0,
         }
@@ -42,12 +51,16 @@ impl LongVarianceParameters {
     pub const fn new(
         mean_reversion_rate: f64,
         vol_of_vol: f64,
+        stationary_return_energy_rate_per_hour: f64,
+        return_energy_loading: f64,
         buy_event_loading: f64,
         sell_event_loading: f64,
     ) -> Self {
         Self {
             mean_reversion_rate,
             vol_of_vol,
+            stationary_return_energy_rate_per_hour,
+            return_energy_loading,
             buy_event_loading,
             sell_event_loading,
         }
@@ -57,12 +70,16 @@ impl LongVarianceParameters {
     pub fn try_new(
         mean_reversion_rate: f64,
         vol_of_vol: f64,
+        stationary_return_energy_rate_per_hour: f64,
+        return_energy_loading: f64,
         buy_event_loading: f64,
         sell_event_loading: f64,
     ) -> Result<Self, LongVarianceParametersError> {
         let parameters = Self::new(
             mean_reversion_rate,
             vol_of_vol,
+            stationary_return_energy_rate_per_hour,
+            return_energy_loading,
             buy_event_loading,
             sell_event_loading,
         );
@@ -86,6 +103,24 @@ impl LongVarianceParameters {
                 source,
             }
         })?;
+
+        validate_non_negative_number(
+            self.stationary_return_energy_rate_per_hour,
+            "stationary_return_energy_rate_per_hour",
+        )
+        .map_err(
+            |source| LongVarianceParametersError::InvalidNonNegativeParameter {
+                field: "stationary_return_energy_rate_per_hour",
+                source,
+            },
+        )?;
+
+        validate_non_negative_number(self.return_energy_loading, "return_energy_loading").map_err(
+            |source| LongVarianceParametersError::InvalidNonNegativeParameter {
+                field: "return_energy_loading",
+                source,
+            },
+        )?;
 
         validate_non_negative_number(self.buy_event_loading, "buy_event_loading").map_err(
             |source| LongVarianceParametersError::InvalidNonNegativeParameter {
@@ -138,10 +173,10 @@ impl LongVarianceParameters {
             },
         )?;
 
-        let event_loading_drift = self.buy_event_loading * stationary_buy_rate
-            + self.sell_event_loading * stationary_sell_rate;
+        let feedback_loading_drift =
+            self.stationary_feedback_loading_drift(stationary_buy_rate, stationary_sell_rate);
 
-        let level = 1.0 - event_loading_drift / self.mean_reversion_rate;
+        let level = 1.0 - feedback_loading_drift / self.mean_reversion_rate;
 
         validate_positive_number(level, "stationary_mean_reversion_level").map_err(|source| {
             LongVarianceStationaryLevelError::InvalidDerivedMeanReversionLevel { source }
@@ -181,11 +216,12 @@ impl LongVarianceParameters {
             }
         })?;
 
-        let event_loading_drift = self.buy_event_loading
-            * stationary_intensity_rates.buy_event_rate_per_hour
-            + self.sell_event_loading * stationary_intensity_rates.sell_event_rate_per_hour;
+        let feedback_loading_drift = self.stationary_feedback_loading_drift(
+            stationary_intensity_rates.buy_event_rate_per_hour,
+            stationary_intensity_rates.sell_event_rate_per_hour,
+        );
 
-        let level = 1.0 - event_loading_drift / self.mean_reversion_rate;
+        let level = 1.0 - feedback_loading_drift / self.mean_reversion_rate;
 
         validate_positive_number(level, "stationary_mean_reversion_level").map_err(|source| {
             LongVarianceStationaryLevelError::InvalidDerivedMeanReversionLevel { source }
@@ -215,6 +251,16 @@ impl LongVarianceParameters {
                 LongVarianceStationaryLevelForHawkesKernelError::InvalidStationaryLevel { source }
             })
     }
+
+    fn stationary_feedback_loading_drift(
+        self,
+        stationary_buy_event_rate_per_hour: f64,
+        stationary_sell_event_rate_per_hour: f64,
+    ) -> f64 {
+        self.buy_event_loading * stationary_buy_event_rate_per_hour
+            + self.sell_event_loading * stationary_sell_event_rate_per_hour
+            + self.return_energy_loading * self.stationary_return_energy_rate_per_hour
+    }
 }
 
 /// Boundary state for the physical long-variance factor.
@@ -222,6 +268,72 @@ impl LongVarianceParameters {
 #[serde(deny_unknown_fields)]
 pub struct LongVarianceState {
     pub level: f64,
+}
+
+/// Convert a realized log-return increment into return-energy feedback input.
+pub fn return_energy_increment_from_log_return(
+    log_return: f64,
+) -> Result<f64, LongVarianceStateTransitionError> {
+    let return_energy_increment = log_return * log_return;
+
+    validate_non_negative_number(return_energy_increment, "return_energy_increment").map_err(
+        |source| LongVarianceStateTransitionError::InvalidReturnEnergyIncrement { source },
+    )?;
+
+    Ok(return_energy_increment)
+}
+
+/// Compute the stationary generated return-energy rate for the fitted return generator.
+pub fn stationary_return_energy_rate_per_hour_from_return_generator(
+    kernel_parameters: HawkesKernelParameters,
+    exogenous_source_rates: HawkesStationaryTargetSourceRates,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
+    driver_parameters: NigBuySellDriverParameters,
+) -> Option<f64> {
+    let stationary_event_rates = stationary_intensity_rates(
+        kernel_parameters.alpha,
+        kernel_parameters.beta,
+        kernel_parameters.lambda_bar,
+        exogenous_source_rates,
+    )?;
+
+    let buy_endogenous_activity =
+        stationary_event_rates.buy_event_rate_per_hour - kernel_parameters.lambda_bar;
+    let sell_endogenous_activity =
+        stationary_event_rates.sell_event_rate_per_hour - kernel_parameters.lambda_bar;
+
+    let buy_activity = IntegratedSideActivityDecomposition::try_new(
+        kernel_parameters.lambda_bar,
+        buy_endogenous_activity,
+    )
+    .ok()?;
+
+    let sell_activity = IntegratedSideActivityDecomposition::try_new(
+        kernel_parameters.lambda_bar,
+        sell_endogenous_activity,
+    )
+    .ok()?;
+
+    let return_clocks = compute_effective_return_clocks(
+        return_clock_exposure_parameters,
+        buy_activity,
+        sell_activity,
+    )
+    .ok()?;
+
+    let buy_variance = driver_parameters
+        .buy_side_parameters
+        .variance_per_unit_time()?;
+    let sell_variance = driver_parameters
+        .sell_side_parameters
+        .variance_per_unit_time()?;
+
+    let return_energy_rate = return_clocks.buy_return_clock.mul_add(
+        buy_variance,
+        return_clocks.sell_return_clock * sell_variance,
+    );
+
+    (return_energy_rate.is_finite() && return_energy_rate >= 0.0).then_some(return_energy_rate)
 }
 
 impl LongVarianceState {
@@ -360,6 +472,30 @@ impl LongVarianceState {
         Self::try_new(self.level + loading)
             .map_err(|source| LongVarianceStateTransitionError::InvalidTransitionState { source })
     }
+
+    /// Apply the uncompensated long-variance jump from realized return-trading-time energy.
+    pub fn apply_return_energy_jump(
+        self,
+        parameters: LongVarianceParameters,
+        return_energy_increment: f64,
+    ) -> Result<Self, LongVarianceStateTransitionError> {
+        self.validate()
+            .map_err(|source| LongVarianceStateTransitionError::InvalidInitialState { source })?;
+
+        parameters.validate().map_err(|source| {
+            LongVarianceStateTransitionError::InvalidLongVarianceParameters { source }
+        })?;
+
+        validate_non_negative_number(return_energy_increment, "return_energy_increment").map_err(
+            |source| LongVarianceStateTransitionError::InvalidReturnEnergyIncrement { source },
+        )?;
+
+        let transition_level =
+            self.level + parameters.return_energy_loading * return_energy_increment;
+
+        Self::try_new(transition_level)
+            .map_err(|source| LongVarianceStateTransitionError::InvalidTransitionState { source })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -436,6 +572,9 @@ pub enum LongVarianceStateTransitionError {
     NegativeElapsedHours {
         value: f64,
     },
+    InvalidReturnEnergyIncrement {
+        source: janiform_foundations::numeric::NonNegativeNumberValidationError,
+    },
     InvalidBaselineClockScale {
         source: janiform_foundations::numeric::PositiveNumberValidationError,
     },
@@ -466,6 +605,9 @@ impl Display for LongVarianceStateTransitionError {
             Self::NegativeElapsedHours { value } => {
                 write!(formatter, "delta_hours must be non-negative, found {value}")
             }
+            Self::InvalidReturnEnergyIncrement { source } => {
+                write!(formatter, "return_energy_increment is invalid: {source}")
+            }
             Self::InvalidBaselineClockScale { source } => {
                 write!(formatter, "baseline_clock_scale is invalid: {source}")
             }
@@ -486,6 +628,7 @@ impl Error for LongVarianceStateTransitionError {
             Self::InvalidLongVarianceParameters { source } => Some(source),
             Self::InvalidStationaryMeanReversionLevel { source } => Some(source),
             Self::InvalidElapsedHours { source } => Some(source),
+            Self::InvalidReturnEnergyIncrement { source } => Some(source),
             Self::InvalidBaselineClockScale { source } => Some(source),
             Self::InvalidTransitionState { source } => Some(source),
             Self::NegativeElapsedHours { .. } => None,
@@ -579,13 +722,19 @@ mod tests {
         HawkesEventSide, HawkesKernelLoadings, HawkesKernelParameters, HawkesSourceComponents,
         HawkesStationaryIntensityMultipliers, HawkesStationaryTargetSourceRates,
     };
+    use crate::nig::NigSharedPlusShiftConfiguration;
+    use crate::return_clock::ReturnClockExposureParameters;
 
-    use super::{LongVarianceParameters, LongVarianceState, LongVarianceStationaryLevelError};
+    use super::{
+        LongVarianceParameters, LongVarianceState, LongVarianceStateTransitionError,
+        LongVarianceStationaryLevelError, return_energy_increment_from_log_return,
+        stationary_return_energy_rate_per_hour_from_return_generator,
+    };
 
     #[test]
     fn stationary_mean_reversion_level_offsets_event_feedback_drift() {
-        let parameters =
-            LongVarianceParameters::try_new(4.0, 0.5, 0.10, 0.20).expect("parameters should build");
+        let parameters = LongVarianceParameters::try_new(4.0, 0.5, 0.0, 0.0, 0.10, 0.20)
+            .expect("parameters should build");
 
         let level = parameters
             .stationary_mean_reversion_level(
@@ -601,8 +750,44 @@ mod tests {
     }
 
     #[test]
+    fn stationary_mean_reversion_level_offsets_return_energy_feedback_drift() {
+        let parameters = LongVarianceParameters::try_new(4.0, 0.5, 0.03, 2.0, 0.10, 0.20)
+            .expect("parameters should build");
+
+        let level = parameters
+            .stationary_mean_reversion_level(
+                2.0,
+                HawkesStationaryIntensityMultipliers {
+                    buy_intensity_multiplier: 0.5,
+                    sell_intensity_multiplier: 0.75,
+                },
+            )
+            .expect("stationary level should build");
+
+        assert_eq!(level, 1.0 - (0.10 * 1.0 + 0.20 * 1.5 + 2.0 * 0.03) / 4.0);
+    }
+
+    #[test]
+    fn return_energy_increment_squares_valid_log_return() {
+        let increment =
+            return_energy_increment_from_log_return(0.25).expect("increment should validate");
+
+        assert_eq!(increment, 0.0625);
+    }
+
+    #[test]
+    fn return_energy_increment_rejects_invalid_log_return() {
+        let error = return_energy_increment_from_log_return(f64::NAN).expect_err("NaN is invalid");
+
+        assert!(matches!(
+            error,
+            LongVarianceStateTransitionError::InvalidReturnEnergyIncrement { .. }
+        ));
+    }
+
+    #[test]
     fn stationary_mean_reversion_level_includes_exogenous_hawkes_source_rates() {
-        let parameters = LongVarianceParameters::try_new(10.0, 0.0, 0.10, 0.20)
+        let parameters = LongVarianceParameters::try_new(10.0, 0.0, 0.0, 0.0, 0.10, 0.20)
             .expect("parameters should build");
 
         let zero_loadings = HawkesKernelLoadings::from_target_components(
@@ -634,9 +819,47 @@ mod tests {
     }
 
     #[test]
+    fn generated_stationary_return_energy_rate_uses_side_nig_variance_and_return_clocks() {
+        let zero_loadings = HawkesKernelLoadings::from_target_components(
+            HawkesSourceComponents::new(0.0, 0.0),
+            HawkesSourceComponents::new(0.0, 0.0),
+        );
+
+        let kernel_parameters =
+            HawkesKernelParameters::try_new(2.0, 1.0, zero_loadings, zero_loadings)
+                .expect("zero-loadings kernel should build");
+
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(5.0, 0.0, 0.2, 0.0, -1.0)
+            .expect("NIG fixture should build")
+            .derive_driver_parameters()
+            .expect("driver fixture should build");
+
+        let energy_rate = stationary_return_energy_rate_per_hour_from_return_generator(
+            kernel_parameters,
+            HawkesStationaryTargetSourceRates::zero(),
+            ReturnClockExposureParameters::neutral(),
+            driver_parameters,
+        )
+        .expect("stationary energy rate should build");
+
+        let expected_rate = 2.0
+            * driver_parameters
+                .buy_side_parameters
+                .variance_per_unit_time()
+                .expect("buy variance should build")
+            + 2.0
+                * driver_parameters
+                    .sell_side_parameters
+                    .variance_per_unit_time()
+                    .expect("sell variance should build");
+
+        assert_eq!(energy_rate, expected_rate);
+    }
+
+    #[test]
     fn stationary_mean_reversion_level_rejects_exhausted_event_feedback_budget() {
-        let parameters =
-            LongVarianceParameters::try_new(4.0, 0.0, 0.5, 0.5).expect("parameters should build");
+        let parameters = LongVarianceParameters::try_new(4.0, 0.0, 0.0, 0.0, 0.5, 0.5)
+            .expect("parameters should build");
 
         let error = parameters
             .stationary_mean_reversion_level(
@@ -656,8 +879,8 @@ mod tests {
 
     #[test]
     fn long_variance_state_replay_applies_drift_and_observed_event_jumps() {
-        let parameters =
-            LongVarianceParameters::try_new(2.0, 0.0, 0.25, 0.50).expect("parameters should build");
+        let parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.0, 0.0, 0.25, 0.50)
+            .expect("parameters should build");
 
         let initial_state = LongVarianceState::unit();
 
@@ -677,5 +900,17 @@ mod tests {
 
         assert_eq!(after_drift.level, expected_after_drift);
         assert_eq!(after_sell.level, expected_after_drift + 0.50);
+    }
+
+    #[test]
+    fn long_variance_state_replay_applies_observed_return_energy_jumps() {
+        let parameters = LongVarianceParameters::try_new(2.0, 0.0, 0.01, 4.0, 0.25, 0.50)
+            .expect("parameters should build");
+
+        let state = LongVarianceState::unit()
+            .apply_return_energy_jump(parameters, 0.125)
+            .expect("return-energy jump should apply");
+
+        assert_eq!(state.level, 1.0 + 4.0 * 0.125);
     }
 }

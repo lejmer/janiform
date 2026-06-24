@@ -24,6 +24,8 @@ __all__ = [
 class LongVarianceParameters(ContractModel):
     mean_reversion_rate: float
     vol_of_vol: float
+    stationary_return_energy_rate_per_hour: float
+    return_energy_loading: float
     buy_event_loading: float
     sell_event_loading: float
 
@@ -39,6 +41,8 @@ class LongVarianceParameters(ContractModel):
         return LongVarianceParameters(
             mean_reversion_rate=1.0,
             vol_of_vol=0.0,
+            stationary_return_energy_rate_per_hour=0.0,
+            return_energy_loading=0.0,
             buy_event_loading=0.0,
             sell_event_loading=0.0,
         )
@@ -68,6 +72,18 @@ class LongVarianceParameters(ContractModel):
                 payload,
                 "vol_of_vol",
                 f"{field_path}.vol_of_vol",
+                error_factory,
+            ),
+            stationary_return_energy_rate_per_hour=require_finite_number(
+                payload,
+                "stationary_return_energy_rate_per_hour",
+                f"{field_path}.stationary_return_energy_rate_per_hour",
+                error_factory,
+            ),
+            return_energy_loading=require_finite_number(
+                payload,
+                "return_energy_loading",
+                f"{field_path}.return_energy_loading",
                 error_factory,
             ),
             buy_event_loading=require_finite_number(
@@ -139,6 +155,18 @@ def validate_long_variance_parameters(
     require_non_negative_finite_scalar(
         parameters.vol_of_vol,
         field_path=f"{field_path}.vol_of_vol",
+        error_factory=error_factory,
+    )
+
+    require_non_negative_finite_scalar(
+        parameters.stationary_return_energy_rate_per_hour,
+        field_path=f"{field_path}.stationary_return_energy_rate_per_hour",
+        error_factory=error_factory,
+    )
+
+    require_non_negative_finite_scalar(
+        parameters.return_energy_loading,
+        field_path=f"{field_path}.return_energy_loading",
         error_factory=error_factory,
     )
 

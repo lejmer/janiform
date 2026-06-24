@@ -9,20 +9,19 @@ use super::super::objective::{
     joint_primary_metrics_from_breakdown, return_asymmetry_horizon_fit, root_mean_square,
 };
 use super::super::setup::{
-    ParameterBoundsBuildInput, RestartSeedsWithHaltonAcceptanceBuildInput,
-    build_active_parameter_layout, build_baseline_parameter_vector, build_parameter_bounds,
-    build_restart_seeds_with_halton_acceptance, parameter_vector_to_nig_search_point,
+    CandidateSeedsWithHaltonAcceptanceBuildInput, ParameterBoundsBuildInput,
+    build_active_parameter_layout, build_baseline_parameter_vector,
+    build_candidate_seeds_with_halton_acceptance, build_parameter_bounds,
+    candidate_screening_max_parallelism_for_test, parameter_vector_to_nig_search_point,
     project_basin_diagnostic_into_joint_nig_coordinates,
-    restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
     JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
-    JointRefinementCandidateEvaluation, JointRefinementObservedData,
-    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
+    JointRefinementCandidateEvaluation, JointRefinementCandidateOutcome,
+    JointRefinementObservedData, JointRefinementRawAdmissibilityMetrics,
     JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
-    desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
+    desired_joint_refinement_candidate_budget, ensure_valid_selected_candidate_outcome,
     extend_joint_coarse_tick_consistency_metrics_for_seed, joint_refinement_budget_schedule,
-    joint_refinement_restart_full_vector_direct_search_settings,
     option_refinement_candidate_frontier_from_selected_outcomes, sampled_observed_tick_returns,
     test_joint_fitted_parameters, tick_shape_sample_target_count,
 };
@@ -50,9 +49,9 @@ use crate::stages::return_components::{
     nig_search_point_from_configuration,
 };
 use janiform_calibration_artifacts::{
-    CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermKind,
-    CalibrationObjectivePolicy, CalibrationOptimizerSettings,
-    JointRefinementStageObjectiveBreakdown, SurpriseNewsDeterministicIntensityProfile,
+    CalibrationLossAdmissibility, CalibrationLossFamilyDiagnostic, CalibrationLossTermDiagnostic,
+    CalibrationLossTermKind, CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
+    SurpriseNewsDeterministicIntensityProfile,
 };
 
 fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
@@ -65,8 +64,8 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         hawkes_block: vec![0, 1, 2, 3],
         nig_block: vec![4, 5, 6, 7],
         return_clock_block: vec![11, 12],
-        long_variance_block: vec![13, 14, 15, 16],
-        option_pricing_kernel_block: vec![17, 18],
+        long_variance_block: vec![13, 14, 15, 16, 17],
+        option_pricing_kernel_block: vec![18, 19, 20],
         coupling_block: vec![8, 9, 10],
         log_stationary_event_rate_scale_index: 0,
         log_beta_scale_index: 1,
@@ -76,10 +75,12 @@ fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout 
         log_sell_excitation_return_clock_scale_index: 12,
         log_long_variance_mean_reversion_rate_scale_index: 13,
         long_variance_vol_of_vol_index: 14,
-        long_variance_buy_event_loading_index: 15,
-        long_variance_sell_event_loading_index: 16,
-        option_pricing_log_buy_activity_premium_index: 17,
-        option_pricing_log_sell_activity_premium_index: 18,
+        long_variance_return_energy_loading_index: 15,
+        long_variance_buy_event_loading_index: 16,
+        long_variance_sell_event_loading_index: 17,
+        option_pricing_log_buy_activity_premium_index: 18,
+        option_pricing_log_sell_activity_premium_index: 19,
+        option_pricing_pressure_signed_imbalance_exposure_risk_price_index: 20,
         known_activity_scale_index: Some(8),
         surprise_activity_scale_index: Some(9),
         surprise_baseline_scale_index: Some(10),
@@ -177,8 +178,11 @@ fn build_test_observed_data() -> JointRefinementObservedData {
         observed_1d_intervals: vec![build_test_interval_observation(0, 86_400, 0.006, 11, 0.5)],
         observed_tick_intraday_mean_absolute_returns: vec![0.01; 24],
         observed_tick_shape_returns: vec![0.012, -0.009, 0.006, -0.004, 0.011, -0.007],
+        observed_5m_shape_returns: vec![0.012, -0.009],
+        observed_15m_shape_returns: vec![0.018, -0.012],
         observed_1h_shape_returns: vec![0.018, -0.012],
         observed_1d_shape_returns: vec![0.006],
+        observed_1w_shape_returns: vec![0.006],
         observed_tick_return_scale_summary,
         observed_1h_return_scale_summary: observed_15m_return_scale_summary,
         observed_1d_return_scale_summary: JointRefinementReturnScaleSummary {
@@ -269,15 +273,15 @@ fn build_test_objective_term(
     JointRefinementStageObjectiveTermDiagnostic {
         term_id: metric_id.to_string(),
         family_id: "return_scale".to_string(),
-        term_kind: CalibrationLossTermKind::StylizedFact,
+        term_kind: CalibrationLossTermKind::DiagnosticCoordinate,
         observed_value: Some(observed_value),
         model_value: Some(simulated_value),
         observed_standard_error: Some(observed_value.abs()),
         model_standard_error: Some(0.0),
         uncertainty_scale: Some(observed_value.abs()),
         standardized_residual: Some(0.0),
+        covariance_diagonal: Some(observed_value * observed_value),
         loss: 0.0,
-        admissibility_blocker: false,
     }
 }
 
@@ -303,44 +307,60 @@ fn build_test_joint_breakdown(
     .into_iter()
     .map(|(family_id, loss)| CalibrationLossFamilyDiagnostic {
         family_id: family_id.to_string(),
-        term_count: 1,
+        coordinate_count: 1,
+        rank: 1,
+        whitened_coordinates: vec![loss.sqrt()],
         loss,
         max_standardized_residual: loss,
         worst_term_id: Some(family_id.to_string()),
+        unidentified: false,
     })
     .collect::<Vec<_>>();
 
     JointRefinementStageObjectiveBreakdown {
-        policy: CalibrationObjectivePolicy::default(),
         global_loss,
         family_losses,
         term_diagnostics: Vec::new(),
-        hard_constraint_diagnostics: Vec::new(),
+        domain_margin_diagnostics: Vec::new(),
         admissibility: CalibrationLossAdmissibility {
             admissible: true,
             max_standardized_residual: 1.0,
             excess_loss: 0.0,
-            blockers: Vec::new(),
+            warnings: Vec::new(),
         },
     }
 }
 
-fn build_test_inadmissible_joint_breakdown(
+fn build_test_invalid_joint_breakdown(
     tick_return_asymmetry_fit: f64,
     tick_return_scale_fit: f64,
-    global_loss: f64,
-    blocker: &str,
+    invalid_term_id: &str,
 ) -> JointRefinementStageObjectiveBreakdown {
     let mut breakdown = build_test_joint_breakdown(
         tick_return_asymmetry_fit,
         tick_return_scale_fit,
-        global_loss,
+        f64::INFINITY,
     );
+    breakdown
+        .term_diagnostics
+        .push(CalibrationLossTermDiagnostic {
+            term_id: invalid_term_id.to_string(),
+            family_id: "invalid_candidate".to_string(),
+            term_kind: CalibrationLossTermKind::InvalidCandidate,
+            observed_value: None,
+            model_value: None,
+            observed_standard_error: None,
+            model_standard_error: None,
+            uncertainty_scale: None,
+            standardized_residual: None,
+            covariance_diagonal: None,
+            loss: f64::INFINITY,
+        });
     breakdown.admissibility = CalibrationLossAdmissibility {
         admissible: false,
         max_standardized_residual: 4.0,
-        excess_loss: 0.5,
-        blockers: vec![blocker.to_string()],
+        excess_loss: f64::INFINITY,
+        warnings: Vec::new(),
     };
     breakdown
 }
@@ -389,10 +409,10 @@ fn build_test_interval_observation(
     }
 }
 
-fn build_test_restart_outcome(
-    restart_id: &str,
+fn build_test_candidate_outcome(
+    candidate_id: &str,
     breakdown: JointRefinementStageObjectiveBreakdown,
-) -> JointRefinementRestartOutcome {
+) -> JointRefinementCandidateOutcome {
     let evaluation = JointRefinementCandidateEvaluation {
         fitted_parameters: test_joint_fitted_parameters(),
         raw_admissibility_metrics: build_test_raw_admissibility_metrics(&breakdown),
@@ -402,8 +422,8 @@ fn build_test_restart_outcome(
         invalid_reason: None,
     };
 
-    JointRefinementRestartOutcome {
-        restart_id: restart_id.to_string(),
+    JointRefinementCandidateOutcome {
+        candidate_id: candidate_id.to_string(),
         parameter_vector: vec![0.0; 11],
         local_evaluation: evaluation.clone(),
         final_evaluation: evaluation,
@@ -434,6 +454,7 @@ fn build_test_seed_summary(
         simulated_15m_shape_returns: vec![0.03, -0.03],
         simulated_1h_shape_returns: vec![0.03, -0.03],
         simulated_1d_shape_returns: vec![0.0],
+        simulated_1w_shape_returns: vec![0.0],
         simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary {
             mean_absolute_return: 0.01,
             realized_variance: 0.0001,
@@ -468,65 +489,36 @@ fn build_test_seed_summary(
 }
 
 #[test]
-fn joint_refinement_desired_restart_candidate_budget_defaults_to_fifteen() {
-    assert_eq!(
-        desired_joint_refinement_restart_candidate_budget(None, None),
-        15
-    );
+fn joint_refinement_desired_candidate_budget_defaults_to_fifteen() {
+    assert_eq!(desired_joint_refinement_candidate_budget(None, None), 15);
 }
 
 #[test]
-fn joint_refinement_desired_restart_candidate_budget_honors_override() {
-    assert_eq!(
-        desired_joint_refinement_restart_candidate_budget(Some(9), None),
-        9
-    );
+fn joint_refinement_desired_candidate_budget_honors_override() {
+    assert_eq!(desired_joint_refinement_candidate_budget(Some(9), None), 9);
 }
 
 #[test]
-fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_depth() {
+fn joint_refinement_candidate_budget_controls_frontier_width_and_search_depth() {
     let solver_settings = build_test_solver_settings(64);
 
-    let single_restart_schedule = joint_refinement_budget_schedule(&solver_settings, 1, None);
+    let single_candidate_schedule = joint_refinement_budget_schedule(&solver_settings, 1, None);
 
-    assert_eq!(single_restart_schedule.restart_count, 1);
+    assert_eq!(single_candidate_schedule.candidate_count, 1);
     assert_eq!(
-        single_restart_schedule.outer_cycle_count,
+        single_candidate_schedule.search_depth_multiplier,
         super::JOINT_REFINEMENT_PARAMETER_FAMILY_COUNT
     );
 
     let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15, None);
 
-    assert_eq!(default_frontier_schedule.restart_count, 15);
-    assert_eq!(default_frontier_schedule.outer_cycle_count, 2);
+    assert_eq!(default_frontier_schedule.candidate_count, 15);
+    assert_eq!(default_frontier_schedule.search_depth_multiplier, 2);
 
     let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50, None);
 
-    assert_eq!(broad_frontier_schedule.restart_count, 50);
-    assert_eq!(broad_frontier_schedule.outer_cycle_count, 1);
-}
-
-#[test]
-fn joint_refinement_restart_full_vector_budget_is_dimension_minimal() {
-    let solver_settings = build_test_solver_settings(64);
-
-    let four_dimensional_settings =
-        joint_refinement_restart_full_vector_direct_search_settings(&solver_settings, 4);
-
-    assert_eq!(four_dimensional_settings.initial_mesh_divisor, 5);
-    assert_eq!(
-        four_dimensional_settings.failed_poll_mesh_refinement_divisor,
-        2
-    );
-    assert_eq!(four_dimensional_settings.evaluation_budget, 17);
-    assert_eq!(
-        four_dimensional_settings.absolute_tolerance,
-        solver_settings.absolute_tolerance
-    );
-    assert_eq!(
-        four_dimensional_settings.relative_tolerance,
-        solver_settings.relative_tolerance
-    );
+    assert_eq!(broad_frontier_schedule.candidate_count, 50);
+    assert_eq!(broad_frontier_schedule.search_depth_multiplier, 1);
 }
 
 #[test]
@@ -695,12 +687,13 @@ fn joint_refinement_active_layout_includes_long_variance_coordinates() {
         &test_joint_fitted_parameters().return_components_fitted_parameters,
     );
 
-    assert_eq!(active_parameter_layout.long_variance_block.len(), 4);
+    assert_eq!(active_parameter_layout.long_variance_block.len(), 5);
     assert_eq!(
         active_parameter_layout.long_variance_block,
         vec![
             active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index,
             active_parameter_layout.long_variance_vol_of_vol_index,
+            active_parameter_layout.long_variance_return_energy_loading_index,
             active_parameter_layout.long_variance_buy_event_loading_index,
             active_parameter_layout.long_variance_sell_event_loading_index,
         ]
@@ -717,7 +710,7 @@ fn joint_refinement_baseline_parameter_vector_encodes_long_variance_parameters()
 
     fitted_parameters.long_variance_parameters =
         janiform_model_kernels::long_variance::LongVarianceParameters::try_new(
-            2.0, 0.4, 0.01, 0.02,
+            2.0, 0.4, 0.03, 0.04, 0.01, 0.02,
         )
         .expect("test long variance parameters should construct");
 
@@ -737,6 +730,11 @@ fn joint_refinement_baseline_parameter_vector_encodes_long_variance_parameters()
     assert_eq!(
         baseline_parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index],
         0.4
+    );
+    assert_eq!(
+        baseline_parameter_vector
+            [active_parameter_layout.long_variance_return_energy_loading_index],
+        0.04
     );
     assert_eq!(
         baseline_parameter_vector[active_parameter_layout.long_variance_buy_event_loading_index],
@@ -806,26 +804,26 @@ fn joint_refinement_bounds_allow_long_variance_search_coordinates() {
     assert!(upper_bounds[active_parameter_layout.long_variance_vol_of_vol_index] > 0.0);
 }
 
-fn restart_seed_ids(restart_seeds: &[(String, Vec<f64>)]) -> Vec<&str> {
-    restart_seeds
+fn candidate_seed_ids(candidate_seeds: &[(String, Vec<f64>)]) -> Vec<&str> {
+    candidate_seeds
         .iter()
-        .map(|(restart_id, _)| restart_id.as_str())
+        .map(|(candidate_id, _)| candidate_id.as_str())
         .collect()
 }
 
-fn restart_seed_by_id<'a>(
-    restart_seeds: &'a [(String, Vec<f64>)],
-    expected_restart_id: &str,
+fn candidate_seed_by_id<'a>(
+    candidate_seeds: &'a [(String, Vec<f64>)],
+    expected_candidate_id: &str,
 ) -> &'a [f64] {
-    restart_seeds
+    candidate_seeds
         .iter()
-        .find(|(restart_id, _)| restart_id == expected_restart_id)
-        .map(|(_, restart_seed)| restart_seed.as_slice())
-        .expect("expected restart seed should be present")
+        .find(|(candidate_id, _)| candidate_id == expected_candidate_id)
+        .map(|(_, candidate_seed)| candidate_seed.as_slice())
+        .expect("expected candidate seed should be present")
 }
 
 #[test]
-fn joint_refinement_restart_seed_generation_is_deterministic() {
+fn joint_refinement_candidate_seed_generation_is_deterministic() {
     let active_parameter_layout = build_test_active_parameter_layout();
 
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
@@ -835,8 +833,8 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
 
-    let first_restart_seeds =
-        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+    let first_candidate_seeds = build_candidate_seeds_with_halton_acceptance(
+        CandidateSeedsWithHaltonAcceptanceBuildInput {
             baseline_parameter_vector: baseline_parameter_vector.as_slice(),
             active_parameter_layout: &active_parameter_layout,
             lower_bounds: lower_bounds.as_slice(),
@@ -845,12 +843,13 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 12,
+            candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| true),
-        });
+        },
+    );
 
-    let second_restart_seeds =
-        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+    let second_candidate_seeds = build_candidate_seeds_with_halton_acceptance(
+        CandidateSeedsWithHaltonAcceptanceBuildInput {
             baseline_parameter_vector: baseline_parameter_vector.as_slice(),
             active_parameter_layout: &active_parameter_layout,
             lower_bounds: lower_bounds.as_slice(),
@@ -859,27 +858,28 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 12,
+            candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| true),
-        });
+        },
+    );
 
-    assert_eq!(first_restart_seeds, second_restart_seeds);
-    assert_eq!(first_restart_seeds.len(), 12);
-    assert_eq!(first_restart_seeds[0].0, "incumbent_local_search");
+    assert_eq!(first_candidate_seeds, second_candidate_seeds);
+    assert_eq!(first_candidate_seeds.len(), 12);
+    assert_eq!(first_candidate_seeds[0].0, "incumbent_local_search");
 
-    let restart_seed_ids = restart_seed_ids(first_restart_seeds.as_slice());
+    let candidate_seed_ids = candidate_seed_ids(first_candidate_seeds.as_slice());
 
-    assert!(restart_seed_ids.contains(&"activity_aligned"));
-    assert!(restart_seed_ids.contains(&"midpoint"));
+    assert!(candidate_seed_ids.contains(&"activity_aligned"));
+    assert!(candidate_seed_ids.contains(&"midpoint"));
     assert!(
-        restart_seed_ids
+        candidate_seed_ids
             .iter()
-            .any(|restart_id| restart_id.starts_with("halton_"))
+            .any(|candidate_id| candidate_id.starts_with("halton_"))
     );
 }
 
 #[test]
-fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() {
+fn joint_refinement_candidate_seed_generation_adds_return_scale_alignment_seeds() {
     let active_parameter_layout = build_test_active_parameter_layout();
 
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
@@ -894,8 +894,8 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
         build_test_objective_term("return_scale.tick.realized_variance", 4.0, 25.0),
     ];
 
-    let restart_seeds =
-        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+    let candidate_seeds = build_candidate_seeds_with_halton_acceptance(
+        CandidateSeedsWithHaltonAcceptanceBuildInput {
             baseline_parameter_vector: baseline_parameter_vector.as_slice(),
             active_parameter_layout: &active_parameter_layout,
             lower_bounds: lower_bounds.as_slice(),
@@ -904,9 +904,10 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: baseline_final_objective_terms.as_slice(),
             activity_log_shift: 0.25,
-            restart_candidate_budget: 18,
+            candidate_budget: 18,
             halton_seed_is_accepted: Box::new(|_| false),
-        });
+        },
+    );
 
     let log_stationary_event_rate_index =
         active_parameter_layout.log_stationary_event_rate_scale_index;
@@ -916,10 +917,10 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
     let mean_absolute_return_delta_shift = 0.5f64.ln();
     let tick_realized_variance_delta_shift = 0.4f64.ln();
 
-    assert_eq!(restart_seeds.len(), 13);
+    assert_eq!(candidate_seeds.len(), 14);
 
-    let mean_absolute_return_seed = restart_seed_by_id(
-        restart_seeds.as_slice(),
+    let mean_absolute_return_seed = candidate_seed_by_id(
+        candidate_seeds.as_slice(),
         "return_scale_mean_absolute_return_1d",
     );
 
@@ -928,8 +929,8 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
         mean_absolute_return_delta_shift
     );
 
-    let mean_absolute_return_activity_seed = restart_seed_by_id(
-        restart_seeds.as_slice(),
+    let mean_absolute_return_activity_seed = candidate_seed_by_id(
+        candidate_seeds.as_slice(),
         "return_scale_mean_absolute_return_1d_activity_aligned",
     );
 
@@ -942,8 +943,8 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
         0.0
     );
 
-    let tick_realized_variance_seed = restart_seed_by_id(
-        restart_seeds.as_slice(),
+    let tick_realized_variance_seed = candidate_seed_by_id(
+        candidate_seeds.as_slice(),
         "return_scale_tick_realized_variance",
     );
 
@@ -954,7 +955,7 @@ fn joint_refinement_restart_seed_generation_adds_return_scale_alignment_seeds() 
 }
 
 #[test]
-fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
+fn joint_refinement_candidate_seed_generation_counts_only_accepted_haltons() {
     let active_parameter_layout = build_test_active_parameter_layout();
 
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
@@ -966,8 +967,8 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
 
     let mut score_call_count = 0usize;
 
-    let restart_seeds =
-        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+    let candidate_seeds = build_candidate_seeds_with_halton_acceptance(
+        CandidateSeedsWithHaltonAcceptanceBuildInput {
             baseline_parameter_vector: baseline_parameter_vector.as_slice(),
             active_parameter_layout: &active_parameter_layout,
             lower_bounds: lower_bounds.as_slice(),
@@ -976,25 +977,26 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 12,
+            candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| {
                 score_call_count += 1;
                 score_call_count.is_multiple_of(3)
             }),
-        });
+        },
+    );
 
-    assert_eq!(restart_seeds.len(), 12);
+    assert_eq!(candidate_seeds.len(), 12);
 
-    let restart_seed_ids = restart_seed_ids(restart_seeds.as_slice());
-    let halton_restart_seed_ids = restart_seed_ids
+    let candidate_seed_ids = candidate_seed_ids(candidate_seeds.as_slice());
+    let halton_candidate_seed_ids = candidate_seed_ids
         .iter()
         .copied()
-        .filter(|restart_id| restart_id.starts_with("halton_"))
+        .filter(|candidate_id| candidate_id.starts_with("halton_"))
         .collect::<Vec<_>>();
 
-    assert!(!halton_restart_seed_ids.is_empty());
-    assert!(halton_restart_seed_ids.iter().all(|restart_id| {
-        restart_id
+    assert!(!halton_candidate_seed_ids.is_empty());
+    assert!(halton_candidate_seed_ids.iter().all(|candidate_id| {
+        candidate_id
             .strip_prefix("halton_")
             .and_then(|suffix| suffix.parse::<usize>().ok())
             .is_some_and(|halton_position| halton_position.is_multiple_of(3))
@@ -1003,7 +1005,7 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
 }
 
 #[test]
-fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_budget() {
+fn joint_refinement_candidate_seed_generation_uses_candidate_exploration_budget() {
     let active_parameter_layout = build_test_active_parameter_layout();
 
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
@@ -1015,8 +1017,8 @@ fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_b
 
     let mut score_call_count = 0usize;
 
-    let restart_seeds =
-        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+    let candidate_seeds = build_candidate_seeds_with_halton_acceptance(
+        CandidateSeedsWithHaltonAcceptanceBuildInput {
             baseline_parameter_vector: baseline_parameter_vector.as_slice(),
             active_parameter_layout: &active_parameter_layout,
             lower_bounds: lower_bounds.as_slice(),
@@ -1025,30 +1027,31 @@ fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_b
             return_component_basin_diagnostics: &[],
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 12,
+            candidate_budget: 12,
             halton_seed_is_accepted: Box::new(|_| {
                 score_call_count += 1;
                 false
             }),
-        });
+        },
+    );
 
-    assert_eq!(restart_seeds.len(), 9);
+    assert_eq!(candidate_seeds.len(), 10);
     assert_eq!(score_call_count, 12);
 
-    let restart_seed_ids = restart_seed_ids(restart_seeds.as_slice());
+    let candidate_seed_ids = candidate_seed_ids(candidate_seeds.as_slice());
 
-    assert!(restart_seed_ids.contains(&"long_variance_vol_of_vol_up"));
+    assert!(candidate_seed_ids.contains(&"long_variance_vol_of_vol_up"));
 }
 
 #[test]
-fn joint_refinement_restart_candidate_screening_uses_configured_parallelism() {
-    let max_parallelism = restart_candidate_screening_max_parallelism_for_test(4, 8);
+fn joint_refinement_candidate_screening_uses_configured_parallelism() {
+    let max_parallelism = candidate_screening_max_parallelism_for_test(4, 8);
 
     assert!(max_parallelism > 1);
 }
 
 #[test]
-fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
+fn joint_refinement_candidate_seeds_include_return_component_nig_basins() {
     let active_parameter_layout = build_test_active_parameter_layout();
 
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
@@ -1066,8 +1069,8 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         -0.6,
     )];
 
-    let restart_seeds =
-        build_restart_seeds_with_halton_acceptance(RestartSeedsWithHaltonAcceptanceBuildInput {
+    let candidate_seeds = build_candidate_seeds_with_halton_acceptance(
+        CandidateSeedsWithHaltonAcceptanceBuildInput {
             baseline_parameter_vector: baseline_parameter_vector.as_slice(),
             active_parameter_layout: &active_parameter_layout,
             lower_bounds: lower_bounds.as_slice(),
@@ -1076,9 +1079,10 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
             return_component_basin_diagnostics: basin_diagnostics.as_slice(),
             baseline_final_objective_terms: &[],
             activity_log_shift: 0.25,
-            restart_candidate_budget: 18,
+            candidate_budget: 18,
             halton_seed_is_accepted: Box::new(|_| true),
-        });
+        },
+    );
 
     let projected_search_point = project_basin_diagnostic_into_joint_nig_coordinates(
         &baseline_15m_calibration_sample,
@@ -1105,10 +1109,10 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         ),
     ];
 
-    let nig_basin_seed = restart_seed_by_id(restart_seeds.as_slice(), "nig_basin_skew_heavy");
+    let nig_basin_seed = candidate_seed_by_id(candidate_seeds.as_slice(), "nig_basin_skew_heavy");
 
-    let nig_basin_activity_seed = restart_seed_by_id(
-        restart_seeds.as_slice(),
+    let nig_basin_activity_seed = candidate_seed_by_id(
+        candidate_seeds.as_slice(),
         "nig_basin_skew_heavy_activity_aligned",
     );
 
@@ -1152,10 +1156,10 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
     );
 
     let nig_alpha_delta_seed =
-        restart_seed_by_id(restart_seeds.as_slice(), "nig_alpha_delta_skew_heavy");
+        candidate_seed_by_id(candidate_seeds.as_slice(), "nig_alpha_delta_skew_heavy");
 
-    let nig_alpha_delta_activity_seed = restart_seed_by_id(
-        restart_seeds.as_slice(),
+    let nig_alpha_delta_activity_seed = candidate_seed_by_id(
+        candidate_seeds.as_slice(),
         "nig_alpha_delta_skew_heavy_activity_aligned",
     );
 
@@ -1394,11 +1398,11 @@ fn admissible_candidate_ordering_uses_direct_tick_terms_before_weighted_tie_brea
         left_pareto_rank: 1,
         left_breakdown: &better_tick_fit,
         left_admissible: true,
-        left_restart_id: "better_tick_fit",
+        left_candidate_id: "better_tick_fit",
         right_pareto_rank: 1,
         right_breakdown: &worse_tick_fit,
         right_admissible: true,
-        right_restart_id: "worse_tick_fit",
+        right_candidate_id: "worse_tick_fit",
         has_admissible_candidate: true,
     });
 
@@ -1414,11 +1418,11 @@ fn admissible_candidate_ordering_uses_global_loss_after_primary_metrics_tie() {
         left_pareto_rank: 1,
         left_breakdown: &lower_objective,
         left_admissible: true,
-        left_restart_id: "lower_objective",
+        left_candidate_id: "lower_objective",
         right_pareto_rank: 1,
         right_breakdown: &higher_objective,
         right_admissible: true,
-        right_restart_id: "higher_objective",
+        right_candidate_id: "higher_objective",
         has_admissible_candidate: true,
     });
 
@@ -1426,19 +1430,19 @@ fn admissible_candidate_ordering_uses_global_loss_after_primary_metrics_tie() {
 }
 
 #[test]
-fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
+fn admissible_candidate_ordering_rejects_inadmissible_candidate_when_available() {
     let admissible_baseline = build_test_joint_breakdown(1.0, 1.0, 1.2);
-    let inadmissible_restart = build_test_joint_breakdown(0.8, 0.8, 0.7);
+    let inadmissible_candidate = build_test_joint_breakdown(0.8, 0.8, 0.7);
 
     let ordering = compare_joint_candidate_breakdowns(JointCandidateBreakdownComparisonInput {
         left_pareto_rank: 1,
         left_breakdown: &admissible_baseline,
         left_admissible: true,
-        left_restart_id: "baseline",
+        left_candidate_id: "baseline",
         right_pareto_rank: 1,
-        right_breakdown: &inadmissible_restart,
+        right_breakdown: &inadmissible_candidate,
         right_admissible: false,
-        right_restart_id: "restart_refined",
+        right_candidate_id: "candidate_refined",
         has_admissible_candidate: true,
     });
 
@@ -1446,29 +1450,45 @@ fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
 }
 
 #[test]
-fn option_refinement_frontier_excludes_fallback_restart_outcomes() {
-    let admissible_restart = build_test_restart_outcome(
-        "admissible_restart",
+fn option_refinement_frontier_excludes_fallback_candidate_outcomes() {
+    let admissible_candidate = build_test_candidate_outcome(
+        "admissible_candidate",
         build_test_joint_breakdown(1.0, 1.0, 1.2),
     );
 
-    let fallback_restart = build_test_restart_outcome(
-        "fallback_restart",
-        build_test_inadmissible_joint_breakdown(0.8, 0.8, 0.7, "activity_level_fit"),
+    let fallback_candidate = build_test_candidate_outcome(
+        "fallback_candidate",
+        build_test_invalid_joint_breakdown(0.8, 0.8, "activity_level_fit"),
     );
 
-    let selected_restart_outcomes = vec![&admissible_restart, &fallback_restart];
+    let selected_candidate_outcomes = vec![&admissible_candidate, &fallback_candidate];
 
     let option_frontier = option_refinement_candidate_frontier_from_selected_outcomes(
-        selected_restart_outcomes.as_slice(),
+        selected_candidate_outcomes.as_slice(),
     );
 
     let frontier_ids = option_frontier
         .iter()
-        .map(|restart_outcome| restart_outcome.restart_id.as_str())
+        .map(|candidate_outcome| candidate_outcome.candidate_id.as_str())
         .collect::<Vec<_>>();
 
-    assert_eq!(frontier_ids, vec!["admissible_restart"]);
+    assert_eq!(frontier_ids, vec!["admissible_candidate"]);
+}
+
+#[test]
+fn option_refinement_frontier_is_empty_without_admissible_candidate_outcomes() {
+    let fallback_candidate = build_test_candidate_outcome(
+        "fallback_candidate",
+        build_test_invalid_joint_breakdown(0.8, 0.8, "activity_level_fit"),
+    );
+
+    let selected_candidate_outcomes = vec![&fallback_candidate];
+
+    let option_frontier = option_refinement_candidate_frontier_from_selected_outcomes(
+        selected_candidate_outcomes.as_slice(),
+    );
+
+    assert!(option_frontier.is_empty());
 }
 
 #[test]
@@ -1520,23 +1540,27 @@ fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
 }
 
 #[test]
-fn selected_restart_validation_rejects_inadmissible_candidate() {
-    let restart_outcome = build_test_restart_outcome(
+fn selected_candidate_validation_rejects_inadmissible_candidate() {
+    let candidate_outcome = build_test_candidate_outcome(
         "joint_refinement_midpoint",
-        build_test_inadmissible_joint_breakdown(1.0, 1.0, 0.8, "activity_level_fit"),
+        build_test_invalid_joint_breakdown(1.0, 1.0, "activity_level_fit"),
     );
 
-    let failure = ensure_valid_selected_restart_outcome(&restart_outcome, 0, 0, true)
-        .expect_err("inadmissible selected restart should fail validation");
+    let failure = ensure_valid_selected_candidate_outcome(&candidate_outcome, 0, 0, true)
+        .expect_err("inadmissible selected candidate should fail validation");
 
     match failure {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message } => {
             assert!(
-                error_message.contains("selected the best valid candidate"),
+                error_message.contains("did not identify a finite-loss replacement"),
                 "unexpected failure message: {error_message}"
             );
             assert!(
-                error_message.contains("selected_restart=joint_refinement_midpoint"),
+                error_message.contains("rejected_candidate=joint_refinement_midpoint"),
+                "unexpected failure message: {error_message}"
+            );
+            assert!(
+                error_message.contains("invalid_term_ids=activity_level_fit"),
                 "unexpected failure message: {error_message}"
             );
         }

@@ -8,7 +8,7 @@ use janiform_market_time::business_time_clock::FourierBusinessTimeClockAxis;
 
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-    CalibrationMeanReversionStageObservation, CalibrationObservationModelsStageExecutionInput,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput, CalibrationTimestampEventSessionFilter,
 };
@@ -135,8 +135,6 @@ pub struct MarketDataTranslationCalibrationOutput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hawkes_event_side_codes: Option<Vec<u8>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub observation_models_stage_input: Option<CalibrationObservationModelsStageExecutionInput>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -182,6 +180,9 @@ pub enum MarketDataTranslationCalibrationError {
     MissingOpenSessionPriceObservations,
     InvalidTickGridReferencePrice {
         reference_price: Option<f64>,
+    },
+    InvalidTimestampBatchingSurface {
+        error_message: String,
     },
     InvalidSessionBoundary {
         exchange_code: String,
@@ -251,7 +252,11 @@ impl Display for MarketDataTranslationCalibrationError {
             ),
             Self::InvalidTickGridReferencePrice { reference_price } => write!(
                 formatter,
-                "tick-grid observation calibration requires a finite positive reference price, found `{reference_price:?}`"
+                "price discretization surface calibration requires a finite positive reference price, found `{reference_price:?}`"
+            ),
+            Self::InvalidTimestampBatchingSurface { error_message } => write!(
+                formatter,
+                "timestamp batching surface calibration failed: {error_message}"
             ),
             Self::InvalidSessionBoundary {
                 exchange_code,

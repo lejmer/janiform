@@ -6,10 +6,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
-from ..mean_reversion import (
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
+from .._timestamps import hours_to_exact_nanoseconds
+from ..market_pressure import (
+    MarketPressureParameters,
+    MarketPressureState,
 )
 from ..contracts import (
     ContractModel,
@@ -21,6 +21,7 @@ from ..contracts import (
 )
 from ..contracts.base import (
     require_finite_number,
+    require_finite_scalar,
     require_mapping,
     require_non_negative_finite_number,
     require_non_negative_integer,
@@ -35,7 +36,11 @@ from ..interval_factor_grids import (
     load_interval_factor_grid_payload,
 )
 from ..long_variance import LongVarianceParameters, LongVarianceState
-from .._timestamps import hours_to_exact_nanoseconds
+from ..mean_reversion import (
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+)
 from .errors import (
     SUFFICIENT_STATISTICS_ERROR_FACTORY,
     _sufficient_statistics_error,
@@ -68,10 +73,10 @@ SUFFICIENT_STATISTICS_PATH_ENVIRONMENT_METADATA_POLICY = (
     "exclude_environment_specific_metadata.v1"
 )
 SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY = (
-    "counts_via_fractional_rounding_and_integrated_intensity_via_exponential_with_slice_implied_mean.v1"
+    "counts_via_fractional_rounding_integrated_intensity_via_exponential_and_hidden_terminal_placements_from_seeded_substreams.v1"
 )
 SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY = (
-    "interval_boundary_drift_then_count_mapped_endogenous_jump_composition.v1"
+    "explicit_terminal_state_replay_from_sampled_interval_statistics.v1"
 )
 SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY = (
     "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1"
@@ -180,6 +185,7 @@ class SufficientStatisticsEquationSpecification(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     long_variance_parameters: LongVarianceParameters
+    market_pressure_parameters: MarketPressureParameters
 
     @staticmethod
     def from_mapping(
@@ -219,6 +225,15 @@ class SufficientStatisticsEquationSpecification(ContractModel):
                 field_path=f"{field_path}.long_variance_parameters",
                 error_factory=SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
+            market_pressure_parameters=MarketPressureParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "market_pressure_parameters",
+                    f"{field_path}.market_pressure_parameters",
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.market_pressure_parameters",
+            ),
         )
 
 
@@ -229,6 +244,7 @@ class SufficientStatisticsModelInputs(ContractModel):
     initial_excitation_state: HawkesExcitationState
     long_variance_parameters: LongVarianceParameters
     initial_long_variance_state: LongVarianceState
+    initial_market_pressure_state: MarketPressureState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState
@@ -299,6 +315,15 @@ class SufficientStatisticsModelInputs(ContractModel):
                     ),
                     field_path="model_inputs.initial_long_variance_state",
                     error_factory=SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                ),
+                initial_market_pressure_state=MarketPressureState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "initial_market_pressure_state",
+                        "model_inputs.initial_market_pressure_state",
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.initial_market_pressure_state",
                 ),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters.from_mapping(
                     require_mapping(
@@ -450,7 +475,10 @@ class SufficientStatisticsRunRequest(ContractModel):
 
     def to_payload(self) -> dict[str, Any]:
         if self.model_inputs is None or self.interval_factor_grid is None:
-            raise _sufficient_statistics_error("sufficient_statistics_run_request", "must be fully initialized before serialization")
+            raise _sufficient_statistics_error(
+                "sufficient_statistics_run_request",
+                "must be fully initialized before serialization",
+            )
 
         return {
             "seed": self.seed,
@@ -471,6 +499,9 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
     endogenous_a_minus: float
     n_plus: int
     n_minus: int
+    terminal_excitation_state: HawkesExcitationState
+    terminal_market_pressure_state: MarketPressureState
+    market_pressure_anchor_increment: float
 
     def __post_init__(self) -> None:
         _validate_activity_total(
@@ -543,6 +574,30 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
                 raw_payload,
                 "n_minus",
                 f"{field_path}.n_minus",
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
+            ),
+            terminal_excitation_state=_parse_hawkes_excitation_state(
+                require_mapping(
+                    raw_payload,
+                    "terminal_excitation_state",
+                    f"{field_path}.terminal_excitation_state",
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.terminal_excitation_state",
+            ),
+            terminal_market_pressure_state=MarketPressureState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "terminal_market_pressure_state",
+                    f"{field_path}.terminal_market_pressure_state",
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.terminal_market_pressure_state",
+            ),
+            market_pressure_anchor_increment=require_finite_number(
+                raw_payload,
+                "market_pressure_anchor_increment",
+                f"{field_path}.market_pressure_anchor_increment",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
         )
@@ -629,7 +684,7 @@ class SufficientStatisticsPathRecord(ContractModel):
     observed_interval_return: float
     observed_log_price_end: float
     anchor_value_end: float
-    pressure_state_end: float
+    market_pressure_state_end: float
     deviation_from_anchor_end: float
 
     def __post_init__(self) -> None:
@@ -645,8 +700,12 @@ class SufficientStatisticsPathRecord(ContractModel):
         MeanReversionBoundaryState(
             observed_log_price=self.observed_log_price_end,
             anchor_value=self.anchor_value_end,
-            pressure_state=self.pressure_state_end,
             deviation=self.deviation_from_anchor_end,
+        )
+        require_finite_scalar(
+            self.market_pressure_state_end,
+            "market_pressure_state_end",
+            _sufficient_statistics_error,
         )
 
     @staticmethod
@@ -724,10 +783,10 @@ class SufficientStatisticsPathRecord(ContractModel):
                 f"{field_path}.anchor_value_end",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
-            pressure_state_end=require_finite_number(
+            market_pressure_state_end=require_finite_number(
                 raw_payload,
-                "pressure_state_end",
-                f"{field_path}.pressure_state_end",
+                "market_pressure_state_end",
+                f"{field_path}.market_pressure_state_end",
                 SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             deviation_from_anchor_end=require_finite_number(
@@ -1310,6 +1369,8 @@ def _validate_path_diagnostics(
 
 
 __all__ = [
+    "MarketPressureParameters",
+    "MarketPressureState",
     "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION",
     "SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
     "SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION",

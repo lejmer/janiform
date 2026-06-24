@@ -6,9 +6,10 @@ from janiform.calibration.staged import (
 )
 from tests.support.calibration import (
     append_finalization_stage_report_from_joint_refinement,
-    build_disabled_timestamp_batching_observation_model_payload,
+    build_disabled_timestamp_batching_surface_payload,
     build_empty_mean_reversion_series_summaries_payload,
-    build_nominal_tick_grid_observation_model_payload,
+    build_no_anchor_impact_market_pressure_parameters_payload,
+    build_nominal_price_discretization_surface_payload,
     build_neutral_long_variance_parameters_payload,
     build_neutral_return_clock_exposure_parameters_payload,
     build_structural_seasonality_parameters_payload,
@@ -127,11 +128,14 @@ def successful_full_model_staged_runner_payload(
                         "long_variance_parameters": (
                             build_neutral_long_variance_parameters_payload()
                         ),
-                        "tick_grid_observation_model": (
-                            build_nominal_tick_grid_observation_model_payload()
+                        "market_pressure_parameters": (
+                            build_no_anchor_impact_market_pressure_parameters_payload()
                         ),
-                        "timestamp_batching_observation_model": (
-                            build_disabled_timestamp_batching_observation_model_payload()
+                        "price_discretization_surface": (
+                            build_nominal_price_discretization_surface_payload()
+                        ),
+                        "timestamp_batching_surface": (
+                            build_disabled_timestamp_batching_surface_payload()
                         ),
                         "mean_reversion_fitted_parameters": (
                             build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
@@ -160,29 +164,19 @@ def successful_full_model_staged_runner_payload(
                             "retained_observation_count": 0,
                             "coverage_ratio": 0.0,
                         },
-                        "anchor_parameter_estimates": {
-                            "reference_interval_hours": 24.0,
-                            "pressure_persistence_per_reference_interval": 0.0,
-                            "pressure_level_gain": 0.0,
-                        },
                         "anchor_origin_level": None,
                         "phi_reference": 1.0,
                         "kappa": 0.0,
                         "residual_sum_of_squares": 0.0,
                         "quasi_log_likelihood": None,
                         "information_criterion_bic": None,
-                        "model_selection_policy": "rolling_origin_predictive_sign_test_mean_reversion_evidence_gate.v1",
+                        "model_selection_policy": "gaussian_quasi_likelihood_bic_mean_reversion_model_selection.v1",
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
                         "least_squares_rank": 0,
                         "evaluated_candidates": [
                             {
                                 "candidate_family": "random_walk_null",
-                                "anchor_model": {
-                                    "reference_interval_hours": 24.0,
-                                    "pressure_persistence_per_reference_interval": 0.0,
-                                    "pressure_level_gain": 0.0,
-                                },
                                 "anchor_origin_level": None,
                                 "phi_reference": 1.0,
                                 "kappa": 0.0,
@@ -196,7 +190,6 @@ def successful_full_model_staged_runner_payload(
                                 "series_summaries": (
                                     build_empty_mean_reversion_series_summaries_payload()
                                 ),
-                                "predictive_evidence": None,
                                 "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                             }
                         ],
@@ -212,11 +205,6 @@ def successful_full_model_staged_runner_payload(
                                 "evaluated_candidates": [
                                     {
                                         "candidate_family": "random_walk_null",
-                                        "anchor_model": {
-                                            "reference_interval_hours": 24.0,
-                                            "pressure_persistence_per_reference_interval": 0.0,
-                                            "pressure_level_gain": 0.0,
-                                        },
                                         "anchor_origin_level": None,
                                         "phi_reference": 1.0,
                                         "kappa": 0.0,
@@ -230,7 +218,6 @@ def successful_full_model_staged_runner_payload(
                                         "series_summaries": (
                                             build_empty_mean_reversion_series_summaries_payload()
                                         ),
-                                        "predictive_evidence": None,
                                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                                     }
                                 ],
@@ -342,11 +329,14 @@ def successful_full_model_staged_runner_payload(
                             "long_variance_parameters": (
                                 build_neutral_long_variance_parameters_payload()
                             ),
-                            "tick_grid_observation_model": (
-                                build_nominal_tick_grid_observation_model_payload()
+                            "market_pressure_parameters": (
+                                build_no_anchor_impact_market_pressure_parameters_payload()
                             ),
-                            "timestamp_batching_observation_model": (
-                                build_disabled_timestamp_batching_observation_model_payload()
+                            "price_discretization_surface": (
+                                build_nominal_price_discretization_surface_payload()
+                            ),
+                            "timestamp_batching_surface": (
+                                build_disabled_timestamp_batching_surface_payload()
                             ),
                             "mean_reversion_fitted_parameters": (
                                 build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
@@ -441,11 +431,14 @@ def successful_full_model_staged_runner_payload(
                         "long_variance_parameters": (
                             build_neutral_long_variance_parameters_payload()
                         ),
-                        "tick_grid_observation_model": (
-                            build_nominal_tick_grid_observation_model_payload()
+                        "market_pressure_parameters": (
+                            build_no_anchor_impact_market_pressure_parameters_payload()
                         ),
-                        "timestamp_batching_observation_model": (
-                            build_disabled_timestamp_batching_observation_model_payload()
+                        "price_discretization_surface": (
+                            build_nominal_price_discretization_surface_payload()
+                        ),
+                        "timestamp_batching_surface": (
+                            build_disabled_timestamp_batching_surface_payload()
                         ),
                         "mean_reversion_fitted_parameters": (
                             build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()

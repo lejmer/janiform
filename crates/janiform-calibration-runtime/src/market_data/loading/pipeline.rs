@@ -420,7 +420,7 @@ fn prepare_market_data_loading_from_phases_with_context(
     if calibration_request.require_return_components {
         progress.emit(MarketDataLoadingProgressEvent::new(
             MarketDataLoadingSource::TickData,
-            MarketDataLoadingProgressPhase::InferringTimestampBatchingObservation,
+            MarketDataLoadingProgressPhase::InferringTimestampBatchingSurface,
             0,
             None,
         ))?;

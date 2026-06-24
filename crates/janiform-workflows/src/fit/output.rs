@@ -234,7 +234,6 @@ fn stage_report_warning_messages(stage_report: &CalibrationStagedRunStageReport)
             .unwrap_or(&[]),
         CalibrationStagedRunStageReport::Seasonality(_)
         | CalibrationStagedRunStageReport::Hawkes(_)
-        | CalibrationStagedRunStageReport::ObservationModels(_)
         | CalibrationStagedRunStageReport::ReturnComponents(_)
         | CalibrationStagedRunStageReport::LongVariance(_)
         | CalibrationStagedRunStageReport::NewsShocks(_)

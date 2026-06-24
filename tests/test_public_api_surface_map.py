@@ -6,6 +6,7 @@ from typing import Optional
 import pytest
 
 import janiform
+import janiform.market_pressure as market_pressure_module
 import janiform.contracts as contracts_module
 import janiform.errors as errors_module
 import janiform.interval_factor_grids as interval_factor_grids_module
@@ -33,6 +34,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
         "janiform.forecast",
+        "janiform.market_pressure",
+        "janiform.market_pressure.contracts",
         "janiform.interval_factor_grids",
         "janiform.interval_factor_grids.contracts",
         "janiform.mean_reversion",
@@ -121,13 +124,14 @@ def test_python_package_all_exports_exclude_private_names() -> None:
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:
     expected_exports = {
+        "MarketPressureParameters",
+        "MarketPressureState",
         "CoarseSimulationModelInputs",
         "CoarseSimulationPath",
         "CoarseSimulationRunRequest",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
-        "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -165,7 +169,6 @@ def test_contracts_public_symbols_live_in_contracts_module() -> None:
 
 def test_mean_reversion_public_symbols_live_in_mean_reversion_module() -> None:
     expected_exports = {
-        "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -179,7 +182,6 @@ def test_mean_reversion_public_contract_submodule_is_supported_domain_import() -
     mean_reversion_contracts_module = import_module("janiform.mean_reversion.contracts")
 
     expected_exports = {
-        "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -187,17 +189,29 @@ def test_mean_reversion_public_contract_submodule_is_supported_domain_import() -
 
     assert set(mean_reversion_contracts_module.__all__) == expected_exports
     assert expected_exports <= set(dir(mean_reversion_contracts_module))
-    assert mean_reversion_module.MeanReversionAnchorModel is mean_reversion_contracts_module.MeanReversionAnchorModel
     assert (
         mean_reversion_module.MeanReversionBoundaryState
         is mean_reversion_contracts_module.MeanReversionBoundaryState
     )
 
 
+def test_market_pressure_public_symbols_live_in_market_pressure_module() -> None:
+    expected_exports = {
+        "MarketPressureParameters",
+        "MarketPressureState",
+        "MarketPressureTransitionRates",
+    }
+
+    assert set(market_pressure_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(market_pressure_module))
+
+
 def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None:
     simulation_seeded_module = import_module("janiform.simulation.seeded")
 
     expected_exports = {
+        "MarketPressureParameters",
+        "MarketPressureState",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
@@ -247,10 +261,11 @@ def test_simulation_shared_public_submodule_is_supported_domain_import() -> None
     simulation_shared_module = import_module("janiform.simulation.shared")
 
     expected_exports = {
+        "MarketPressureParameters",
+        "MarketPressureState",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
-        "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -293,7 +308,6 @@ def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
 
     assert simulation_module.HawkesKernelParameters is simulation_shared_module.HawkesKernelParameters
     assert simulation_module.HawkesExcitationState is simulation_shared_module.HawkesExcitationState
-    assert mean_reversion_module.MeanReversionAnchorModel is simulation_shared_module.MeanReversionAnchorModel
     assert simulation_module.MeanReversionFittedParameters is simulation_shared_module.MeanReversionFittedParameters
     assert simulation_module.MeanReversionBoundaryState is simulation_shared_module.MeanReversionBoundaryState
     assert (
@@ -392,7 +406,10 @@ def test_sufficient_statistics_contract_submodule_is_supported_domain_import() -
 
     assert expected_exports <= set(sufficient_statistics_contracts_module.__all__)
     assert expected_exports <= set(dir(sufficient_statistics_contracts_module))
-    assert sufficient_statistics_module.SufficientStatisticsPath is sufficient_statistics_contracts_module.SufficientStatisticsPath
+    assert (
+        sufficient_statistics_module.SufficientStatisticsPath
+        is sufficient_statistics_contracts_module.SufficientStatisticsPath
+    )
 
 
 def test_interval_factor_grid_support_symbols_live_in_interval_factor_grid_module() -> None:
@@ -663,8 +680,8 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
     expected_exports = {
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY",
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY",
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION",
         "DEFAULT_OPTION_FORWARD_PARITY_WARNING_RELATIVE_THRESHOLD",
         "CalibrationCoarseDataColumnMapping",
         "CalibrationCoarseDataTimestampSemantics",
@@ -693,8 +710,8 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
         "MarketDataSourceProbe",
-        "MarketDataTimestampBatchingObservationDiagnostic",
-        "MarketDataTimestampBatchingObservationDiagnosticState",
+        "MarketDataTimestampBatchingSurfaceDiagnostic",
+        "MarketDataTimestampBatchingSurfaceDiagnosticState",
         "NormalizedMarketDataSource",
         "OptionForwardParityCheck",
         "OptionForwardParityWarningPolicy",
@@ -724,8 +741,8 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     calibration_market_data_contracts_module = import_module("janiform.calibration.market_data.contracts")
     calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
     calibration_market_data_ingestion_module = import_module("janiform.calibration.market_data.ingestion")
-    calibration_market_data_timestamp_observation_module = import_module(
-        "janiform.calibration.market_data.timestamp_observation"
+    calibration_market_data_timestamp_batching_surface_module = import_module(
+        "janiform.calibration.market_data.timestamp_batching_surface"
     )
     calibration_market_data_translation_module = import_module("janiform.calibration.market_data.translation")
     calibration_market_data_workflow_module = import_module("janiform.calibration.market_data.workflow")
@@ -750,11 +767,11 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     assert set(calibration_market_data_ingestion_module.__all__) == {
         "LoadedMarketDataSourceSummary",
     }
-    assert set(calibration_market_data_timestamp_observation_module.__all__) == {
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_POLICY",
-        "CALIBRATION_TIMESTAMP_BATCHING_OBSERVATION_DIAGNOSTIC_SCHEMA_VERSION",
-        "MarketDataTimestampBatchingObservationDiagnostic",
-        "MarketDataTimestampBatchingObservationDiagnosticState",
+    assert set(calibration_market_data_timestamp_batching_surface_module.__all__) == {
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY",
+        "CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION",
+        "MarketDataTimestampBatchingSurfaceDiagnostic",
+        "MarketDataTimestampBatchingSurfaceDiagnosticState",
     }
     assert set(calibration_market_data_translation_module.__all__) == {
         "MarketDataSourceProbe",

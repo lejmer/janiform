@@ -104,6 +104,7 @@ pub struct ForecastScalarSummary {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ForecastDistributionSupport {
     pub policy: String,
+    pub grid_policy: String,
     pub lower_probability: Option<f64>,
     pub upper_probability: Option<f64>,
     pub log_return_lower: f64,

@@ -18,7 +18,7 @@ use janiform_model_kernels::long_variance::LongVarianceState;
 use janiform_work_scheduler::{DynamicWorkPoolStatus, StaticWorkPoolInput, run_static_work_pool};
 use serde::{Deserialize, Serialize};
 
-use crate::adapters::load_interval_factor_grid_for_calibration;
+use crate::load_interval_factor_grid_for_calibration;
 use crate::runtime_seasonality::RUNTIME_COMPACT_SEASONALITY_MATERIALIZATION_METHOD;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementReturnScaleSummary,
@@ -757,6 +757,14 @@ fn build_joint_coarse_model_inputs(
             )
         })?;
 
+    let initial_market_pressure_state =
+        janiform_model_kernels::market_pressure::MarketPressureState::neutral_for_parameters(
+            &fitted_parameters
+                .return_components_fitted_parameters
+                .market_pressure_parameters,
+        )
+        .map_err(|source| format!("invalid initial market-pressure state: {source}"))?;
+
     let sufficient_statistics_model_inputs =
         SufficientStatisticsModelInputs::try_new(SufficientStatisticsModelInputs {
             equation_specification: ExponentialAffineTransformEquationSpecification::try_new(
@@ -769,20 +777,25 @@ fn build_joint_coarse_model_inputs(
                 fitted_parameters
                     .return_components_fitted_parameters
                     .long_variance_parameters,
+                // The sufficient-statistics model input owns the pressure contract.
+                fitted_parameters
+                    .return_components_fitted_parameters
+                    .market_pressure_parameters
+                    .clone(),
             )
             .map_err(|source| format!("invalid coarse equation specification: {source}"))?,
             nig_shared_plus_shift_configuration: fitted_parameters
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             initial_excitation_state,
+            initial_market_pressure_state,
             long_variance_parameters: fitted_parameters
                 .return_components_fitted_parameters
                 .long_variance_parameters,
             initial_long_variance_state: LongVarianceState::unit(),
             mean_reversion_fitted_parameters: fitted_parameters
                 .return_components_fitted_parameters
-                .mean_reversion_fitted_parameters
-                .clone(),
+                .mean_reversion_fitted_parameters,
             mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state,
         })
@@ -801,13 +814,12 @@ fn build_joint_coarse_model_inputs(
             .return_components_fitted_parameters
             .long_variance_parameters,
         initial_long_variance_state: LongVarianceState::unit(),
-        observed_price_tick_size: fitted_parameters
+        // Joint refinement scores latent return dynamics. Price discretization belongs to
+        // observation output workflows.
+        observed_price_tick_size: None,
+        timestamp_batching_surface: fitted_parameters
             .return_components_fitted_parameters
-            .tick_grid_observation_model
-            .tick_size,
-        timestamp_batching_observation_model: fitted_parameters
-            .return_components_fitted_parameters
-            .timestamp_batching_observation_model
+            .timestamp_batching_surface
             .clone(),
         calendar_registry_artifact: build_exchange_calendar_registry_artifact(
             &context.calendar_registry,

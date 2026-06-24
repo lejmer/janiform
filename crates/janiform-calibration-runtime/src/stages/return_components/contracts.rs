@@ -1,23 +1,28 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 use janiform_foundations::strings::is_non_empty_string;
 use janiform_foundations::time::duration_nanos_to_hours;
 use serde::{Deserialize, Serialize};
 
+use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::objective::{
     CalibrationObjectiveTermDiagnostic, HawkesStageObjectiveTermInput,
     HawkesStageObjectiveTermInputError,
 };
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::HawkesStageFittedPayload;
-use crate::stages::seasonality::CalibrationStageExecutionStatus;
+use crate::stages::seasonality::{
+    CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
+};
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
     CalibrationStageHandoffTransport, CalibrationStagePayloadSource, CalibrationStageSeedSource,
-    ReturnComponentsStageFittedParameters, TickGridObservationModel,
+    PriceDiscretizationSurface, ReturnComponentsStageFittedParameters,
 };
 use janiform_market_time::calendar::MarketState;
+use janiform_model_kernels::market_pressure::MarketPressureParameters;
 use janiform_model_kernels::news::{
     KnownNewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
     SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
@@ -26,7 +31,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_clock::{
     ReturnClockExposureParameters, SideSourceActivityDecomposition,
 };
-use janiform_model_kernels::timestamp_observation::TimestampBatchingObservationModel;
+use janiform_model_kernels::timestamp_batching_surface::TimestampBatchingSurface;
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT,
@@ -36,6 +41,7 @@ use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_PRICE_RANGE_SANITY_FIT,
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_SURPRISE_ARRIVAL_FIT,
 };
+use crate::market_pressure::MarketPressureRuntimeState;
 
 /// One weighted objective term used by return-components-stage candidate evaluation.
 pub type ReturnComponentsStageObjectiveTermInput = HawkesStageObjectiveTermInput;
@@ -57,6 +63,7 @@ pub enum ReturnComponentsStageProgressPhase {
     SurpriseArrivalFit,
     ReturnJumpMarkFit,
     ActivityCouplingFit,
+    MarketPressureFit,
     ObjectivePolicyFit,
     ContinuousReturnLayerFit,
     ContinuousNigMomentSeedGeneration,
@@ -660,8 +667,8 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub tick_grid_observation_model: TickGridObservationModel,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub price_discretization_surface: PriceDiscretizationSurface,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
 }
 
@@ -719,12 +726,12 @@ impl ReturnComponentsStageCandidateGenerationInput {
                 }
             })?;
 
-        validate_tick_grid_observation_model(&self.tick_grid_observation_model)?;
+        validate_price_discretization_surface(&self.price_discretization_surface)?;
 
-        self.timestamp_batching_observation_model
+        self.timestamp_batching_surface
             .validate()
             .map_err(|source| {
-                ReturnComponentsStageCandidateGenerationInputError::InvalidTimestampBatchingObservationModel {
+                ReturnComponentsStageCandidateGenerationInputError::InvalidTimestampBatchingSurface {
                     error_message: source.to_string(),
                 }
             })?;
@@ -735,8 +742,8 @@ impl ReturnComponentsStageCandidateGenerationInput {
     }
 }
 
-fn validate_tick_grid_observation_model(
-    model: &TickGridObservationModel,
+fn validate_price_discretization_surface(
+    model: &PriceDiscretizationSurface,
 ) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
     if let Some(tick_size) = model.tick_size
         && (!tick_size.is_finite() || tick_size <= 0.0)
@@ -912,13 +919,19 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     InvalidTickSize {
         value: f64,
     },
-    InvalidTimestampBatchingObservationModel {
+    InvalidTimestampBatchingSurface {
+        error_message: String,
+    },
+    MarketPressureFitFailed {
         error_message: String,
     },
     InvalidContinuousDistributionFitWeight {
         value: f64,
     },
     MissingContinuousDistributionSeedCandidate,
+    MissingCandidateEnumerationWorkerResult {
+        candidate_position: usize,
+    },
     InvalidSurpriseArrivalFitWeight {
         value: f64,
     },
@@ -1195,11 +1208,15 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             ),
             Self::InvalidTickSize { value } => write!(
                 formatter,
-                "tick_grid_observation_model.tick_size must be finite and strictly positive when provided, found {value}"
+                "price_discretization_surface.tick_size must be finite and strictly positive when provided, found {value}"
             ),
-            Self::InvalidTimestampBatchingObservationModel { error_message } => write!(
+            Self::InvalidTimestampBatchingSurface { error_message } => write!(
                 formatter,
-                "timestamp_batching_observation_model is invalid: {error_message}"
+                "timestamp_batching_surface is invalid: {error_message}"
+            ),
+            Self::MarketPressureFitFailed { error_message } => write!(
+                formatter,
+                "market pressure fit failed during candidate generation: {error_message}"
             ),
             Self::InvalidContinuousDistributionFitWeight { value } => write!(
                 formatter,
@@ -1208,6 +1225,10 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             Self::MissingContinuousDistributionSeedCandidate => write!(
                 formatter,
                 "continuous-return candidate generation produced no NIG seed candidates"
+            ),
+            Self::MissingCandidateEnumerationWorkerResult { candidate_position } => write!(
+                formatter,
+                "candidate enumeration worker did not return a result for position {candidate_position}"
             ),
             Self::InvalidSurpriseArrivalFitWeight { value } => write!(
                 formatter,
@@ -2048,6 +2069,10 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub exact_uncertified_scope_count: usize,
     pub exact_global_average_log_likelihood_error_upper_bound: Option<f64>,
     pub exact_conditional_average_log_likelihood_error_upper_bound: Option<f64>,
+    pub location_fit: f64,
+    pub scale_fit: f64,
+    pub tail_shape_fit: f64,
+    pub asymmetry_shape_fit: f64,
     pub mean_return_fit: f64,
     pub volatility_fit: f64,
     pub median_return_fit: f64,
@@ -2060,6 +2085,7 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub mean_abs_return_fit: f64,
     pub median_abs_return_fit: f64,
     pub abs_quantile_ratio_fit: f64,
+    pub excess_kurtosis_fit: f64,
     pub bowley_skewness_fit: f64,
     pub l_moment_lambda2_fit: f64,
     pub l_moment_tau3_fit: f64,
@@ -2072,6 +2098,25 @@ pub struct ReturnComponentsStageCandidateFamilyCounts {
     pub surprise_news_arrival_family_count: usize,
     pub return_jump_mark_scale_family_count: usize,
     pub activity_coupling_family_count: usize,
+    pub market_pressure_family_count: usize,
+}
+
+/// Market-pressure state-count selection decision recorded during stage fitting.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageMarketPressureSelectionDiagnostic {
+    pub evidence_source: String,
+    pub decision: String,
+    pub reason: String,
+    pub current_state_count: usize,
+    pub candidate_state_count: usize,
+    pub effective_sample_count: f64,
+    pub current_log_likelihood: Option<f64>,
+    pub candidate_log_likelihood: Option<f64>,
+    pub current_penalized_score: Option<f64>,
+    pub candidate_penalized_score: Option<f64>,
+    pub score_improvement: Option<f64>,
+    pub current_support_levels: Vec<f64>,
+    pub candidate_support_levels: Vec<f64>,
 }
 
 /// Candidate parameterization and objective inputs for return-components-stage fitting.
@@ -2093,9 +2138,10 @@ pub struct ReturnComponentsStageCandidateInput {
     pub objective_terms: Vec<ReturnComponentsStageObjectiveTermInput>,
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
+    pub market_pressure_parameters: MarketPressureParameters,
     pub return_clock_exposure_parameters: ReturnClockExposureParameters,
-    pub tick_grid_observation_model: TickGridObservationModel,
-    pub timestamp_batching_observation_model: TimestampBatchingObservationModel,
+    pub price_discretization_surface: PriceDiscretizationSurface,
+    pub timestamp_batching_surface: TimestampBatchingSurface,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2149,6 +2195,9 @@ pub enum ReturnComponentsStageCandidateInputError {
     },
     InvalidWeightedObjectiveValue {
         value: f64,
+    },
+    InvalidMarketPressureParameters {
+        error_message: String,
     },
 }
 
@@ -2229,6 +2278,10 @@ impl Display for ReturnComponentsStageCandidateInputError {
                 formatter,
                 "weighted objective sum must be finite, found {value}"
             ),
+            Self::InvalidMarketPressureParameters { error_message } => write!(
+                formatter,
+                "market_pressure_parameters are invalid: {error_message}"
+            ),
         }
     }
 }
@@ -2255,6 +2308,13 @@ impl ReturnComponentsStageCandidateInput {
         self.candidate_families.validate()?;
         self.candidate_provenance.validate()?;
         self.objective_metric_buckets.validate()?;
+        self.market_pressure_parameters
+            .validate()
+            .map_err(|source| {
+                ReturnComponentsStageCandidateInputError::InvalidMarketPressureParameters {
+                    error_message: source.to_string(),
+                }
+            })?;
 
         let mut has_continuous_distribution_term = false;
         let mut has_surprise_arrival_term = false;
@@ -2359,18 +2419,32 @@ impl ReturnComponentsStageCandidateInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnComponentsStageExecutionInput {
     pub activity_input: CalibrationStagePayloadSource<HawkesStageFittedPayload>,
+    pub hawkes_return_source_responsibility_input:
+        Option<ReturnComponentsHawkesReturnSourceResponsibilityInput>,
+    pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnComponentsHawkesReturnSourceResponsibilityInput {
+    pub seasonality_payload: SeasonalityStageNormalizedPayload,
+    pub event_side_codes: Vec<u8>,
 }
 
 impl ReturnComponentsStageExecutionInput {
     pub fn from_in_memory_activity_output(
         hawkes_payload: HawkesStageFittedPayload,
+        hawkes_return_source_responsibility_input: Option<
+            ReturnComponentsHawkesReturnSourceResponsibilityInput,
+        >,
         candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     ) -> Self {
         Self {
             activity_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
             },
+            hawkes_return_source_responsibility_input,
+            coarse_data_records: None,
             candidate_generation_input,
         }
     }
@@ -2382,6 +2456,7 @@ impl ReturnComponentsStageExecutionInput {
         Self::from_persisted_activity_artifact_reference_with_payload(
             artifact_reference,
             None,
+            None,
             candidate_generation_input,
         )
     }
@@ -2389,6 +2464,9 @@ impl ReturnComponentsStageExecutionInput {
     pub fn from_persisted_activity_artifact_reference_with_payload(
         artifact_reference: impl Into<String>,
         hawkes_payload: Option<HawkesStageFittedPayload>,
+        hawkes_return_source_responsibility_input: Option<
+            ReturnComponentsHawkesReturnSourceResponsibilityInput,
+        >,
         candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     ) -> Self {
         Self {
@@ -2396,6 +2474,8 @@ impl ReturnComponentsStageExecutionInput {
                 artifact_reference: artifact_reference.into(),
                 payload: hawkes_payload,
             },
+            hawkes_return_source_responsibility_input,
+            coarse_data_records: None,
             candidate_generation_input,
         }
     }
@@ -2486,8 +2566,13 @@ pub struct ReturnComponentsStageCandidateDiagnostic {
 pub struct ReturnComponentsStageFittedPayload {
     pub schema_version: &'static str,
     pub selected_candidate_id: String,
+    pub source_window_open_exposure_hours: f64,
     pub fitted_parameters: ReturnComponentsStageFittedParameters,
+    #[serde(skip)]
+    pub(crate) market_pressure_runtime_state: Option<Arc<MarketPressureRuntimeState>>,
     pub candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic>,
+    pub market_pressure_selection_diagnostics:
+        Vec<ReturnComponentsStageMarketPressureSelectionDiagnostic>,
     pub candidate_generation_policy: &'static str,
     pub objective_weighting_policy: &'static str,
     pub objective_metric_bucket_policy: &'static str,
@@ -2553,6 +2638,9 @@ pub enum ReturnComponentsStageExecutionFailure {
         provided_artifact_reference: String,
     },
     InvalidCandidateGenerationInput {
+        error_message: String,
+    },
+    InvalidHawkesReturnSourceResponsibilities {
         error_message: String,
     },
     CandidateGenerationFailed {

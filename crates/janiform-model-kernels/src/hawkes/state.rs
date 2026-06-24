@@ -148,6 +148,8 @@ impl HawkesTransitionStep {
 pub enum HawkesTransitionError {
     InvalidDeltaT { value: f64 },
     InvalidBeta { value: f64 },
+    InvalidState { field: &'static str, value: f64 },
+    InvalidTerminalStateContribution { field: &'static str, value: f64 },
     InvalidNewsSeverityMark { source: HawkesNewsSeverityMarkError },
 }
 
@@ -161,6 +163,14 @@ impl Display for HawkesTransitionError {
             Self::InvalidBeta { value } => write!(
                 formatter,
                 "beta must be finite and strictly positive for transition composition, found {value}"
+            ),
+            Self::InvalidState { field, value } => write!(
+                formatter,
+                "state.{field} must be finite and non-negative for transition composition, found {value}"
+            ),
+            Self::InvalidTerminalStateContribution { field, value } => write!(
+                formatter,
+                "terminal state contribution.{field} must be finite and non-negative for transition composition, found {value}"
             ),
             Self::InvalidNewsSeverityMark { source } => write!(formatter, "{source}"),
         }
@@ -206,6 +216,20 @@ impl HawkesExcitationState {
         }
 
         Ok(())
+    }
+
+    /// Add two excitation states component-wise and validate the resulting state.
+    pub fn add_componentwise(self, other: Self) -> Result<Self, NonNegativeNumberValidationError> {
+        let combined_state = Self {
+            y_plus_plus: self.y_plus_plus + other.y_plus_plus,
+            y_plus_minus: self.y_plus_minus + other.y_plus_minus,
+            y_minus_plus: self.y_minus_plus + other.y_minus_plus,
+            y_minus_minus: self.y_minus_minus + other.y_minus_minus,
+        };
+
+        combined_state.validate()?;
+
+        Ok(combined_state)
     }
 
     /// Build a state from explicit target/source component groups.

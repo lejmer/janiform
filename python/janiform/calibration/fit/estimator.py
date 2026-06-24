@@ -107,15 +107,13 @@ class JaniformEstimator:
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
     _tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy
-    _dynamics_search_restart_candidate_budget: Optional[int]
+    _dynamics_search_candidate_budget: Optional[int]
     _calibration_effort: CalibrationEffortOptions
     _treat_calibration_warnings_as_errors: bool
     _joint_refinement_option_refinement_candidate_count_override: Optional[int]
     _joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int]
     _joint_refinement_audit_option_pricing_enabled: bool
     _diagnostics: CalibrationDiagnosticsRequest
-    _stylized_fact_huber_cutoff: Optional[float]
-    _stylized_fact_admissibility_z_threshold: Optional[float]
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -144,15 +142,13 @@ class JaniformEstimator:
         tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy = (
             CalibrationTickObjectiveDataUsagePolicy.SHORT_HORIZON_WINDOW
         ),
-        dynamics_search_restart_candidate_budget: Optional[int] = None,
+        dynamics_search_candidate_budget: Optional[int] = None,
         calibration_effort: CalibrationEffortOptions = STANDARD_CALIBRATION_EFFORT,
         treat_calibration_warnings_as_errors: bool = False,
         joint_refinement_option_refinement_candidate_count: Optional[int] = None,
         joint_refinement_option_refinement_wall_clock_budget_millis: Optional[int] = None,
         joint_refinement_audit_option_pricing: bool = False,
         diagnostics: Optional[CalibrationDiagnosticsRequest] = None,
-        stylized_fact_huber_cutoff: Optional[float] = None,
-        stylized_fact_admissibility_z_threshold: Optional[float] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -210,11 +206,11 @@ class JaniformEstimator:
             )
 
         if (
-            dynamics_search_restart_candidate_budget is not None
-            and dynamics_search_restart_candidate_budget <= 0
+            dynamics_search_candidate_budget is not None
+            and dynamics_search_candidate_budget <= 0
         ):
             raise calibration_error(
-                "dynamics_search_restart_candidate_budget",
+                "dynamics_search_candidate_budget",
                 "must be strictly positive when provided",
             )
 
@@ -240,27 +236,6 @@ class JaniformEstimator:
             raise calibration_error(
                 "joint_refinement_option_refinement_wall_clock_budget_millis",
                 "must be strictly positive when provided",
-            )
-
-        if (
-            stylized_fact_huber_cutoff is not None
-            and (not isfinite(stylized_fact_huber_cutoff) or stylized_fact_huber_cutoff <= 0.0)
-        ):
-            raise calibration_error(
-                "stylized_fact_huber_cutoff",
-                "must be finite and strictly positive when provided",
-            )
-
-        if (
-            stylized_fact_admissibility_z_threshold is not None
-            and (
-                not isfinite(stylized_fact_admissibility_z_threshold)
-                or stylized_fact_admissibility_z_threshold <= 0.0
-            )
-        ):
-            raise calibration_error(
-                "stylized_fact_admissibility_z_threshold",
-                "must be finite and strictly positive when provided",
             )
 
         if diagnostics is not None and not isinstance(diagnostics, CalibrationDiagnosticsRequest):
@@ -305,7 +280,7 @@ class JaniformEstimator:
             else pricing_interval_schedule_policy
         )
         self._tick_objective_data_usage_policy = tick_objective_data_usage_policy
-        self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
+        self._dynamics_search_candidate_budget = dynamics_search_candidate_budget
         self._calibration_effort = calibration_effort
         self._treat_calibration_warnings_as_errors = treat_calibration_warnings_as_errors
         self._joint_refinement_option_refinement_candidate_count_override = (
@@ -318,10 +293,6 @@ class JaniformEstimator:
             joint_refinement_audit_option_pricing
         )
         self._diagnostics = CalibrationDiagnosticsRequest() if diagnostics is None else diagnostics
-        self._stylized_fact_huber_cutoff = stylized_fact_huber_cutoff
-        self._stylized_fact_admissibility_z_threshold = (
-            stylized_fact_admissibility_z_threshold
-        )
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
         self._known_news_reference = coerce_known_news_reference(known_news)
@@ -457,7 +428,7 @@ class JaniformEstimator:
                 else pricing_interval_schedule_policy
             ),
             tick_objective_data_usage_policy=self._tick_objective_data_usage_policy,
-            dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
+            dynamics_search_candidate_budget=self._dynamics_search_candidate_budget,
             calibration_effort=self._calibration_effort,
             treat_calibration_warnings_as_errors=(
                 self._treat_calibration_warnings_as_errors
@@ -472,10 +443,6 @@ class JaniformEstimator:
                 self._joint_refinement_audit_option_pricing_enabled
             ),
             diagnostics=self._diagnostics,
-            stylized_fact_huber_cutoff=self._stylized_fact_huber_cutoff,
-            stylized_fact_admissibility_z_threshold=(
-                self._stylized_fact_admissibility_z_threshold
-            ),
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()
             ),

@@ -23,14 +23,13 @@ pub use execution::JointRefinementSeedSummary;
 pub use execution::run_joint_refinement_calibration_stage;
 pub(crate) use execution::{
     FinalizationCalibrationStageEntrypointInput, JointRefinementCalibrationStageEntrypointInput,
-    JointRefinementStageRuntimeHandoff, OptionRefinementCalibrationStageEntrypointInput,
-    pricing_block_search_coordinate_count,
+    JointRefinementStageRuntimeHandoff, OPTION_PRICING_BLOCK_SEARCH_COORDINATE_COUNT,
+    OptionRefinementCalibrationStageEntrypointInput,
     run_finalization_calibration_stage_with_progress_observer_and_persistence,
     run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_option_refinement_calibration_stage_with_progress_observer_and_persistence,
 };
 pub use mean_reversion_runtime::endogenous_interval_factor_grids_from_interval_factor_grid;
-pub(crate) use setup::build_surprise_multipliers_for_interval_grid;
 pub use summary_simulation::{
     CloseSessionRequest, CloseSessionResponse, InitializeSessionRequest, InitializeSessionResponse,
     JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION,

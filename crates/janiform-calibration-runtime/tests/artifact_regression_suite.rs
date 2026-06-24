@@ -1137,16 +1137,6 @@ fn assert_stage_artifact_matches(
             );
         }
         (
-            CalibrationStageParameterPayload::ObservationModels(loaded_payload),
-            CalibrationStageParameterPayload::ObservationModels(expected_payload),
-        ) => {
-            assert_eq!(
-                loaded_payload, expected_payload,
-                "fixture_id={} observation-models payload drifted",
-                fixture_id
-            );
-        }
-        (
             CalibrationStageParameterPayload::ReturnComponents(loaded_payload),
             CalibrationStageParameterPayload::ReturnComponents(expected_payload),
         ) => {
