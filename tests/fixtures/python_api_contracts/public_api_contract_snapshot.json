@@ -9506,10 +9506,10 @@
           "field_names": [
             "artifact_kind",
             "file_name",
-            "absolute_path"
+            "path"
           ],
           "kind": "contract_model",
-          "signature": "(artifact_kind: 'str', file_name: 'str', absolute_path: 'str') -> 'None'"
+          "signature": "(artifact_kind: 'str', file_name: 'str', path: 'str') -> 'None'"
         },
         "StylizedFactHorizonComparisonHorizonReport": {
           "field_names": [

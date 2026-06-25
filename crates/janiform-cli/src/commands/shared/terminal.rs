@@ -1,3 +1,4 @@
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::CompletionSummary;
 use janiform_terminal_ui::CompletionSummaryStatus;
 use janiform_terminal_ui::KeyValueRow;
@@ -5,7 +6,6 @@ use janiform_terminal_ui::ProgressAdapter;
 use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::TerminalSummaryPolicy;
-use janiform_terminal_ui::format_artifact_path;
 use serde::Serialize;
 
 use crate::commands::shared::output::write_json_payload;
@@ -104,10 +104,7 @@ pub(crate) fn append_output_path_row(
     output_path: Option<&std::path::Path>,
 ) {
     if let Some(output_path) = output_path {
-        rows.push(KeyValueRow::new(
-            "Output",
-            format_artifact_path(output_path),
-        ));
+        rows.push(KeyValueRow::new("Output", format_path(output_path)));
     }
 }
 

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StageChecklist;
 use janiform_terminal_ui::StageChecklistItem;
@@ -83,7 +84,7 @@ fn render_model_summary(model: &Value, model_path: &Path, renderer: &TerminalRen
         .unwrap_or_else(|| "not recorded".to_string());
 
     let mut rows = vec![
-        KeyValueRow::new("Model", model_path.display().to_string()),
+        KeyValueRow::new("Model", format_path(model_path)),
         KeyValueRow::new("Run", model_run_id(model)),
         KeyValueRow::new("Workflow scope", workflow_scope),
     ];

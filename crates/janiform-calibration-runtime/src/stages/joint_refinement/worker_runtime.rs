@@ -8,6 +8,7 @@ use std::sync::{Condvar, Mutex, mpsc};
 use janiform_foundations::cancellation::{
     CancellationError, CancellationToken, NATIVE_INTERRUPT_POLL_INTERVAL,
 };
+use janiform_foundations::paths::format_path;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
 use crate::stages::parallelism::resolved_stage_cpu_count;
@@ -635,7 +636,7 @@ fn resolve_optional_worker_executable_path() -> Result<Option<PathBuf>, String> 
 
         return Err(format!(
             "summary simulation worker executable path does not exist: {}",
-            candidate.display()
+            format_path(candidate.as_path())
         ));
     }
 
@@ -664,7 +665,7 @@ fn unresolved_worker_executable_error_message() -> String {
         Ok(current_executable) => format!(
             "unable to resolve summary simulation worker executable `{}` from {}",
             executable_name,
-            current_executable.display()
+            format_path(current_executable.as_path())
         ),
         Err(source) => format!(
             "unable to resolve current executable while locating summary simulation worker executable `{}`: {}",

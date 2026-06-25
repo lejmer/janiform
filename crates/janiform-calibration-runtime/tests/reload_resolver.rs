@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use janiform_foundations::paths::format_path;
 use serde_json::Value;
 
 mod support;
@@ -111,7 +112,7 @@ fn reload_resolver_rejects_unsupported_manifest_schema_versions() {
         CalibrationArtifactReloadError::UnsupportedSchema {
             run_id: run_id.to_string(),
             component: CalibrationArtifactReloadComponent::Manifest,
-            path: manifest_path.display().to_string(),
+            path: format_path(&manifest_path),
             expected_schema_version: CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION.to_string(),
             found_schema_version: "calibration.artifact_registry.manifest.v2".to_string(),
         }
@@ -153,7 +154,7 @@ fn reload_resolver_reports_corrupted_stage_artifacts_with_structured_errors() {
                     stage: CalibrationStage::Hawkes,
                 }
             );
-            assert_eq!(path, hawkes_path.display().to_string());
+            assert_eq!(path, format_path(&hawkes_path));
             assert!(!error_message.is_empty());
         }
         other => panic!("expected corrupted artifact error, found {other:?}"),

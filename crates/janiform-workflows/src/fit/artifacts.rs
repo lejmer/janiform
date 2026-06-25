@@ -18,6 +18,7 @@ use janiform_calibration_artifacts::{
 use janiform_calibration_runtime::{
     CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
 };
+use janiform_foundations::paths::format_path;
 use serde::Serialize;
 use serde_json::Map;
 use serde_json::Value;
@@ -81,7 +82,7 @@ pub fn build_fit_report_payload(
         "preparation": preparation_payload.cloned(),
         "prepared_data_reference": execution_input.request.data_inputs.trade_events_data_reference,
         "prepared_payload_path": null,
-        "staged_execution_input_path": staged_execution_input_path.map(|path| path.display().to_string()),
+        "staged_execution_input_path": staged_execution_input_path.map(format_path),
         "staged_request": execution_input.request,
         "staged_response": staged_response,
     }))
@@ -452,7 +453,7 @@ fn apply_resumed_disk_stage_parameter_artifacts(
                 field: "model_payload.parameters",
                 message: format!(
                     "failed to load resumed stage parameter artifact `{}`: {}",
-                    artifact_path.display(),
+                    format_path(artifact_path.as_path()),
                     calibration_stage_parameter_artifact_load_error_message(stage, &source)
                 ),
             })?;

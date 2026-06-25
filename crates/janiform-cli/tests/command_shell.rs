@@ -12,6 +12,9 @@ use janiform::validation::stylized_facts::{
 };
 use janiform_cli::CliExitCode;
 use janiform_foundations::json::document::write_pretty_json_document;
+use janiform_foundations::paths::{
+    format_path, format_path_relative_to, normalize_path_separators,
+};
 use serde::Serialize;
 
 const HOUR_DURATION_NANOS: i64 = 3_600_000_000_000;
@@ -535,7 +538,14 @@ fn validate_stylized_facts_plan_uses_model_tick_source_when_empirical_path_is_om
     write_tick_csv(&empirical_path);
     write_model_with_tick_source(&model_path, &empirical_path);
 
-    let output = janiform_command()
+    let mut plan_command = janiform_command();
+
+    let command_working_directory = plan_command
+        .get_current_dir()
+        .expect("command working directory should be configured")
+        .to_path_buf();
+
+    let output = plan_command
         .args([
             "--json",
             "validate",
@@ -559,9 +569,7 @@ fn validate_stylized_facts_plan_uses_model_tick_source_when_empirical_path_is_om
 
     assert_eq!(
         payload["empirical_data_path"],
-        empirical_path
-            .to_str()
-            .expect("empirical path should be valid UTF-8")
+        format_path_relative_to(&command_working_directory, &empirical_path)
     );
     assert_eq!(payload["empirical_data_format"], "csv");
     assert_eq!(payload["empirical_timestamp_column"], "timestamp");
@@ -1912,7 +1920,7 @@ fn inspect_run_reads_latest_state_snapshot_as_json() {
             janiform_event_log::EventDeliveryPriority::Required,
             janiform_event_log::RunEventPayload::Artifact(janiform_event_log::RunArtifactEvent {
                 artifact_kind: "model".to_string(),
-                path: run_directory.join("model.json").display().to_string(),
+                path: format_path_relative_to(&run_directory, &run_directory.join("model.json")),
                 stage: None,
                 phase: None,
                 label: None,
@@ -2009,7 +2017,7 @@ fn inspect_run_replay_ignores_trailing_partial_event_row() {
                 scope_id: "seasonality_only".to_string(),
                 scope_label: Some("Seasonality only".to_string()),
                 inputs: vec!["ticks.csv".to_string()],
-                output_directory: Some(run_directory.display().to_string()),
+                output_directory: Some(format_path(&run_directory)),
                 stage_sequence: Vec::new(),
             },
         ),
@@ -2243,7 +2251,7 @@ fn write_model_with_tick_source(model_path: &std::path::Path, tick_path: &std::p
             "metadata": {
                 "input_inference": {
                     "tick_data_source": {
-                        "path": tick_path.display().to_string(),
+                        "path": normalize_path_separators(tick_path),
                         "file_format": "csv",
                         "provenance_label": "ticks"
                     },

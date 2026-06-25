@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use janiform_foundations::json;
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::CompactTable;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
-use janiform_terminal_ui::format_artifact_path;
 use janiform_terminal_ui::format_token_as_kebab;
 use serde_json::Value;
 
@@ -212,10 +212,7 @@ pub(crate) fn render_presets_export(
     ];
 
     if let Some(output_path) = output_path {
-        rows.push(KeyValueRow::new(
-            "Output",
-            format_artifact_path(output_path),
-        ));
+        rows.push(KeyValueRow::new("Output", format_path(output_path)));
     }
 
     Ok(StartSummary {

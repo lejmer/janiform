@@ -4,6 +4,7 @@ use std::sync::mpsc;
 use janiform::calibration::staged::CalibrationStagedExecutionInput;
 use janiform_event_log::RunEvent;
 use janiform_foundations::cancellation::CancellationToken;
+use janiform_foundations::paths::format_path;
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::fit::{
     FitWorkflowObserver, FitWorkflowOutput, FitWorkflowRequest,
@@ -158,7 +159,7 @@ fn save_model_artifact(py: Python<'_>, request: &Bound<'_, PyAny>) -> PyResult<P
 
     let result = PyDict::new(py);
 
-    result.set_item("path", model_path.display().to_string())?;
+    result.set_item("path", format_path(&model_path))?;
 
     Ok(result.into_any().unbind())
 }

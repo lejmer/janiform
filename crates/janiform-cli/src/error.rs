@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use janiform_foundations::cancellation::CancellationError;
+use janiform_foundations::paths::format_path;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -61,7 +62,7 @@ pub enum CliError {
         source: ctrlc::Error,
     },
 
-    #[error("failed to read CLI configuration `{}`", path.display())]
+    #[error("failed to read CLI configuration `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::config_read))]
     ConfigRead {
         path: PathBuf,
@@ -69,7 +70,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("failed to parse CLI configuration `{}`", path.display())]
+    #[error("failed to parse CLI configuration `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::config_parse))]
     ConfigParse {
         path: PathBuf,
@@ -79,7 +80,7 @@ pub enum CliError {
 
     #[error(
         "CLI configuration `{}` has conflicting fields `{first_field}` and `{second_field}`",
-        path.display()
+        format_path(path)
     )]
     #[diagnostic(code(janiform_cli::config_conflict))]
     ConfigConflict {
@@ -95,7 +96,10 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("argument `{argument_name}` must reference an existing file: `{}`", path.display())]
+    #[error(
+        "argument `{argument_name}` must reference an existing file: `{}`",
+        format_path(path)
+    )]
     #[diagnostic(code(janiform_cli::missing_input_file))]
     MissingInputFile {
         argument_name: &'static str,
@@ -128,7 +132,7 @@ pub enum CliError {
         source: Box<janiform::calibration::staged::CalibrationMarketDataPreparationError>,
     },
 
-    #[error("failed to write staged execution input `{}`", path.display())]
+    #[error("failed to write staged execution input `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::staged_execution_input_write))]
     StagedExecutionInputWrite {
         path: PathBuf,
@@ -136,7 +140,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("failed to read staged execution input `{}`", path.display())]
+    #[error("failed to read staged execution input `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::staged_execution_input_read))]
     StagedExecutionInputRead {
         path: PathBuf,
@@ -144,7 +148,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("failed to parse staged execution input `{}`", path.display())]
+    #[error("failed to parse staged execution input `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::staged_execution_input_parse))]
     StagedExecutionInputParse {
         path: PathBuf,
@@ -166,7 +170,7 @@ pub enum CliError {
         workflow_summary_rendered: bool,
     },
 
-    #[error("failed to write fit artifact `{}`", path.display())]
+    #[error("failed to write fit artifact `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::fit_artifact_write))]
     FitArtifactWrite {
         path: PathBuf,
@@ -206,7 +210,7 @@ pub enum CliError {
         source: Box<janiform_terminal_ui::ProgressContractError>,
     },
 
-    #[error("failed to read {artifact_name} artifact `{}`", path.display())]
+    #[error("failed to read {artifact_name} artifact `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::artifact_read))]
     ArtifactRead {
         artifact_name: &'static str,
@@ -215,7 +219,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("failed to parse {artifact_name} artifact `{}`", path.display())]
+    #[error("failed to parse {artifact_name} artifact `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::artifact_parse))]
     ArtifactParse {
         artifact_name: &'static str,
@@ -224,7 +228,10 @@ pub enum CliError {
         source: Box<serde_json::Error>,
     },
 
-    #[error("malformed {artifact_name} artifact `{}`: {message}", path.display())]
+    #[error(
+        "malformed {artifact_name} artifact `{}`: {message}",
+        format_path(path)
+    )]
     #[diagnostic(code(janiform_cli::artifact_malformed))]
     ArtifactMalformed {
         artifact_name: &'static str,
@@ -232,7 +239,7 @@ pub enum CliError {
         message: String,
     },
 
-    #[error("failed to write {artifact_name} artifact `{}`", path.display())]
+    #[error("failed to write {artifact_name} artifact `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::artifact_write))]
     ArtifactWrite {
         artifact_name: &'static str,
@@ -241,7 +248,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("failed to read user preset `{}`", path.display())]
+    #[error("failed to read user preset `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::preset_user_file_read))]
     PresetUserFileRead {
         path: PathBuf,
@@ -249,7 +256,7 @@ pub enum CliError {
         source: io::Error,
     },
 
-    #[error("invalid user preset `{}`", path.display())]
+    #[error("invalid user preset `{}`", format_path(path))]
     #[diagnostic(code(janiform_cli::preset_user_file_invalid))]
     PresetUserFileInvalid {
         path: PathBuf,
@@ -279,9 +286,9 @@ pub enum CliError {
 
     #[error(
         "failed to inspect run directory `{}`: {message}. latest-state snapshot `{}`. event log `{}`. replay fallback attempted: {replay_fallback_attempted}",
-        run_directory.display(),
-        snapshot_path.display(),
-        event_log_path.display()
+        format_path(run_directory),
+        format_path(snapshot_path),
+        format_path(event_log_path)
     )]
     #[diagnostic(code(janiform_cli::run_inspection_failed))]
     RunInspectionFailed {

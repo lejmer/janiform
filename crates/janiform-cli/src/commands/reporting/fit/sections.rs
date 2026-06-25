@@ -4,8 +4,6 @@ use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::WarningBlock;
 use janiform_terminal_ui::format_elapsed_label;
-use janiform_terminal_ui::format_optional_path_relative_to;
-use janiform_terminal_ui::format_path_relative_to;
 use janiform_terminal_ui::format_token_as_words;
 use serde_json::Value;
 
@@ -14,6 +12,9 @@ use crate::commands::shared::terminal::render_artifact_list;
 use janiform_foundations::json::display::compact_value_string;
 use janiform_foundations::json::query::nested_string;
 use janiform_foundations::json::query::nested_value;
+use janiform_foundations::paths::format_optional_path_relative_to;
+use janiform_foundations::paths::format_path;
+use janiform_foundations::paths::format_path_relative_to;
 use janiform_foundations::paths::resolve_path_relative_to;
 use janiform_workflows::fit::stage_label_from_token;
 
@@ -140,7 +141,7 @@ pub(super) fn render_artifacts(
 
     let report_path = match run_directory {
         Some(run_directory) => format_path_relative_to(run_directory, &report_context.report_path),
-        None => report_context.report_path.display().to_string(),
+        None => format_path(&report_context.report_path),
     };
 
     artifacts.push(ArtifactListItem::new("report", report_path));
@@ -150,7 +151,7 @@ pub(super) fn render_artifacts(
     {
         let path = match run_directory {
             Some(run_directory) => format_path_relative_to(run_directory, model_path),
-            None => model_path.display().to_string(),
+            None => format_path(model_path),
         };
 
         artifacts.push(ArtifactListItem::new("model", path));

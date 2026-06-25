@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use janiform_foundations::hashing::fnv1a_64_hex_lowercase;
+use janiform_foundations::paths::format_path;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -372,7 +373,7 @@ where
             artifact_kind,
             format!(
                 "artifact path `{}` must include a parent directory",
-                artifact_path.display()
+                format_path(artifact_path)
             ),
         ));
     };
@@ -380,7 +381,7 @@ where
     fs::create_dir_all(run_directory).map_err(|source| {
         CalibrationArtifactIoError::create_directory_failed(
             artifact_kind,
-            run_directory.display().to_string(),
+            format_path(run_directory),
             source.to_string(),
         )
     })?;
@@ -394,15 +395,15 @@ where
         |path, error_message| {
             CalibrationArtifactIoError::write_failed(
                 artifact_kind,
-                path.display().to_string(),
+                format_path(path),
                 error_message,
             )
         },
         |source_path, target_path, error_message| {
             CalibrationArtifactIoError::rename_failed(
                 artifact_kind,
-                source_path.display().to_string(),
-                target_path.display().to_string(),
+                format_path(source_path),
+                format_path(target_path),
                 error_message,
             )
         },
@@ -439,7 +440,7 @@ where
     let content = fs::read_to_string(artifact_path).map_err(|source| {
         CalibrationArtifactIoError::read_failed(
             artifact_kind,
-            artifact_path.display().to_string(),
+            format_path(artifact_path),
             source.to_string(),
         )
     })?;
@@ -447,7 +448,7 @@ where
     serde_json::from_str(content.as_str()).map_err(|source| {
         CalibrationArtifactIoError::deserialization_failed(
             artifact_kind,
-            artifact_path.display().to_string(),
+            format_path(artifact_path),
             source.to_string(),
         )
     })

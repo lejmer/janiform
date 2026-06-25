@@ -221,7 +221,7 @@ class StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata(ContractMode
 class StylizedFactHorizonComparisonExportedArtifactFile(ContractModel):
     artifact_kind: str
     file_name: str
-    absolute_path: str
+    path: str
 
 
 @dataclass(frozen=True, slots=True)

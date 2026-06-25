@@ -10,6 +10,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::paths::format_path;
+
 /// Error raised when a JSON document cannot be loaded from disk.
 #[derive(Debug)]
 pub enum JsonDocumentLoadError {
@@ -54,14 +56,14 @@ impl Display for JsonDocumentLoadError {
                 write!(
                     formatter,
                     "failed to read JSON document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
             Self::Parse { path, source } => {
                 write!(
                     formatter,
                     "failed to parse JSON document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
         }
@@ -75,14 +77,14 @@ impl Display for JsonDocumentWriteError {
                 write!(
                     formatter,
                     "failed to create JSON document directory `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
             Self::Create { path, source } => {
                 write!(
                     formatter,
                     "failed to create JSON document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
             Self::Serialize { source } => {
@@ -92,7 +94,7 @@ impl Display for JsonDocumentWriteError {
                 write!(
                     formatter,
                     "failed to write JSON document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
         }

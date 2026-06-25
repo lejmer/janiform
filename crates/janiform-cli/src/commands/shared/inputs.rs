@@ -5,6 +5,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use janiform::calibration::market_data::MarketDataInputFileReference;
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
+use janiform_foundations::paths::format_path;
 use janiform_foundations::time::parse_duration_spec_nanos;
 use janiform_foundations::time::parse_utc_datetime;
 
@@ -62,7 +63,7 @@ pub(crate) fn market_data_input_file_reference(
     default_provenance_role: &str,
 ) -> Result<MarketDataInputFileReference, CliError> {
     Ok(MarketDataInputFileReference {
-        path: path.display().to_string(),
+        path: format_path(path),
         file_format: market_data_file_format(
             explicit_format.unwrap_or(infer_input_file_format(argument_name, path)?),
         ),

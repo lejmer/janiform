@@ -16,8 +16,9 @@ use janiform_event_log::{
     EventPersistencePolicy, RunEventLogWriter, SnapshotWritePolicy, WorkflowRef,
     default_run_event_paths,
 };
+use janiform_foundations::paths::format_path;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 use serde_json::Value;
 
 use crate::error::WorkflowError;

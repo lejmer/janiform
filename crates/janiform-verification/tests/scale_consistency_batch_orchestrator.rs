@@ -11,6 +11,7 @@ use janiform_calibration_artifacts::CalibrationExecutionMode;
 use janiform_engine_sufficient_statistics::{
     SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
 };
+use janiform_foundations::paths::format_path;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -44,8 +45,10 @@ fn scale_consistency_batch_orchestrator_preserves_spec_order_and_collates_result
         ],
         None,
     );
+
     let request = ScaleConsistencyBatchRunRequest::try_new(run_contract)
         .expect("batch request should validate");
+
     let executor = RecordingExecutor::new([
         outcome_entry(
             "scenario-beta",
@@ -129,11 +132,13 @@ fn scale_consistency_batch_orchestrator_supports_explicit_scenario_filtering() {
         ],
         None,
     );
+
     let request = ScaleConsistencyBatchRunRequest::try_new(run_contract)
         .expect("batch request should validate")
         .with_scenario_selection(ScaleConsistencyBatchScenarioSelection::ScenarioIds {
             scenario_ids: vec!["scenario-three".to_string(), "scenario-one".to_string()],
         });
+
     let executor = RecordingExecutor::new([
         outcome_entry(
             "scenario-one",
@@ -188,8 +193,10 @@ fn scale_consistency_batch_orchestrator_reruns_only_failed_scenarios_in_memory_m
         ],
         None,
     );
+
     let initial_request = ScaleConsistencyBatchRunRequest::try_new(run_contract.clone())
         .expect("initial batch request should validate");
+
     let initial_executor = RecordingExecutor::new([
         outcome_entry(
             "scenario-a",
@@ -215,6 +222,7 @@ fn scale_consistency_batch_orchestrator_reruns_only_failed_scenarios_in_memory_m
         ),
         outcome_entry("scenario-c", Err("missing comparison input".to_string())),
     ]);
+
     let mut checkpoint_store = ScaleConsistencyBatchMemoryCheckpointStore::new();
 
     let initial_report = run_scale_consistency_batch_orchestrator(
@@ -223,6 +231,7 @@ fn scale_consistency_batch_orchestrator_reruns_only_failed_scenarios_in_memory_m
         Some(&mut checkpoint_store),
     )
     .expect("initial batch run should complete");
+
     assert_eq!(initial_report.summary.failed_scenario_count, 1);
     assert_eq!(initial_report.summary.execution_error_scenario_count, 1);
 
@@ -230,6 +239,7 @@ fn scale_consistency_batch_orchestrator_reruns_only_failed_scenarios_in_memory_m
         .expect("rerun batch request should validate")
         .with_resume_settings(ScaleConsistencyBatchResumeSettings::same_process())
         .with_scenario_selection(ScaleConsistencyBatchScenarioSelection::FailedFromResume);
+
     let rerun_executor = RecordingExecutor::new([
         outcome_entry(
             "scenario-b",
@@ -278,15 +288,18 @@ fn scale_consistency_batch_orchestrator_reruns_only_failed_scenarios_in_memory_m
         .iter()
         .find(|report| report.scenario_id == "scenario-a")
         .expect("resumed success should be present");
+
     assert_eq!(
         resumed_success.execution_metadata.record_source,
         ScaleConsistencyBatchScenarioRecordSource::LoadedFromResume
     );
+
     let rerun_failure = rerun_report
         .scenario_reports
         .iter()
         .find(|report| report.scenario_id == "scenario-b")
         .expect("rerun failure should be present");
+
     assert_eq!(
         rerun_failure.execution_metadata.record_source,
         ScaleConsistencyBatchScenarioRecordSource::ExecutedInCurrentRun
@@ -296,6 +309,7 @@ fn scale_consistency_batch_orchestrator_reruns_only_failed_scenarios_in_memory_m
 #[test]
 fn scale_consistency_batch_orchestrator_supports_persisted_disk_resume() {
     let temp_directory = unique_temp_directory("scale-consistency-batch");
+
     let run_contract = build_run_contract(
         CalibrationExecutionMode::Disk,
         vec![
@@ -303,12 +317,14 @@ fn scale_consistency_batch_orchestrator_supports_persisted_disk_resume() {
             build_scenario("scenario-right", "regime-right", 0.5, 0.25, 2, 42),
         ],
         Some(ScaleConsistencyArtifactOutputConfig {
-            artifact_root_uri: temp_directory.to_string_lossy().into_owned(),
+            artifact_root_uri: format_path(&temp_directory),
             file_stem: "disk_resume_fixture".to_string(),
         }),
     );
+
     let initial_request = ScaleConsistencyBatchRunRequest::try_new(run_contract.clone())
         .expect("initial disk request should validate");
+
     let initial_executor = RecordingExecutor::new([
         outcome_entry(
             "scenario-left",
@@ -337,12 +353,14 @@ fn scale_consistency_batch_orchestrator_supports_persisted_disk_resume() {
     let initial_report =
         run_scale_consistency_batch_orchestrator(&initial_request, &initial_executor, None)
             .expect("initial disk batch run should complete");
+
     let checkpoint_reference = initial_report
         .artifact_export
         .as_ref()
         .expect("disk run should persist artifacts")
         .checkpoint_reference
         .clone();
+
     assert!(PathBuf::from(&checkpoint_reference).exists());
 
     let rerun_request = ScaleConsistencyBatchRunRequest::try_new(run_contract)
@@ -353,6 +371,7 @@ fn scale_consistency_batch_orchestrator_supports_persisted_disk_resume() {
             ),
         )
         .with_scenario_selection(ScaleConsistencyBatchScenarioSelection::FailedFromResume);
+
     let rerun_executor = RecordingExecutor::new([outcome_entry(
         "scenario-right",
         Ok(success_outcome(
@@ -395,11 +414,13 @@ fn scale_consistency_batch_request_rejects_mode_incompatible_resume_options() {
         )],
         None,
     );
+
     let disk_error = ScaleConsistencyBatchRunRequest::try_new(disk_contract)
         .expect("disk request should validate")
         .with_resume_settings(ScaleConsistencyBatchResumeSettings::same_process())
         .validate()
         .expect_err("disk mode must reject same-process resume");
+
     assert!(
         disk_error
             .to_string()
@@ -419,6 +440,7 @@ fn scale_consistency_batch_request_rejects_mode_incompatible_resume_options() {
         )],
         None,
     );
+
     let memory_error = ScaleConsistencyBatchRunRequest::try_new(memory_contract)
         .expect("memory request should validate")
         .with_resume_settings(
@@ -426,6 +448,7 @@ fn scale_consistency_batch_request_rejects_mode_incompatible_resume_options() {
         )
         .validate()
         .expect_err("memory mode must reject persisted resume");
+
     assert!(
         memory_error.to_string().contains(
             "resume_settings.source=`persisted_checkpoint_reference` requires execution_mode=`disk`"
@@ -500,6 +523,7 @@ impl ScaleConsistencyScenarioExecutor for RecordingExecutor {
         self.observed_calls
             .borrow_mut()
             .push(scenario.scenario_id.clone());
+
         assert_eq!(
             request.random_control_metadata.paired_run_index as usize,
             request.scenario_position
@@ -623,5 +647,6 @@ fn unique_temp_directory(prefix: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("current time should be after unix epoch")
         .as_nanos();
+
     std::env::temp_dir().join(format!("{prefix}-{unique_suffix}"))
 }

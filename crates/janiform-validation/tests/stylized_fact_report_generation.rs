@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
+use janiform_foundations::paths::format_path;
 use janiform_validation::{
     StylizedFactCalibrationRunInput, StylizedFactComparisonDecisionState,
     StylizedFactHorizonComparisonArtifactExportConfig,
@@ -31,6 +32,7 @@ fn table_summary_rows_include_metric_classes_and_insufficient_data_reasons() {
         .iter()
         .find(|row| row.metric_id == "returns_abs_quantile_shape_ratio_q99_q95")
         .expect("primary metric row should be present");
+
     assert_eq!(
         primary_row.metric_class,
         StylizedFactMetricClass::PrimaryRobust
@@ -50,6 +52,7 @@ fn table_summary_rows_include_metric_classes_and_insufficient_data_reasons() {
         .iter()
         .find(|row| row.metric_id == "returns_l_moment_lambda2")
         .expect("secondary metric row should be present");
+
     assert_eq!(
         secondary_row.metric_class,
         StylizedFactMetricClass::SecondaryMoment
@@ -76,6 +79,7 @@ fn in_memory_bundle_schema_metadata_lists_required_fields() {
 
     let serialized_bundle: Value =
         serde_json::to_value(&report_bundle).expect("bundle should serialize");
+
     let bundle_object = serialized_bundle
         .as_object()
         .expect("bundle should serialize as an object");
@@ -91,6 +95,7 @@ fn in_memory_bundle_schema_metadata_lists_required_fields() {
         .get("table_summary")
         .and_then(Value::as_object)
         .expect("table_summary should be present as an object");
+
     for required_field in &report_bundle
         .output_schema_metadata
         .required_table_summary_fields
@@ -107,6 +112,7 @@ fn in_memory_bundle_schema_metadata_lists_required_fields() {
         .and_then(|rows| rows.first())
         .and_then(Value::as_object)
         .expect("table_summary.rows should contain at least one object row");
+
     for required_field in &report_bundle
         .output_schema_metadata
         .required_table_summary_row_fields
@@ -129,7 +135,7 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
     fs::create_dir_all(export_directory.as_path()).expect("export directory should be creatable");
 
     let export_config = StylizedFactHorizonComparisonArtifactExportConfig {
-        export_directory: export_directory.display().to_string(),
+        export_directory: format_path(&export_directory),
         file_stem: "batch_run_fixture".to_string(),
     };
 
@@ -137,6 +143,7 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
 
     let first_bundle = run_stylized_fact_horizon_comparison_report_generator(request.clone())
         .expect("first disk-mode report generation should succeed");
+
     let second_bundle = run_stylized_fact_horizon_comparison_report_generator(request)
         .expect("second disk-mode report generation should succeed");
 
@@ -148,6 +155,7 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
         .artifact_export
         .as_ref()
         .expect("disk mode should include artifact export receipt");
+
     assert_eq!(first_receipt, second_receipt);
 
     let exported_file_names: Vec<&str> = first_receipt
@@ -155,6 +163,7 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
         .iter()
         .map(|file| file.file_name.as_str())
         .collect();
+
     assert_eq!(
         exported_file_names,
         vec![
@@ -164,16 +173,18 @@ fn disk_mode_export_writes_deterministic_file_names_and_payloads() {
     );
 
     let mut first_pass_payloads: Vec<String> = Vec::new();
+
     for exported_file in &first_receipt.exported_files {
-        let payload = fs::read_to_string(exported_file.absolute_path.as_str())
+        let payload = fs::read_to_string(exported_file.path.as_str())
             .expect("exported artifact file should be readable");
 
         first_pass_payloads.push(payload);
     }
 
     let mut second_pass_payloads: Vec<String> = Vec::new();
+
     for exported_file in &second_receipt.exported_files {
-        let payload = fs::read_to_string(exported_file.absolute_path.as_str())
+        let payload = fs::read_to_string(exported_file.path.as_str())
             .expect("exported artifact file should be readable on second pass");
 
         second_pass_payloads.push(payload);
@@ -289,5 +300,6 @@ fn temporary_export_directory(test_name: &str) -> PathBuf {
             .map(|duration| duration.as_nanos())
             .unwrap_or(0),
     );
+
     std::env::temp_dir().join(directory_name)
 }

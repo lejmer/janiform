@@ -23,6 +23,7 @@ use janiform_calibration_artifacts::{
     persist_stage_checkpoint_to_disk, resolve_calibration_stage_execution_order,
 };
 use janiform_foundations::cancellation::CancellationToken;
+use janiform_foundations::paths::format_path;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -1100,7 +1101,7 @@ fn persist_stage_report_snapshot_to_run_directory(
     fs::create_dir_all(run_directory).map_err(|source| {
         format!(
             "unable to prepare stage report directory `{}`: {source}",
-            run_directory.display()
+            format_path(run_directory)
         )
     })?;
 
@@ -1115,7 +1116,7 @@ fn persist_stage_report_snapshot_to_run_directory(
     let mut temporary_file = File::create(temporary_path.as_path()).map_err(|source| {
         format!(
             "unable to create temporary stage report `{}`: {source}",
-            temporary_path.display()
+            format_path(temporary_path.as_path())
         )
     })?;
 
@@ -1125,15 +1126,15 @@ fn persist_stage_report_snapshot_to_run_directory(
         .map_err(|source| {
             format!(
                 "unable to write temporary stage report `{}`: {source}",
-                temporary_path.display()
+                format_path(temporary_path.as_path())
             )
         })?;
 
     fs::rename(temporary_path.as_path(), artifact_path.as_path()).map_err(|source| {
         format!(
             "unable to publish stage report `{}` from `{}`: {source}",
-            artifact_path.display(),
-            temporary_path.display()
+            format_path(artifact_path.as_path()),
+            format_path(temporary_path.as_path())
         )
     })?;
 
@@ -1142,14 +1143,12 @@ fn persist_stage_report_snapshot_to_run_directory(
 
 fn stage_report_snapshot_path_in_run_directory(
     run_directory: &Path,
-    stage: janiform_calibration_artifacts::CalibrationStage,
+    stage: CalibrationStage,
 ) -> PathBuf {
     run_directory.join(stage_report_snapshot_file_name(stage))
 }
 
-fn stage_report_snapshot_file_name(
-    stage: janiform_calibration_artifacts::CalibrationStage,
-) -> String {
+fn stage_report_snapshot_file_name(stage: CalibrationStage) -> String {
     format!(
         "{}.stage_report.json",
         janiform_calibration_artifacts::calibration_stage_token(stage)

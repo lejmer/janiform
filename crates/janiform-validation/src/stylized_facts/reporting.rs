@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
 use janiform_foundations::json::document::{JsonDocumentWriteError, write_pretty_json_document};
+use janiform_foundations::paths::format_path;
 use janiform_foundations::strings::validate_non_empty_string;
 use serde::{Deserialize, Serialize};
 
@@ -182,7 +183,7 @@ pub enum StylizedFactHorizonComparisonArtifactKind {
 pub struct StylizedFactHorizonComparisonExportedArtifactFile {
     pub artifact_kind: StylizedFactHorizonComparisonArtifactKind,
     pub file_name: String,
-    pub absolute_path: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -353,10 +354,12 @@ pub fn run_stylized_fact_horizon_comparison_report_generator(
 
     let metric_class_by_metric_id =
         build_metric_class_lookup(generator_request.metric_catalog.metrics.as_slice());
+
     let table_rows = build_table_rows(
         comparison_report.run_reports.as_slice(),
         &metric_class_by_metric_id,
     )?;
+
     let table_summary = StylizedFactHorizonComparisonTableSummary {
         schema_version: STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION,
         determinism_policy: STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_DETERMINISM_POLICY,
@@ -384,6 +387,7 @@ pub fn run_stylized_fact_horizon_comparison_report_generator(
         validate_artifact_export_config(&export_config)?;
 
         let export_receipt = build_export_receipt(&export_config);
+
         report_bundle.artifact_export = Some(export_receipt.clone());
 
         write_report_bundle_artifacts(&report_bundle, &export_receipt)?;
@@ -475,6 +479,7 @@ fn build_table_row(
         metric_report.empirical.observed_counts,
         metric_report.empirical.required_minimums,
     );
+
     let simulated_sample_coverage = build_metric_coverage_summary(
         metric_report.simulated.sample_coverage,
         metric_report.simulated.observed_counts,
@@ -570,6 +575,7 @@ fn validate_artifact_export_config(
         "generation_options.artifact_export.export_directory",
         &export_config.export_directory,
     )?;
+
     validate_export_non_empty_field(
         "generation_options.artifact_export.file_stem",
         &export_config.file_stem,
@@ -607,12 +613,12 @@ fn build_export_receipt(
             StylizedFactHorizonComparisonExportedArtifactFile {
                 artifact_kind: StylizedFactHorizonComparisonArtifactKind::ReportBundle,
                 file_name: report_file_name,
-                absolute_path: report_path.display().to_string(),
+                path: format_path(&report_path),
             },
             StylizedFactHorizonComparisonExportedArtifactFile {
                 artifact_kind: StylizedFactHorizonComparisonArtifactKind::TableSummary,
                 file_name: table_file_name,
-                absolute_path: table_path.display().to_string(),
+                path: format_path(&table_path),
             },
         ],
     }
@@ -623,9 +629,10 @@ fn write_report_bundle_artifacts(
     export_receipt: &StylizedFactHorizonComparisonArtifactExportReceipt,
 ) -> Result<(), StylizedFactHorizonComparisonReportGenerationError> {
     let export_directory = PathBuf::from(export_receipt.export_directory.as_str());
+
     fs::create_dir_all(export_directory.as_path()).map_err(|source| {
         StylizedFactHorizonComparisonReportGenerationError::ArtifactExportDirectoryCreateFailed {
-            path: export_directory.display().to_string(),
+            path: format_path(&export_directory),
             details: source.to_string(),
         }
     })?;
@@ -634,6 +641,7 @@ fn write_report_bundle_artifacts(
         export_receipt,
         StylizedFactHorizonComparisonArtifactKind::ReportBundle,
     );
+
     let table_path = exported_path(
         export_receipt,
         StylizedFactHorizonComparisonArtifactKind::TableSummary,
@@ -644,6 +652,7 @@ fn write_report_bundle_artifacts(
         report_bundle,
         StylizedFactHorizonComparisonArtifactKind::ReportBundle,
     )?;
+
     write_report_json_artifact(
         table_path.as_path(),
         &report_bundle.table_summary,
@@ -677,7 +686,7 @@ fn report_json_write_error(
         | JsonDocumentWriteError::Create { path, source }
         | JsonDocumentWriteError::Write { path, source } => {
             StylizedFactHorizonComparisonReportGenerationError::ArtifactExportWriteFailed {
-                path: path.display().to_string(),
+                path: format_path(path.as_path()),
                 details: source.to_string(),
             }
         }
@@ -690,7 +699,7 @@ fn exported_path(
 ) -> PathBuf {
     for exported_file in &export_receipt.exported_files {
         if exported_file.artifact_kind == artifact_kind {
-            return PathBuf::from(exported_file.absolute_path.as_str());
+            return PathBuf::from(exported_file.path.as_str());
         }
     }
 

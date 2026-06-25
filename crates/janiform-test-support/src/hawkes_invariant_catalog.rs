@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
+use janiform_foundations::paths::format_path;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -84,14 +85,14 @@ pub fn load_hawkes_invariant_catalog_document() -> Result<HawkesInvariantCatalog
     let catalog_payload = fs::read_to_string(&catalog_path).map_err(|source| {
         format!(
             "failed to read hawkes invariant catalog fixture `{}`: {source}",
-            catalog_path.display()
+            format_path(catalog_path.as_path())
         )
     })?;
     let catalog_document = serde_json::from_str::<HawkesInvariantCatalogDocument>(&catalog_payload)
         .map_err(|source| {
             format!(
                 "failed to parse hawkes invariant catalog fixture `{}`: {source}",
-                catalog_path.display()
+                format_path(catalog_path.as_path())
             )
         })?;
 

@@ -1,5 +1,6 @@
 use janiform_event_log::RunEventPaths;
 use janiform_event_log::RunStateSnapshot;
+use janiform_foundations::paths::format_path;
 use serde::Serialize;
 
 use super::state::{InspectedRunState, RunStateSource};
@@ -29,11 +30,8 @@ pub(super) fn run_inspection_payload(
         state: inspected_state.state.clone(),
         inspection: RunInspectionMetadata {
             run_directory,
-            event_log_path: event_paths.event_log_path.display().to_string(),
-            latest_state_snapshot_path: event_paths
-                .latest_state_snapshot_path
-                .display()
-                .to_string(),
+            event_log_path: format_path(&event_paths.event_log_path),
+            latest_state_snapshot_path: format_path(&event_paths.latest_state_snapshot_path),
             state_source: inspected_state.state_source,
             replay_fallback_attempted: inspected_state.replay_fallback_attempted,
         },

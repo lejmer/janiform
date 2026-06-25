@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::KeyValueRow;
-use janiform_terminal_ui::format_artifact_path;
 use janiform_terminal_ui::format_token_as_sentence_label;
 use serde::Serialize;
 use serde_json::Map;
@@ -48,16 +48,16 @@ pub(super) fn export_fit_report(
 
     let payload = FitReportExportPayload {
         status: "written",
-        rendered_report_path: output_path.display().to_string(),
-        source_report_path: report_context.report_path.display().to_string(),
+        rendered_report_path: format_path(&output_path),
+        source_report_path: format_path(&report_context.report_path),
     };
 
     emit_json_or_success_summary(
         context,
         &payload,
         "Fit report written",
-        vec![KeyValueRow::new("HTML", format_artifact_path(&output_path))],
-        vec![KeyValueRow::new("HTML", format_artifact_path(&output_path))],
+        vec![KeyValueRow::new("HTML", format_path(&output_path))],
+        vec![KeyValueRow::new("HTML", format_path(&output_path))],
     )
 }
 

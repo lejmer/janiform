@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use janiform_calibration_artifacts::{
     CalibrationStage, JointRefinementStageRuntimeProfile, calibration_stage_token,
 };
+use janiform_foundations::paths::format_path;
 
 use super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts;
 use super::option_refinement::{OptionRefinedCandidate, SearchTierCandidate};
@@ -563,7 +564,7 @@ fn persist_resume_state_to_disk(
     let Some(parent) = path.parent() else {
         return Err(format!(
             "joint-refinement resume state path has no parent: {}",
-            path.display()
+            format_path(path)
         ));
     };
 

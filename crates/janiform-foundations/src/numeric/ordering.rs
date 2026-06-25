@@ -1,3 +1,44 @@
+use std::cmp::Ordering;
+
+/// Ordering policy for optional values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OptionalOrderingMode {
+    /// Smaller present values sort first. Present values sort before missing values.
+    AscendingSomeFirst,
+    /// Smaller present values sort first. Missing values sort before present values.
+    AscendingNoneFirst,
+    /// Larger present values sort first. Present values sort before missing values.
+    DescendingSomeFirst,
+    /// Larger present values sort first. Missing values sort before present values.
+    DescendingNoneFirst,
+}
+
+/// Compare optional values using the requested value and missing-value ordering policy.
+pub fn compare_optional_by<T>(
+    left: Option<T>,
+    right: Option<T>,
+    mode: OptionalOrderingMode,
+    compare_present_values: impl FnOnce(T, T) -> Ordering,
+) -> Ordering {
+    match (left, right) {
+        (Some(left_value), Some(right_value)) => compare_present_values(left_value, right_value),
+        (Some(_), None) => compare_some_to_none_by_mode(mode),
+        (None, Some(_)) => compare_some_to_none_by_mode(mode).reverse(),
+        (None, None) => Ordering::Equal,
+    }
+}
+
+fn compare_some_to_none_by_mode(mode: OptionalOrderingMode) -> Ordering {
+    match mode {
+        OptionalOrderingMode::AscendingSomeFirst | OptionalOrderingMode::DescendingSomeFirst => {
+            Ordering::Less
+        }
+        OptionalOrderingMode::AscendingNoneFirst | OptionalOrderingMode::DescendingNoneFirst => {
+            Ordering::Greater
+        }
+    }
+}
+
 /// Return sorted unique values while preserving caller-supplied domain adjustments.
 pub fn unique_sorted_values(values: &[f64]) -> Vec<f64> {
     let mut sorted_values = values.to_vec();
@@ -146,10 +187,11 @@ pub fn median_abs_non_zero(values: &[f64]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_finite_median_or_zero, compute_finite_quantile_or_zero, compute_median_f64_or_zero,
-        compute_median_i64_or_zero, compute_sorted_median, compute_sorted_quantile,
-        compute_sorted_quantile_or_zero, median_abs, median_abs_non_zero, smallest_positive_value,
-        sorted_finite_values, unique_sorted_values,
+        OptionalOrderingMode, compare_optional_by, compute_finite_median_or_zero,
+        compute_finite_quantile_or_zero, compute_median_f64_or_zero, compute_median_i64_or_zero,
+        compute_sorted_median, compute_sorted_quantile, compute_sorted_quantile_or_zero,
+        median_abs, median_abs_non_zero, smallest_positive_value, sorted_finite_values,
+        unique_sorted_values,
     };
 
     #[test]
@@ -187,5 +229,95 @@ mod tests {
             compute_finite_quantile_or_zero(&[1.0, f64::NAN, 3.0], 0.5),
             2.0
         );
+    }
+
+    #[test]
+    fn optional_comparator_orders_values_and_missing_values() {
+        assert_eq!(
+            compare_optional_by(
+                Some(1.0_f64),
+                Some(2.0_f64),
+                OptionalOrderingMode::AscendingSomeFirst,
+                |left, right| left.total_cmp(&right),
+            ),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_optional_by(
+                Some(1.0_f64),
+                None,
+                OptionalOrderingMode::AscendingSomeFirst,
+                |left, right| left.total_cmp(&right),
+            ),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_optional_by(
+                Some(1.0_f64),
+                None,
+                OptionalOrderingMode::AscendingNoneFirst,
+                |left, right| left.total_cmp(&right),
+            ),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_optional_by(
+                Some(1.0_f64),
+                Some(2.0_f64),
+                OptionalOrderingMode::DescendingSomeFirst,
+                |left, right| right.total_cmp(&left),
+            ),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_optional_by(
+                None,
+                Some(1.0_f64),
+                OptionalOrderingMode::DescendingSomeFirst,
+                |left, right| right.total_cmp(&left),
+            ),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_optional_by(
+                Some(1.0_f64),
+                None,
+                OptionalOrderingMode::DescendingNoneFirst,
+                |left, right| right.total_cmp(&left),
+            ),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_optional_by(
+                Some(1.0_f64),
+                Some(2.0_f64),
+                OptionalOrderingMode::DescendingNoneFirst,
+                |left, right| right.total_cmp(&left),
+            ),
+            std::cmp::Ordering::Greater
+        );
+
+        let left = ComparableScore { value: 1 };
+        let right = ComparableScore { value: 2 };
+
+        assert_eq!(
+            compare_optional_by(
+                Some(&left),
+                Some(&right),
+                OptionalOrderingMode::AscendingSomeFirst,
+                |left_score, right_score| left_score.compare(right_score),
+            ),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    struct ComparableScore {
+        value: u8,
+    }
+
+    impl ComparableScore {
+        fn compare(&self, other: &Self) -> std::cmp::Ordering {
+            self.value.cmp(&other.value)
+        }
     }
 }

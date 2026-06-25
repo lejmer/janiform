@@ -6,9 +6,10 @@ use janiform_calibration_runtime::{
     CalibrationMarketDataPreparationRequest, CalibrationStageExecutionStatus,
     CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
 };
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     CompletionSummary, CompletionSummaryStatus, FailureBlock, KeyValueRow, StartSummary,
-    format_artifact_path, format_elapsed_label, format_path,
+    format_elapsed_label,
 };
 use serde_json::{Value, json};
 
@@ -96,9 +97,9 @@ pub fn fit_completion_json_payload(
         "command_id": fit_workflow_id(),
         "run_id": execution_input.request.run_id,
         "status": report.status,
-        "model_path": report.status.is_successful().then_some(&paths.model_path),
-        "report_path": paths.report_path,
-        "event_log_path": event_log_path,
+        "model_path": report.status.is_successful().then(|| format_path(&paths.model_path)),
+        "report_path": format_path(&paths.report_path),
+        "event_log_path": format_path(event_log_path),
         "checkpoint_count": report.emitted_checkpoints.len(),
         "resume": {
             "resumed_from_checkpoint_reference": report.resumed_from_checkpoint_reference,
@@ -145,9 +146,9 @@ fn success_summary(
     let warning_messages = combined_fit_warning_messages(report, report_payload);
 
     let mut rows = vec![
-        KeyValueRow::new("Model", format_artifact_path(paths.model_path.as_path())),
-        KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
-        KeyValueRow::new("Events", format_artifact_path(event_log_path)),
+        KeyValueRow::new("Model", format_path(paths.model_path.as_path())),
+        KeyValueRow::new("Report", format_path(paths.report_path.as_path())),
+        KeyValueRow::new("Events", format_path(event_log_path)),
         KeyValueRow::new("Checkpoints", report.emitted_checkpoints.len().to_string()),
         KeyValueRow::new("Resume", resume_availability(report)),
     ];
@@ -251,8 +252,8 @@ fn failure_summary(
         reason: failure_reason(report)?,
         details: vec![
             KeyValueRow::new("Stage", failed_stage_label(report)),
-            KeyValueRow::new("Report", format_artifact_path(paths.report_path.as_path())),
-            KeyValueRow::new("Events", format_artifact_path(event_log_path)),
+            KeyValueRow::new("Report", format_path(paths.report_path.as_path())),
+            KeyValueRow::new("Events", format_path(event_log_path)),
             KeyValueRow::new("Checkpoints", report.emitted_checkpoints.len().to_string()),
             KeyValueRow::new("Resume", resume_availability(report)),
         ],

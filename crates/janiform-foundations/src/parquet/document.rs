@@ -10,6 +10,8 @@ use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchR
 use parquet::errors::ParquetError;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 
+use crate::paths::format_path;
+
 /// IO chunk size used by projected Parquet readers.
 pub const PROJECTED_PARQUET_BATCH_SIZE: usize = 65_536;
 
@@ -34,21 +36,21 @@ impl Display for ParquetDocumentLoadError {
                 write!(
                     formatter,
                     "failed to read Parquet document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
             Self::Parse { path, source } => {
                 write!(
                     formatter,
                     "failed to parse Parquet document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
             Self::RowCountOutOfRange { path } => {
                 write!(
                     formatter,
                     "Parquet document `{}` row count exceeds the supported usize range",
-                    path.display()
+                    format_path(path)
                 )
             }
         }

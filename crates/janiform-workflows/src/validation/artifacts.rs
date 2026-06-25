@@ -11,6 +11,7 @@ use janiform::validation::stylized_facts::{
     StylizedFactMetricCatalog, StylizedFactObservedMetricInput, build_stylized_fact_metric_catalog,
     run_stylized_fact_horizon_comparison_report_generator,
 };
+use janiform_foundations::paths::format_path;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -46,7 +47,7 @@ pub(super) fn generate_report_bundle(
             generation_options: StylizedFactHorizonComparisonReportGeneratorOptions {
                 execution_mode: CalibrationExecutionMode::Disk,
                 artifact_export: Some(StylizedFactHorizonComparisonArtifactExportConfig {
-                    export_directory: output_dir.display().to_string(),
+                    export_directory: format_path(output_dir),
                     file_stem: REPORT_FILE_STEM.to_string(),
                 }),
             },
@@ -169,7 +170,7 @@ pub(super) fn cache_artifacts(
 
     artifacts
         .into_iter()
-        .map(|path| path.display().to_string())
+        .map(|path| format_path(path.as_path()))
         .collect()
 }
 

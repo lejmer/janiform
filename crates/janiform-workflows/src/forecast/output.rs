@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use janiform_foundations::paths::format_path;
 use janiform_foundations::time::{deserialize_utc_datetime, serialize_utc_datetime};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -160,7 +161,7 @@ impl ForecastOutput {
             "schema_version": self.manifest.schema_version,
             "run_id": self.manifest.run_id,
             "model_run_id": self.manifest.model_run_id,
-            "bundle_path": self.bundle_path,
+            "bundle_path": self.bundle_path.as_ref().map(|path| format_path(path)),
             "measure": self.manifest.measure,
             "expected_path": {
                 "file_name": self.manifest.expected_path_table.file_name,
@@ -222,7 +223,7 @@ pub(super) fn forecast_start_summary(
     if let Some(output_path) = output_path {
         rows.push(janiform_terminal_ui::KeyValueRow::new(
             "Output",
-            janiform_terminal_ui::format_artifact_path(output_path),
+            format_path(output_path),
         ));
     }
 
@@ -266,7 +267,7 @@ pub(super) fn forecast_completion_summary(
     if let Some(bundle_path) = output.bundle_path.as_deref() {
         rows.push(janiform_terminal_ui::KeyValueRow::new(
             "Bundle",
-            janiform_terminal_ui::format_artifact_path(bundle_path),
+            format_path(bundle_path),
         ));
     }
 

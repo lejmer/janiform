@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::time::Instant;
 
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     ProgressAdapter, ProgressEvent, ProgressWorkItemColumn, ProgressWorkItemMetric,
     TerminalSummaryPolicy,
@@ -151,7 +152,7 @@ pub(super) fn start_forecast_progress(
         run_id: run_id.to_string(),
         scope: "forecast".to_string(),
         input_count,
-        output_path: output_path.map(janiform_terminal_ui::format_path),
+        output_path: output_path.map(format_path),
         stage_sequence: forecast_progress_stage_sequence(),
         completed_stage_count: 0,
     });

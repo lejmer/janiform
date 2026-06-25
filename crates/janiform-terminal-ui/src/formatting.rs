@@ -1,34 +1,6 @@
-use std::path::Path;
 use std::time::Duration;
 
 const BYTES_PER_KIBIBYTE: u64 = 1024;
-
-/// Render a path for scan-friendly terminal output.
-pub fn format_path(path: &Path) -> String {
-    path.display().to_string()
-}
-
-/// Render a path relative to a base directory when possible.
-pub fn format_path_relative_to(base_directory: &Path, path: &Path) -> String {
-    if let Ok(relative_path) = path.strip_prefix(base_directory) {
-        return format_path(relative_path);
-    }
-
-    format_path(path)
-}
-
-/// Render an optional path-like value relative to a base directory when possible.
-pub fn format_optional_path_relative_to(
-    base_directory: &Path,
-    path: Option<&str>,
-) -> Option<String> {
-    path.map(|path| format_path_relative_to(base_directory, Path::new(path)))
-}
-
-/// Render an artifact path using the same stable path contract as ordinary paths.
-pub fn format_artifact_path(path: &Path) -> String {
-    format_path(path)
-}
 
 /// Render a count with an explicit unit label.
 pub fn format_count(count: usize, singular_unit: &str, plural_unit: &str) -> String {

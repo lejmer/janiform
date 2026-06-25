@@ -898,6 +898,7 @@ pub(crate) mod tests {
 
     use chrono::{DateTime, Duration};
     use janiform_foundations::cancellation::CancellationToken;
+    use janiform_foundations::paths::format_path;
 
     use super::{
         CloseSessionRequest, InitializeSessionRequest, InitializeSessionResponse,
@@ -1789,7 +1790,7 @@ pub(crate) mod tests {
             assert!(
                 worker_executable.is_file(),
                 "worker executable should exist at {}",
-                worker_executable.display(),
+                format_path(worker_executable.as_path()),
             );
 
             worker_executable

@@ -4,6 +4,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::paths::format_path;
 use serde::{Deserialize, Serialize};
 
 use super::artifact_registry::{
@@ -625,7 +626,7 @@ pub fn persist_stage_checkpoint_to_disk(
     );
     fs::create_dir_all(&run_directory).map_err(|source| {
         CalibrationDiskCheckpointError::CreateDirectoryFailed {
-            path: run_directory.display().to_string(),
+            path: format_path(&run_directory),
             error_message: source.to_string(),
         }
     })?;
@@ -669,14 +670,14 @@ pub fn load_stage_checkpoint_from_disk(
 
     let content = fs::read_to_string(&checkpoint_path).map_err(|source| {
         CalibrationDiskCheckpointError::ReadFailed {
-            path: checkpoint_path.display().to_string(),
+            path: format_path(&checkpoint_path),
             error_message: source.to_string(),
         }
     })?;
 
     serde_json::from_str(content.as_str()).map_err(|source| {
         CalibrationDiskCheckpointError::DeserializationFailed {
-            path: checkpoint_path.display().to_string(),
+            path: format_path(&checkpoint_path),
             error_message: source.to_string(),
         }
     })
@@ -705,27 +706,27 @@ fn write_checkpoint_file_atomically(
     let temporary_path = target_path.with_extension("json.tmp");
     let mut temporary_file = File::create(&temporary_path).map_err(|source| {
         CalibrationDiskCheckpointError::WriteFailed {
-            path: temporary_path.display().to_string(),
+            path: format_path(&temporary_path),
             error_message: source.to_string(),
         }
     })?;
     temporary_file
         .write_all(serialized.as_slice())
         .map_err(|source| CalibrationDiskCheckpointError::WriteFailed {
-            path: temporary_path.display().to_string(),
+            path: format_path(&temporary_path),
             error_message: source.to_string(),
         })?;
     temporary_file
         .sync_all()
         .map_err(|source| CalibrationDiskCheckpointError::WriteFailed {
-            path: temporary_path.display().to_string(),
+            path: format_path(&temporary_path),
             error_message: source.to_string(),
         })?;
 
     fs::rename(&temporary_path, target_path).map_err(|source| {
         CalibrationDiskCheckpointError::RenameFailed {
-            source_path: temporary_path.display().to_string(),
-            target_path: target_path.display().to_string(),
+            source_path: format_path(&temporary_path),
+            target_path: format_path(target_path),
             error_message: source.to_string(),
         }
     })?;

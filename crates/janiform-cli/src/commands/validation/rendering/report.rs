@@ -1,6 +1,3 @@
-use std::cmp::Ordering;
-use std::path::Path;
-
 use clap::ValueEnum;
 use janiform::calibration::artifacts::CalibrationExecutionMode;
 use janiform::validation::stylized_facts::{
@@ -8,10 +5,12 @@ use janiform::validation::stylized_facts::{
     StylizedFactHorizonComparisonReportBundle, StylizedFactHorizonComparisonTableSummaryRow,
     StylizedFactMetricClass,
 };
+use janiform_foundations::numeric::{OptionalOrderingMode, compare_optional_by};
 use janiform_terminal_ui::{
     AnalyticalResultTable, ArtifactPathGroup, CompactTable, KeyValueRow, StartSummary,
-    TerminalRenderer, format_artifact_path, format_count,
+    TerminalRenderer, format_count,
 };
+use std::cmp::Ordering;
 
 use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::terminal::write_terminal_output;
@@ -135,7 +134,7 @@ fn render_terminal_report(
                 paths: artifact_export
                     .exported_files
                     .iter()
-                    .map(|file| format_artifact_path(Path::new(file.absolute_path.as_str())))
+                    .map(|file| file.path.clone())
                     .collect(),
             }
             .render(renderer),
@@ -389,20 +388,23 @@ fn compare_closeness(
     left: &&StylizedFactHorizonComparisonTableSummaryRow,
     right: &&StylizedFactHorizonComparisonTableSummaryRow,
 ) -> Ordering {
-    compare_optional_f64_desc(left.standardized_delta, right.standardized_delta)
-        .then_with(|| compare_optional_f64_desc(left.absolute_delta, right.absolute_delta))
-        .then_with(|| left.calibration_run_id.cmp(&right.calibration_run_id))
-        .then_with(|| left.horizon_label.cmp(&right.horizon_label))
-        .then_with(|| left.metric_id.cmp(&right.metric_id))
-}
-
-fn compare_optional_f64_desc(left: Option<f64>, right: Option<f64>) -> Ordering {
-    match (left, right) {
-        (Some(left), Some(right)) => right.total_cmp(&left),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
-    }
+    compare_optional_by(
+        left.standardized_delta,
+        right.standardized_delta,
+        OptionalOrderingMode::DescendingSomeFirst,
+        |left_delta, right_delta| right_delta.total_cmp(&left_delta),
+    )
+    .then_with(|| {
+        compare_optional_by(
+            left.absolute_delta,
+            right.absolute_delta,
+            OptionalOrderingMode::DescendingSomeFirst,
+            |left_delta, right_delta| right_delta.total_cmp(&left_delta),
+        )
+    })
+    .then_with(|| left.calibration_run_id.cmp(&right.calibration_run_id))
+    .then_with(|| left.horizon_label.cmp(&right.horizon_label))
+    .then_with(|| left.metric_id.cmp(&right.metric_id))
 }
 
 fn metric_label(row: &StylizedFactHorizonComparisonTableSummaryRow) -> String {
