@@ -86,22 +86,14 @@ const DEFAULT_SEASONALITY_HARMONIC_ORDERS_POLICY_ID: &str =
 const DEFAULT_CLOSE_OPEN_GAP_POLICY_ID: &str = "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=3x_median_abs_intraday_return";
 const DEFAULT_INTRADAY_JUMP_POLICY_ID: &str =
     "intraday_jump_detection.material_threshold=4x_median_abs_open_return";
-const MEAN_REVERSION_OPEN_SESSION_GRID_KIND: &str =
-    "market_data_open_session_log_price_interval_grid.v1";
-const MEAN_REVERSION_COARSE_DATA_GRID_KIND: &str =
-    "market_data_coarse_data_close_price_interval_grid.v1";
-const MEAN_REVERSION_SOURCE_INTERVAL_ALIGNMENT_POLICY: &str =
-    "last_observed_source_log_price_per_complete_utc_interval.v1";
-const MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY: &str =
-    "median_boundary_open_spacing_hours_from_retained_observations.v1";
-const MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY: &str =
-    "median_observed_session_duration_hours_from_retained_open_session_ticks.v1";
-const MEAN_REVERSION_SOURCE_WINDOW_INTERVAL_DERIVATION_POLICY: &str =
-    "source_window_interval_hours_from_identifiable_open_session_coverage.v1";
-const MEAN_REVERSION_COARSE_OBSERVATION_INTERVAL_DERIVATION_POLICY: &str =
-    "median_coarse_observation_spacing_hours_from_retained_prices.v1";
-const MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY: &str =
-    "explicit_mean_reversion_grid_interval_hours.v1";
+const MEAN_REVERSION_OPEN_SESSION_GRID_KIND: &str = "open_session_grid.v1";
+const MEAN_REVERSION_COARSE_DATA_GRID_KIND: &str = "coarse_close_grid.v1";
+const MEAN_REVERSION_SOURCE_INTERVAL_ALIGNMENT_POLICY: &str = "last_price_complete_utc.v1";
+const MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY: &str = "median_boundary_hours.v1";
+const MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY: &str = "median_session_hours.v1";
+const MEAN_REVERSION_SOURCE_WINDOW_INTERVAL_DERIVATION_POLICY: &str = "source_window_hours.v1";
+const MEAN_REVERSION_COARSE_OBSERVATION_INTERVAL_DERIVATION_POLICY: &str = "median_coarse_hours.v1";
+const MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY: &str = "explicit_interval_hours.v1";
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]

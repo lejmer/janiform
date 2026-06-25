@@ -312,7 +312,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
     mean_reversion_grid_candidate = _mean_reversion_grid_candidate(
         mean_reversion_stage_input,
-        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1",
+        "median_session_hours.v1",
     )
     assert set(mean_reversion_grid_candidate) == {
         "calibration_grid_kind",
@@ -325,9 +325,9 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     assert mean_reversion_grid_candidate["coverage_ratio"] == pytest.approx(0.25)
     assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(6.5)
     assert mean_reversion_grid_candidate["calibration_grid_kind"] == (
-        "market_data_open_session_log_price_interval_grid.v1:"
-        "last_observed_source_log_price_per_complete_utc_interval.v1:"
-        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
+        "open_session_grid.v1:"
+        "last_price_complete_utc.v1:"
+        "median_session_hours.v1"
     )
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
@@ -624,7 +624,7 @@ def test_translate_market_data_request_honors_explicit_mean_reversion_grid_inter
     }
     assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(36.0)
     assert (
-        "explicit_mean_reversion_grid_interval_hours.v1"
+        "explicit_interval_hours.v1"
         in mean_reversion_grid_candidate["calibration_grid_kind"]
     )
 
@@ -680,7 +680,7 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
     mean_reversion_grid_candidate = _mean_reversion_grid_candidate(
         mean_reversion_stage_input,
-        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1",
+        "median_session_hours.v1",
     )
     assert set(mean_reversion_grid_candidate) == {
         "calibration_grid_kind",
@@ -691,7 +691,7 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
     }
     assert mean_reversion_grid_candidate["calibration_grid_interval_hours"] == pytest.approx(24.0)
     assert (
-        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
+        "median_session_hours.v1"
         in mean_reversion_grid_candidate["calibration_grid_kind"]
     )
     assert mean_reversion_grid_candidate["source_observation_count"] == 6
