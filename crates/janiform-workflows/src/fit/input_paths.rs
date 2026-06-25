@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use janiform_calibration_runtime::CalibrationMarketDataPreparationRequest;
+use janiform_foundations::paths::format_path;
 
 use super::preparation::FitPreparationRequest;
 
@@ -51,6 +54,7 @@ fn fit_preparation_request_input_paths(request: &FitPreparationRequest) -> Vec<S
         "coarse data",
         request.coarse_data_path.as_deref(),
     );
+
     push_optional_input_path(
         &mut input_paths,
         "options",
@@ -58,7 +62,7 @@ fn fit_preparation_request_input_paths(request: &FitPreparationRequest) -> Vec<S
     );
 
     if request.configuration.known_news_reference.is_some() {
-        input_paths.push(input_path("known news", "resolved preset"));
+        input_paths.push(input_reference("known news", "resolved preset"));
     }
 
     input_paths
@@ -75,5 +79,41 @@ fn push_input_path(input_paths: &mut Vec<String>, label: &str, path: &str) {
 }
 
 fn input_path(label: &str, path: &str) -> String {
-    format!("{label}: {path}")
+    format!("{label}: {}", format_path(Path::new(path)))
+}
+
+fn input_reference(label: &str, reference: &str) -> String {
+    format!("{label}: {reference}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{input_path, input_reference};
+
+    #[test]
+    fn input_path_formats_relative_portable_path() {
+        let source_path = std::env::current_dir()
+            .expect("current directory should be readable")
+            .join("scratch")
+            .join("data")
+            .join("ticks.parquet");
+
+        assert_eq!(
+            input_path(
+                "ticks",
+                source_path
+                    .to_str()
+                    .expect("test path should be valid Unicode"),
+            ),
+            "ticks: scratch/data/ticks.parquet"
+        );
+    }
+
+    #[test]
+    fn input_reference_preserves_non_path_reference() {
+        assert_eq!(
+            input_reference("known news", "resolved preset"),
+            "known news: resolved preset"
+        );
+    }
 }

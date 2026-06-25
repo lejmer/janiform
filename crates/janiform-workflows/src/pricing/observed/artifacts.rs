@@ -1,8 +1,10 @@
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use janiform::calibration::market_data::ResolvedPriceCoordinateSet;
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary};
 use serde_json::json;
 
@@ -112,8 +114,14 @@ pub(super) fn observed_options_start_summary(
         rows: vec![
             KeyValueRow::new("Run", run_id),
             KeyValueRow::new("Scope", observed_options_pricing_scope_label()),
-            KeyValueRow::new("Ticks", request.tick_data_source.path.as_str()),
-            KeyValueRow::new("Options", request.option_surface_source.path.as_str()),
+            KeyValueRow::new(
+                "Ticks",
+                format_path(Path::new(request.tick_data_source.path.as_str())),
+            ),
+            KeyValueRow::new(
+                "Options",
+                format_path(Path::new(request.option_surface_source.path.as_str())),
+            ),
         ],
     }
 }

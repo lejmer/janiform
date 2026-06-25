@@ -211,7 +211,7 @@ fn render_training_data(model: &Value, renderer: &TerminalRenderer) -> String {
         model,
         &["metadata", "input_inference", "tick_data_source", "path"],
     ) {
-        rows.push(KeyValueRow::new("Ticks", tick_path.to_string()));
+        rows.push(KeyValueRow::new("Ticks", format_path(Path::new(tick_path))));
     }
 
     if let Some(option_path) = nested_string(
@@ -223,7 +223,10 @@ fn render_training_data(model: &Value, renderer: &TerminalRenderer) -> String {
             "path",
         ],
     ) {
-        rows.push(KeyValueRow::new("Options", option_path.to_string()));
+        rows.push(KeyValueRow::new(
+            "Options",
+            format_path(Path::new(option_path)),
+        ));
     }
 
     if let Some(market_profile) = nested_string(model, &["metadata", "market_profile"]) {
