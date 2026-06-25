@@ -8,7 +8,7 @@ use crate::commands::options::{ModelPathOptions, OutputPathOptions};
     about = "Forecast expected path and terminal distribution from a fitted Janiform model.",
     long_about = "Forecast expected path and terminal distribution from a fitted Janiform model.
 
-The forecast command uses the saved affine model directly. It does not accept tick data and does not run Monte Carlo. It writes a forecast bundle containing forecast.json, expected_path, and terminal_distribution tables."
+The forecast command uses a saved affine model directly. It writes a forecast bundle containing a forecast summary, expected path, and terminal distribution tables."
 )]
 pub(crate) struct ForecastCommand {
     #[command(flatten)]
