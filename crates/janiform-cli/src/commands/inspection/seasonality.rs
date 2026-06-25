@@ -8,6 +8,7 @@ use janiform::calibration::staged::{
 };
 use janiform::model::factors::interval_factor_grid::FourierBusinessTimeClockModel;
 use janiform::time::calendar::ExchangeCalendarRegistryLoader;
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StartSummary;
 use janiform_terminal_ui::TerminalRenderer;
@@ -89,7 +90,7 @@ pub(crate) fn run_inspect_seasonality(
 
     let output = InspectSeasonalityOutput {
         schema_version: INSPECT_SEASONALITY_SCHEMA_VERSION,
-        model_path: model_path.display().to_string(),
+        model_path: format_path(&model_path),
         exchange_code,
         range_start_utc_nanos,
         range_end_utc_nanos,

@@ -1,12 +1,16 @@
 use std::path::PathBuf;
 
+use janiform_foundations::paths::format_path;
 use thiserror::Error;
 
 /// Error returned while loading timestamp-event source files.
 #[derive(Debug, Error)]
 pub enum TimestampEventSourceLoadError {
     /// Source file could not be opened or read.
-    #[error("failed to read timestamp-event source `{}`: {message}", path.display())]
+    #[error(
+        "failed to read timestamp-event source `{}`: {message}",
+        format_path(path)
+    )]
     Io {
         /// Source path.
         path: PathBuf,
@@ -15,7 +19,10 @@ pub enum TimestampEventSourceLoadError {
     },
 
     /// CSV parser failed.
-    #[error("failed to parse timestamp-event CSV `{}`: {message}", path.display())]
+    #[error(
+        "failed to parse timestamp-event CSV `{}`: {message}",
+        format_path(path)
+    )]
     Csv {
         /// Source path.
         path: PathBuf,
@@ -24,7 +31,10 @@ pub enum TimestampEventSourceLoadError {
     },
 
     /// Parquet reader failed.
-    #[error("failed to parse timestamp-event parquet `{}`: {message}", path.display())]
+    #[error(
+        "failed to parse timestamp-event parquet `{}`: {message}",
+        format_path(path)
+    )]
     Parquet {
         /// Source path.
         path: PathBuf,
@@ -33,7 +43,10 @@ pub enum TimestampEventSourceLoadError {
     },
 
     /// JSONL parser failed.
-    #[error("failed to parse timestamp-event JSONL `{}`: {message}", path.display())]
+    #[error(
+        "failed to parse timestamp-event JSONL `{}`: {message}",
+        format_path(path)
+    )]
     Jsonl {
         /// Source path.
         path: PathBuf,
@@ -44,7 +57,7 @@ pub enum TimestampEventSourceLoadError {
     /// Required timestamp column is missing.
     #[error(
         "timestamp-event source `{}` is missing timestamp column `{timestamp_column}`",
-        path.display()
+        format_path(path)
     )]
     MissingTimestampColumn {
         /// Source path.
@@ -56,7 +69,7 @@ pub enum TimestampEventSourceLoadError {
     /// Timestamp value is absent.
     #[error(
         "timestamp-event source `{}` has an empty timestamp at source record {source_record_position}",
-        path.display()
+        format_path(path)
     )]
     MissingTimestampValue {
         /// Source path.
@@ -68,7 +81,7 @@ pub enum TimestampEventSourceLoadError {
     /// Timestamp value could not be parsed.
     #[error(
         "timestamp-event source `{}` has an invalid timestamp at source record {source_record_position}: {message}",
-        path.display()
+        format_path(path)
     )]
     InvalidTimestampValue {
         /// Source path.
@@ -82,7 +95,7 @@ pub enum TimestampEventSourceLoadError {
     /// Timestamp value cannot be represented as a Rust `DateTime<Utc>`.
     #[error(
         "timestamp-event source `{}` has a timestamp outside the supported range at source record {source_record_position}",
-        path.display()
+        format_path(path)
     )]
     TimestampOutOfRange {
         /// Source path.
@@ -94,7 +107,7 @@ pub enum TimestampEventSourceLoadError {
     /// Timestamp column type is unsupported.
     #[error(
         "timestamp-event source `{}` has unsupported timestamp column type `{data_type}`",
-        path.display()
+        format_path(path)
     )]
     UnsupportedTimestampColumnType {
         /// Source path.

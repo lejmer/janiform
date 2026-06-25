@@ -1,12 +1,12 @@
 use std::path::Path;
 use std::time::Duration;
 
-use serde_json::{Value, json};
-
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
-    CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary, format_artifact_path,
-    format_count, format_elapsed_label, format_path,
+    CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary, format_count,
+    format_elapsed_label,
 };
+use serde_json::{Value, json};
 
 use janiform::pricing::{
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRunResult,
@@ -48,11 +48,11 @@ impl FittedModelSingleOptionPricingOutput {
             "command_id": fitted_model_pricing_workflow_label(),
             "status": "completed",
             "run_id": self.run_id,
-            "model_path": model_path,
-            "primary_output_path": self.artifact_paths.as_ref().map(|paths| &paths.primary_output_path),
-            "report_path": self.artifact_paths.as_ref().map(|paths| &paths.report_path),
-            "manifest_path": self.artifact_paths.as_ref().map(|paths| &paths.manifest_path),
-            "run_directory": self.artifact_paths.as_ref().map(|paths| &paths.run_directory),
+            "model_path": format_path(model_path),
+            "primary_output_path": self.artifact_paths.as_ref().map(|paths| format_path(&paths.primary_output_path)),
+            "report_path": self.artifact_paths.as_ref().map(|paths| format_path(&paths.report_path)),
+            "manifest_path": self.artifact_paths.as_ref().map(|paths| format_path(&paths.manifest_path)),
+            "run_directory": self.artifact_paths.as_ref().map(|paths| format_path(&paths.run_directory)),
             "priced_node_count": 1,
             "failed_node_count": single_failed_node_count(&self.run_result),
             "execution_duration_seconds": self.execution_duration.as_secs_f64(),
@@ -108,12 +108,10 @@ pub(super) fn pricing_completion_summary(
     if let Some(paths) = &output.artifact_paths {
         rows.push(KeyValueRow::new(
             "Path",
-            format_artifact_path(&paths.primary_output_path),
+            format_path(&paths.primary_output_path),
         ));
-        rows.push(KeyValueRow::new(
-            "Report",
-            format_artifact_path(&paths.report_path),
-        ));
+
+        rows.push(KeyValueRow::new("Report", format_path(&paths.report_path)));
     }
 
     CompletionSummary {

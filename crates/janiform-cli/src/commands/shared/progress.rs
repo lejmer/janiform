@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use chrono::Utc;
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     ProgressAdapter, ProgressEvent, ProgressMeasure, ProgressWorkItemColumn, ProgressWorkItemMetric,
 };
@@ -42,7 +43,7 @@ impl TerminalCommandProgress {
                 ),
                 scope: scope.to_string(),
                 input_count,
-                output_path: output_path.map(janiform_terminal_ui::format_path),
+                output_path: output_path.map(format_path),
                 stage_sequence: phase_sequence
                     .iter()
                     .map(|phase| (*phase).to_string())

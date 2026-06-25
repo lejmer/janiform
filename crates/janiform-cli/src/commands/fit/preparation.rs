@@ -18,7 +18,8 @@ use janiform::calibration::staged::{
     CalibrationMarketDataPreparationRequest, CalibrationMarketDataWorkflowScope,
 };
 use janiform_foundations::numeric::validate_positive_number;
-use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure, format_path};
+use janiform_foundations::paths::format_path;
+use janiform_terminal_ui::{ProgressAdapter, ProgressEvent, ProgressMeasure};
 use janiform_workflows::fit::{
     FitWorkflowPaths, fit_preparation_input_count, fit_preparation_start_summary,
     fit_workflow_paths, market_data_file_format_label, tick_price_policy_label,
@@ -187,9 +188,7 @@ pub(crate) fn prepare_fit_preview(
         output_preferences: CalibrationMarketDataOutputPreferences {
             execution_mode,
             disk_checkpoint_directory: match execution_mode {
-                CalibrationExecutionMode::Disk => {
-                    Some(paths.output_directory.display().to_string())
-                }
+                CalibrationExecutionMode::Disk => Some(format_path(&paths.output_directory)),
                 CalibrationExecutionMode::Memory => None,
             },
             emit_input_provenance_report: true,

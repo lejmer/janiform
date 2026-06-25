@@ -1,9 +1,10 @@
 use std::path::Path;
 
 use janiform::calibration::artifacts::CalibrationExecutionMode;
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus, StartSummary,
-    TerminalRenderer, WarningBlock, format_artifact_path, format_path,
+    TerminalRenderer, WarningBlock,
 };
 use janiform_workflows::fit::{market_data_file_format_label, stage_label, workflow_scope_label};
 
@@ -285,12 +286,9 @@ fn output_paths(
     renderer: &TerminalRenderer,
 ) -> String {
     let mut artifacts = vec![
-        ArtifactListItem::new(
-            "run",
-            format_artifact_path(&prepared.paths.output_directory),
-        ),
-        ArtifactListItem::new("model", format_artifact_path(&prepared.paths.model_path)),
-        ArtifactListItem::new("report", format_artifact_path(&prepared.paths.report_path)),
+        ArtifactListItem::new("run", format_path(&prepared.paths.output_directory)),
+        ArtifactListItem::new("model", format_path(&prepared.paths.model_path)),
+        ArtifactListItem::new("report", format_path(&prepared.paths.report_path)),
         ArtifactListItem::new(
             "staged artifacts",
             staged_artifact_path
@@ -302,7 +300,7 @@ fn output_paths(
     if prepared.request.output_preferences.execution_mode == CalibrationExecutionMode::Disk {
         artifacts.push(ArtifactListItem::new(
             "checkpoints",
-            format_artifact_path(&prepared.paths.checkpoint_directory),
+            format_path(&prepared.paths.checkpoint_directory),
         ));
     }
 

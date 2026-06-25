@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 
+use janiform_foundations::numeric::{OptionalOrderingMode, compare_optional_by};
 use serde::Serialize;
 
 use super::super::contracts::RegressionCaseStatus;
@@ -230,25 +231,30 @@ pub fn build_scale_consistency_report(
         .collect::<Vec<_>>();
 
     let total_scenario_count = scenario_reports.len();
+
     let passed_scenario_count = scenario_reports
         .iter()
         .filter(|scenario_report| scenario_report.status == RegressionCaseStatus::Pass)
         .count();
     let failed_scenario_count = total_scenario_count - passed_scenario_count;
+
     let total_metric_count = scenario_reports
         .iter()
         .map(|scenario_report| scenario_report.metric_decisions.len())
         .sum();
+
     let failed_metric_count = scenario_reports
         .iter()
         .map(|scenario_report| scenario_report.failed_metric_count)
         .sum();
+
     let returns_primary_drift_scenario_count = scenario_reports
         .iter()
         .filter(|scenario_report| {
             scenario_report.primary_drift_category == Some(ScaleConsistencyDriftCategory::Returns)
         })
         .count();
+
     let volatility_primary_drift_scenario_count = scenario_reports
         .iter()
         .filter(|scenario_report| {
@@ -256,6 +262,7 @@ pub fn build_scale_consistency_report(
                 == Some(ScaleConsistencyDriftCategory::Volatility)
         })
         .count();
+
     let event_derived_primary_drift_scenario_count = scenario_reports
         .iter()
         .filter(|scenario_report| {
@@ -263,6 +270,7 @@ pub fn build_scale_consistency_report(
                 == Some(ScaleConsistencyDriftCategory::EventDerived)
         })
         .count();
+
     let uncategorized_failed_scenario_count = scenario_reports
         .iter()
         .filter(|scenario_report| {
@@ -270,6 +278,7 @@ pub fn build_scale_consistency_report(
                 && scenario_report.primary_drift_category.is_none()
         })
         .count();
+
     let status = if failed_scenario_count == 0 {
         RegressionCaseStatus::Pass
     } else {
@@ -322,10 +331,12 @@ pub fn render_scale_consistency_report_summary(report: &ScaleConsistencyReport) 
 
     rendered_report.push_str("Scale Consistency Report\n");
     rendered_report.push_str(&format!("schema_version: {}\n", report.schema_version));
+
     rendered_report.push_str(&format!(
         "status: {}\n",
         regression_case_status_label(report.status)
     ));
+
     rendered_report.push_str(&format!(
         "summary: total_scenarios={} passed={} failed={} total_metrics={} failed_metrics={} returns_primary_drift={} volatility_primary_drift={} event_derived_primary_drift={} uncategorized_failed={}\n",
         report.summary.total_scenario_count,
@@ -384,6 +395,7 @@ fn build_report_scenario(
 ) -> ScaleConsistencyReportScenario {
     let drift_diagnostics = build_drift_diagnostics(&scenario_report.metric_decisions);
     let primary_drift_category = select_primary_drift_category(&drift_diagnostics);
+
     let non_drift_failure_reason_codes =
         collect_non_drift_failure_reason_codes(&scenario_report.metric_decisions);
 
@@ -441,6 +453,7 @@ fn build_drift_diagnostic(
     }
 
     let failed_metric_count = relevant_metric_decisions.len();
+
     let missing_metric_count = relevant_metric_decisions
         .iter()
         .filter(|metric_decision| {
@@ -451,10 +464,12 @@ fn build_drift_diagnostic(
                     .contains(&ScaleConsistencyDecisionReasonCode::MetricComputationMissing)
         })
         .count();
+
     let max_absolute_delta = relevant_metric_decisions
         .iter()
         .filter_map(|metric_decision| metric_decision.absolute_delta)
         .max_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+
     let metric_references = relevant_metric_decisions
         .iter()
         .map(|metric_decision| ScaleConsistencyDriftMetricReference {
@@ -488,21 +503,17 @@ fn compare_drift_diagnostics(
 ) -> Ordering {
     left.failed_metric_count
         .cmp(&right.failed_metric_count)
-        .then_with(|| compare_optional_f64(left.max_absolute_delta, right.max_absolute_delta))
+        .then_with(|| {
+            compare_optional_by(
+                left.max_absolute_delta,
+                right.max_absolute_delta,
+                OptionalOrderingMode::AscendingNoneFirst,
+                |left_delta, right_delta| left_delta.total_cmp(&right_delta),
+            )
+        })
         .then_with(|| {
             drift_category_rank(right.drift_category).cmp(&drift_category_rank(left.drift_category))
         })
-}
-
-fn compare_optional_f64(left: Option<f64>, right: Option<f64>) -> Ordering {
-    match (left, right) {
-        (Some(left_value), Some(right_value)) => left_value
-            .partial_cmp(&right_value)
-            .unwrap_or(Ordering::Equal),
-        (Some(_), None) => Ordering::Greater,
-        (None, Some(_)) => Ordering::Less,
-        (None, None) => Ordering::Equal,
-    }
 }
 
 fn collect_non_drift_failure_reason_codes(
@@ -519,6 +530,7 @@ fn collect_non_drift_failure_reason_codes(
             if is_drift_reason_code(*decision_reason_code) {
                 continue;
             }
+
             if !non_drift_failure_reason_codes.contains(decision_reason_code) {
                 non_drift_failure_reason_codes.push(*decision_reason_code);
             }

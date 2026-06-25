@@ -3,6 +3,8 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use janiform_foundations::paths::format_path;
+
 use super::experiment_index::update_calibration_experiment_index_for_run;
 use super::manifest::calibration_artifact_manifest_path_in_run_directory;
 use super::shared::{
@@ -41,18 +43,20 @@ impl CalibrationArtifactRunWriter {
     ) -> Result<Self, CalibrationArtifactRunWriterError> {
         let committed_runs_root_directory =
             calibration_committed_artifact_runs_root_directory(persistence_root_directory);
+
         let quarantine_runs_root_directory =
             calibration_quarantine_artifact_runs_root_directory(persistence_root_directory);
 
         fs::create_dir_all(&committed_runs_root_directory).map_err(|source| {
             CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-                path: committed_runs_root_directory.display().to_string(),
+                path: format_path(&committed_runs_root_directory),
                 error_message: source.to_string(),
             }
         })?;
 
         let committed_run_directory =
             calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
+
         let pending_run_directory =
             calibration_pending_artifact_run_directory(persistence_root_directory, run_id);
 
@@ -66,7 +70,7 @@ impl CalibrationArtifactRunWriter {
                         return Err(
                             CalibrationArtifactRunWriterError::CommittedRunAlreadyExists {
                                 run_id: run_id.to_string(),
-                                path: committed_run_directory.display().to_string(),
+                                path: format_path(&committed_run_directory),
                             },
                         );
                     }
@@ -90,7 +94,7 @@ impl CalibrationArtifactRunWriter {
 
                 fs::create_dir_all(&pending_run_directory).map_err(|source| {
                     CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-                        path: pending_run_directory.display().to_string(),
+                        path: format_path(&pending_run_directory),
                         error_message: source.to_string(),
                     }
                 })?;
@@ -113,7 +117,7 @@ impl CalibrationArtifactRunWriter {
                 } else {
                     fs::create_dir_all(&pending_run_directory).map_err(|source| {
                         CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-                            path: pending_run_directory.display().to_string(),
+                            path: format_path(&pending_run_directory),
                             error_message: source.to_string(),
                         }
                     })?;
@@ -147,7 +151,7 @@ impl CalibrationArtifactRunWriter {
             return Err(
                 CalibrationArtifactRunWriterError::PendingRunDirectoryMissing {
                     run_id: self.run_id,
-                    path: self.pending_run_directory.display().to_string(),
+                    path: format_path(&self.pending_run_directory),
                 },
             );
         }
@@ -172,7 +176,7 @@ impl CalibrationArtifactRunWriter {
             return Err(
                 CalibrationArtifactRunWriterError::CommittedRunAlreadyExists {
                     run_id: self.run_id,
-                    path: self.committed_run_directory.display().to_string(),
+                    path: format_path(&self.committed_run_directory),
                 },
             );
         }
@@ -185,8 +189,8 @@ impl CalibrationArtifactRunWriter {
 
                 CalibrationArtifactRunWriterError::CommitRenameFailed {
                     run_id: self.run_id.clone(),
-                    source_path: self.pending_run_directory.display().to_string(),
-                    target_path: self.committed_run_directory.display().to_string(),
+                    source_path: format_path(&self.pending_run_directory),
+                    target_path: format_path(&self.committed_run_directory),
                     error_message: source.to_string(),
                 }
             },
@@ -199,7 +203,7 @@ impl CalibrationArtifactRunWriter {
         .map_err(|source| {
             CalibrationArtifactRunWriterError::ExperimentIndexUpdateFailed {
                 run_id: self.run_id.clone(),
-                path: self.committed_run_directory.display().to_string(),
+                path: format_path(&self.committed_run_directory),
                 error_message: source.to_string(),
             }
         })?;
@@ -214,21 +218,21 @@ fn copy_run_directory(
 ) -> Result<(), CalibrationArtifactRunWriterError> {
     fs::create_dir_all(target_directory).map_err(|source| {
         CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-            path: target_directory.display().to_string(),
+            path: format_path(target_directory),
             error_message: source.to_string(),
         }
     })?;
 
     for entry in fs::read_dir(source_directory).map_err(|source| {
         CalibrationArtifactRunWriterError::ReadDirectoryFailed {
-            path: source_directory.display().to_string(),
+            path: format_path(source_directory),
             error_message: source.to_string(),
         }
     })? {
         let entry =
             entry.map_err(
                 |source| CalibrationArtifactRunWriterError::ReadDirectoryFailed {
-                    path: source_directory.display().to_string(),
+                    path: format_path(source_directory),
                     error_message: source.to_string(),
                 },
             )?;
@@ -238,7 +242,7 @@ fn copy_run_directory(
 
         let file_type = entry.file_type().map_err(|source| {
             CalibrationArtifactRunWriterError::ReadDirectoryFailed {
-                path: source_path.display().to_string(),
+                path: format_path(&source_path),
                 error_message: source.to_string(),
             }
         })?;
@@ -248,8 +252,8 @@ fn copy_run_directory(
         } else if file_type.is_file() {
             fs::copy(source_path.as_path(), target_path.as_path()).map_err(|source| {
                 CalibrationArtifactRunWriterError::CopyFileFailed {
-                    source_path: source_path.display().to_string(),
-                    target_path: target_path.display().to_string(),
+                    source_path: format_path(&source_path),
+                    target_path: format_path(&target_path),
                     error_message: source.to_string(),
                 }
             })?;
@@ -267,7 +271,7 @@ fn quarantine_run_directory(
 ) -> Result<PathBuf, CalibrationArtifactRunWriterError> {
     fs::create_dir_all(quarantine_root_directory).map_err(|source| {
         CalibrationArtifactRunWriterError::CreateDirectoryFailed {
-            path: quarantine_root_directory.display().to_string(),
+            path: format_path(quarantine_root_directory),
             error_message: source.to_string(),
         }
     })?;
@@ -278,8 +282,8 @@ fn quarantine_run_directory(
     fs::rename(source_directory, &target_directory).map_err(|source| {
         CalibrationArtifactRunWriterError::QuarantineRenameFailed {
             run_id: run_id.to_string(),
-            source_path: source_directory.display().to_string(),
-            target_path: target_directory.display().to_string(),
+            source_path: format_path(source_directory),
+            target_path: format_path(&target_directory),
             error_message: source.to_string(),
         }
     })?;
@@ -302,7 +306,7 @@ fn next_quarantine_run_directory(
 
     Err(CalibrationArtifactRunWriterError::QuarantineNameExhausted {
         run_id: run_id.to_string(),
-        quarantine_root: quarantine_root_directory.display().to_string(),
+        quarantine_root: format_path(quarantine_root_directory),
     })
 }
 

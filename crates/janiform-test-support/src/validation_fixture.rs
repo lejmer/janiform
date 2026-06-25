@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use janiform_foundations::hashing::fnv1a_64_hex_lowercase;
+use janiform_foundations::paths::format_path;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, MarketState,
 };
@@ -352,7 +353,7 @@ pub fn load_validation_fixture_manifest_document()
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
             "failed to read validation fixture manifest `{}`: {source}",
-            manifest_path.display()
+            format_path(manifest_path.as_path())
         )
     })?;
 
@@ -360,7 +361,7 @@ pub fn load_validation_fixture_manifest_document()
         .map_err(|source| {
             format!(
                 "failed to parse validation fixture manifest `{}`: {source}",
-                manifest_path.display()
+                format_path(manifest_path.as_path())
             )
         })?;
 
@@ -450,7 +451,7 @@ pub fn load_manifest_entry_payload(
         format!(
             "failed to read fixture payload for {} at `{}`: {source}",
             manifest_entry.fixture_id,
-            payload_path.display()
+            format_path(payload_path.as_path())
         )
     })?;
 

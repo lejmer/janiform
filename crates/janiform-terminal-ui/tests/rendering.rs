@@ -1,15 +1,17 @@
+use janiform_foundations::paths::format_path_relative_to;
 use janiform_terminal_ui::{
     ArtifactPathGroup, CompactTable, CompletionSummary, CompletionSummaryStatus, FailureBlock,
     KeyValueRow, SemanticStyle, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, TerminalRenderer, WarningBlock, format_count, format_duration_seconds,
-    format_elapsed_label, format_file_size, format_path_relative_to, format_token_as_kebab,
-    format_token_as_sentence_label, format_token_as_words,
+    format_elapsed_label, format_file_size, format_token_as_kebab, format_token_as_sentence_label,
+    format_token_as_words,
 };
 use std::path::Path;
 
 #[test]
 fn summary_renderer_produces_scan_friendly_monochrome_output() {
     let renderer = TerminalRenderer::new(false, Some(72));
+
     let summary = StartSummary {
         title: "run".to_string(),
         rows: vec![
@@ -36,6 +38,7 @@ fn summary_renderer_produces_scan_friendly_monochrome_output() {
 fn renderer_applies_ansi_only_when_color_is_enabled() {
     let monochrome = TerminalRenderer::new(false, None);
     let color = TerminalRenderer::new(true, None);
+
     let warning = WarningBlock {
         title: "warnings".to_string(),
         warnings: vec!["calendar gap detected".to_string()],
@@ -70,11 +73,13 @@ fn formatting_helpers_render_paths_and_file_sizes_for_summaries() {
 #[test]
 fn failure_and_completion_blocks_do_not_depend_on_color_for_meaning() {
     let renderer = TerminalRenderer::new(false, None);
+
     let failure = FailureBlock {
         title: "failed".to_string(),
         reason: "invalid run contract".to_string(),
         details: vec![KeyValueRow::new("field", "execution_input_path")],
     };
+
     let completion = CompletionSummary {
         title: "complete".to_string(),
         status: CompletionSummaryStatus::Succeeded,
@@ -94,6 +99,7 @@ fn failure_and_completion_blocks_do_not_depend_on_color_for_meaning() {
 #[test]
 fn compact_table_uses_plain_table_layout_with_narrow_wrapping() {
     let renderer = TerminalRenderer::new(false, Some(12));
+
     let table = CompactTable {
         headers: vec!["stage".to_string(), "status".to_string()],
         rows: vec![
@@ -111,6 +117,7 @@ fn compact_table_uses_plain_table_layout_with_narrow_wrapping() {
 #[test]
 fn compact_table_aligns_headers_and_rows_with_shared_column_widths() {
     let renderer = TerminalRenderer::new(false, None);
+
     let table = CompactTable {
         headers: vec![
             "Category".to_string(),
@@ -143,6 +150,7 @@ fn compact_table_aligns_headers_and_rows_with_shared_column_widths() {
 #[test]
 fn compact_table_aligns_ansi_styled_headers_and_plain_rows() {
     let renderer = TerminalRenderer::new(true, None);
+
     let table = CompactTable {
         headers: vec![
             "Category".to_string(),
@@ -167,6 +175,7 @@ fn compact_table_aligns_ansi_styled_headers_and_plain_rows() {
 #[test]
 fn stage_checklist_and_artifact_groups_are_plain_text_meaningful() {
     let renderer = TerminalRenderer::new(false, None);
+
     let checklist = StageChecklist {
         title: "stages".to_string(),
         stages: vec![
@@ -180,6 +189,7 @@ fn stage_checklist_and_artifact_groups_are_plain_text_meaningful() {
             },
         ],
     };
+
     let artifacts = ArtifactPathGroup {
         title: "artifacts".to_string(),
         paths: vec![".janiform/runs/fit/model.json".to_string()],

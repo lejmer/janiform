@@ -1,3 +1,4 @@
+use janiform_foundations::paths::format_path;
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::fit::{
     FitWorkflowOutput, PreparedFitWorkflow, build_staged_response_payload,
@@ -26,10 +27,12 @@ pub(super) fn fit_workflow_output_to_py_object(
         "raw_staged_response_payload",
         json_value_to_py_object(py, &raw_report_payload)?,
     )?;
+
     result.set_item(
         "fit_report_payload",
         json_value_to_py_object(py, &workflow_output.report_payload)?,
     )?;
+
     result.set_item(
         "model_payload",
         match &workflow_output.model_payload {
@@ -37,17 +40,17 @@ pub(super) fn fit_workflow_output_to_py_object(
             None => py.None(),
         },
     )?;
+
     result.set_item(
         "event_log_path",
-        workflow_output.event_log_path.display().to_string(),
+        format_path(&workflow_output.event_log_path),
     )?;
+
     result.set_item(
         "latest_state_snapshot_path",
-        workflow_output
-            .latest_state_snapshot_path
-            .display()
-            .to_string(),
+        format_path(&workflow_output.latest_state_snapshot_path),
     )?;
+
     result.set_item(
         "execution_duration_seconds",
         workflow_output.execution_duration.as_secs_f64(),
@@ -72,6 +75,7 @@ pub(super) fn prepared_fit_workflow_to_py_object(
     )?;
 
     result.set_item("prepared_handle", prepared_handle)?;
+
     result.set_item(
         "staged_request",
         json_value_to_py_object(
@@ -85,10 +89,12 @@ pub(super) fn prepared_fit_workflow_to_py_object(
             )?,
         )?,
     )?;
+
     result.set_item(
         "preparation_payload",
         json_value_to_py_object(py, &prepared_workflow.preparation_payload)?,
     )?;
+
     result.set_item(
         "session_definition_json",
         prepared_workflow.session_definition_json,

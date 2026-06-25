@@ -25,6 +25,7 @@ use janiform_calibration_runtime::{
     resolve_preset_workflow_configuration,
 };
 use janiform_engine_pricing::PricingIntervalSchedulePolicy;
+use janiform_foundations::paths::format_path;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -818,7 +819,7 @@ fn build_session_configuration(
     Ok(MarketDataSessionConfiguration {
         exchange_code: exchange_code.to_string(),
         session_definition_source: Some(MarketDataInputFileReference {
-            path: session_definition_path.display().to_string(),
+            path: format_path(&session_definition_path),
             file_format: MarketDataInputFileFormat::Json,
             provenance_label: "resolved-session-configuration".to_string(),
         }),
@@ -875,7 +876,7 @@ fn build_known_news_inputs(
 
     Ok(Some(CalibrationMarketDataKnownNewsInput {
         calendar_source: MarketDataInputFileReference {
-            path: known_news_path.display().to_string(),
+            path: format_path(&known_news_path),
             file_format: MarketDataInputFileFormat::Csv,
             provenance_label: "resolved-known-news-configuration".to_string(),
         },

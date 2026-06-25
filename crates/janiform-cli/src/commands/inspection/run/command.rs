@@ -1,4 +1,5 @@
 use janiform_event_log::default_run_event_paths;
+use janiform_foundations::paths::format_path;
 
 use crate::commands::inspection::InspectRunCommand;
 use crate::commands::shared::output::write_json_payload;
@@ -19,11 +20,8 @@ pub(crate) fn run_inspect_run(
 
     let inspected_state = load_inspected_run_state(&run_directory)?;
 
-    let payload = run_inspection_payload(
-        run_directory.display().to_string(),
-        &event_paths,
-        &inspected_state,
-    );
+    let payload =
+        run_inspection_payload(format_path(&run_directory), &event_paths, &inspected_state);
 
     match context.output_mode() {
         OutputMode::Json => write_json_payload(&payload),

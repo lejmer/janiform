@@ -29,10 +29,10 @@ pub use logarithms::{
     log_ratio_distance, log_ratio_distance_with_minimum_floor, log_sum_exp, log_sum_exp_pair,
 };
 pub use ordering::{
-    compute_finite_median_or_zero, compute_finite_quantile_or_zero, compute_median_f64_or_zero,
-    compute_median_i64_or_zero, compute_sorted_median, compute_sorted_quantile,
-    compute_sorted_quantile_or_zero, median_abs, median_abs_non_zero, smallest_positive_value,
-    sorted_finite_values, unique_sorted_values,
+    OptionalOrderingMode, compare_optional_by, compute_finite_median_or_zero,
+    compute_finite_quantile_or_zero, compute_median_f64_or_zero, compute_median_i64_or_zero,
+    compute_sorted_median, compute_sorted_quantile, compute_sorted_quantile_or_zero, median_abs,
+    median_abs_non_zero, smallest_positive_value, sorted_finite_values, unique_sorted_values,
 };
 pub use samples::{
     AdjustedShapeJackknifeStandardErrors, MeanEstimate, adjusted_shape_jackknife_standard_errors,

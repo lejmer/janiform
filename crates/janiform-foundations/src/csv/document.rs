@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 pub use ::csv::StringRecord;
 use ::csv::{Reader, ReaderBuilder};
 
+use crate::paths::format_path;
+
 /// Error raised when a CSV document cannot be loaded from disk.
 #[derive(Debug)]
 pub enum CsvDocumentLoadError {
@@ -22,7 +24,7 @@ impl Display for CsvDocumentLoadError {
                 write!(
                     formatter,
                     "failed to read CSV document `{}`: {source}",
-                    path.display()
+                    format_path(path)
                 )
             }
         }

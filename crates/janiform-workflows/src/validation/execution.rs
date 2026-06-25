@@ -9,6 +9,7 @@ use janiform::validation::stylized_facts::{
 };
 use janiform_foundations::cancellation::CancellationToken;
 use janiform_foundations::parallelism::resolved_cpu_count;
+use janiform_foundations::paths::format_path;
 
 use super::artifacts::{
     LINEAGE_FILE_NAME, REPORT_FILE_STEM, cache_artifacts, generate_report_bundle,
@@ -95,33 +96,26 @@ fn build_resolved_stylized_facts_validation_plan(
     let cache_artifacts = cache_artifacts(&request.output_dir, request.cache);
 
     let report_artifacts = vec![
-        request
-            .output_dir
-            .join(format!("{REPORT_FILE_STEM}.report_bundle.json"))
-            .display()
-            .to_string(),
-        request
-            .output_dir
-            .join(format!("{REPORT_FILE_STEM}.table_summary.json"))
-            .display()
-            .to_string(),
-        request
-            .output_dir
-            .join(LINEAGE_FILE_NAME)
-            .display()
-            .to_string(),
+        format_path(
+            &request
+                .output_dir
+                .join(format!("{REPORT_FILE_STEM}.report_bundle.json")),
+        ),
+        format_path(
+            &request
+                .output_dir
+                .join(format!("{REPORT_FILE_STEM}.table_summary.json")),
+        ),
+        format_path(&request.output_dir.join(LINEAGE_FILE_NAME)),
     ];
 
     Ok(StylizedFactsValidationPlan {
         schema_version: STYLIZED_FACTS_VALIDATION_PLAN_SCHEMA_VERSION,
-        model_path: request
-            .model_path
-            .as_ref()
-            .map(|path| path.display().to_string()),
+        model_path: request.model_path.as_ref().map(|path| format_path(path)),
         empirical_data_path: request
             .empirical_data_path
             .as_ref()
-            .map(|path| path.display().to_string()),
+            .map(|path| format_path(path)),
         empirical_data_format: empirical_format.map(|format| format!("{format:?}").to_lowercase()),
         empirical_timestamp_column: empirical_summary
             .as_ref()
@@ -135,7 +129,7 @@ fn build_resolved_stylized_facts_validation_plan(
         empirical_end_utc_nanos: empirical_summary
             .as_ref()
             .map(|summary| summary.analysis_window.end_utc_nanos),
-        output_dir: request.output_dir.display().to_string(),
+        output_dir: format_path(&request.output_dir),
         intervals,
         simulation_path_count: request.simulation_path_count,
         seed: request.seed,

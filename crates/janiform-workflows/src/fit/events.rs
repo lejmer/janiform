@@ -16,6 +16,7 @@ use janiform_event_log::{
     RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent,
     RunMetricUpdateEvent, RunPhaseRef, RunProgressEvent, RunStageRef, WorkflowRef,
 };
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     ProgressEvent, ProgressMeasure as UiProgressMeasure, ProgressWorkItemColumn,
     ProgressWorkItemMetric,
@@ -325,7 +326,7 @@ pub(crate) fn append_artifact_event(
             EventDeliveryPriority::Required,
             RunEventPayload::Artifact(RunArtifactEvent {
                 artifact_kind: artifact_kind.to_string(),
-                path: path.display().to_string(),
+                path: format_path(path),
                 stage: stage.map(stage_ref),
                 phase: None,
                 label: None,

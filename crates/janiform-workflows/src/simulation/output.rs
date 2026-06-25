@@ -1,14 +1,13 @@
 use std::path::Path;
 use std::time::Duration;
 
+use janiform_foundations::paths::format_path;
+use janiform_terminal_ui::{
+    CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary, format_elapsed_label,
+};
 use serde_json::{Value, json};
 
 use crate::error::WorkflowError;
-
-use janiform_terminal_ui::{
-    CompletionSummary, CompletionSummaryStatus, KeyValueRow, StartSummary, format_artifact_path,
-    format_elapsed_label, format_path,
-};
 
 use super::intervals::simulation_interval_count_label;
 use super::{DirectSimulationCompleted, DirectSimulationCompletion, SimulationExportSummary};
@@ -103,7 +102,7 @@ pub(super) fn simulation_completion_summary(
     }
 
     if let Some(output_path) = output_path {
-        rows.push(KeyValueRow::new("Path", format_artifact_path(output_path)));
+        rows.push(KeyValueRow::new("Path", format_path(output_path)));
     }
 
     if let Some(export_summary) = export_summary {

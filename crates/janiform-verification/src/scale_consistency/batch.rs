@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
 use janiform_foundations::json::document::{JsonDocumentWriteError, write_pretty_json_document};
+use janiform_foundations::paths::format_path;
 use serde::{Deserialize, Serialize};
 
 use super::super::contracts::RegressionCaseStatus;
@@ -498,8 +499,8 @@ pub enum ScaleConsistencyBatchResumeStatus {
 #[serde(deny_unknown_fields)]
 pub struct ScaleConsistencyBatchArtifactExportReceipt {
     pub checkpoint_reference: String,
-    pub checkpoint_absolute_path: String,
-    pub report_absolute_path: String,
+    pub checkpoint_path: String,
+    pub report_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1173,9 +1174,9 @@ fn persist_report_and_checkpoint(
     persist_json_artifact(run_contract, report_path.as_path(), report)?;
 
     Ok(ScaleConsistencyBatchArtifactExportReceipt {
-        checkpoint_reference: checkpoint_path.to_string_lossy().into_owned(),
-        checkpoint_absolute_path: checkpoint_path.to_string_lossy().into_owned(),
-        report_absolute_path: report_path.to_string_lossy().into_owned(),
+        checkpoint_reference: format_path(&checkpoint_path),
+        checkpoint_path: format_path(&checkpoint_path),
+        report_path: format_path(&report_path),
     })
 }
 
@@ -1268,11 +1269,17 @@ where
 fn scale_consistency_json_write_error(error: JsonDocumentWriteError) -> String {
     match error {
         JsonDocumentWriteError::CreateDirectory { path, source } => {
-            format!("failed to create directory `{}`: {source}", path.display())
+            format!(
+                "failed to create directory `{}`: {source}",
+                format_path(path.as_path())
+            )
         }
         JsonDocumentWriteError::Create { path, source }
         | JsonDocumentWriteError::Write { path, source } => {
-            format!("failed to write `{}`: {source}", path.display())
+            format!(
+                "failed to write `{}`: {source}",
+                format_path(path.as_path())
+            )
         }
         JsonDocumentWriteError::Serialize { source } => {
             format!("failed to serialize JSON payload: {source}")
@@ -1281,13 +1288,13 @@ fn scale_consistency_json_write_error(error: JsonDocumentWriteError) -> String {
 }
 
 fn load_batch_checkpoint_from_disk(path: &Path) -> Result<ScaleConsistencyBatchCheckpoint, String> {
-    let serialized =
-        fs::read(path).map_err(|error| format!("failed to read `{}`: {error}", path.display()))?;
+    let serialized = fs::read(path)
+        .map_err(|error| format!("failed to read `{}`: {error}", format_path(path)))?;
 
     serde_json::from_slice(&serialized).map_err(|error| {
         format!(
             "failed to parse checkpoint JSON `{}`: {error}",
-            path.display()
+            format_path(path)
         )
     })
 }

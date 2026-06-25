@@ -29,6 +29,7 @@ use janiform_calibration_runtime::{
     run_staged_calibration_with_checkpointing as run_staged_calibration_with_checkpointing_core,
 };
 use janiform_foundations::cancellation::CancellationToken;
+use janiform_foundations::paths::format_path;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use serde::Deserialize;
 use serde_json::Value;
@@ -919,7 +920,7 @@ fn assert_regression_reload_error_matches(
             );
             assert_eq!(
                 path,
-                expected_path.display().to_string(),
+                format_path(&expected_path),
                 "fixture_id={} unexpected missing-artifact path",
                 corruption_case.fixture_id
             );
@@ -945,7 +946,7 @@ fn assert_regression_reload_error_matches(
             );
             assert_eq!(
                 path,
-                expected_path.display().to_string(),
+                format_path(&expected_path),
                 "fixture_id={} unexpected corrupted-artifact path",
                 corruption_case.fixture_id
             );
@@ -972,7 +973,7 @@ fn assert_regression_reload_error_matches(
             );
             assert_eq!(
                 path,
-                expected_path.display().to_string(),
+                format_path(&expected_path),
                 "fixture_id={} unexpected unsupported-schema path",
                 corruption_case.fixture_id
             );

@@ -1132,6 +1132,7 @@ mod tests {
         ArrayRef, Decimal128Array, Float64Array, StringArray, TimestampNanosecondArray,
     };
     use arrow_schema::{DataType, Field, Schema, TimeUnit};
+    use janiform_foundations::paths::format_path;
 
     use super::{
         MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataLoadingProgressEvent,
@@ -1147,7 +1148,7 @@ mod tests {
     ) -> MarketDataNormalizedTickOutput {
         normalize_market_data_source(
             &MarketDataInputFileReference {
-                path: parquet_path.to_string_lossy().into_owned(),
+                path: format_path(&parquet_path),
                 file_format: MarketDataInputFileFormat::Parquet,
                 provenance_label: "ticks".to_string(),
             },
@@ -1269,7 +1270,7 @@ mod tests {
 
         normalize_market_data_source_with_progress(
             &MarketDataInputFileReference {
-                path: csv_path.to_string_lossy().into_owned(),
+                path: format_path(&csv_path),
                 file_format: MarketDataInputFileFormat::Csv,
                 provenance_label: "ticks".to_string(),
             },

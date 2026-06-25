@@ -1,3 +1,4 @@
+use janiform_foundations::paths::format_path;
 use janiform_workflows::error::WorkflowError;
 use pyo3::prelude::{Py, PyErr, PyResult, Python};
 use pyo3::types::PyAny;
@@ -29,7 +30,7 @@ pub(super) fn workflow_error_to_pricing_error(error: WorkflowError) -> PyErr {
         WorkflowError::PricingArtifactWrite { path, source } => {
             PricingExecutionError::new_err(format!(
                 "failed to write pricing artifact `{}`: {source}",
-                path.display()
+                format_path(path.as_path())
             ))
         }
         WorkflowError::ModelValidationFailed { field, message } => {

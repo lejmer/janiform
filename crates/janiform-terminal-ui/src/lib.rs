@@ -14,14 +14,10 @@ mod renderer;
 mod style;
 
 pub use color::ColorMode;
-pub use formatting::format_artifact_path;
 pub use formatting::format_count;
 pub use formatting::format_duration_seconds;
 pub use formatting::format_elapsed_label;
 pub use formatting::format_file_size;
-pub use formatting::format_optional_path_relative_to;
-pub use formatting::format_path;
-pub use formatting::format_path_relative_to;
 pub use formatting::format_selected_candidate;
 pub use formatting::format_status_label;
 pub use formatting::format_token_as_kebab;

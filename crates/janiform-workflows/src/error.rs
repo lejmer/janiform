@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use janiform_foundations::cancellation::CancellationError;
+use janiform_foundations::paths::format_path;
 use thiserror::Error;
 
 /// Error returned by shared workflow orchestration.
@@ -81,7 +82,7 @@ pub enum WorkflowError {
     },
 
     /// Fit artifact writing failed.
-    #[error("failed to write fit artifact `{}`", path.display())]
+    #[error("failed to write fit artifact `{}`", format_path(path))]
     FitArtifactWrite {
         /// Artifact path.
         path: PathBuf,
@@ -109,7 +110,7 @@ pub enum WorkflowError {
     },
 
     /// Simulation artifact writing failed.
-    #[error("failed to write simulation artifact `{}`", path.display())]
+    #[error("failed to write simulation artifact `{}`", format_path(path))]
     SimulationArtifactWrite {
         /// Artifact path.
         path: PathBuf,
@@ -119,7 +120,7 @@ pub enum WorkflowError {
     },
 
     /// Forecast artifact writing failed.
-    #[error("failed to write forecast artifact `{}`", path.display())]
+    #[error("failed to write forecast artifact `{}`", format_path(path))]
     ForecastArtifactWrite {
         /// Artifact path.
         path: PathBuf,
@@ -129,7 +130,7 @@ pub enum WorkflowError {
     },
 
     /// Forecast artifact reading failed.
-    #[error("failed to read forecast artifact `{}`", path.display())]
+    #[error("failed to read forecast artifact `{}`", format_path(path))]
     ForecastArtifactRead {
         /// Artifact path.
         path: PathBuf,
@@ -139,7 +140,7 @@ pub enum WorkflowError {
     },
 
     /// Forecast artifact parsing failed.
-    #[error("failed to parse forecast artifact `{}`", path.display())]
+    #[error("failed to parse forecast artifact `{}`", format_path(path))]
     ForecastArtifactParse {
         /// Artifact path.
         path: PathBuf,
@@ -149,7 +150,7 @@ pub enum WorkflowError {
     },
 
     /// Forecast artifact payload was malformed.
-    #[error("forecast artifact `{}` was malformed: {message}", path.display())]
+    #[error("forecast artifact `{}` was malformed: {message}", format_path(path))]
     ForecastArtifactMalformed {
         /// Artifact path.
         path: PathBuf,
@@ -158,7 +159,7 @@ pub enum WorkflowError {
     },
 
     /// Pricing artifact writing failed.
-    #[error("failed to write pricing artifact `{}`", path.display())]
+    #[error("failed to write pricing artifact `{}`", format_path(path))]
     PricingArtifactWrite {
         /// Artifact path.
         path: PathBuf,
@@ -168,7 +169,7 @@ pub enum WorkflowError {
     },
 
     /// Validation artifact reading failed.
-    #[error("failed to read validation artifact `{}`", path.display())]
+    #[error("failed to read validation artifact `{}`", format_path(path))]
     ValidationArtifactRead {
         /// Artifact path.
         path: PathBuf,
@@ -178,7 +179,7 @@ pub enum WorkflowError {
     },
 
     /// Validation artifact parsing failed.
-    #[error("failed to parse validation artifact `{}`", path.display())]
+    #[error("failed to parse validation artifact `{}`", format_path(path))]
     ValidationArtifactParse {
         /// Artifact path.
         path: PathBuf,
@@ -188,7 +189,7 @@ pub enum WorkflowError {
     },
 
     /// Validation artifact payload was malformed.
-    #[error("validation artifact `{}` was malformed: {message}", path.display())]
+    #[error("validation artifact `{}` was malformed: {message}", format_path(path))]
     ValidationArtifactMalformed {
         /// Artifact path.
         path: PathBuf,
@@ -197,7 +198,7 @@ pub enum WorkflowError {
     },
 
     /// Validation artifact writing failed.
-    #[error("failed to write validation artifact `{}`", path.display())]
+    #[error("failed to write validation artifact `{}`", format_path(path))]
     ValidationArtifactWrite {
         /// Artifact path.
         path: PathBuf,

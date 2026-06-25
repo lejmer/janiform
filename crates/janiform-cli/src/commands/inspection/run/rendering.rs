@@ -7,6 +7,7 @@ use janiform_event_log::RunStageRef;
 use janiform_event_log::RunStageStatus;
 use janiform_event_log::RunStateSnapshot;
 use janiform_event_log::RunStatus;
+use janiform_foundations::paths::format_path_relative_to;
 use janiform_foundations::time::elapsed_between_utc_timestamps;
 use janiform_terminal_ui::KeyValueRow;
 use janiform_terminal_ui::StageChecklist;
@@ -17,7 +18,6 @@ use janiform_terminal_ui::TerminalRenderer;
 use janiform_terminal_ui::WarningBlock;
 use janiform_terminal_ui::format_elapsed_label;
 use janiform_terminal_ui::format_file_size;
-use janiform_terminal_ui::format_path_relative_to;
 use janiform_terminal_ui::format_warning_count;
 
 use crate::commands::shared::terminal::ArtifactListItem;

@@ -2,6 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use janiform_foundations::paths::format_path;
+
 use crate::market_data::loading::contracts::{
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataNormalizationPolicy,
     MarketDataNormalizedOptionSurfaceRecord, MarketDataTickDataColumnMapping,
@@ -304,7 +306,7 @@ fn temporary_csv_file(name: &str, contents: &str) -> MarketDataInputFileReferenc
     fs::write(&path, contents).expect("test CSV should be writable");
 
     MarketDataInputFileReference {
-        path: path.to_string_lossy().into_owned(),
+        path: format_path(&path),
         file_format: MarketDataInputFileFormat::Csv,
         provenance_label: name.to_string(),
     }

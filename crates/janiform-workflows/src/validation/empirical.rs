@@ -9,6 +9,7 @@ use janiform::calibration::market_data::{
     normalize_market_data_source, resolve_market_data_tick_data_column_mapping_for_source,
 };
 use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
+use janiform_foundations::paths::format_path;
 use janiform_foundations::time::parse_duration_spec_nanos;
 
 use super::request::StylizedFactsValidationWorkflowRequest;
@@ -259,7 +260,7 @@ fn market_data_input_file_reference(
     default_provenance_role: &str,
 ) -> Result<MarketDataInputFileReference, WorkflowError> {
     Ok(MarketDataInputFileReference {
-        path: path.display().to_string(),
+        path: format_path(path),
         file_format: explicit_format.unwrap_or(infer_input_file_format(path)?),
         provenance_label: explicit_provenance_label
             .map(ToOwned::to_owned)

@@ -1,8 +1,9 @@
 use std::path::Path;
 
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus, StartSummary,
-    TerminalRenderer, format_artifact_path, format_count,
+    TerminalRenderer, format_count,
 };
 use janiform_workflows::validation::{
     StylizedFactsValidationDecisionMode, StylizedFactsValidationExecutionMode,
@@ -216,5 +217,5 @@ fn execution_mode_label(mode: StylizedFactsValidationExecutionMode) -> &'static 
 }
 
 fn path_label(path: &str) -> String {
-    format_artifact_path(Path::new(path))
+    format_path(Path::new(path))
 }

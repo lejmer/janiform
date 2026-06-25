@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use janiform_foundations::paths::format_path;
 use serde_json::Value;
 use serde_json::json;
 
@@ -47,9 +48,9 @@ pub(crate) fn inspect_json(prepared: &PreparedFitPreview) -> Value {
         "market_profile": market_profile_json(prepared),
         "session_resolution": prepared.plan.session_resolution,
         "tick_source_details": prepared.plan.provenance.tick_data_summary,
-        "output_directory": prepared.paths.output_directory,
-        "model_path": prepared.paths.model_path,
-        "report_path": prepared.paths.report_path,
+        "output_directory": format_path(&prepared.paths.output_directory),
+        "model_path": format_path(&prepared.paths.model_path),
+        "report_path": format_path(&prepared.paths.report_path),
         "warnings": fit_warnings(prepared),
     })
 }
@@ -79,17 +80,17 @@ fn input_files_json(prepared: &PreparedFitPreview) -> Value {
         "coarse_data": prepared.request.coarse_data_source,
         "options": prepared.request.option_surface_source,
         "known_news": prepared.request.known_news_inputs.as_ref().map(|input| &input.calendar_source),
-        "session_definition": prepared.inputs.session_definition_path,
+        "session_definition": prepared.inputs.session_definition_path.as_ref().map(|path| format_path(path)),
     })
 }
 
 fn outputs_json(prepared: &PreparedFitPreview, staged_artifact_path: Option<&Path>) -> Value {
     json!({
-        "run_directory": prepared.paths.output_directory,
-        "model": prepared.paths.model_path,
-        "report": prepared.paths.report_path,
-        "checkpoint_directory": prepared.paths.checkpoint_directory,
-        "staged_execution_input": staged_artifact_path,
+        "run_directory": format_path(&prepared.paths.output_directory),
+        "model": format_path(&prepared.paths.model_path),
+        "report": format_path(&prepared.paths.report_path),
+        "checkpoint_directory": format_path(&prepared.paths.checkpoint_directory),
+        "staged_execution_input": staged_artifact_path.map(format_path),
     })
 }
 

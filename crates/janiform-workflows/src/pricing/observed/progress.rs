@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use janiform::calibration::current_state::CurrentStateEstimationBatchProgressEvent;
 use janiform::pricing::{PricingProgressEvent, pricing_progress_phase_label};
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     ProgressAdapter, ProgressEvent, ProgressMeasure, ProgressWorkItemColumn, ProgressWorkItemMetric,
 };
@@ -76,7 +77,7 @@ pub(super) fn start_observed_pricing_progress(
         run_id: run_id.to_string(),
         scope: observed_options_pricing_progress_scope_label().to_string(),
         input_count: 1,
-        output_path: output_path.map(janiform_terminal_ui::format_path),
+        output_path: output_path.map(format_path),
         stage_sequence: observed_pricing_stage_sequence(),
         completed_stage_count: 0,
     });

@@ -839,6 +839,7 @@ mod tests {
 
     use arrow_array::{ArrayRef, Float64Array, StringArray, TimestampNanosecondArray};
     use arrow_schema::{DataType, Field, Schema, TimeUnit};
+    use janiform_foundations::paths::format_path;
 
     use super::{
         MarketDataInputFileFormat, MarketDataNormalizationPolicy,
@@ -895,7 +896,7 @@ mod tests {
         let output = load_option_surface_records(
             &MarketDataOptionSurfaceLoadingInput {
                 source: MarketDataInputFileReference {
-                    path: parquet_path.to_string_lossy().into_owned(),
+                    path: format_path(&parquet_path),
                     file_format: MarketDataInputFileFormat::Parquet,
                     provenance_label: "options".to_string(),
                 },
@@ -987,7 +988,7 @@ mod tests {
         let output = load_option_surface_records(
             &MarketDataOptionSurfaceLoadingInput {
                 source: MarketDataInputFileReference {
-                    path: parquet_path.to_string_lossy().into_owned(),
+                    path: format_path(&parquet_path),
                     file_format: MarketDataInputFileFormat::Parquet,
                     provenance_label: "options".to_string(),
                 },

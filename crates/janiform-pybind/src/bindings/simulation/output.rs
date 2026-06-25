@@ -1,3 +1,4 @@
+use janiform_foundations::paths::format_path;
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::simulation::{DirectSimulationCompleted, SimulationWorkflowOutput};
 use pyo3::prelude::{Py, PyErr, PyResult, Python};
@@ -23,6 +24,7 @@ pub(super) fn simulation_from_model_artifact_output_to_py_object(
                 .map_err(workflow_error_to_simulation_error)?,
         )?,
     )?;
+
     result.set_item(
         "execution_duration_seconds",
         output.execution_duration.as_secs_f64(),
@@ -71,7 +73,7 @@ pub(super) fn workflow_error_to_simulation_error(error: WorkflowError) -> PyErr 
         WorkflowError::SimulationArtifactWrite { path, source } => {
             SimulationExecutionError::new_err(format!(
                 "failed to write simulation artifact `{}`: {source}",
-                path.display()
+                format_path(path.as_path())
             ))
         }
         _ => SimulationExecutionError::new_err(error.to_string()),

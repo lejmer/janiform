@@ -10,6 +10,7 @@ use janiform_event_log::{
     bounded_event_channel, default_run_event_paths, load_run_state_snapshot, replay_event_log,
     replay_event_log_allowing_trailing_partial,
 };
+use janiform_foundations::paths::{format_path, format_path_relative_to};
 
 #[test]
 fn writer_persists_replayable_log_and_latest_state_snapshot() {
@@ -41,7 +42,7 @@ fn writer_persists_replayable_log_and_latest_state_snapshot() {
                 scope_id: "full".to_string(),
                 scope_label: Some("Full calibration".to_string()),
                 inputs: vec!["ticks.parquet".to_string()],
-                output_directory: Some(run_directory.display().to_string()),
+                output_directory: Some(format_path(&run_directory)),
                 stage_sequence: vec![stage.clone()],
             }),
         ),
@@ -80,11 +81,12 @@ fn writer_persists_replayable_log_and_latest_state_snapshot() {
             EventDeliveryPriority::Required,
             RunEventPayload::Artifact(RunArtifactEvent {
                 artifact_kind: "checkpoint".to_string(),
-                path: run_directory
-                    .join("checkpoints")
-                    .join("return-components.json")
-                    .display()
-                    .to_string(),
+                path: format_path_relative_to(
+                    &run_directory,
+                    &run_directory
+                        .join("checkpoints")
+                        .join("return-components.json"),
+                ),
                 stage: Some(stage.clone()),
                 phase: Some(phase.clone()),
                 label: None,
@@ -217,7 +219,7 @@ fn live_replay_ignores_only_malformed_unterminated_trailing_line() {
             scope_id: "seasonality_only".to_string(),
             scope_label: Some("Seasonality only".to_string()),
             inputs: vec!["ticks.csv".to_string()],
-            output_directory: Some(run_directory.display().to_string()),
+            output_directory: Some(format_path(&run_directory)),
             stage_sequence: Vec::new(),
         }),
     );

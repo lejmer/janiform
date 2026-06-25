@@ -5,7 +5,8 @@ use janiform::calibration::staged::{
     CalibrationStagedExecutionInput, CalibrationStagedExecutionRuntimeResources,
 };
 use janiform_event_log::RunEvent;
-use janiform_terminal_ui::{ProgressAdapter, format_path};
+use janiform_foundations::paths::format_path;
+use janiform_terminal_ui::ProgressAdapter;
 use janiform_workflows::error::WorkflowError;
 use janiform_workflows::fit::{
     FitWorkflowObserver, FitWorkflowOutput, FitWorkflowPaths, StagedFitExecutionWorkflowRequest,
@@ -131,7 +132,7 @@ pub(crate) fn run_fit_staged_run_command(
             .resolve_process_path(persistence_root_directory);
 
         execution_input.runtime_resources = Some(CalibrationStagedExecutionRuntimeResources {
-            disk_checkpoint_directory: Some(persistence_root_directory.display().to_string()),
+            disk_checkpoint_directory: Some(format_path(&persistence_root_directory)),
         });
     }
 

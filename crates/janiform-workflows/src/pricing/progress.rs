@@ -1,4 +1,5 @@
 use janiform::pricing::{PricingProgressEvent, pricing_progress_phase_label};
+use janiform_foundations::paths::format_path;
 use janiform_terminal_ui::{
     CompletionSummary, ProgressAdapter, ProgressEvent, StartSummary, TerminalSummaryPolicy,
 };
@@ -24,7 +25,7 @@ pub(super) fn start_pricing_progress(
         run_id: run_id.to_string(),
         scope: scope.to_string(),
         input_count,
-        output_path: output_path.map(janiform_terminal_ui::format_path),
+        output_path: output_path.map(format_path),
         stage_sequence: Vec::new(),
         completed_stage_count: 0,
     });
