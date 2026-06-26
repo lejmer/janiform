@@ -48,55 +48,55 @@
         "buy_side": {
           "activity_side": "buy_side",
           "empty_bucket_count": 0,
-          "maximum_bucket_activity_count": 127565,
-          "minimum_bucket_activity_count": 6389,
+          "maximum_bucket_activity_count": 212383,
+          "minimum_bucket_activity_count": 7316,
           "nonempty_bucket_count": 24,
-          "total_activity_count": 961171
+          "total_activity_count": 1554136
         },
         "sell_side": {
           "activity_side": "sell_side",
           "empty_bucket_count": 0,
-          "maximum_bucket_activity_count": 130050,
-          "minimum_bucket_activity_count": 6434,
+          "maximum_bucket_activity_count": 235468,
+          "minimum_bucket_activity_count": 8090,
           "nonempty_bucket_count": 24,
-          "total_activity_count": 979045
+          "total_activity_count": 1722088
         },
         "total": {
           "activity_side": "total",
           "empty_bucket_count": 0,
-          "maximum_bucket_activity_count": 1806625,
-          "minimum_bucket_activity_count": 96882,
+          "maximum_bucket_activity_count": 1813866,
+          "minimum_bucket_activity_count": 97272,
           "nonempty_bucket_count": 24,
-          "total_activity_count": 13942058
+          "total_activity_count": 13974521
         }
       },
-      "buy_side_tick_count": 961171,
-      "event_count": 13942058,
+      "buy_side_tick_count": 1554136,
+      "event_count": 13974521,
       "label": "Janiform synthetic",
       "original_timestamp_order_is_monotonic": true,
       "price_column": "price",
-      "sell_side_tick_count": 979045,
-      "side_comparison_count": 13942057,
+      "sell_side_tick_count": 1722088,
+      "side_comparison_count": 13974520,
       "side_proxy_policy": "observed_price_direction",
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.214543616+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.319524608+00:00",
       "timestamp_null_count": 0,
-      "total_tick_count": 13942058,
+      "total_tick_count": 13974521,
       "value_column": "price",
       "value_null_count": 0,
-      "zero_return_tick_count": 12001841
+      "zero_return_tick_count": 10698296
     }
   },
   "figure": {
     "id": "activity_intraday_profile_sell_side_comparison",
     "title": "Empirical vs Janiform synthetic sell-side activity intraday profile"
   },
-  "generated_at_utc": "2026-06-17T22:33:28.991454+00:00",
+  "generated_at_utc": "2026-06-26T00:39:30.266936+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\activity_intraday_profile.py"
     ],
-    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
+    "git_commit": "96af979123e08532075dc30ca27a40b41feff1b8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/activity_intraday_profile.py"
@@ -165,14 +165,13 @@
         "side",
         "observed_log_price",
         "anchor_value",
-        "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 13942058,
+      "parquet_row_count": 13974521,
       "parquet_row_group_count": 14,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 144571712,
+      "size_bytes": 155478887,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -188,8 +187,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/activity_intraday_profile/activity_intraday_profile_sell_side_comparison.pdf",
       "role": "figure",
-      "sha256": "193b97ead50d0ed69b5b2f1009399cd2dfb763448a8271c85d8a31552b449843",
-      "size_bytes": 18857
+      "sha256": "5f78198b1400ccab4db9ff3504d17481fc0f9ab2ff1733133bb37a1b8473ba0f",
+      "size_bytes": 18842
     }
   ],
   "parameters": {
@@ -219,8 +218,8 @@
       {
         "activity_side": "sell_side",
         "label": "Janiform synthetic",
-        "maximum_bucket_activity_count": 130050,
-        "total_activity_count": 979045
+        "maximum_bucket_activity_count": 235468,
+        "total_activity_count": 1722088
       }
     ],
     "plot_type": "intraday_activity_count_profile",

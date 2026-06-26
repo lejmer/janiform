@@ -1,33 +1,33 @@
 {
   "data_summary": {
     "synthetic_model_output": {
-      "event_count": 13942058,
-      "finite_return_count": 13942057,
+      "event_count": 13974521,
+      "finite_return_count": 13974519,
       "horizon": "1s",
       "horizon_duration_nanos": 1000000000,
       "label": "Janiform synthetic",
       "original_timestamp_order_is_monotonic": true,
-      "positive_price_count": 13942058,
+      "positive_price_count": 13974521,
       "price_column": "price",
       "return_summary": {
-        "maximum": 6.81863910843461,
-        "mean": 0.0011854068265091996,
-        "minimum": -6.85276545151936,
+        "maximum": 12.58820953875528,
+        "mean": 0.0015679385770698635,
+        "minimum": -12.465492883428908,
         "quantiles": {
-          "p001": -2.514656971950302,
-          "p01": -1.4906295953487358,
-          "p05": -0.7565927927011273,
+          "p001": -4.591309487531667,
+          "p01": -2.6834524314978125,
+          "p05": -1.4737145241738858,
           "p50": 0.0,
-          "p95": 0.759610049030357,
-          "p99": 1.5111276326784662,
-          "p999": 2.648926556165776
+          "p95": 1.508676844164114,
+          "p99": 2.97085237201955,
+          "p999": 5.075587538190263
         },
-        "standard_deviation": 0.5316773600478507
+        "standard_deviation": 0.9429135625234845
       },
       "return_unit": "log_return_basis_points",
-      "source_observation_count": 13942057,
+      "source_observation_count": 13974519,
       "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
-      "timestamp_min_utc": "2026-03-02T00:00:00.214543616+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.319524608+00:00",
       "timestamp_null_count": 0,
       "value_column": "price",
       "value_null_count": 0
@@ -37,12 +37,12 @@
     "id": "tick_return_distributions_1s_histogram_synthetic_model_output",
     "title": "Janiform synthetic ES 1s log-return distribution"
   },
-  "generated_at_utc": "2026-06-17T22:33:59.745975+00:00",
+  "generated_at_utc": "2026-06-26T00:39:58.959442+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
+    "git_commit": "96af979123e08532075dc30ca27a40b41feff1b8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
@@ -64,14 +64,13 @@
         "side",
         "observed_log_price",
         "anchor_value",
-        "pressure_state",
         "deviation_from_anchor"
       ],
-      "parquet_row_count": 13942058,
+      "parquet_row_count": 13974521,
       "parquet_row_group_count": 14,
       "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
       "role": "synthetic_model_output",
-      "size_bytes": 144571712,
+      "size_bytes": 155478887,
       "timestamp_column": "timestamp_utc"
     }
   ],
@@ -88,8 +87,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_1s_histogram_synthetic.pdf",
       "role": "figure",
-      "sha256": "0b4c1ce3c559801e97a24bbbd8dc22fb241b3da7e303553d2f0cf98358c75794",
-      "size_bytes": 23445
+      "sha256": "2d5eb7ba55082ed386c6d121fa456341d5a55803d921095068707d469d184847",
+      "size_bytes": 22649
     }
   ],
   "parameters": {
@@ -136,16 +135,16 @@
   },
   "plot_summary": {
     "plot_range_basis_points": {
-      "maximum": 4.621196941219097,
-      "minimum": -4.167172016220633
+      "maximum": 5.441267720946996,
+      "minimum": -4.81329960974719
     },
     "plot_type": "histogram_with_binned_gaussian_kde",
     "series": [
       {
         "label": "Janiform synthetic",
-        "lower_tail_excluded_count": 398,
-        "plotted_return_count": 13941302,
-        "upper_tail_excluded_count": 357
+        "lower_tail_excluded_count": 9593,
+        "plotted_return_count": 13955210,
+        "upper_tail_excluded_count": 9716
       }
     ],
     "x_axis": "log_return_basis_points",

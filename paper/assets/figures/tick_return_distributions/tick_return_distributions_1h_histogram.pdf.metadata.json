@@ -37,12 +37,12 @@
     "id": "tick_return_distributions_1h_histogram_empirical_market_data",
     "title": "Empirical ES 1h log-return distribution"
   },
-  "generated_at_utc": "2026-06-17T22:34:22.917785+00:00",
+  "generated_at_utc": "2026-06-26T00:40:21.459692+00:00",
   "generator": {
     "command": [
       "paper\\scripts\\figures\\tick_return_distributions.py"
     ],
-    "git_commit": "d0a413f795707b6e9ba4eb76de41f9b784f702d8",
+    "git_commit": "96af979123e08532075dc30ca27a40b41feff1b8",
     "platform": "Windows-11-10.0.26200-SP0",
     "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
     "script_path": "paper/scripts/figures/tick_return_distributions.py"
@@ -109,8 +109,8 @@
       "media_type": "application/pdf",
       "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_1h_histogram.pdf",
       "role": "figure",
-      "sha256": "6f51268f7c01518f0f5b6013dcc0e5d22949c4e1be64117814b21764f82a0cce",
-      "size_bytes": 22974
+      "sha256": "9199dcc37267116893e9502932debbe3fc36a393aa1fb8e30c8ba2635e60d499",
+      "size_bytes": 22821
     }
   ],
   "parameters": {
@@ -157,16 +157,16 @@
   },
   "plot_summary": {
     "plot_range_basis_points": {
-      "maximum": 113.81395490145607,
-      "minimum": -112.93369831157918
+      "maximum": 280.5834065748988,
+      "minimum": -312.98032752268057
     },
     "plot_type": "histogram_with_binned_gaussian_kde",
     "series": [
       {
         "label": "Empirical",
-        "lower_tail_excluded_count": 7396,
-        "plotted_return_count": 13942084,
-        "upper_tail_excluded_count": 27911
+        "lower_tail_excluded_count": 0,
+        "plotted_return_count": 13971884,
+        "upper_tail_excluded_count": 5507
       }
     ],
     "x_axis": "log_return_basis_points",
