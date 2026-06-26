@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use janiform_foundations::paths::format_path;
 use janiform_workflows::forecast::{
     ForecastExpectedPathRow, ForecastOutput, ForecastProgressEvent, ForecastTableFormat,
     ForecastTerminalDistributionRow, ForecastWorkflowObserver, ForecastWorkflowRequest,
@@ -89,7 +90,7 @@ fn save_forecast_bundle_from_payload(
     json_value_to_py_object(
         py,
         &serde_json::json!({
-            "path": resolved_path,
+            "path": format_path(&resolved_path),
         }),
     )
 }

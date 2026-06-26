@@ -14,13 +14,14 @@ use janiform::pricing::{
 };
 use janiform_calibration_runtime::CurrentStateEstimationOutput;
 use janiform_engine_pricing::{VanillaOptionPricingFailureStage, VanillaOptionPricingStatus};
+use janiform_foundations::paths::format_path;
 use janiform_foundations::time::{deserialize_optional_utc_datetime, serialize_utc_datetime};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::error::WorkflowError;
 
-use super::super::artifacts::PricingArtifactPaths;
+use super::super::artifacts::{PricingArtifactPaths, formatted_pricing_artifact_paths};
 use super::super::labels::observed_options_pricing_workflow_label;
 pub(super) const DEFAULT_PRICING_INTERVAL_DURATION_NANOS: i64 = NANOS_PER_HOUR;
 pub(super) const LOAD_OBSERVED_DATA_STAGE: &str = "Load observed data";
@@ -134,16 +135,21 @@ impl ObservedOptionsPricingOutput {
         let response = serde_json::to_value(self)
             .map_err(|source| WorkflowError::OutputSerialize { source })?;
 
+        let artifact_paths = self
+            .artifact_paths
+            .as_ref()
+            .map(formatted_pricing_artifact_paths);
+
         Ok(json!({
             "schema_version": "janiform.price_observed_options_run.v1",
             "command_id": observed_options_pricing_workflow_label(),
             "status": "completed",
             "run_id": self.run_id,
-            "model_path": model_path,
-            "primary_output_path": self.artifact_paths.as_ref().map(|paths| &paths.primary_output_path),
-            "report_path": self.artifact_paths.as_ref().map(|paths| &paths.report_path),
-            "manifest_path": self.artifact_paths.as_ref().map(|paths| &paths.manifest_path),
-            "run_directory": self.artifact_paths.as_ref().map(|paths| &paths.run_directory),
+            "model_path": format_path(model_path),
+            "primary_output_path": artifact_paths.as_ref().map(|paths| paths.primary_output_path.as_str()),
+            "report_path": artifact_paths.as_ref().map(|paths| paths.report_path.as_str()),
+            "manifest_path": artifact_paths.as_ref().map(|paths| paths.manifest_path.as_str()),
+            "run_directory": artifact_paths.as_ref().map(|paths| paths.run_directory.as_str()),
             "priced_node_count": self.nodes.iter().filter(|node| node.model_price.is_some()).count(),
             "failed_node_count": self.nodes.iter().filter(|node| node.model_price.is_none()).count(),
             "warnings": &self.warnings,

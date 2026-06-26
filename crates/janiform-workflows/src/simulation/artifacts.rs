@@ -9,6 +9,7 @@ use janiform::simulation::{
     CoarseSimulationPath, SeededFinePathRecord, SeededTickEventSide, SeededTickSimulationRunResult,
 };
 use janiform::time::calendar::{ExchangeCalendarRegistry, MarketState};
+use janiform_foundations::paths::format_path;
 use parquet::arrow::ArrowWriter;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -148,13 +149,16 @@ pub(super) fn write_model_artifact_simulation_sidecars(
     let run_directory = output_path.parent().unwrap_or_else(|| Path::new("."));
     let report_path = run_directory.join("simulation_report.json");
     let manifest_path = run_directory.join("run.json");
+    let formatted_run_directory = format_path(run_directory);
+    let formatted_output_path = format_path(output_path);
+    let formatted_report_path = format_path(&report_path);
 
     write_pretty_json_file(
         &report_path,
         &json!({
             "schema_version": "janiform.workflow_report.v1",
             "workflow": simulation_workflow_label(),
-            "primary_output_path": output_path,
+            "primary_output_path": formatted_output_path,
             "response": response_payload,
         }),
         ArtifactWriteKind::Simulation,
@@ -166,9 +170,9 @@ pub(super) fn write_model_artifact_simulation_sidecars(
             "schema_version": "janiform.run_manifest.v1",
             "workflow": simulation_workflow_label(),
             "run_id": run_id,
-            "run_directory": run_directory,
-            "primary_output_path": output_path,
-            "report_path": report_path,
+            "run_directory": formatted_run_directory,
+            "primary_output_path": formatted_output_path,
+            "report_path": formatted_report_path,
             "artifacts": {
                 "model_run_id": model_run_id,
             },
@@ -463,6 +467,7 @@ const fn side_label(side: SeededTickEventSide) -> &'static str {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use janiform_foundations::paths::format_path;
     use serde_json::{Value, json};
 
     use super::{SimulationOutputColumns, write_model_artifact_simulation_sidecars};
@@ -530,7 +535,7 @@ mod tests {
             json!({
                 "schema_version": "janiform.workflow_report.v1",
                 "workflow": "simulate",
-                "primary_output_path": output_path,
+                "primary_output_path": format_path(&output_path),
                 "response": response_payload,
             })
         );
@@ -540,9 +545,9 @@ mod tests {
                 "schema_version": "janiform.run_manifest.v1",
                 "workflow": "simulate",
                 "run_id": "simulate-run",
-                "run_directory": run_directory,
-                "primary_output_path": output_path,
-                "report_path": run_directory.join("simulation_report.json"),
+                "run_directory": format_path(&run_directory),
+                "primary_output_path": format_path(&output_path),
+                "report_path": format_path(&run_directory.join("simulation_report.json")),
                 "artifacts": {
                     "model_run_id": "fit-run",
                 },

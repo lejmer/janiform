@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use janiform::simulation::{CoarseSimulationPath, SeededTickSimulationRunResult};
+use janiform_foundations::paths::format_path;
 use janiform_workflows::simulation::{
     CoarseIntervalExportSettings, DirectSimulationCompleted, DirectSimulationCompletion,
     DirectSimulationExportPlan, DirectSimulationJob, SeededTickExportSettings,
@@ -244,7 +245,7 @@ pub(super) fn emit_completion(
                     "simulation_kind": simulation_kind,
                     "seed": completion.seed,
                     "simulated_interval_count": completion.simulated_interval_count,
-                    "output_path": output_path,
+                    "output_path": format_path(output_path),
                     "export": export_summary.map(export_summary_json),
                 }))
             } else {
@@ -266,6 +267,9 @@ pub(super) fn write_report_and_manifest(
 
     let report_path = run_directory.join("simulation_report.json");
     let manifest_path = run_directory.join("run.json");
+    let formatted_run_directory = format_path(run_directory);
+    let formatted_output_path = format_path(output_path);
+    let formatted_report_path = format_path(&report_path);
 
     write_pretty_json_file(
         &report_path,
@@ -273,7 +277,7 @@ pub(super) fn write_report_and_manifest(
             "schema_version": "janiform.workflow_report.v1",
             "workflow": simulation_workflow_label(),
             "simulation_kind": simulation_kind,
-            "primary_output_path": output_path,
+            "primary_output_path": formatted_output_path,
             "diagnostics": diagnostics,
         }),
         artifact_write_error,
@@ -285,9 +289,9 @@ pub(super) fn write_report_and_manifest(
             "schema_version": "janiform.run_manifest.v1",
             "workflow": simulation_workflow_label(),
             "run_id": run_id,
-            "run_directory": run_directory,
-            "primary_output_path": output_path,
-            "report_path": report_path,
+            "run_directory": formatted_run_directory,
+            "primary_output_path": formatted_output_path,
+            "report_path": formatted_report_path,
         }),
         artifact_write_error,
     )
@@ -348,4 +352,78 @@ pub(super) fn direct_simulation_run_id(prefix: &str) -> String {
         "simulate_{prefix}_{}",
         chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use janiform_foundations::paths::format_path;
+    use serde_json::{Value, json};
+
+    use super::write_report_and_manifest;
+
+    #[test]
+    fn report_and_manifest_paths_are_canonical_strings() {
+        let run_directory = std::env::temp_dir().join(format!(
+            "janiform-cli-simulation-sidecars-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+
+        let output_path = run_directory.join("simulation.parquet");
+
+        let diagnostics = json!({
+            "export": {
+                "record_count": 2,
+                "chunk_count": 1,
+            },
+        });
+
+        write_report_and_manifest(
+            output_path.as_path(),
+            "simulate-run",
+            "seeded_tick",
+            diagnostics.clone(),
+        )
+        .expect("simulation sidecars should be written");
+
+        let report: Value = serde_json::from_str(
+            &std::fs::read_to_string(run_directory.join("simulation_report.json"))
+                .expect("simulation report should be readable"),
+        )
+        .expect("simulation report should be valid JSON");
+
+        let manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(run_directory.join("run.json"))
+                .expect("run manifest should be readable"),
+        )
+        .expect("run manifest should be valid JSON");
+
+        assert_eq!(
+            report,
+            json!({
+                "schema_version": "janiform.workflow_report.v1",
+                "workflow": "simulate",
+                "simulation_kind": "seeded_tick",
+                "primary_output_path": format_path(&output_path),
+                "diagnostics": diagnostics,
+            })
+        );
+        assert_eq!(
+            manifest,
+            json!({
+                "schema_version": "janiform.run_manifest.v1",
+                "workflow": "simulate",
+                "run_id": "simulate-run",
+                "run_directory": format_path(&run_directory),
+                "primary_output_path": format_path(&output_path),
+                "report_path": format_path(&run_directory.join("simulation_report.json")),
+            })
+        );
+
+        std::fs::remove_dir_all(run_directory).ok();
+    }
 }

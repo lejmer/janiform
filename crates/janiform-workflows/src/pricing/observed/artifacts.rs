@@ -12,7 +12,9 @@ use crate::artifact_io::{ArtifactWriteKind, write_pretty_json_file};
 use crate::error::WorkflowError;
 use crate::price_coordinates::price_coordinate_resolution_summary;
 
-use super::super::artifacts::{PricingArtifactPaths, pricing_artifact_paths};
+use super::super::artifacts::{
+    PricingArtifactPaths, formatted_pricing_artifact_paths, pricing_artifact_paths,
+};
 use super::super::labels::{
     observed_options_pricing_scope_label, observed_options_pricing_scope_token,
     observed_options_pricing_workflow_label,
@@ -42,6 +44,7 @@ pub(super) fn write_observed_artifacts_if_requested(
     };
 
     let paths = pricing_artifact_paths(output_path);
+    let formatted_paths = formatted_pricing_artifact_paths(&paths);
 
     let primary_payload = json!({
         "schema_version": "janiform.observed_options_pricing_result.v1",
@@ -67,7 +70,7 @@ pub(super) fn write_observed_artifacts_if_requested(
         &json!({
             "schema_version": "janiform.workflow_report.v1",
             "workflow": observed_options_pricing_workflow_label(),
-            "primary_output_path": paths.primary_output_path,
+            "primary_output_path": formatted_paths.primary_output_path,
             "snapshot_count": snapshot_results.len(),
             "node_count": snapshot_results.iter().map(|result| result.nodes.len()).sum::<usize>(),
             "price_coordinate_resolution": price_coordinate_resolution,
@@ -83,9 +86,9 @@ pub(super) fn write_observed_artifacts_if_requested(
             "schema_version": "janiform.run_manifest.v1",
             "workflow": observed_options_pricing_workflow_label(),
             "run_id": run_id,
-            "run_directory": paths.run_directory,
-            "primary_output_path": paths.primary_output_path,
-            "report_path": paths.report_path,
+            "run_directory": formatted_paths.run_directory,
+            "primary_output_path": formatted_paths.primary_output_path,
+            "report_path": formatted_paths.report_path,
         }),
         ArtifactWriteKind::Pricing,
     )?;

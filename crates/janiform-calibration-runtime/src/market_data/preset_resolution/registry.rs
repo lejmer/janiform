@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
+use janiform_foundations::paths::format_path;
 use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
@@ -495,9 +497,10 @@ fn preset_index_entry(
         string_field(artifact, "category", "preset_artifact.category")?,
         "preset_artifact.category",
     )?;
+    let formatted_artifact_path = artifact_path.map(|path| format_path(Path::new(path)));
 
     Ok(json!({
-        "artifact_path": artifact_path,
+        "artifact_path": formatted_artifact_path,
         "category": category.as_str(),
         "content_hash": string_field(provenance, "content_hash", "preset_artifact.metadata.provenance.content_hash")?,
         "description": string_field(metadata, "description", "preset_artifact.metadata.description")?,
