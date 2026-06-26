@@ -16,7 +16,7 @@ use janiform::pricing::{
 
 use crate::error::WorkflowError;
 
-use super::artifacts::PricingArtifactPaths;
+use super::artifacts::{PricingArtifactPaths, formatted_pricing_artifact_paths};
 use super::labels::{
     fitted_model_pricing_workflow_label, fitted_model_single_option_pricing_scope_label,
     vanilla_option_grid_batch_pricing_scope_label, vanilla_option_surface_pricing_scope_label,
@@ -43,16 +43,21 @@ impl FittedModelSingleOptionPricingOutput {
         let run_diagnostics = serde_json::to_value(&self.run_result.run_diagnostics)
             .map_err(|source| WorkflowError::OutputSerialize { source })?;
 
+        let artifact_paths = self
+            .artifact_paths
+            .as_ref()
+            .map(formatted_pricing_artifact_paths);
+
         Ok(json!({
             "schema_version": "janiform.price_run.v1",
             "command_id": fitted_model_pricing_workflow_label(),
             "status": "completed",
             "run_id": self.run_id,
             "model_path": format_path(model_path),
-            "primary_output_path": self.artifact_paths.as_ref().map(|paths| format_path(&paths.primary_output_path)),
-            "report_path": self.artifact_paths.as_ref().map(|paths| format_path(&paths.report_path)),
-            "manifest_path": self.artifact_paths.as_ref().map(|paths| format_path(&paths.manifest_path)),
-            "run_directory": self.artifact_paths.as_ref().map(|paths| format_path(&paths.run_directory)),
+            "primary_output_path": artifact_paths.as_ref().map(|paths| paths.primary_output_path.as_str()),
+            "report_path": artifact_paths.as_ref().map(|paths| paths.report_path.as_str()),
+            "manifest_path": artifact_paths.as_ref().map(|paths| paths.manifest_path.as_str()),
+            "run_directory": artifact_paths.as_ref().map(|paths| paths.run_directory.as_str()),
             "priced_node_count": 1,
             "failed_node_count": single_failed_node_count(&self.run_result),
             "execution_duration_seconds": self.execution_duration.as_secs_f64(),
