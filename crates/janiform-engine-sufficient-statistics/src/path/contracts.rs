@@ -155,6 +155,7 @@ impl SufficientStatisticsPathRecord {
         self.sufficient_statistics.validate().map_err(|source| {
             SufficientStatisticsPathRecordError::InvalidSufficientStatistics { source }
         })?;
+
         self.return_components.validate().map_err(|source| {
             SufficientStatisticsPathRecordError::InvalidReturnComponents { source }
         })?;
@@ -295,6 +296,7 @@ impl SufficientStatisticsPath {
         };
 
         path.validate()?;
+
         Ok(path)
     }
 
@@ -322,6 +324,7 @@ impl SufficientStatisticsPath {
         validate_excitation_state(self.initial_excitation_state).map_err(|(field, value)| {
             SufficientStatisticsPathError::InvalidInitialState { field, value }
         })?;
+
         validate_excitation_state(self.terminal_excitation_state).map_err(|(field, value)| {
             SufficientStatisticsPathError::InvalidTerminalState { field, value }
         })?;
@@ -485,6 +488,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.provenance_schema_version != expected.provenance_schema_version {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -494,6 +498,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.diagnostics_schema_version != expected.diagnostics_schema_version {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -503,6 +508,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.artifact_workflow_policy != expected.artifact_workflow_policy {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -512,6 +518,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.environment_metadata_policy != expected.environment_metadata_policy {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -521,6 +528,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.required_path_fields != expected.required_path_fields {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -530,6 +538,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.required_provenance_fields != expected.required_provenance_fields {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -539,6 +548,7 @@ fn validate_sufficient_statistics_path_output_schema_metadata(
             },
         );
     }
+
     if metadata.required_diagnostics_fields != expected.required_diagnostics_fields {
         return Err(
             SufficientStatisticsPathError::InvalidOutputSchemaMetadataField {
@@ -564,6 +574,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.schema_version.to_string(),
         });
     }
+
     if provenance.artifact_workflow_policy != expected.artifact_workflow_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.artifact_workflow_policy",
@@ -571,6 +582,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.artifact_workflow_policy.to_string(),
         });
     }
+
     if provenance.environment_metadata_policy != expected.environment_metadata_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.environment_metadata_policy",
@@ -578,6 +590,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.environment_metadata_policy.to_string(),
         });
     }
+
     if provenance.interval_factor_policy != expected.interval_factor_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.interval_factor_policy",
@@ -585,6 +598,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.interval_factor_policy.to_string(),
         });
     }
+
     if provenance.transform_slice_sampling_policy != expected.transform_slice_sampling_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.transform_slice_sampling_policy",
@@ -592,6 +606,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.transform_slice_sampling_policy.to_string(),
         });
     }
+
     if provenance.boundary_state_update_policy != expected.boundary_state_update_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.boundary_state_update_policy",
@@ -599,6 +614,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.boundary_state_update_policy.to_string(),
         });
     }
+
     if provenance.interval_return_generation_policy != expected.interval_return_generation_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.interval_return_generation_policy",
@@ -606,6 +622,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.interval_return_generation_policy.to_string(),
         });
     }
+
     if provenance.interval_return_component_routing_policy
         != expected.interval_return_component_routing_policy
     {
@@ -619,6 +636,7 @@ fn validate_sufficient_statistics_path_provenance(
                 .to_string(),
         });
     }
+
     if provenance.batch_seed_partition_policy != expected.batch_seed_partition_policy {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.batch_seed_partition_policy",
@@ -626,6 +644,7 @@ fn validate_sufficient_statistics_path_provenance(
             actual: provenance.batch_seed_partition_policy.to_string(),
         });
     }
+
     if provenance.artifact_workflow_tags != expected.artifact_workflow_tags {
         return Err(SufficientStatisticsPathError::InvalidProvenanceField {
             field_path: "provenance.artifact_workflow_tags",
@@ -781,6 +800,7 @@ fn derive_sufficient_statistics_path_diagnostics(
         .last()
         .map(|record| record.observed_log_price_end)
         .unwrap_or(0.0);
+
     let terminal_deviation_from_anchor = records
         .last()
         .map(|record| record.deviation_from_anchor_end)
@@ -822,6 +842,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.schema_version.to_string(),
         });
     }
+
     if diagnostics.simulated_interval_count != expected_diagnostics.simulated_interval_count {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.simulated_interval_count".to_string(),
@@ -829,6 +850,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.simulated_interval_count.to_string(),
         });
     }
+
     if diagnostics.first_interval_index != expected_diagnostics.first_interval_index {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.first_interval_index".to_string(),
@@ -836,6 +858,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: format!("{:?}", diagnostics.first_interval_index),
         });
     }
+
     if diagnostics.last_interval_index != expected_diagnostics.last_interval_index {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.last_interval_index".to_string(),
@@ -843,6 +866,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: format!("{:?}", diagnostics.last_interval_index),
         });
     }
+
     if diagnostics.cumulative_a_plus != expected_diagnostics.cumulative_a_plus {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_a_plus".to_string(),
@@ -850,6 +874,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_a_plus.to_string(),
         });
     }
+
     if diagnostics.cumulative_a_minus != expected_diagnostics.cumulative_a_minus {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_a_minus".to_string(),
@@ -857,6 +882,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_a_minus.to_string(),
         });
     }
+
     if diagnostics.cumulative_n_plus != expected_diagnostics.cumulative_n_plus {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_n_plus".to_string(),
@@ -864,6 +890,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_n_plus.to_string(),
         });
     }
+
     if diagnostics.cumulative_n_minus != expected_diagnostics.cumulative_n_minus {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_n_minus".to_string(),
@@ -871,6 +898,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_n_minus.to_string(),
         });
     }
+
     if diagnostics.cumulative_trading_time_return
         != expected_diagnostics.cumulative_trading_time_return
     {
@@ -882,6 +910,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_trading_time_return.to_string(),
         });
     }
+
     if diagnostics.cumulative_open_jump_return != expected_diagnostics.cumulative_open_jump_return {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_open_jump_return".to_string(),
@@ -889,6 +918,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_open_jump_return.to_string(),
         });
     }
+
     if diagnostics.cumulative_closed_gap_return != expected_diagnostics.cumulative_closed_gap_return
     {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
@@ -899,6 +929,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_closed_gap_return.to_string(),
         });
     }
+
     if diagnostics.cumulative_total_return != expected_diagnostics.cumulative_total_return {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_total_return".to_string(),
@@ -906,6 +937,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_total_return.to_string(),
         });
     }
+
     if diagnostics.cumulative_observed_return != expected_diagnostics.cumulative_observed_return {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.cumulative_observed_return".to_string(),
@@ -913,6 +945,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.cumulative_observed_return.to_string(),
         });
     }
+
     if diagnostics.max_abs_total_return != expected_diagnostics.max_abs_total_return {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.max_abs_total_return".to_string(),
@@ -920,6 +953,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.max_abs_total_return.to_string(),
         });
     }
+
     if diagnostics.max_abs_deviation_from_anchor
         != expected_diagnostics.max_abs_deviation_from_anchor
     {
@@ -931,6 +965,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.max_abs_deviation_from_anchor.to_string(),
         });
     }
+
     if diagnostics.terminal_observed_log_price != expected_diagnostics.terminal_observed_log_price {
         return Err(SufficientStatisticsPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.terminal_observed_log_price".to_string(),
@@ -938,6 +973,7 @@ fn validate_sufficient_statistics_path_diagnostics(
             actual: diagnostics.terminal_observed_log_price.to_string(),
         });
     }
+
     if diagnostics.terminal_deviation_from_anchor
         != expected_diagnostics.terminal_deviation_from_anchor
     {
