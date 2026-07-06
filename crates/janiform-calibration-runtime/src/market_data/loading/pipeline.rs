@@ -1148,7 +1148,7 @@ mod tests {
     ) -> MarketDataNormalizedTickOutput {
         normalize_market_data_source(
             &MarketDataInputFileReference {
-                path: format_path(&parquet_path),
+                path: format_path(parquet_path),
                 file_format: MarketDataInputFileFormat::Parquet,
                 provenance_label: "ticks".to_string(),
             },

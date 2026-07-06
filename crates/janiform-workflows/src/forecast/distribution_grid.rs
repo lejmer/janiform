@@ -343,14 +343,12 @@ mod tests {
             .quantiles(probabilities)
             .expect("uniform quantiles should resolve");
 
-        let grid = projected_cdf_quantile_band_grid(
+        projected_cdf_quantile_band_grid(
             &distribution,
             node_count,
             probabilities,
             quantile_log_returns.as_slice(),
         )
-        .expect("uniform distribution should produce a quantile-band grid");
-
-        grid
+        .expect("uniform distribution should produce a quantile-band grid")
     }
 }

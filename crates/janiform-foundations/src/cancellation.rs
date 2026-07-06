@@ -179,8 +179,8 @@ mod tests {
         let token = CancellationToken::uncancelled();
 
         assert_eq!(Ok(()), token.check_cancelled());
-        assert_eq!(false, token.is_cancelled());
-        assert_eq!(false, token.is_force_requested());
+        assert!(!token.is_cancelled());
+        assert!(!token.is_force_requested());
     }
 
     #[test]
@@ -191,10 +191,10 @@ mod tests {
         source.cancel();
 
         assert_eq!(Err(CancellationError), token.check_cancelled());
-        assert_eq!(true, source.is_cancelled());
-        assert_eq!(true, token.is_cancelled());
-        assert_eq!(false, source.is_force_requested());
-        assert_eq!(false, token.is_force_requested());
+        assert!(source.is_cancelled());
+        assert!(token.is_cancelled());
+        assert!(!source.is_force_requested());
+        assert!(!token.is_force_requested());
     }
 
     #[test]
@@ -211,9 +211,9 @@ mod tests {
             source.request_cancellation()
         );
 
-        assert_eq!(true, source.is_cancelled());
-        assert_eq!(true, token.is_cancelled());
-        assert_eq!(true, source.is_force_requested());
-        assert_eq!(true, token.is_force_requested());
+        assert!(source.is_cancelled());
+        assert!(token.is_cancelled());
+        assert!(source.is_force_requested());
+        assert!(token.is_force_requested());
     }
 }
