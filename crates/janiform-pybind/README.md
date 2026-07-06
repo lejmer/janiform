@@ -7,6 +7,6 @@ PyO3 bindings for Janiform.
 This crate owns the PyO3 boundary for [Janiform](https://github.com/lejmer/janiform). It is a workspace integration
 crate rather than a standalone Rust API.
 
-This version is `0.0.0`. The source for this crate lives [here](https://github.com/lejmer/janiform/blob/main/crates/janiform-pybind).
+This version is `0.1.0`. The source for this crate lives [here](https://github.com/lejmer/janiform/blob/main/crates/janiform-pybind).
 
 The public Python package and CLI are documented in the [repository README](https://github.com/lejmer/janiform/blob/main/README.md).

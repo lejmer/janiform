@@ -7,7 +7,7 @@ Shared affine-oracle solver contracts and implementation for Janiform.
 This crate is an internal component of [Janiform](https://github.com/lejmer/janiform). Its Rust API may change as the
 workspace evolves.
 
-This version is `0.0.0`. The source for this crate lives [here](https://github.com/lejmer/janiform/blob/main/crates/janiform-affine-oracle).
+This version is `0.1.0`. The source for this crate lives [here](https://github.com/lejmer/janiform/blob/main/crates/janiform-affine-oracle).
 
 The top-level project overview and workflow documentation live in the
 [repository README](https://github.com/lejmer/janiform/blob/main/README.md).
