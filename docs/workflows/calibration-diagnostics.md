@@ -64,7 +64,7 @@ Start with `objective_breakdown.family_losses`. If one area looks bad, use `obje
 
 ## Full calibration stages
 
-Full calibration reports separate the final pipeline into the stages users see in the terminal:
+Full calibration reports separate the final pipeline into the stages you see in the terminal:
 
 | Stage                         | When it appears        | What it does                                                                                                                             |
 |-------------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
@@ -234,7 +234,7 @@ The stage is asset-agnostic. It does not assume that FX, equities, futures, or c
 
 The diagnostics use the word "grid" for the time spacing used by mean-reversion calibration. This is not the tick grid. The tick grid is the set of prices the instrument can display, such as increments of `0.25` or `0.00001`. The mean-reversion calibration grid is a time spacing, such as one hour, one session, or one day, used to line up retained price observations for this stage.
 
-Users normally do not set a mean-reversion source. Janiform chooses from the retained data:
+You normally do not set a mean-reversion source. Janiform chooses from the retained data:
 
 | Data available in the fit  | Mean-reversion evidence source                                                                                       |
 |----------------------------|----------------------------------------------------------------------------------------------------------------------|
@@ -245,7 +245,7 @@ There is no separate primary or secondary mean-reversion source setting. If slow
 
 Janiform evaluates all viable automatic time grids unless the request provides an explicit `mean_reversion.calibration_grid_interval_hours`. Automatic grids are derived from the retained data. They can include the typical time between retained boundaries, the typical observed session length, a spacing derived from the full retained history length, and the coarse-bar cadence when coarse data is available. The selected grid summary is in `diagnostics.calibration_grid`, and all evaluated grids are listed in `diagnostics.evaluated_grids`.
 
-Each candidate also includes `series_summaries` for the calibration series used internally by the stage: core expected increments, market pressure state path when present, boundary anchor values, deviations from anchor, and residuals. The report keeps counts, endpoints, range, mean, and constant-value detection so users can audit scale and shape.
+Each candidate also includes `series_summaries` for the calibration series used internally by the stage: core expected increments, market pressure state path when present, boundary anchor values, deviations from anchor, and residuals. The report keeps counts, endpoints, range, mean, and constant-value detection so you can audit scale and shape.
 
 A model with `kappa > 0` is selected when it is the best admissible candidate under the Gaussian quasi-likelihood BIC policy. The policy ranks viable retained-grid candidates by their profiled one-step residual likelihood with the candidate parameter count included in the BIC penalty.
 
@@ -290,7 +290,7 @@ During population refinement, terminal progress reports the shared pseudo-likeli
 
 Population refinement progress may also show exact return-likelihood evaluator counters. `CF-Buy` is the number of return blocks evaluated by the closed-form single-side buy density, `CF-Sell` is the number evaluated by the closed-form single-side sell density, and `Mix` is the number evaluated by the tilted mixed buy/sell inversion path. High `CF-Buy` or `CF-Sell` means the return likelihood mostly used the cheaper closed-form kernels. High `Mix` means more blocks required the more expensive mixed-side tilted inversion path.
 
-The report may mention seed candidates because they explain how Janiform searched. They are diagnostic search artifacts, not user-tuned model components.
+The report may mention seed candidates because they explain how Janiform searched. They are not user-tuned model components, but diagnostic search artifacts.
 
 ### Option refinement progress
 
