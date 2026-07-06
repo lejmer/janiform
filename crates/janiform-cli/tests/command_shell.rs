@@ -1343,8 +1343,11 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
 #[test]
 fn fit_terminal_summary_lists_coarse_data_input() {
     let workspace = temporary_run_directory("fit-coarse-input-summary");
+    let command_working_directory = temporary_run_directory("fit-coarse-input-summary-cwd");
 
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    std::fs::create_dir_all(&command_working_directory)
+        .expect("temporary command working directory should be created");
 
     let tick_data_path = workspace.join("ticks.csv");
     let coarse_data_path = workspace.join("coarse.csv");
@@ -1353,6 +1356,7 @@ fn fit_terminal_summary_lists_coarse_data_input() {
     write_coarse_data_csv(&coarse_data_path);
 
     let output = janiform_command()
+        .current_dir(&command_working_directory)
         .args([
             "--color",
             "never",
@@ -1387,15 +1391,16 @@ fn fit_terminal_summary_lists_coarse_data_input() {
         "fit summary should include coarse data input:\n{stdout}"
     );
     assert!(
-        stdout.contains(
-            coarse_data_path
-                .to_str()
-                .expect("coarse path should be valid UTF-8")
-        ),
+        stdout.contains(&format_path_relative_to(
+            &command_working_directory,
+            &coarse_data_path
+        )),
         "fit summary should include the coarse data path:\n{stdout}"
     );
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+    std::fs::remove_dir_all(command_working_directory)
+        .expect("temporary command working directory should be removable");
 }
 
 #[test]
