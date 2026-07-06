@@ -13,7 +13,7 @@ use janiform::validation::stylized_facts::{
 use janiform_cli::CliExitCode;
 use janiform_foundations::json::document::write_pretty_json_document;
 use janiform_foundations::paths::{
-    format_path, format_path_relative_to, normalize_path_separators,
+    format_path, format_path_relative_to, normalize_path_separators, resolve_path_relative_to,
 };
 use serde::Serialize;
 
@@ -1060,21 +1060,21 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
     );
     assert_eq!(payload["checkpoint_count"], 1);
 
-    let model_path = resolve_test_path_relative_to(
+    let model_path = resolve_path_relative_to(
         &workspace,
         payload["model_path"]
             .as_str()
             .expect("model path should be a JSON string"),
     );
 
-    let report_path = resolve_test_path_relative_to(
+    let report_path = resolve_path_relative_to(
         &workspace,
         payload["report_path"]
             .as_str()
             .expect("report path should be a JSON string"),
     );
 
-    let event_log_path = resolve_test_path_relative_to(
+    let event_log_path = resolve_path_relative_to(
         &workspace,
         payload["event_log_path"]
             .as_str()
@@ -2232,19 +2232,6 @@ fn temporary_run_directory(label: &str) -> std::path::PathBuf {
         "janiform-cli-{label}-{}-{timestamp}",
         std::process::id()
     ))
-}
-
-fn resolve_test_path_relative_to(
-    base_directory: &std::path::Path,
-    path: &str,
-) -> std::path::PathBuf {
-    let path = std::path::Path::new(path);
-
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-
-    base_directory.join(path)
 }
 
 fn source_fixture_path(path: &str) -> std::path::PathBuf {
