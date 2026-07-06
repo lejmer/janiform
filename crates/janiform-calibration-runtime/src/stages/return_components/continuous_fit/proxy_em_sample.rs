@@ -69,7 +69,7 @@ pub(super) fn build_proxy_em_fitting_sample(
         );
     }
 
-    representative_indices_and_weights.sort_by(|left, right| left.0.cmp(&right.0));
+    representative_indices_and_weights.sort_by_key(|left| left.0);
 
     let observed_returns = representative_indices_and_weights
         .iter()
