@@ -1060,19 +1060,22 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
     );
     assert_eq!(payload["checkpoint_count"], 1);
 
-    let model_path = std::path::PathBuf::from(
+    let model_path = resolve_test_path_relative_to(
+        &workspace,
         payload["model_path"]
             .as_str()
             .expect("model path should be a JSON string"),
     );
 
-    let report_path = std::path::PathBuf::from(
+    let report_path = resolve_test_path_relative_to(
+        &workspace,
         payload["report_path"]
             .as_str()
             .expect("report path should be a JSON string"),
     );
 
-    let event_log_path = std::path::PathBuf::from(
+    let event_log_path = resolve_test_path_relative_to(
+        &workspace,
         payload["event_log_path"]
             .as_str()
             .expect("event log path should be a JSON string"),
@@ -1398,8 +1401,11 @@ fn fit_terminal_summary_lists_coarse_data_input() {
 #[test]
 fn fit_plan_json_includes_coarse_data_input_file() {
     let workspace = temporary_run_directory("fit-plan-coarse-input");
+    let command_working_directory = temporary_run_directory("fit-plan-coarse-input-cwd");
 
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    std::fs::create_dir_all(&command_working_directory)
+        .expect("temporary command working directory should be created");
 
     let tick_data_path = workspace.join("ticks.csv");
     let coarse_data_path = workspace.join("coarse.csv");
@@ -1408,6 +1414,7 @@ fn fit_plan_json_includes_coarse_data_input_file() {
     write_coarse_data_csv(&coarse_data_path);
 
     let output = janiform_command()
+        .current_dir(&command_working_directory)
         .args([
             "--json",
             "fit",
@@ -1440,12 +1447,12 @@ fn fit_plan_json_includes_coarse_data_input_file() {
 
     assert_eq!(
         payload["input_files"]["coarse_data"]["path"],
-        coarse_data_path
-            .to_str()
-            .expect("coarse path should be valid UTF-8")
+        format_path_relative_to(&command_working_directory, &coarse_data_path)
     );
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+    std::fs::remove_dir_all(command_working_directory)
+        .expect("temporary command working directory should be removable");
 }
 
 #[test]
@@ -1791,6 +1798,7 @@ fn fit_staged_plan_rejects_invalid_tick_size() {
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     let diagnostic_output = format!("{stdout}\n{stderr}");
+
     assert!(
         diagnostic_output.contains("--tick-size must be finite and strictly positive"),
         "invalid tick size should be reported as a command argument error:\n{diagnostic_output}"
@@ -1802,9 +1810,12 @@ fn fit_staged_plan_rejects_invalid_tick_size() {
 #[test]
 fn fit_staged_run_executes_prepared_execution_input() {
     let workspace = temporary_run_directory("fit-staged-run");
+    let command_working_directory = temporary_run_directory("fit-staged-run-cwd");
     let output_directory = workspace.join("out");
 
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    std::fs::create_dir_all(&command_working_directory)
+        .expect("temporary command working directory should be created");
 
     let tick_data_path = workspace.join("ticks.csv");
     let staged_output_path = workspace.join("staged-input.json");
@@ -1812,6 +1823,7 @@ fn fit_staged_run_executes_prepared_execution_input() {
     write_tick_csv(&tick_data_path);
 
     let plan_output = janiform_command()
+        .current_dir(&command_working_directory)
         .args([
             "--json",
             "fit",
@@ -1846,14 +1858,14 @@ fn fit_staged_run_executes_prepared_execution_input() {
             .expect("staged execution input should be readable"),
     )
     .expect("staged execution input should be JSON");
+
     assert_eq!(
         staged_payload["runtime_resources"]["disk_checkpoint_directory"],
-        output_directory
-            .to_str()
-            .expect("output directory should be valid UTF-8")
+        format_path_relative_to(&command_working_directory, &output_directory)
     );
 
     let run_output = janiform_command()
+        .current_dir(&command_working_directory)
         .args([
             "--json",
             "fit",
@@ -1896,6 +1908,8 @@ fn fit_staged_run_executes_prepared_execution_input() {
     );
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+    std::fs::remove_dir_all(command_working_directory)
+        .expect("temporary command working directory should be removable");
 }
 
 #[test]
@@ -2218,6 +2232,19 @@ fn temporary_run_directory(label: &str) -> std::path::PathBuf {
         "janiform-cli-{label}-{}-{timestamp}",
         std::process::id()
     ))
+}
+
+fn resolve_test_path_relative_to(
+    base_directory: &std::path::Path,
+    path: &str,
+) -> std::path::PathBuf {
+    let path = std::path::Path::new(path);
+
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+
+    base_directory.join(path)
 }
 
 fn source_fixture_path(path: &str) -> std::path::PathBuf {
