@@ -1,0 +1,26 @@
+[package]
+name = "janiform-engine-pricing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pricing runtime engine for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_engine_pricing"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+rayon = { workspace = true }
+serde = { workspace = true }
+statrs = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

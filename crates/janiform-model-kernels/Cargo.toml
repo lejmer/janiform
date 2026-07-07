@@ -1,0 +1,24 @@
+[package]
+name = "janiform-model-kernels"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared model-kernel domains for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_model_kernels"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+janiform-foundations = { path = "../janiform-foundations" }
+nalgebra = { workspace = true }
+serde = { workspace = true }
+statrs = { workspace = true }
+
+[dev-dependencies]
+janiform-test-support = { path = "../janiform-test-support" }
+serde_json = { workspace = true }

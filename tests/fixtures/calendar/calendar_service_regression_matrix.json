@@ -1,0 +1,607 @@
+{
+  "schema_version": "calendar.service.regression.v1",
+  "fixture_set_id": "calendar_service_regression_matrix_v1",
+  "schema_metadata": {
+    "schema_family": "validation.calendar.service.regression",
+    "schema_generation": "v0.x",
+    "forward_extension_policy": "additive_fields_only.v1"
+  },
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
+  },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "regular_session",
+      "weekend",
+      "holiday",
+      "early_close",
+      "boundary",
+      "timezone_sensitive",
+      "delayed_open",
+      "session_anomaly",
+      "precedence_conflict"
+    ],
+    "stable_fixture_ids_by_tag": {
+      "boundary": [
+        "xnys_regular_pre_open",
+        "xnys_regular_at_open",
+        "xnys_regular_at_close",
+        "xnys_early_close_pre_boundary",
+        "xnys_early_close_at_boundary",
+        "xnys_early_close_post_boundary",
+        "xnys_delayed_open_regular_open_conflict_at_regular_open",
+        "xnys_delayed_open_pre_boundary",
+        "xnys_delayed_open_at_boundary",
+        "xnys_holiday_overrides_delayed_open_at_boundary",
+        "xtks_before_utc_midnight_transition",
+        "xtks_after_utc_midnight_transition"
+      ]
+    },
+    "historical_holiday_expected_years": [
+      2024,
+      2025,
+      2026
+    ],
+    "historical_holiday_expected_intraday_tags": [
+      "holiday_intraday_open_boundary",
+      "holiday_intraday_mid_session",
+      "holiday_intraday_pre_close"
+    ]
+  },
+  "calendar_registry": {
+    "schema_version": "calendar.registry.v1",
+    "artifact_date": "2026-01-31",
+    "exchanges": [
+      {
+        "schema_version": "calendar.v1",
+        "exchange_code": "XNYS",
+        "exchange_name": "New York Stock Exchange",
+        "timezone_name": "America/New_York",
+        "rule_metadata": {
+          "holiday_calendar_code": "US_EQUITIES",
+          "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+        },
+        "regular_sessions": [
+          {
+            "weekday": "Monday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "16:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Tuesday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "16:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Wednesday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "16:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Thursday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "16:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Friday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "16:00"
+              }
+            ]
+          }
+        ],
+        "holiday_dates": [
+          "2024-01-01",
+          "2024-07-04",
+          "2024-12-25",
+          "2025-01-01",
+          "2025-07-04",
+          "2025-12-25",
+          "2026-01-01",
+          "2026-02-03",
+          "2026-02-10"
+        ],
+        "early_close_sessions": [
+          {
+            "date": "2026-02-04",
+            "windows": [
+              {
+                "label": "early_close",
+                "open_time": "09:30",
+                "close_time": "13:00"
+              }
+            ]
+          },
+          {
+            "date": "2026-02-09",
+            "windows": [
+              {
+                "label": "delayed_open",
+                "open_time": "10:15",
+                "close_time": "16:00"
+              }
+            ]
+          },
+          {
+            "date": "2026-02-10",
+            "windows": [
+              {
+                "label": "delayed_open_conflict",
+                "open_time": "10:15",
+                "close_time": "13:00"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "schema_version": "calendar.v1",
+        "exchange_code": "XTKS",
+        "exchange_name": "Tokyo Stock Exchange",
+        "timezone_name": "Asia/Tokyo",
+        "rule_metadata": {
+          "holiday_calendar_code": "JP_EQUITIES",
+          "early_close_rule_set": null
+        },
+        "regular_sessions": [
+          {
+            "weekday": "Monday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "15:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Tuesday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "15:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Wednesday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "15:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Thursday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "15:00"
+              }
+            ]
+          },
+          {
+            "weekday": "Friday",
+            "windows": [
+              {
+                "label": "regular",
+                "open_time": "09:30",
+                "close_time": "15:00"
+              }
+            ]
+          }
+        ],
+        "holiday_dates": [],
+        "early_close_sessions": []
+      }
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "xnys_regular_pre_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-02T14:29:59Z",
+      "expected_state": "closed",
+      "tags": [
+        "regular_session",
+        "boundary"
+      ],
+      "description": "One second before the regular Monday open."
+    },
+    {
+      "fixture_id": "xnys_regular_at_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-02T14:30:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "boundary"
+      ],
+      "description": "Exact regular open timestamp resolves open."
+    },
+    {
+      "fixture_id": "xnys_regular_mid_session",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-02T20:59:59Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session"
+      ],
+      "description": "Regular Monday intraday timestamp resolves open."
+    },
+    {
+      "fixture_id": "xnys_regular_at_close",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-02T21:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "regular_session",
+        "boundary"
+      ],
+      "description": "Exact regular close timestamp resolves closed."
+    },
+    {
+      "fixture_id": "xnys_weekend_sunday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-01T03:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "weekend"
+      ],
+      "description": "Sunday timestamp stays closed without a configured weekend session."
+    },
+    {
+      "fixture_id": "xnys_holiday_intraday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-03T15:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday"
+      ],
+      "description": "Holiday precedence enforces closed state during regular weekday hours."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2024_07_04_at_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2024-07-04T13:30:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_open_boundary"
+      ],
+      "description": "Historical weekday holiday at regular open boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2024_07_04_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2024-07-04T16:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_mid_session"
+      ],
+      "description": "Historical weekday holiday midday stays closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2024_07_04_pre_close",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2024-07-04T19:59:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_pre_close"
+      ],
+      "description": "Historical weekday holiday pre-close timestamp stays closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2025_01_01_at_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2025-01-01T14:30:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_open_boundary"
+      ],
+      "description": "Historical weekday holiday at regular open boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2025_01_01_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2025-01-01T17:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_mid_session"
+      ],
+      "description": "Historical weekday holiday midday stays closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2025_01_01_pre_close",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2025-01-01T20:59:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_pre_close"
+      ],
+      "description": "Historical weekday holiday pre-close timestamp stays closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2026_01_01_at_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-01-01T14:30:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_open_boundary"
+      ],
+      "description": "Historical weekday holiday at regular open boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2026_01_01_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-01-01T17:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_mid_session"
+      ],
+      "description": "Historical weekday holiday midday stays closed."
+    },
+    {
+      "fixture_id": "xnys_historical_holiday_2026_01_01_pre_close",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-01-01T20:59:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "historical_holiday",
+        "holiday_intraday_pre_close"
+      ],
+      "description": "Historical weekday holiday pre-close timestamp stays closed."
+    },
+    {
+      "fixture_id": "xnys_holiday_adjacent_2024_07_03_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2024-07-03T16:00:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "holiday_adjacent_non_holiday"
+      ],
+      "description": "Trading day before the 2024-07-04 holiday remains open during regular hours."
+    },
+    {
+      "fixture_id": "xnys_holiday_adjacent_2024_07_05_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2024-07-05T16:00:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "holiday_adjacent_non_holiday"
+      ],
+      "description": "Trading day after the 2024-07-04 holiday remains open during regular hours."
+    },
+    {
+      "fixture_id": "xnys_holiday_adjacent_2024_12_31_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2024-12-31T17:00:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "holiday_adjacent_non_holiday"
+      ],
+      "description": "Trading day before the 2025-01-01 holiday remains open during regular hours."
+    },
+    {
+      "fixture_id": "xnys_holiday_adjacent_2025_01_02_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2025-01-02T17:00:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "holiday_adjacent_non_holiday"
+      ],
+      "description": "Trading day after the 2025-01-01 holiday remains open during regular hours."
+    },
+    {
+      "fixture_id": "xnys_holiday_adjacent_2025_12_31_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2025-12-31T17:00:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "holiday_adjacent_non_holiday"
+      ],
+      "description": "Trading day before the 2026-01-01 holiday remains open during regular hours."
+    },
+    {
+      "fixture_id": "xnys_holiday_adjacent_2026_01_02_midday",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-01-02T17:00:00Z",
+      "expected_state": "open",
+      "tags": [
+        "regular_session",
+        "holiday_adjacent_non_holiday"
+      ],
+      "description": "Trading day after the 2026-01-01 holiday remains open during regular hours."
+    },
+    {
+      "fixture_id": "xnys_early_close_pre_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-04T17:59:59Z",
+      "expected_state": "open",
+      "tags": [
+        "early_close",
+        "boundary"
+      ],
+      "description": "One second before early-close boundary remains open."
+    },
+    {
+      "fixture_id": "xnys_early_close_at_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-04T18:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "early_close",
+        "boundary"
+      ],
+      "description": "Exact early-close boundary resolves closed."
+    },
+    {
+      "fixture_id": "xnys_early_close_post_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-04T18:00:01Z",
+      "expected_state": "closed",
+      "tags": [
+        "early_close",
+        "boundary",
+        "session_anomaly"
+      ],
+      "description": "One second after early-close boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_delayed_open_regular_open_conflict_at_regular_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-09T14:30:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "delayed_open",
+        "boundary",
+        "session_anomaly",
+        "precedence_over_regular"
+      ],
+      "description": "At regular open on delayed-open date the market remains closed due to date override precedence."
+    },
+    {
+      "fixture_id": "xnys_delayed_open_pre_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-09T15:14:59Z",
+      "expected_state": "closed",
+      "tags": [
+        "delayed_open",
+        "boundary",
+        "session_anomaly"
+      ],
+      "description": "One second before delayed-open boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_delayed_open_at_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-09T15:15:00Z",
+      "expected_state": "open",
+      "tags": [
+        "delayed_open",
+        "boundary",
+        "session_anomaly"
+      ],
+      "description": "Exact delayed-open boundary resolves open."
+    },
+    {
+      "fixture_id": "xnys_holiday_overrides_delayed_open_at_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-10T15:15:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "delayed_open",
+        "boundary",
+        "session_anomaly",
+        "precedence_conflict"
+      ],
+      "description": "Holiday precedence keeps market closed at delayed-open boundary when both rules overlap."
+    },
+    {
+      "fixture_id": "xnys_holiday_overrides_delayed_open_mid_window",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-10T16:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "delayed_open",
+        "session_anomaly",
+        "precedence_conflict"
+      ],
+      "description": "Holiday precedence keeps market closed inside delayed-open window overlap."
+    },
+    {
+      "fixture_id": "xnys_timezone_same_utc_reference",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-02T00:30:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "timezone_sensitive"
+      ],
+      "description": "Shared UTC timestamp maps to Sunday evening local time in New York."
+    },
+    {
+      "fixture_id": "xtks_timezone_same_utc_reference",
+      "exchange_code": "XTKS",
+      "timestamp_utc": "2026-02-02T00:30:00Z",
+      "expected_state": "open",
+      "tags": [
+        "timezone_sensitive"
+      ],
+      "description": "Shared UTC timestamp maps to Monday morning local time in Tokyo."
+    },
+    {
+      "fixture_id": "xtks_before_utc_midnight_transition",
+      "exchange_code": "XTKS",
+      "timestamp_utc": "2026-02-02T23:59:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "timezone_sensitive",
+        "boundary"
+      ],
+      "description": "Last minute before UTC midnight remains pre-open in Tokyo local time."
+    },
+    {
+      "fixture_id": "xtks_after_utc_midnight_transition",
+      "exchange_code": "XTKS",
+      "timestamp_utc": "2026-02-03T00:30:00Z",
+      "expected_state": "open",
+      "tags": [
+        "timezone_sensitive",
+        "boundary"
+      ],
+      "description": "After UTC midnight the same exchange crosses into local regular open."
+    }
+  ]
+}

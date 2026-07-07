@@ -1,0 +1,288 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without leading v
+        required: true
+        type: string
+      dry_run:
+        description: Build artifacts without creating a GitHub Release
+        required: true
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.release-version.outputs.version }}
+      release_tag: ${{ steps.release-version.outputs.release_tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Resolve release version
+        id: release-version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "release_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=dry-run/v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check source version consistency
+        if: github.event_name == 'push'
+        run: python scripts/ci/check_release_version.py --tag "$GITHUB_REF_NAME"
+
+      - name: Check dry-run source version consistency
+        if: github.event_name == 'workflow_dispatch'
+        run: python scripts/ci/check_release_version.py --version "${{ steps.release-version.outputs.version }}"
+
+  linux-artifacts:
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TMPDIR: /tmp
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip uv "maturin>=1.9,<2.0"
+
+      - name: Build Linux wheel and sdist
+        run: |
+          python -m maturin build --release --locked --out dist
+          python -m maturin sdist --out dist
+
+      - name: Check Linux wheel contents
+        run: python scripts/ci/check_wheel_contents.py dist/*.whl
+
+      # Release smoke tests run locally for release sign-off because
+      # GitHub-hosted free runners do not provide enough runtime capacity for them.
+      # - name: Smoke installed Linux wheel
+      #   run: |
+      #     python -m venv .wheel-smoke
+      #     UV_PROJECT_ENVIRONMENT=.wheel-smoke uv sync --no-install-project --frozen
+      #     ./.wheel-smoke/bin/python scripts/ci/smoke_installed_wheel.py \
+      #       --wheel dist/*.whl \
+      #       --no-deps \
+      #       --expected-version "${{ needs.validate-tag.outputs.version }}"
+      #
+      # - name: Smoke installed sdist
+      #   run: |
+      #     python -m venv .sdist-smoke
+      #     . .sdist-smoke/bin/activate
+      #     python -m pip install --upgrade pip
+      #     python -m pip install dist/*.tar.gz
+      #     python scripts/ci/smoke_installed_wheel.py --expected-version "${{ needs.validate-tag.outputs.version }}"
+      #
+      # The installed-wheel version check depends on the local smoke environment.
+      # - name: Check built wheel version
+      #   run: |
+      #     ./.wheel-smoke/bin/python scripts/ci/check_release_version.py \
+      #       --version "${{ needs.validate-tag.outputs.version }}" \
+      #       --wheel dist/*.whl \
+      #       --check-installed
+
+      - name: Build Linux standalone CLI archive
+        run: |
+          cargo build --release --locked -p janiform-cli
+          python scripts/ci/package_cli_archive.py \
+            --binary target/release/janiform \
+            --version "${{ needs.validate-tag.outputs.version }}" \
+            --target x86_64-unknown-linux-gnu \
+            --output-dir dist
+
+      # - name: Smoke Linux standalone CLI archive
+      #   run: python scripts/ci/smoke_cli_archive.py dist/janiform-cli-*.tar.gz
+
+      - name: Upload Linux release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-release-artifacts
+          path: dist
+          if-no-files-found: error
+
+  windows-artifacts:
+    needs: validate-tag
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        shell: pwsh
+        run: python -m pip install --upgrade pip uv "maturin>=1.9,<2.0"
+
+      - name: Build Windows wheel
+        shell: pwsh
+        run: python -m maturin build --release --locked --out dist
+
+      - name: Check Windows wheel contents
+        shell: pwsh
+        run: python scripts/ci/check_wheel_contents.py (Get-ChildItem dist -Filter "*.whl").FullName
+
+      # Release smoke tests run locally for release sign-off.
+      # - name: Smoke installed Windows wheel
+      #   shell: pwsh
+      #   run: |
+      #     python -m venv .wheel-smoke
+      #     $env:UV_PROJECT_ENVIRONMENT = ".wheel-smoke"
+      #     $wheelPath = (Get-ChildItem dist -Filter "*.whl").FullName
+      #     uv sync --no-install-project --frozen
+      #     .\.wheel-smoke\Scripts\python scripts/ci/smoke_installed_wheel.py `
+      #       --wheel $wheelPath `
+      #       --no-deps `
+      #       --expected-version "${{ needs.validate-tag.outputs.version }}"
+      #
+      # The installed-wheel version check depends on the local smoke environment.
+      # - name: Check built wheel version
+      #   shell: pwsh
+      #   run: |
+      #     $wheelPath = (Get-ChildItem dist -Filter "*.whl").FullName
+      #     .\.wheel-smoke\Scripts\python scripts/ci/check_release_version.py `
+      #       --version "${{ needs.validate-tag.outputs.version }}" `
+      #       --wheel $wheelPath `
+      #       --check-installed
+
+      - name: Build Windows standalone CLI archive
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p janiform-cli
+          python scripts/ci/package_cli_archive.py `
+            --binary target/release/janiform.exe `
+            --version "${{ needs.validate-tag.outputs.version }}" `
+            --target x86_64-pc-windows-msvc `
+            --output-dir dist
+
+      # - name: Smoke Windows standalone CLI archive
+      #   shell: pwsh
+      #   run: python scripts/ci/smoke_cli_archive.py (Get-ChildItem dist -Filter "janiform-cli-*.zip").FullName
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-release-artifacts
+          path: dist
+          if-no-files-found: error
+
+  publish-draft-release:
+    needs:
+      - validate-tag
+      - linux-artifacts
+      - windows-artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+
+      - name: Flatten release artifacts
+        run: |
+          mkdir -p dist
+          find release-artifacts -maxdepth 3 -type f -print -exec cp {} dist/ \;
+
+      - name: Write checksums and manifest
+        run: |
+          python scripts/ci/write_sha256s.py --artifact-dir dist --output dist/SHA256SUMS
+          python scripts/ci/build_release_manifest.py \
+            --artifact-dir dist \
+            --version "${{ needs.validate-tag.outputs.version }}" \
+            --tag "${{ needs.validate-tag.outputs.release_tag }}" \
+            --git-sha "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --output "dist/janiform-${{ needs.validate-tag.outputs.version }}-release-manifest.json"
+
+      - name: Upload dry-run release artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-dry-run-artifacts
+          path: dist
+          if-no-files-found: error
+
+      - name: Draft release notes
+        if: github.event_name == 'push'
+        uses: release-drafter/release-drafter@v6
+        with:
+          name: "${{ needs.validate-tag.outputs.release_tag }}"
+          tag: "${{ needs.validate-tag.outputs.release_tag }}"
+          version: "${{ needs.validate-tag.outputs.version }}"
+          commitish: "${{ github.sha }}"
+          publish: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release artifacts
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: "${{ needs.validate-tag.outputs.release_tag }}"
+          files: dist/*

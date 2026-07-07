@@ -1,0 +1,272 @@
+mod support;
+
+use janiform_calibration_artifacts::CalibrationExecutionMode;
+use support::shared::{
+    CalibrationRunContract, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageGraph, CalibrationStageHandoffTransport,
+    CalibrationStageParameterBuildMetadata, CalibrationStageSolverSettings,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    MeanReversionStageCalibrationGrid, MeanReversionStageCandidateDiagnostics,
+    MeanReversionStageCandidateSeriesDiagnostics, MeanReversionStageDiagnostics,
+    MeanReversionStageGridDiagnostics, MeanReversionStageParameterArtifactInput,
+    MeanReversionStageSeriesSummary, build_calibration_stage_parameter_artifact, build_data_inputs,
+    build_mean_reversion_parameters, build_solver_settings,
+    load_calibration_stage_parameter_artifact_from_disk,
+    persist_calibration_stage_parameter_artifact_to_run_directory,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
+    temporary_checkpoint_directory,
+};
+
+#[test]
+fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
+    let fitted_parameters = build_mean_reversion_parameters();
+
+    let serialized = serde_json::to_value(fitted_parameters)
+        .expect("mean reversion fitted parameters should serialize");
+
+    assert_eq!(serialized["kappa"], serde_json::json!(0.25));
+
+    let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
+        .expect("mean reversion fitted parameters should deserialize");
+
+    assert_eq!(parsed, fitted_parameters);
+
+    fitted_parameters
+        .validate()
+        .expect("round-tripped mean reversion fitted parameters should validate");
+}
+
+#[test]
+fn mean_reversion_fitted_parameters_reject_negative_kappa() {
+    let fitted_parameters = MeanReversionFittedParameters { kappa: -0.01 };
+
+    let error = fitted_parameters
+        .validate()
+        .expect_err("negative kappa must fail validation");
+
+    assert!(
+        error
+            .to_string()
+            .contains("kappa must be a finite non-negative number")
+    );
+}
+
+#[test]
+fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
+    let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
+        "explicit_runtime_interval_grid_alignment.v1",
+        4.2,
+        vec![4.1, 4.0],
+        vec![1.0, 1.0],
+    )
+    .expect("runtime interval anchors should validate");
+
+    let serialized = serde_json::to_string(&runtime_interval_anchors)
+        .expect("runtime interval anchors should serialize");
+
+    let parsed: MeanReversionRuntimeIntervalAnchors = serde_json::from_str(serialized.as_str())
+        .expect("runtime interval anchors should deserialize");
+
+    assert_eq!(parsed, runtime_interval_anchors);
+}
+
+#[test]
+fn mean_reversion_series_summary_compacts_diagnostic_values() {
+    let mixed_summary =
+        MeanReversionStageSeriesSummary::from_values(&[f64::NAN, 2.0, 4.0, f64::INFINITY, 6.0]);
+
+    assert_eq!(
+        mixed_summary,
+        MeanReversionStageSeriesSummary {
+            sample_count: 5,
+            finite_count: 3,
+            first_value: Some(2.0),
+            last_value: Some(6.0),
+            minimum_value: Some(2.0),
+            maximum_value: Some(6.0),
+            mean_value: Some(4.0),
+            constant_value: None,
+        }
+    );
+
+    let constant_summary = MeanReversionStageSeriesSummary::from_values(&[3.5, 3.5, 3.5]);
+
+    assert_eq!(
+        constant_summary,
+        MeanReversionStageSeriesSummary {
+            sample_count: 3,
+            finite_count: 3,
+            first_value: Some(3.5),
+            last_value: Some(3.5),
+            minimum_value: Some(3.5),
+            maximum_value: Some(3.5),
+            mean_value: Some(3.5),
+            constant_value: Some(3.5),
+        }
+    );
+
+    let empty_summary = MeanReversionStageSeriesSummary::from_values(&[]);
+
+    assert_eq!(
+        empty_summary,
+        MeanReversionStageSeriesSummary {
+            sample_count: 0,
+            finite_count: 0,
+            first_value: None,
+            last_value: None,
+            minimum_value: None,
+            maximum_value: None,
+            mean_value: None,
+            constant_value: None,
+        }
+    );
+
+    let serialized_empty_summary =
+        serde_json::to_value(&empty_summary).expect("empty summary should serialize");
+
+    assert_eq!(
+        serialized_empty_summary,
+        serde_json::json!({
+            "sample_count": 0,
+            "finite_count": 0,
+        })
+    );
+}
+
+#[test]
+fn mean_reversion_boundary_state_rejects_invariant_drift() {
+    let error = MeanReversionBoundaryState::try_new(5.0, 1.5, 3.7)
+        .expect_err("boundary state must reject deviation drift");
+
+    assert!(
+        error
+            .to_string()
+            .contains("deviation must equal observed_log_price - anchor_value")
+    );
+}
+
+#[test]
+fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_block() {
+    let run_spec = CalibrationRunSpec::try_new(
+        "run-mean-reversion-artifact",
+        build_data_inputs(),
+        CalibrationExecutionMode::Disk,
+        vec![CalibrationStage::MeanReversion],
+        CalibrationRunSeedSettings::try_new(17, vec![])
+            .expect("mean-reversion seed settings should validate"),
+        vec![CalibrationStageSolverSettings {
+            stage: CalibrationStage::MeanReversion,
+            optimizer_settings: build_solver_settings(),
+        }],
+    )
+    .expect("mean-reversion run spec should validate");
+
+    let run_contract =
+        CalibrationRunContract::try_new(run_spec, CalibrationStageGraph::new(vec![]))
+            .expect("mean-reversion run contract should validate");
+
+    let run_directory = temporary_checkpoint_directory("mean-reversion-stage-parameter");
+
+    let stage_seed_metadata = resolve_calibration_stage_seed_metadata(
+        &run_contract.run_spec,
+        CalibrationStage::MeanReversion,
+    );
+
+    let solver_settings =
+        stage_solver_settings_for_stage(&run_contract.run_spec, CalibrationStage::MeanReversion)
+            .expect("mean-reversion solver settings should exist");
+
+    let fitted_parameters = build_mean_reversion_parameters();
+
+    let calibration_grid = MeanReversionStageCalibrationGrid {
+        calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+        calibration_grid_interval_hours: 24.0,
+        source_observation_count: 4,
+        retained_observation_count: 4,
+        coverage_ratio: 1.0,
+    };
+
+    let candidate_diagnostics = MeanReversionStageCandidateDiagnostics {
+        candidate_family: "temporary_observed_level_mean_reversion".to_string(),
+        anchor_origin_level: Some(4.2),
+        phi_reference: 0.85,
+        kappa: fitted_parameters.kappa,
+        residual_sum_of_squares: 0.2,
+        quasi_log_likelihood: Some(-1.5),
+        information_criterion_bic: Some(5.0),
+        parameter_count: 2,
+        least_squares_rank: 2,
+        deviation_sample_count: 4,
+        regression_pair_count: 3,
+        series_summaries: MeanReversionStageCandidateSeriesDiagnostics {
+            boundary_anchor_values: MeanReversionStageSeriesSummary::from_values(&[
+                4.2, 4.3, 4.4, 4.5,
+            ]),
+            deviations: MeanReversionStageSeriesSummary::from_values(&[0.0, -0.1, -0.2, -0.3]),
+            residuals: MeanReversionStageSeriesSummary::from_values(&[-0.1, -0.115, -0.13]),
+        },
+        stage_decision_reason: "temporary_observed_level_stage_contract_roundtrip_fixture.v1"
+            .to_string(),
+    };
+
+    let diagnostics = MeanReversionStageDiagnostics {
+        selected_candidate_family: "temporary_observed_level_mean_reversion".to_string(),
+        calibration_grid: calibration_grid.clone(),
+        anchor_origin_level: Some(4.2),
+        phi_reference: 0.85,
+        kappa: fitted_parameters.kappa,
+        residual_sum_of_squares: 0.2,
+        quasi_log_likelihood: Some(-1.5),
+        information_criterion_bic: Some(5.0),
+        model_selection_policy: "gaussian_quasi_likelihood_bic_mean_reversion_model_selection.v1"
+            .to_string(),
+        deviation_sample_count: 4,
+        regression_pair_count: 3,
+        least_squares_rank: 2,
+        evaluated_candidates: vec![candidate_diagnostics.clone()],
+        evaluated_grids: vec![MeanReversionStageGridDiagnostics {
+            calibration_grid,
+            evaluated_candidates: vec![candidate_diagnostics],
+            stage_decision_reason: "temporary_observed_level_stage_contract_roundtrip_fixture.v1"
+                .to_string(),
+        }],
+        stage_decision_reason: "temporary_observed_level_stage_contract_roundtrip_fixture.v1"
+            .to_string(),
+    };
+
+    let artifact = build_calibration_stage_parameter_artifact(
+        &run_contract,
+        MeanReversionStageParameterArtifactInput {
+            metadata: CalibrationStageParameterBuildMetadata {
+                stage_output_schema_version:
+                    janiform_calibration_artifacts::CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION
+                        .to_string(),
+                run_global_seed: stage_seed_metadata.run_global_seed,
+                stage_seed: stage_seed_metadata.stage_seed,
+                stage_seed_source: stage_seed_metadata.stage_seed_source,
+                stage_seed_derivation_policy:
+                    janiform_calibration_artifacts::CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                        .to_string(),
+                solver_settings,
+            },
+            fitted_parameters,
+            diagnostics,
+            return_components_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
+            return_components_selected_candidate_id: Some("return_candidate_balanced".to_string()),
+            return_components_artifact_reference: None,
+        },
+    )
+    .expect("mean-reversion stage parameter artifact should build");
+
+    let artifact_path = persist_calibration_stage_parameter_artifact_to_run_directory(
+        run_directory.as_path(),
+        &artifact,
+    )
+    .expect("stage parameter artifact should persist");
+
+    let loaded_artifact =
+        load_calibration_stage_parameter_artifact_from_disk(artifact_path.as_path())
+            .expect("stage parameter artifact should reload");
+
+    assert_eq!(loaded_artifact, artifact);
+}

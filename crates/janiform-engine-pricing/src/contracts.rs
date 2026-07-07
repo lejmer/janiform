@@ -1,0 +1,2728 @@
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
+};
+use janiform_foundations::numeric::{
+    validate_finite_number, validate_non_negative_number, validate_positive_number,
+};
+use janiform_foundations::time::duration_hours_to_nanos;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters,
+};
+use janiform_model_kernels::long_variance::{
+    LongVarianceParameters, LongVarianceParametersError, LongVarianceState, LongVarianceStateError,
+};
+use janiform_model_kernels::market_pressure::{
+    MarketPressureParameters, MarketPressureParametersValidationError, MarketPressureState,
+    MarketPressureStateValidationError,
+};
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
+    MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
+};
+use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
+use janiform_model_kernels::nig::{
+    NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
+};
+use janiform_model_kernels::return_clock::{
+    ReturnClockExposureParameters, ReturnClockExposureParametersError,
+};
+
+use super::constants::{
+    MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT,
+    PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY,
+    VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
+    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
+    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
+    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS,
+    VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VANILLA_OPTION_REQUEST_VALIDATION_POLICY,
+    VANILLA_OPTION_RESPONSE_VALIDATION_POLICY,
+};
+use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
+use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
+use super::pricing_kernel::{
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingKernelParametersError,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VanillaOptionPricingStatus {
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VanillaOptionPricingFailureStage {
+    NodeSetup,
+    PricingProjection,
+    RiskNeutralCharacteristicFunction,
+    TerminalAffineMeasureChange,
+    SpectralDiagnostics,
+    ResponseDiagnostics,
+    ResponseAssembly,
+    RunResultAssembly,
+    WorkerExecution,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VanillaOptionPricingFailureDiagnostic {
+    pub stage: VanillaOptionPricingFailureStage,
+    pub reason: String,
+}
+
+impl VanillaOptionPricingFailureDiagnostic {
+    pub fn new(stage: VanillaOptionPricingFailureStage, reason: impl Into<String>) -> Self {
+        Self {
+            stage,
+            reason: reason.into(),
+        }
+    }
+
+    pub fn try_new(
+        stage: VanillaOptionPricingFailureStage,
+        reason: impl Into<String>,
+    ) -> Result<Self, VanillaOptionPricingFailureDiagnosticError> {
+        let diagnostic = Self::new(stage, reason);
+
+        diagnostic.validate()?;
+
+        Ok(diagnostic)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingFailureDiagnosticError> {
+        if self.reason.trim().is_empty() {
+            return Err(VanillaOptionPricingFailureDiagnosticError::EmptyReason);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VanillaOptionPricingFailureDiagnosticError {
+    EmptyReason,
+}
+
+impl Display for VanillaOptionPricingFailureDiagnosticError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyReason => {
+                write!(
+                    formatter,
+                    "pricing_failure_diagnostic.reason must be non-empty"
+                )
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingFailureDiagnosticError {}
+
+/// Projection family used for pricing integration-quality diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingIntegrationProjectionRule {
+    SpectralCosCollocation,
+}
+
+/// Deterministic numerical-quality diagnostics for the pricing projection layer.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PricingIntegrationNumericQualityDiagnostics {
+    pub stability_policy: &'static str,
+    pub convergence_check_policy: &'static str,
+    pub truncation_check_policy: &'static str,
+    pub quality_gate_policy: &'static str,
+    pub quality_gate: PricingIntegrationQualityGate,
+    pub convergence_absolute_tolerance: f64,
+    pub convergence_relative_tolerance: f64,
+    pub terminal_integrand_absolute_tolerance: f64,
+    pub terminal_integrand_ratio_tolerance: f64,
+    pub coarse_integral_estimate: f64,
+    pub convergence_absolute_difference: f64,
+    pub convergence_relative_difference: f64,
+    pub terminal_integrand_absolute_value: f64,
+    pub terminal_integrand_ratio: f64,
+    pub convergence_check_passed: bool,
+    pub truncation_check_passed: bool,
+    pub insufficient_convergence_resolution: bool,
+    pub numeric_quality_is_poor: bool,
+}
+
+/// Quality-gate behavior for pricing projection diagnostics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingIntegrationQualityGate {
+    #[default]
+    DiagnosticsOnly,
+    EnforceFailure,
+}
+
+/// Deterministic diagnostics emitted by one pricing projection run.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PricingIntegrationQualityDiagnostics {
+    pub schema_version: &'static str,
+    pub engine_policy: &'static str,
+    pub domain_policy: &'static str,
+    pub projection_policy: &'static str,
+    pub stability_policy: &'static str,
+    pub projection_rule: PricingIntegrationProjectionRule,
+    pub integration_upper_bound: f64,
+    pub integration_step_count: usize,
+    pub integration_interval_width: f64,
+    pub integrand_evaluation_count: usize,
+    pub integral_estimate: f64,
+    pub absolute_integral_estimate: f64,
+    pub max_abs_integrand: f64,
+    pub terminal_abs_integrand: f64,
+    pub discounted_projection_price: f64,
+    pub numeric_quality_diagnostics: PricingIntegrationNumericQualityDiagnostics,
+}
+
+impl PricingIntegrationQualityDiagnostics {
+    pub const fn schema_version() -> &'static str {
+        PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VanillaOptionPayoffType {
+    Call,
+    Put,
+}
+
+/// Public payoff selection payload for vanilla option pricing requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VanillaOptionPayoffConfiguration {
+    pub payoff_type: VanillaOptionPayoffType,
+}
+
+impl VanillaOptionPayoffConfiguration {
+    pub const fn policy() -> &'static str {
+        VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY
+    }
+}
+
+/// Public market-input payload for vanilla option pricing workflows.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionPricingMarketInputs {
+    pub spot: f64,
+    pub strikes: Vec<f64>,
+    pub maturity_intervals: Vec<f64>,
+    pub risk_free_rate: f64,
+    pub dividend_yield: f64,
+}
+
+impl VanillaOptionPricingMarketInputs {
+    pub fn new(
+        spot: f64,
+        strikes: Vec<f64>,
+        maturity_intervals: Vec<f64>,
+        risk_free_rate: f64,
+        dividend_yield: f64,
+    ) -> Self {
+        Self {
+            spot,
+            strikes,
+            maturity_intervals,
+            risk_free_rate,
+            dividend_yield,
+        }
+    }
+
+    pub fn new_single_node(
+        spot: f64,
+        strike: f64,
+        maturity_interval: f64,
+        risk_free_rate: f64,
+        dividend_yield: f64,
+    ) -> Self {
+        Self::new(
+            spot,
+            vec![strike],
+            vec![maturity_interval],
+            risk_free_rate,
+            dividend_yield,
+        )
+    }
+
+    pub fn try_new(
+        spot: f64,
+        strikes: Vec<f64>,
+        maturity_intervals: Vec<f64>,
+        risk_free_rate: f64,
+        dividend_yield: f64,
+    ) -> Result<Self, VanillaOptionPricingMarketInputsError> {
+        let market_inputs = Self::new(
+            spot,
+            strikes,
+            maturity_intervals,
+            risk_free_rate,
+            dividend_yield,
+        );
+
+        market_inputs.validate()?;
+
+        Ok(market_inputs)
+    }
+
+    pub fn try_new_single_node(
+        spot: f64,
+        strike: f64,
+        maturity_interval: f64,
+        risk_free_rate: f64,
+        dividend_yield: f64,
+    ) -> Result<Self, VanillaOptionPricingMarketInputsError> {
+        let market_inputs = Self::new_single_node(
+            spot,
+            strike,
+            maturity_interval,
+            risk_free_rate,
+            dividend_yield,
+        );
+
+        market_inputs.validate_single_node_shape()?;
+
+        Ok(market_inputs)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingMarketInputsError> {
+        if !self.spot.is_finite() || self.spot <= 0.0 {
+            return Err(VanillaOptionPricingMarketInputsError::InvalidSpot { value: self.spot });
+        }
+
+        if self.strikes.is_empty() {
+            return Err(VanillaOptionPricingMarketInputsError::EmptyStrikeAxis);
+        }
+
+        if self.maturity_intervals.is_empty() {
+            return Err(VanillaOptionPricingMarketInputsError::EmptyMaturityAxis);
+        }
+
+        for (strike_index, strike) in self.strikes.iter().copied().enumerate() {
+            if !strike.is_finite() || strike <= 0.0 {
+                return Err(VanillaOptionPricingMarketInputsError::InvalidStrike {
+                    index: strike_index,
+                    value: strike,
+                });
+            }
+        }
+
+        for (maturity_index, maturity_interval) in
+            self.maturity_intervals.iter().copied().enumerate()
+        {
+            if !maturity_interval.is_finite() || maturity_interval <= 0.0 {
+                return Err(
+                    VanillaOptionPricingMarketInputsError::InvalidMaturityInterval {
+                        index: maturity_index,
+                        value: maturity_interval,
+                    },
+                );
+            }
+        }
+
+        if !self.risk_free_rate.is_finite() {
+            return Err(VanillaOptionPricingMarketInputsError::InvalidRiskFreeRate {
+                value: self.risk_free_rate,
+            });
+        }
+
+        if !self.dividend_yield.is_finite() {
+            return Err(
+                VanillaOptionPricingMarketInputsError::InvalidDividendYield {
+                    value: self.dividend_yield,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn validate_single_node_shape(&self) -> Result<(), VanillaOptionPricingMarketInputsError> {
+        self.validate()?;
+
+        if self.strikes.len() != 1 || self.maturity_intervals.len() != 1 {
+            return Err(
+                VanillaOptionPricingMarketInputsError::InvalidSingleNodeShape {
+                    strike_count: self.strikes.len(),
+                    maturity_interval_count: self.maturity_intervals.len(),
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn shape(&self) -> (usize, usize) {
+        (self.maturity_intervals.len(), self.strikes.len())
+    }
+
+    pub fn single_strike(&self) -> Result<f64, VanillaOptionPricingMarketInputsError> {
+        self.validate_single_node_shape()?;
+
+        Ok(self.strikes[0])
+    }
+
+    pub fn single_maturity_interval(&self) -> Result<f64, VanillaOptionPricingMarketInputsError> {
+        self.validate_single_node_shape()?;
+
+        Ok(self.maturity_intervals[0])
+    }
+}
+
+/// Validation errors for public vanilla option market inputs.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum VanillaOptionPricingMarketInputsError {
+    InvalidSpot {
+        value: f64,
+    },
+    EmptyStrikeAxis,
+    EmptyMaturityAxis,
+    InvalidStrike {
+        index: usize,
+        value: f64,
+    },
+    InvalidMaturityInterval {
+        index: usize,
+        value: f64,
+    },
+    InvalidRiskFreeRate {
+        value: f64,
+    },
+    InvalidDividendYield {
+        value: f64,
+    },
+    InvalidSingleNodeShape {
+        strike_count: usize,
+        maturity_interval_count: usize,
+    },
+}
+
+impl Display for VanillaOptionPricingMarketInputsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSpot { value } => write!(
+                formatter,
+                "spot must be finite and strictly positive, found {value}"
+            ),
+            Self::EmptyStrikeAxis => {
+                write!(formatter, "strikes must contain at least one strike")
+            }
+            Self::EmptyMaturityAxis => write!(
+                formatter,
+                "maturity_intervals must contain at least one maturity interval"
+            ),
+            Self::InvalidStrike { index, value } => write!(
+                formatter,
+                "strikes[{index}] must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidMaturityInterval { index, value } => write!(
+                formatter,
+                "maturity_intervals[{index}] must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidRiskFreeRate { value } => {
+                write!(formatter, "risk_free_rate must be finite, found {value}")
+            }
+            Self::InvalidDividendYield { value } => {
+                write!(formatter, "dividend_yield must be finite, found {value}")
+            }
+            Self::InvalidSingleNodeShape {
+                strike_count,
+                maturity_interval_count,
+            } => write!(
+                formatter,
+                "single-option pricing requires exactly one strike and one maturity interval, found strikes={strike_count} maturity_intervals={maturity_interval_count}"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingMarketInputsError {}
+
+/// Public model-parameter payload for baseline vanilla option pricing.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionPricingModelParameters {
+    pub hawkes_kernel_parameters: HawkesKernelParameters,
+    pub news_process_configuration: NewsProcessConfiguration,
+    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub return_clock_exposure_parameters: ReturnClockExposureParameters,
+    pub long_variance_parameters: LongVarianceParameters,
+    pub market_pressure_parameters: MarketPressureParameters,
+    pub pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
+}
+
+impl VanillaOptionPricingModelParameters {
+    pub const fn new(
+        hawkes_kernel_parameters: HawkesKernelParameters,
+        news_process_configuration: NewsProcessConfiguration,
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
+        market_pressure_parameters: MarketPressureParameters,
+        pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
+    ) -> Self {
+        Self {
+            hawkes_kernel_parameters,
+            news_process_configuration,
+            nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
+            long_variance_parameters,
+            market_pressure_parameters,
+            pricing_kernel_parameters,
+        }
+    }
+
+    pub fn try_new(
+        hawkes_kernel_parameters: HawkesKernelParameters,
+        news_process_configuration: NewsProcessConfiguration,
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        return_clock_exposure_parameters: ReturnClockExposureParameters,
+        long_variance_parameters: LongVarianceParameters,
+        market_pressure_parameters: MarketPressureParameters,
+        pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
+    ) -> Result<Self, VanillaOptionPricingModelParametersError> {
+        let model_parameters = Self::new(
+            hawkes_kernel_parameters,
+            news_process_configuration,
+            nig_shared_plus_shift_configuration,
+            return_clock_exposure_parameters,
+            long_variance_parameters,
+            market_pressure_parameters,
+            pricing_kernel_parameters,
+        );
+
+        model_parameters.validate()?;
+
+        Ok(model_parameters)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingModelParametersError> {
+        HawkesKernelParameters::try_new(
+            self.hawkes_kernel_parameters.lambda_bar,
+            self.hawkes_kernel_parameters.beta,
+            self.hawkes_kernel_parameters.alpha,
+            self.hawkes_kernel_parameters.rho,
+        )
+        .map_err(|source| {
+            VanillaOptionPricingModelParametersError::InvalidHawkesKernelParameters { source }
+        })?;
+
+        self.news_process_configuration
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidNewsProcessConfiguration { source }
+            })?;
+
+        self.nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidNigSharedPlusShiftConfiguration {
+                    source,
+                }
+            })?;
+
+        self.return_clock_exposure_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidReturnClockExposureParameters {
+                    source,
+                }
+            })?;
+
+        self.long_variance_parameters.validate().map_err(|source| {
+            VanillaOptionPricingModelParametersError::InvalidLongVarianceParameters { source }
+        })?;
+
+        self.market_pressure_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidMarketPressureParameters { source }
+            })?;
+
+        self.pricing_kernel_parameters
+            .validate()
+            .map_err(|source| {
+                VanillaOptionPricingModelParametersError::InvalidPricingKernelParameters { source }
+            })?;
+
+        Ok(())
+    }
+}
+
+/// Validation errors for public model-parameter payloads.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingModelParametersError {
+    InvalidHawkesKernelParameters {
+        source: HawkesKernelParameterError,
+    },
+    InvalidNewsProcessConfiguration {
+        source: NewsProcessConfigurationError,
+    },
+    InvalidNigSharedPlusShiftConfiguration {
+        source: NigSharedPlusShiftConfigurationError,
+    },
+    InvalidReturnClockExposureParameters {
+        source: ReturnClockExposureParametersError,
+    },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidMarketPressureParameters {
+        source: MarketPressureParametersValidationError,
+    },
+    InvalidPricingKernelParameters {
+        source: VanillaOptionPricingKernelParametersError,
+    },
+}
+
+impl Display for VanillaOptionPricingModelParametersError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidHawkesKernelParameters { source } => write!(
+                formatter,
+                "model_parameters.hawkes_kernel_parameters is invalid: {source}"
+            ),
+            Self::InvalidNewsProcessConfiguration { source } => write!(
+                formatter,
+                "model_parameters.news_process_configuration is invalid: {source}"
+            ),
+            Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
+                formatter,
+                "model_parameters.nig_shared_plus_shift_configuration is invalid: {source}"
+            ),
+            Self::InvalidReturnClockExposureParameters { source } => write!(
+                formatter,
+                "model_parameters.return_clock_exposure_parameters are invalid: {source}"
+            ),
+            Self::InvalidLongVarianceParameters { source } => write!(
+                formatter,
+                "model_parameters.long_variance_parameters are invalid: {source}"
+            ),
+            Self::InvalidMarketPressureParameters { source } => write!(
+                formatter,
+                "model_parameters.market_pressure_parameters are invalid: {source}"
+            ),
+            Self::InvalidPricingKernelParameters { source } => write!(
+                formatter,
+                "model_parameters.pricing_kernel_parameters is invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingModelParametersError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidHawkesKernelParameters { source } => Some(source),
+            Self::InvalidNewsProcessConfiguration { source } => Some(source),
+            Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidReturnClockExposureParameters { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidMarketPressureParameters { source } => Some(source),
+            Self::InvalidPricingKernelParameters { source } => Some(source),
+        }
+    }
+}
+
+/// Canonical augmented boundary input for one anchored pricing interval.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AnchoredVanillaOptionPricingBoundaryInput {
+    pub interval_index: usize,
+    pub hawkes_boundary_state: HawkesExcitationState,
+    pub long_variance_boundary_state: LongVarianceState,
+    pub market_pressure_boundary_state: MarketPressureState,
+    pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    pub interval_delta: f64,
+    pub observed_boundary_state: MeanReversionBoundaryState,
+}
+
+impl AnchoredVanillaOptionPricingBoundaryInput {
+    pub const fn new(
+        interval_index: usize,
+        hawkes_boundary_state: HawkesExcitationState,
+        long_variance_boundary_state: LongVarianceState,
+        market_pressure_boundary_state: MarketPressureState,
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+        interval_delta: f64,
+        observed_boundary_state: MeanReversionBoundaryState,
+    ) -> Self {
+        Self {
+            interval_index,
+            hawkes_boundary_state,
+            long_variance_boundary_state,
+            market_pressure_boundary_state,
+            mean_reversion_fitted_parameters,
+            interval_delta,
+            observed_boundary_state,
+        }
+    }
+
+    pub fn try_new(
+        interval_index: usize,
+        hawkes_boundary_state: HawkesExcitationState,
+        long_variance_boundary_state: LongVarianceState,
+        market_pressure_boundary_state: MarketPressureState,
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+        interval_delta: f64,
+        observed_boundary_state: MeanReversionBoundaryState,
+    ) -> Result<Self, AnchoredVanillaOptionPricingBoundaryInputError> {
+        let boundary_input = Self::new(
+            interval_index,
+            hawkes_boundary_state,
+            long_variance_boundary_state,
+            market_pressure_boundary_state,
+            mean_reversion_fitted_parameters,
+            interval_delta,
+            observed_boundary_state,
+        );
+
+        boundary_input.validate()?;
+
+        Ok(boundary_input)
+    }
+
+    pub fn validate(&self) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
+        validate_hawkes_boundary_state(self.hawkes_boundary_state).map_err(|(field, value)| {
+            AnchoredVanillaOptionPricingBoundaryInputError::InvalidHawkesBoundaryStateComponent {
+                field,
+                value,
+            }
+        })?;
+
+        self.long_variance_boundary_state
+            .validate()
+            .map_err(|source| {
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidLongVarianceBoundaryState {
+                    source,
+                }
+            })?;
+
+        self.market_pressure_boundary_state
+            .validate()
+            .map_err(|source| {
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidMarketPressureBoundaryState {
+                    source,
+                }
+            })?;
+
+        self.mean_reversion_fitted_parameters
+            .validate()
+            .map_err(|source| {
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidMeanReversionFittedParameters {
+                    source,
+                }
+            })?;
+
+        self.observed_boundary_state.validate().map_err(|source| {
+            AnchoredVanillaOptionPricingBoundaryInputError::InvalidObservedBoundaryState { source }
+        })?;
+
+        if duration_hours_to_nanos(self.interval_delta).is_err() {
+            return Err(
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidIntervalDelta {
+                    value: self.interval_delta,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn current_anchor_value(
+        &self,
+    ) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
+        Ok(self.observed_boundary_state.anchor_value)
+    }
+
+    pub fn interval_delta(&self) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
+        Ok(self.interval_delta)
+    }
+
+    pub fn deviation_decay_factor(
+        &self,
+    ) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
+        let interval_delta = self.interval_delta()?;
+        Ok((-self.mean_reversion_fitted_parameters.kappa * interval_delta).exp())
+    }
+
+    pub fn local_martingale_deviation_adjustment(
+        &self,
+    ) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
+        let deviation_decay_factor = self.deviation_decay_factor()?;
+
+        Ok((deviation_decay_factor - 1.0) * self.observed_boundary_state.deviation)
+    }
+
+    pub fn hawkes_boundary_state_norm(&self) -> f64 {
+        self.hawkes_boundary_state.y_plus_plus
+            + self.hawkes_boundary_state.y_plus_minus
+            + self.hawkes_boundary_state.y_minus_plus
+            + self.hawkes_boundary_state.y_minus_minus
+    }
+}
+
+/// Structured validation failures for anchored pricing boundary input.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnchoredVanillaOptionPricingBoundaryInputError {
+    InvalidHawkesBoundaryStateComponent {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidLongVarianceBoundaryState {
+        source: LongVarianceStateError,
+    },
+    InvalidMarketPressureBoundaryState {
+        source: MarketPressureStateValidationError,
+    },
+    InvalidMeanReversionFittedParameters {
+        source: MeanReversionFittedParametersValidationError,
+    },
+    InvalidObservedBoundaryState {
+        source: MeanReversionBoundaryStateValidationError,
+    },
+    InvalidIntervalDelta {
+        value: f64,
+    },
+}
+
+impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidHawkesBoundaryStateComponent { field, value } => write!(
+                formatter,
+                "boundary_input.hawkes_boundary_state.{field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidLongVarianceBoundaryState { source } => write!(
+                formatter,
+                "boundary_input.long_variance_boundary_state is invalid: {source}"
+            ),
+            Self::InvalidMarketPressureBoundaryState { source } => write!(
+                formatter,
+                "boundary_input.market_pressure_boundary_state is invalid: {source}"
+            ),
+            Self::InvalidMeanReversionFittedParameters { source } => write!(
+                formatter,
+                "boundary_input.mean_reversion_fitted_parameters is invalid: {source}"
+            ),
+            Self::InvalidObservedBoundaryState { source } => write!(
+                formatter,
+                "boundary_input.observed_boundary_state is invalid: {source}"
+            ),
+            Self::InvalidIntervalDelta { value } => write!(
+                formatter,
+                "boundary_input.interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for AnchoredVanillaOptionPricingBoundaryInputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidLongVarianceBoundaryState { source } => Some(source),
+            Self::InvalidMarketPressureBoundaryState { source } => Some(source),
+            Self::InvalidMeanReversionFittedParameters { source } => Some(source),
+            Self::InvalidObservedBoundaryState { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Domain-status classification for one anchored local tilt solve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnchoredLocalTiltDomainStatus {
+    InDomain,
+    NonFiniteTransformInput,
+    OutOfDomainStateRequest,
+}
+
+/// Admissibility classification for one anchored local tilt solve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnchoredLocalTiltAdmissibilityStatus {
+    Admissible,
+    NoAdmissibleLocalTilt,
+}
+
+/// Deterministic boundary-state summary attached to anchored local tilt diagnostics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnchoredLocalTiltBoundaryStateSummary {
+    pub interval_index: usize,
+    pub hawkes_boundary_state: HawkesExcitationState,
+    pub observed_boundary_state: MeanReversionBoundaryState,
+    pub current_anchor_value: f64,
+    pub interval_delta: f64,
+    pub kappa: f64,
+    pub deviation_decay_factor: f64,
+    pub local_martingale_deviation_adjustment: f64,
+}
+
+/// Deterministic diagnostics for one local anchored pricing tilt solve.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnchoredLocalTiltSolveDiagnostics {
+    pub boundary_state_summary: AnchoredLocalTiltBoundaryStateSummary,
+    pub target_log_moment_exponent: f64,
+    pub observed_log_moment_exponent: f64,
+    pub theta: f64,
+    pub residual: f64,
+    pub absolute_residual: f64,
+    pub tolerance: f64,
+    pub domain_status: AnchoredLocalTiltDomainStatus,
+    pub admissibility_status: AnchoredLocalTiltAdmissibilityStatus,
+    pub policy: String,
+}
+
+/// Deterministic diagnostics for one interval in the spectral continuation solve.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpectralPricingIntervalDiagnostics {
+    pub interval_index: usize,
+    pub current_anchor_value: f64,
+    pub next_anchor_value: f64,
+    pub interval_delta: f64,
+    pub expected_hawkes_boundary_state_before: HawkesExcitationState,
+    pub expected_hawkes_boundary_state_after: HawkesExcitationState,
+    pub minimum_solved_theta: f64,
+    pub maximum_solved_theta: f64,
+}
+
+impl SpectralPricingIntervalDiagnostics {
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        interval_index: usize,
+        current_anchor_value: f64,
+        next_anchor_value: f64,
+        interval_delta: f64,
+        expected_hawkes_boundary_state_before: HawkesExcitationState,
+        expected_hawkes_boundary_state_after: HawkesExcitationState,
+        minimum_solved_theta: f64,
+        maximum_solved_theta: f64,
+    ) -> Result<Self, SpectralPricingDiagnosticsError> {
+        let diagnostics = Self {
+            interval_index,
+            current_anchor_value,
+            next_anchor_value,
+            interval_delta,
+            expected_hawkes_boundary_state_before,
+            expected_hawkes_boundary_state_after,
+            minimum_solved_theta,
+            maximum_solved_theta,
+        };
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(&self) -> Result<(), SpectralPricingDiagnosticsError> {
+        validate_hawkes_boundary_state(self.expected_hawkes_boundary_state_before).map_err(
+            |(field, value)| SpectralPricingDiagnosticsError::InvalidExpectedHawkesBoundaryState {
+                field,
+                value,
+            },
+        )?;
+        validate_hawkes_boundary_state(self.expected_hawkes_boundary_state_after).map_err(
+            |(field, value)| SpectralPricingDiagnosticsError::InvalidExpectedHawkesBoundaryState {
+                field,
+                value,
+            },
+        )?;
+        validate_finite_field(self.current_anchor_value, "current_anchor_value")?;
+        validate_finite_field(self.next_anchor_value, "next_anchor_value")?;
+        validate_positive_field(self.interval_delta, "interval_delta")?;
+        validate_finite_field(self.minimum_solved_theta, "minimum_solved_theta")?;
+        validate_finite_field(self.maximum_solved_theta, "maximum_solved_theta")?;
+
+        if self.minimum_solved_theta > self.maximum_solved_theta {
+            return Err(SpectralPricingDiagnosticsError::InvalidThetaOrdering {
+                minimum_solved_theta: self.minimum_solved_theta,
+                maximum_solved_theta: self.maximum_solved_theta,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+/// Terminal affine measure-change diagnostics for one valuation and maturity.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalAffineMeasureChangeDiagnostics {
+    pub terminal_cumulant_status: TerminalAffineCumulantStatus,
+    pub theta: f64,
+    pub target_log_moment_exponent: f64,
+    pub observed_log_moment_exponent: f64,
+    pub martingale_residual: f64,
+    pub absolute_martingale_residual: f64,
+    pub martingale_tolerance: f64,
+    pub long_variance_boundary_state: LongVarianceState,
+    pub long_variance_stationary_mean_reversion_level: f64,
+    pub option_smile_contribution: TerminalAffineOptionSmileContributionDiagnostics,
+}
+
+impl TerminalAffineMeasureChangeDiagnostics {
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        terminal_cumulant_status: TerminalAffineCumulantStatus,
+        theta: f64,
+        target_log_moment_exponent: f64,
+        observed_log_moment_exponent: f64,
+        martingale_residual: f64,
+        martingale_tolerance: f64,
+        long_variance_boundary_state: LongVarianceState,
+        long_variance_stationary_mean_reversion_level: f64,
+        option_smile_contribution: TerminalAffineOptionSmileContributionDiagnostics,
+    ) -> Result<Self, SpectralPricingDiagnosticsError> {
+        let diagnostics = Self {
+            terminal_cumulant_status,
+            theta,
+            target_log_moment_exponent,
+            observed_log_moment_exponent,
+            martingale_residual,
+            absolute_martingale_residual: martingale_residual.abs(),
+            martingale_tolerance,
+            long_variance_boundary_state,
+            long_variance_stationary_mean_reversion_level,
+            option_smile_contribution,
+        };
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(self) -> Result<(), SpectralPricingDiagnosticsError> {
+        validate_finite_field(self.theta, "theta")?;
+        validate_finite_field(
+            self.target_log_moment_exponent,
+            "target_log_moment_exponent",
+        )?;
+        validate_finite_field(
+            self.observed_log_moment_exponent,
+            "observed_log_moment_exponent",
+        )?;
+        validate_finite_field(self.martingale_residual, "martingale_residual")?;
+        validate_non_negative_field(
+            self.absolute_martingale_residual,
+            "absolute_martingale_residual",
+        )?;
+        validate_positive_field(self.martingale_tolerance, "martingale_tolerance")?;
+        self.long_variance_boundary_state
+            .validate()
+            .map_err(|source| {
+                SpectralPricingDiagnosticsError::InvalidLongVarianceBoundaryState { source }
+            })?;
+        validate_positive_field(
+            self.long_variance_stationary_mean_reversion_level,
+            "long_variance_stationary_mean_reversion_level",
+        )?;
+        self.option_smile_contribution.validate()?;
+
+        Ok(())
+    }
+}
+
+/// Terminal cumulant status for a successful terminal affine maturity solve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalAffineCumulantStatus {
+    Succeeded,
+}
+
+/// Long-variance inputs that can contribute terminal smile curvature.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalAffineOptionSmileContributionDiagnostics {
+    pub boundary_level_to_stationary_level_ratio: f64,
+    pub vol_of_vol: f64,
+    pub buy_event_loading: f64,
+    pub sell_event_loading: f64,
+    pub stochastic_long_variance_enabled: bool,
+    pub event_feedback_enabled: bool,
+}
+
+impl TerminalAffineOptionSmileContributionDiagnostics {
+    pub fn try_new(
+        boundary_level_to_stationary_level_ratio: f64,
+        vol_of_vol: f64,
+        buy_event_loading: f64,
+        sell_event_loading: f64,
+    ) -> Result<Self, SpectralPricingDiagnosticsError> {
+        let diagnostics = Self {
+            boundary_level_to_stationary_level_ratio,
+            vol_of_vol,
+            buy_event_loading,
+            sell_event_loading,
+            stochastic_long_variance_enabled: vol_of_vol > 0.0,
+            event_feedback_enabled: buy_event_loading > 0.0 || sell_event_loading > 0.0,
+        };
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(self) -> Result<(), SpectralPricingDiagnosticsError> {
+        validate_positive_field(
+            self.boundary_level_to_stationary_level_ratio,
+            "boundary_level_to_stationary_level_ratio",
+        )?;
+        validate_non_negative_field(self.vol_of_vol, "vol_of_vol")?;
+        validate_non_negative_field(self.buy_event_loading, "buy_event_loading")?;
+        validate_non_negative_field(self.sell_event_loading, "sell_event_loading")?;
+
+        Ok(())
+    }
+}
+
+/// Deterministic diagnostics for the canonical spectral continuation engine.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpectralPricingDiagnostics {
+    pub deviation_domain_policy: String,
+    pub collocation_policy: String,
+    pub terminal_affine_policy: String,
+    pub deviation_domain_lower_bound: f64,
+    pub deviation_domain_upper_bound: f64,
+    pub collocation_node_count: usize,
+    pub terminal_affine_measure_change: Option<TerminalAffineMeasureChangeDiagnostics>,
+    pub interval_diagnostics: Vec<SpectralPricingIntervalDiagnostics>,
+}
+
+impl SpectralPricingDiagnostics {
+    pub fn try_new(
+        deviation_domain_lower_bound: f64,
+        deviation_domain_upper_bound: f64,
+        collocation_node_count: usize,
+        terminal_affine_measure_change: Option<TerminalAffineMeasureChangeDiagnostics>,
+        interval_diagnostics: Vec<SpectralPricingIntervalDiagnostics>,
+    ) -> Result<Self, SpectralPricingDiagnosticsError> {
+        let diagnostics = Self {
+            deviation_domain_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY.to_string(),
+            collocation_policy: SPECTRAL_PRICING_COLLOCATION_POLICY.to_string(),
+            terminal_affine_policy: SPECTRAL_PRICING_TERMINAL_AFFINE_POLICY.to_string(),
+            deviation_domain_lower_bound,
+            deviation_domain_upper_bound,
+            collocation_node_count,
+            terminal_affine_measure_change,
+            interval_diagnostics,
+        };
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(&self) -> Result<(), SpectralPricingDiagnosticsError> {
+        for field in [
+            (
+                "deviation_domain_policy",
+                self.deviation_domain_policy.as_str(),
+            ),
+            ("collocation_policy", self.collocation_policy.as_str()),
+            (
+                "terminal_affine_policy",
+                self.terminal_affine_policy.as_str(),
+            ),
+        ] {
+            if field.1.trim().is_empty() {
+                return Err(SpectralPricingDiagnosticsError::EmptyPolicy { field: field.0 });
+            }
+        }
+
+        validate_finite_field(
+            self.deviation_domain_lower_bound,
+            "deviation_domain_lower_bound",
+        )?;
+        validate_finite_field(
+            self.deviation_domain_upper_bound,
+            "deviation_domain_upper_bound",
+        )?;
+
+        if self.deviation_domain_lower_bound >= self.deviation_domain_upper_bound {
+            return Err(SpectralPricingDiagnosticsError::InvalidDomainBounds {
+                lower_bound: self.deviation_domain_lower_bound,
+                upper_bound: self.deviation_domain_upper_bound,
+            });
+        }
+
+        if self.collocation_node_count < MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT {
+            return Err(
+                SpectralPricingDiagnosticsError::InvalidCollocationNodeCount {
+                    value: self.collocation_node_count,
+                },
+            );
+        }
+
+        if let Some(terminal_affine_measure_change) = self.terminal_affine_measure_change {
+            terminal_affine_measure_change.validate()?;
+        }
+
+        if self.interval_diagnostics.is_empty() {
+            return Err(SpectralPricingDiagnosticsError::EmptyIntervalDiagnostics);
+        }
+
+        for interval_diagnostics in &self.interval_diagnostics {
+            interval_diagnostics.validate()?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpectralPricingDiagnosticsError {
+    InvalidExpectedHawkesBoundaryState {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidLongVarianceBoundaryState {
+        source: LongVarianceStateError,
+    },
+    InvalidFiniteField {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidPositiveField {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidNonNegativeField {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidThetaOrdering {
+        minimum_solved_theta: f64,
+        maximum_solved_theta: f64,
+    },
+    EmptyPolicy {
+        field: &'static str,
+    },
+    InvalidDomainBounds {
+        lower_bound: f64,
+        upper_bound: f64,
+    },
+    InvalidCollocationNodeCount {
+        value: usize,
+    },
+    EmptyIntervalDiagnostics,
+}
+
+impl Display for SpectralPricingDiagnosticsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidExpectedHawkesBoundaryState { field, value } => write!(
+                formatter,
+                "spectral pricing expected Hawkes boundary state component {field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidLongVarianceBoundaryState { source } => write!(
+                formatter,
+                "spectral pricing long-variance boundary state is invalid: {source}"
+            ),
+            Self::InvalidFiniteField { field, value } => {
+                write!(formatter, "{field} must be finite, found {value}")
+            }
+            Self::InvalidPositiveField { field, value } => {
+                write!(
+                    formatter,
+                    "{field} must be finite and strictly positive, found {value}"
+                )
+            }
+            Self::InvalidNonNegativeField { field, value } => {
+                write!(
+                    formatter,
+                    "{field} must be finite and non-negative, found {value}"
+                )
+            }
+            Self::InvalidThetaOrdering {
+                minimum_solved_theta,
+                maximum_solved_theta,
+            } => write!(
+                formatter,
+                "minimum_solved_theta must be less than or equal to maximum_solved_theta, found [{minimum_solved_theta}, {maximum_solved_theta}]"
+            ),
+            Self::EmptyPolicy { field } => write!(formatter, "{field} must be a non-empty string"),
+            Self::InvalidDomainBounds {
+                lower_bound,
+                upper_bound,
+            } => write!(
+                formatter,
+                "deviation-domain lower bound must be strictly less than upper bound, found [{lower_bound}, {upper_bound}]"
+            ),
+            Self::InvalidCollocationNodeCount { value } => write!(
+                formatter,
+                "collocation_node_count must be at least {MINIMUM_SPECTRAL_COSINE_COLLOCATION_NODE_COUNT}, found {value}"
+            ),
+            Self::EmptyIntervalDiagnostics => write!(
+                formatter,
+                "spectral pricing diagnostics must include at least one interval diagnostics record"
+            ),
+        }
+    }
+}
+
+impl Error for SpectralPricingDiagnosticsError {}
+
+/// Public request contract for baseline vanilla option pricing.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionPricingRequest {
+    pub market_inputs: VanillaOptionPricingMarketInputs,
+    pub payoff: VanillaOptionPayoffConfiguration,
+    pub boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+    pub model_parameters: VanillaOptionPricingModelParameters,
+    pub interval_delta: f64,
+}
+
+impl VanillaOptionPricingRequest {
+    pub fn new(
+        market_inputs: VanillaOptionPricingMarketInputs,
+        payoff: VanillaOptionPayoffConfiguration,
+        boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+        model_parameters: VanillaOptionPricingModelParameters,
+        interval_delta: f64,
+    ) -> Self {
+        Self {
+            market_inputs,
+            payoff,
+            boundary_input,
+            model_parameters,
+            interval_delta,
+        }
+    }
+
+    pub fn try_new(
+        market_inputs: VanillaOptionPricingMarketInputs,
+        payoff: VanillaOptionPayoffConfiguration,
+        boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+        model_parameters: VanillaOptionPricingModelParameters,
+        interval_delta: f64,
+    ) -> Result<Self, VanillaOptionPricingRequestError> {
+        let request = Self::new(
+            market_inputs,
+            payoff,
+            boundary_input,
+            model_parameters,
+            interval_delta,
+        );
+
+        request.validate()?;
+
+        Ok(request)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingRequestError> {
+        self.market_inputs
+            .validate()
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
+        self.market_inputs
+            .validate_single_node_shape()
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
+
+        let interval_delta_nanos = validate_interval_delta(self.interval_delta)?;
+
+        self.boundary_input
+            .validate()
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidBoundaryInput { source })?;
+
+        let anchored_interval_delta = self
+            .boundary_input
+            .interval_delta()
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidBoundaryInput { source })?;
+        if duration_hours_to_nanos(anchored_interval_delta) != Ok(interval_delta_nanos) {
+            return Err(
+                VanillaOptionPricingRequestError::BoundaryIntervalDeltaMismatch {
+                    requested_interval_delta: self.interval_delta,
+                    observed_interval_delta: anchored_interval_delta,
+                    interval_index: self.boundary_input.interval_index,
+                },
+            );
+        }
+
+        self.model_parameters.validate().map_err(|source| {
+            VanillaOptionPricingRequestError::InvalidModelParameters { source }
+        })?;
+
+        self.boundary_input
+            .market_pressure_boundary_state
+            .validate_for_parameters(&self.model_parameters.market_pressure_parameters)
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidBoundaryInput {
+                source:
+                    AnchoredVanillaOptionPricingBoundaryInputError::InvalidMarketPressureBoundaryState {
+                        source,
+                    },
+            })?;
+
+        Ok(())
+    }
+
+    pub const fn validation_policy() -> &'static str {
+        VANILLA_OPTION_REQUEST_VALIDATION_POLICY
+    }
+}
+
+/// Validation errors for vanilla option pricing requests.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingRequestError {
+    InvalidMarketInputs {
+        source: VanillaOptionPricingMarketInputsError,
+    },
+    InvalidIntervalDelta {
+        value: f64,
+    },
+    InvalidBoundaryInput {
+        source: AnchoredVanillaOptionPricingBoundaryInputError,
+    },
+    BoundaryIntervalDeltaMismatch {
+        requested_interval_delta: f64,
+        observed_interval_delta: f64,
+        interval_index: usize,
+    },
+    InvalidModelParameters {
+        source: VanillaOptionPricingModelParametersError,
+    },
+}
+
+impl Display for VanillaOptionPricingRequestError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidMarketInputs { source } => {
+                write!(formatter, "market_inputs payload is invalid: {source}")
+            }
+            Self::InvalidIntervalDelta { value } => {
+                write!(
+                    formatter,
+                    "interval_delta must be finite, strictly positive, and map to an exact integer UTC nanosecond duration, found {value}"
+                )
+            }
+            Self::InvalidBoundaryInput { source } => {
+                write!(formatter, "boundary_input payload is invalid: {source}")
+            }
+            Self::BoundaryIntervalDeltaMismatch {
+                requested_interval_delta,
+                observed_interval_delta,
+                interval_index,
+            } => write!(
+                formatter,
+                "interval_delta must match boundary_input.interval_delta for interval_index={interval_index}, found request={requested_interval_delta} boundary_input={observed_interval_delta}"
+            ),
+            Self::InvalidModelParameters { source } => {
+                write!(formatter, "model_parameters payload is invalid: {source}")
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRequestError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidMarketInputs { source } => Some(source),
+            Self::InvalidBoundaryInput { source } => Some(source),
+            Self::InvalidModelParameters { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Public diagnostics payload returned with vanilla option prices.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct VanillaOptionPricingDiagnostics {
+    pub forward_price: f64,
+    pub discount_factor: f64,
+    pub maturity_interval: f64,
+    pub boundary_state_norm: f64,
+}
+
+impl VanillaOptionPricingDiagnostics {
+    pub const fn new(
+        forward_price: f64,
+        discount_factor: f64,
+        maturity_interval: f64,
+        boundary_state_norm: f64,
+    ) -> Self {
+        Self {
+            forward_price,
+            discount_factor,
+            maturity_interval,
+            boundary_state_norm,
+        }
+    }
+
+    pub fn try_new(
+        forward_price: f64,
+        discount_factor: f64,
+        maturity_interval: f64,
+        boundary_state_norm: f64,
+    ) -> Result<Self, VanillaOptionPricingDiagnosticsError> {
+        let diagnostics = Self::new(
+            forward_price,
+            discount_factor,
+            maturity_interval,
+            boundary_state_norm,
+        );
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(self) -> Result<(), VanillaOptionPricingDiagnosticsError> {
+        if !self.forward_price.is_finite() || self.forward_price <= 0.0 {
+            return Err(VanillaOptionPricingDiagnosticsError::InvalidForwardPrice {
+                value: self.forward_price,
+            });
+        }
+        if !self.discount_factor.is_finite() || self.discount_factor <= 0.0 {
+            return Err(
+                VanillaOptionPricingDiagnosticsError::InvalidDiscountFactor {
+                    value: self.discount_factor,
+                },
+            );
+        }
+        if !self.maturity_interval.is_finite() || self.maturity_interval <= 0.0 {
+            return Err(
+                VanillaOptionPricingDiagnosticsError::InvalidMaturityInterval {
+                    value: self.maturity_interval,
+                },
+            );
+        }
+        if !self.boundary_state_norm.is_finite() || self.boundary_state_norm < 0.0 {
+            return Err(
+                VanillaOptionPricingDiagnosticsError::InvalidBoundaryStateNorm {
+                    value: self.boundary_state_norm,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for vanilla option diagnostics payloads.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum VanillaOptionPricingDiagnosticsError {
+    InvalidForwardPrice { value: f64 },
+    InvalidDiscountFactor { value: f64 },
+    InvalidMaturityInterval { value: f64 },
+    InvalidBoundaryStateNorm { value: f64 },
+}
+
+impl Display for VanillaOptionPricingDiagnosticsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidForwardPrice { value } => write!(
+                formatter,
+                "diagnostics.forward_price must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidDiscountFactor { value } => write!(
+                formatter,
+                "diagnostics.discount_factor must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidMaturityInterval { value } => write!(
+                formatter,
+                "diagnostics.maturity_interval must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidBoundaryStateNorm { value } => write!(
+                formatter,
+                "diagnostics.boundary_state_norm must be finite and non-negative, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingDiagnosticsError {}
+
+/// Public response contract for baseline vanilla option pricing.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionPricingResponse {
+    pub pricing_status: VanillaOptionPricingStatus,
+    pub pricing_failure_diagnostic: Option<VanillaOptionPricingFailureDiagnostic>,
+    pub price: Option<f64>,
+    pub diagnostics: Option<VanillaOptionPricingDiagnostics>,
+    pub implied_volatility: Option<f64>,
+    pub implied_volatility_inversion_status: Option<VanillaOptionImpliedVolatilityInversionStatus>,
+}
+
+impl VanillaOptionPricingResponse {
+    pub fn new(
+        pricing_status: VanillaOptionPricingStatus,
+        pricing_failure_diagnostic: Option<VanillaOptionPricingFailureDiagnostic>,
+        price: Option<f64>,
+        diagnostics: Option<VanillaOptionPricingDiagnostics>,
+        implied_volatility: Option<f64>,
+        implied_volatility_inversion_status: Option<VanillaOptionImpliedVolatilityInversionStatus>,
+    ) -> Self {
+        Self {
+            pricing_status,
+            pricing_failure_diagnostic,
+            price,
+            diagnostics,
+            implied_volatility,
+            implied_volatility_inversion_status,
+        }
+    }
+
+    pub fn try_new(
+        pricing_status: VanillaOptionPricingStatus,
+        pricing_failure_diagnostic: Option<VanillaOptionPricingFailureDiagnostic>,
+        price: Option<f64>,
+        diagnostics: Option<VanillaOptionPricingDiagnostics>,
+        implied_volatility: Option<f64>,
+        implied_volatility_inversion_status: Option<VanillaOptionImpliedVolatilityInversionStatus>,
+    ) -> Result<Self, VanillaOptionPricingResponseError> {
+        let response = Self::new(
+            pricing_status,
+            pricing_failure_diagnostic,
+            price,
+            diagnostics,
+            implied_volatility,
+            implied_volatility_inversion_status,
+        );
+
+        response.validate()?;
+
+        Ok(response)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingResponseError> {
+        match self.pricing_status {
+            VanillaOptionPricingStatus::Succeeded => {
+                if self.pricing_failure_diagnostic.is_some() {
+                    return Err(
+                        VanillaOptionPricingResponseError::UnexpectedFailureDiagnosticForSuccessfulPricing,
+                    );
+                }
+
+                let price = self
+                    .price
+                    .ok_or(VanillaOptionPricingResponseError::MissingPriceForSuccessfulPricing)?;
+                if !price.is_finite() || price < 0.0 {
+                    return Err(VanillaOptionPricingResponseError::InvalidPrice { value: price });
+                }
+
+                let diagnostics = self.diagnostics.as_ref().ok_or(
+                    VanillaOptionPricingResponseError::MissingDiagnosticsForSuccessfulPricing,
+                )?;
+                diagnostics.validate().map_err(|source| {
+                    VanillaOptionPricingResponseError::InvalidDiagnostics { source }
+                })?;
+
+                if let Some(implied_volatility) = self.implied_volatility
+                    && (!implied_volatility.is_finite() || implied_volatility < 0.0)
+                {
+                    return Err(
+                        VanillaOptionPricingResponseError::InvalidImpliedVolatility {
+                            value: implied_volatility,
+                        },
+                    );
+                }
+
+                let inversion_status = self.implied_volatility_inversion_status.ok_or(
+                    VanillaOptionPricingResponseError::MissingInversionStatusForSuccessfulPricing,
+                )?;
+
+                match (self.implied_volatility, inversion_status) {
+                    (Some(_), VanillaOptionImpliedVolatilityInversionStatus::Succeeded) => {}
+                    (None, VanillaOptionImpliedVolatilityInversionStatus::Succeeded) => {
+                        return Err(
+                            VanillaOptionPricingResponseError::MissingImpliedVolatilityForSuccessfulInversion,
+                        );
+                    }
+                    (Some(_), status) => {
+                        return Err(
+                            VanillaOptionPricingResponseError::UnexpectedImpliedVolatilityForFailedInversion {
+                                status,
+                            },
+                        );
+                    }
+                    (None, _) => {}
+                }
+            }
+            VanillaOptionPricingStatus::Failed => {
+                let failure_diagnostic = self.pricing_failure_diagnostic.as_ref().ok_or(
+                    VanillaOptionPricingResponseError::MissingFailureDiagnosticForFailedPricing,
+                )?;
+                failure_diagnostic.validate().map_err(|source| {
+                    VanillaOptionPricingResponseError::InvalidFailureDiagnostic { source }
+                })?;
+
+                if self.price.is_some() {
+                    return Err(VanillaOptionPricingResponseError::UnexpectedPriceForFailedPricing);
+                }
+
+                if self.diagnostics.is_some() {
+                    return Err(
+                        VanillaOptionPricingResponseError::UnexpectedDiagnosticsForFailedPricing,
+                    );
+                }
+
+                if self.implied_volatility.is_some() {
+                    return Err(
+                        VanillaOptionPricingResponseError::UnexpectedImpliedVolatilityForFailedPricing,
+                    );
+                }
+
+                if self.implied_volatility_inversion_status.is_some() {
+                    return Err(
+                        VanillaOptionPricingResponseError::UnexpectedInversionStatusForFailedPricing,
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub const fn validation_policy() -> &'static str {
+        VANILLA_OPTION_RESPONSE_VALIDATION_POLICY
+    }
+
+    pub const fn is_successful(&self) -> bool {
+        matches!(self.pricing_status, VanillaOptionPricingStatus::Succeeded)
+    }
+}
+
+/// Validation errors for vanilla option pricing responses.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingResponseError {
+    InvalidFailureDiagnostic {
+        source: VanillaOptionPricingFailureDiagnosticError,
+    },
+    InvalidPrice {
+        value: f64,
+    },
+    InvalidDiagnostics {
+        source: VanillaOptionPricingDiagnosticsError,
+    },
+    InvalidImpliedVolatility {
+        value: f64,
+    },
+    MissingPriceForSuccessfulPricing,
+    MissingDiagnosticsForSuccessfulPricing,
+    MissingInversionStatusForSuccessfulPricing,
+    MissingImpliedVolatilityForSuccessfulInversion,
+    UnexpectedImpliedVolatilityForFailedInversion {
+        status: VanillaOptionImpliedVolatilityInversionStatus,
+    },
+    UnexpectedFailureDiagnosticForSuccessfulPricing,
+    MissingFailureDiagnosticForFailedPricing,
+    UnexpectedPriceForFailedPricing,
+    UnexpectedDiagnosticsForFailedPricing,
+    UnexpectedImpliedVolatilityForFailedPricing,
+    UnexpectedInversionStatusForFailedPricing,
+}
+
+impl Display for VanillaOptionPricingResponseError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidFailureDiagnostic { source } => {
+                write!(
+                    formatter,
+                    "pricing failure diagnostic payload is invalid: {source}"
+                )
+            }
+            Self::InvalidPrice { value } => write!(
+                formatter,
+                "price must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidDiagnostics { source } => {
+                write!(formatter, "diagnostics payload is invalid: {source}")
+            }
+            Self::InvalidImpliedVolatility { value } => write!(
+                formatter,
+                "implied_volatility must be finite and non-negative when present, found {value}"
+            ),
+            Self::MissingPriceForSuccessfulPricing => {
+                write!(
+                    formatter,
+                    "price must be present when pricing_status=succeeded"
+                )
+            }
+            Self::MissingDiagnosticsForSuccessfulPricing => {
+                write!(
+                    formatter,
+                    "diagnostics must be present when pricing_status=succeeded"
+                )
+            }
+            Self::MissingInversionStatusForSuccessfulPricing => write!(
+                formatter,
+                "implied_volatility_inversion_status must be present when pricing_status=succeeded"
+            ),
+            Self::MissingImpliedVolatilityForSuccessfulInversion => write!(
+                formatter,
+                "implied_volatility must be present when implied_volatility_inversion_status=succeeded"
+            ),
+            Self::UnexpectedImpliedVolatilityForFailedInversion { status } => write!(
+                formatter,
+                "implied_volatility must be omitted when implied_volatility_inversion_status={status:?}"
+            ),
+            Self::UnexpectedFailureDiagnosticForSuccessfulPricing => write!(
+                formatter,
+                "pricing_failure_diagnostic must be omitted when pricing_status=succeeded"
+            ),
+            Self::MissingFailureDiagnosticForFailedPricing => write!(
+                formatter,
+                "pricing_failure_diagnostic must be present when pricing_status=failed"
+            ),
+            Self::UnexpectedPriceForFailedPricing => write!(
+                formatter,
+                "price must be omitted when pricing_status=failed"
+            ),
+            Self::UnexpectedDiagnosticsForFailedPricing => write!(
+                formatter,
+                "diagnostics must be omitted when pricing_status=failed"
+            ),
+            Self::UnexpectedImpliedVolatilityForFailedPricing => write!(
+                formatter,
+                "implied_volatility must be omitted when pricing_status=failed"
+            ),
+            Self::UnexpectedInversionStatusForFailedPricing => write!(
+                formatter,
+                "implied_volatility_inversion_status must be omitted when pricing_status=failed"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingResponseError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidFailureDiagnostic { source } => Some(source),
+            Self::InvalidDiagnostics { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Selection controls for optional pricing run outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VanillaOptionPricingOptionalOutputSelection {
+    #[serde(default)]
+    pub include_transform_diagnostics: bool,
+    #[serde(default)]
+    pub include_integration_quality_diagnostics: bool,
+    #[serde(default)]
+    pub include_calibration_hooks: bool,
+    #[serde(default)]
+    pub include_node_price_sensitivities: bool,
+}
+
+impl VanillaOptionPricingOptionalOutputSelection {
+    pub const fn new(
+        include_transform_diagnostics: bool,
+        include_integration_quality_diagnostics: bool,
+        include_calibration_hooks: bool,
+    ) -> Self {
+        Self {
+            include_transform_diagnostics,
+            include_integration_quality_diagnostics,
+            include_calibration_hooks,
+            include_node_price_sensitivities: false,
+        }
+    }
+
+    pub const fn diagnostics_selected(self) -> bool {
+        self.include_transform_diagnostics || self.include_integration_quality_diagnostics
+    }
+}
+
+impl Default for VanillaOptionPricingOptionalOutputSelection {
+    fn default() -> Self {
+        Self::new(false, false, false)
+    }
+}
+
+/// Machine-readable schema metadata for pricing run optional outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct VanillaOptionPricingRunOutputSchemaMetadata {
+    pub schema_version: &'static str,
+    pub run_result_schema_version: &'static str,
+    pub run_diagnostics_schema_version: &'static str,
+    pub calibration_hooks_schema_version: &'static str,
+    pub required_run_result_fields: &'static [&'static str],
+    pub required_run_diagnostics_fields: &'static [&'static str],
+    pub required_calibration_hooks_fields: &'static [&'static str],
+}
+
+pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA:
+    VanillaOptionPricingRunOutputSchemaMetadata = VanillaOptionPricingRunOutputSchemaMetadata {
+    schema_version: VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+    run_result_schema_version: VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+    run_diagnostics_schema_version: VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+    calibration_hooks_schema_version: VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+    required_run_result_fields: &VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS,
+    required_run_diagnostics_fields: &VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
+    required_calibration_hooks_fields: &VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
+};
+
+/// Optional run diagnostics for one pricing execution.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionPricingRunDiagnostics {
+    pub schema_version: &'static str,
+    pub transform: Option<ExponentialAffineTransformIntegrationResult>,
+    pub integration_quality: Option<PricingIntegrationQualityDiagnostics>,
+    pub spectral: Option<SpectralPricingDiagnostics>,
+}
+
+impl VanillaOptionPricingRunDiagnostics {
+    pub fn new(
+        transform: Option<ExponentialAffineTransformIntegrationResult>,
+        integration_quality: Option<PricingIntegrationQualityDiagnostics>,
+        spectral: Option<SpectralPricingDiagnostics>,
+    ) -> Self {
+        Self {
+            schema_version: VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+            transform,
+            integration_quality,
+            spectral,
+        }
+    }
+
+    pub fn try_new(
+        transform: Option<ExponentialAffineTransformIntegrationResult>,
+        integration_quality: Option<PricingIntegrationQualityDiagnostics>,
+        spectral: Option<SpectralPricingDiagnostics>,
+    ) -> Result<Self, VanillaOptionPricingRunDiagnosticsError> {
+        let diagnostics = Self::new(transform, integration_quality, spectral);
+
+        diagnostics.validate()?;
+
+        Ok(diagnostics)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingRunDiagnosticsError> {
+        if self.transform.is_none() && self.integration_quality.is_none() && self.spectral.is_none()
+        {
+            return Err(VanillaOptionPricingRunDiagnosticsError::EmptyDiagnosticsPayload);
+        }
+
+        if let Some(spectral) = &self.spectral {
+            spectral.validate().map_err(|source| {
+                VanillaOptionPricingRunDiagnosticsError::InvalidSpectral { source }
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for optional pricing run diagnostics.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingRunDiagnosticsError {
+    EmptyDiagnosticsPayload,
+    InvalidSpectral {
+        source: SpectralPricingDiagnosticsError,
+    },
+}
+
+impl Display for VanillaOptionPricingRunDiagnosticsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyDiagnosticsPayload => write!(
+                formatter,
+                "run diagnostics payload must include transform diagnostics, integration diagnostics, spectral diagnostics, or any non-empty combination of them"
+            ),
+            Self::InvalidSpectral { source } => {
+                write!(
+                    formatter,
+                    "spectral diagnostics payload is invalid: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRunDiagnosticsError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidSpectral { source } => Some(source),
+            Self::EmptyDiagnosticsPayload => None,
+        }
+    }
+}
+
+/// Optional calibration-facing hook payload for one pricing execution.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct VanillaOptionPricingCalibrationHooks {
+    pub schema_version: &'static str,
+    pub hook_policy: &'static str,
+    pub option_price: f64,
+    pub log_moneyness: f64,
+    pub forward_moneyness: f64,
+    pub maturity_interval: f64,
+    pub transform_status: Option<ExponentialAffineTransformIntegrationStatus>,
+    pub integration_numeric_quality_is_poor: Option<bool>,
+    pub integration_convergence_check_passed: Option<bool>,
+    pub integration_truncation_check_passed: Option<bool>,
+}
+
+impl VanillaOptionPricingCalibrationHooks {
+    #[allow(clippy::too_many_arguments)]
+    pub const fn new(
+        option_price: f64,
+        log_moneyness: f64,
+        forward_moneyness: f64,
+        maturity_interval: f64,
+        transform_status: Option<ExponentialAffineTransformIntegrationStatus>,
+        integration_numeric_quality_is_poor: Option<bool>,
+        integration_convergence_check_passed: Option<bool>,
+        integration_truncation_check_passed: Option<bool>,
+    ) -> Self {
+        Self {
+            schema_version: VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+            hook_policy: VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+            option_price,
+            log_moneyness,
+            forward_moneyness,
+            maturity_interval,
+            transform_status,
+            integration_numeric_quality_is_poor,
+            integration_convergence_check_passed,
+            integration_truncation_check_passed,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        option_price: f64,
+        log_moneyness: f64,
+        forward_moneyness: f64,
+        maturity_interval: f64,
+        transform_status: Option<ExponentialAffineTransformIntegrationStatus>,
+        integration_numeric_quality_is_poor: Option<bool>,
+        integration_convergence_check_passed: Option<bool>,
+        integration_truncation_check_passed: Option<bool>,
+    ) -> Result<Self, VanillaOptionPricingCalibrationHooksError> {
+        let hooks = Self::new(
+            option_price,
+            log_moneyness,
+            forward_moneyness,
+            maturity_interval,
+            transform_status,
+            integration_numeric_quality_is_poor,
+            integration_convergence_check_passed,
+            integration_truncation_check_passed,
+        );
+
+        hooks.validate()?;
+
+        Ok(hooks)
+    }
+
+    pub fn from_pricing_response_with_optional_diagnostics(
+        response: &VanillaOptionPricingResponse,
+        market_inputs: VanillaOptionPricingMarketInputs,
+        transform: Option<ExponentialAffineTransformIntegrationResult>,
+        integration_quality: Option<PricingIntegrationQualityDiagnostics>,
+    ) -> Result<Self, VanillaOptionPricingCalibrationHooksError> {
+        response.validate().map_err(|source| {
+            VanillaOptionPricingCalibrationHooksError::InvalidResponse { source }
+        })?;
+        market_inputs.validate().map_err(|source| {
+            VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs { source }
+        })?;
+
+        let strike = market_inputs.single_strike().map_err(|source| {
+            VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs { source }
+        })?;
+
+        let diagnostics = response
+            .diagnostics
+            .as_ref()
+            .ok_or(VanillaOptionPricingCalibrationHooksError::MissingResponseDiagnostics)?;
+
+        let option_price = response
+            .price
+            .ok_or(VanillaOptionPricingCalibrationHooksError::MissingResponsePrice)?;
+
+        let log_moneyness = strike.ln() - market_inputs.spot.ln();
+        let forward_moneyness = diagnostics.forward_price / strike;
+
+        let integration_quality_diagnostics =
+            integration_quality.map(|diagnostics| diagnostics.numeric_quality_diagnostics);
+
+        Self::try_new(
+            option_price,
+            log_moneyness,
+            forward_moneyness,
+            diagnostics.maturity_interval,
+            transform.map(|diagnostics| diagnostics.status),
+            integration_quality_diagnostics.map(|diagnostics| diagnostics.numeric_quality_is_poor),
+            integration_quality_diagnostics.map(|diagnostics| diagnostics.convergence_check_passed),
+            integration_quality_diagnostics.map(|diagnostics| diagnostics.truncation_check_passed),
+        )
+    }
+
+    pub fn validate(self) -> Result<(), VanillaOptionPricingCalibrationHooksError> {
+        if !self.option_price.is_finite() || self.option_price < 0.0 {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidOptionPrice {
+                    value: self.option_price,
+                },
+            );
+        }
+
+        if !self.log_moneyness.is_finite() {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidLogMoneyness {
+                    value: self.log_moneyness,
+                },
+            );
+        }
+
+        if !self.forward_moneyness.is_finite() || self.forward_moneyness <= 0.0 {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidForwardMoneyness {
+                    value: self.forward_moneyness,
+                },
+            );
+        }
+
+        if !self.maturity_interval.is_finite() || self.maturity_interval <= 0.0 {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidMaturityInterval {
+                    value: self.maturity_interval,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for calibration-facing pricing hook payloads.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingCalibrationHooksError {
+    InvalidResponse {
+        source: VanillaOptionPricingResponseError,
+    },
+    InvalidMarketInputs {
+        source: VanillaOptionPricingMarketInputsError,
+    },
+    MissingResponsePrice,
+    MissingResponseDiagnostics,
+    InvalidOptionPrice {
+        value: f64,
+    },
+    InvalidLogMoneyness {
+        value: f64,
+    },
+    InvalidForwardMoneyness {
+        value: f64,
+    },
+    InvalidMaturityInterval {
+        value: f64,
+    },
+}
+
+impl Display for VanillaOptionPricingCalibrationHooksError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidResponse { source } => {
+                write!(
+                    formatter,
+                    "response payload is invalid for calibration hooks: {source}"
+                )
+            }
+            Self::InvalidMarketInputs { source } => write!(
+                formatter,
+                "market inputs are invalid for calibration hooks: {source}"
+            ),
+            Self::MissingResponsePrice => write!(
+                formatter,
+                "response price must be present for calibration hooks"
+            ),
+            Self::MissingResponseDiagnostics => write!(
+                formatter,
+                "response diagnostics must be present for calibration hooks"
+            ),
+            Self::InvalidOptionPrice { value } => write!(
+                formatter,
+                "calibration hook option_price must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidLogMoneyness { value } => write!(
+                formatter,
+                "calibration hook log_moneyness must be finite, found {value}"
+            ),
+            Self::InvalidForwardMoneyness { value } => write!(
+                formatter,
+                "calibration hook forward_moneyness must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidMaturityInterval { value } => write!(
+                formatter,
+                "calibration hook maturity_interval must be finite and strictly positive, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingCalibrationHooksError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidResponse { source } => Some(source),
+            Self::InvalidMarketInputs { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Optional run output payload for baseline vanilla option pricing.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VanillaOptionPricingRunResult {
+    pub schema_version: &'static str,
+    pub output_schema_metadata: VanillaOptionPricingRunOutputSchemaMetadata,
+    pub response: VanillaOptionPricingResponse,
+    pub run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
+    pub calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+    pub runtime_interval_schedule: PricingIntervalSchedule,
+    pub maturity_terminal_interval_indices: Vec<usize>,
+}
+
+impl VanillaOptionPricingRunResult {
+    pub fn new(
+        response: VanillaOptionPricingResponse,
+        run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
+        calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+        runtime_interval_schedule: PricingIntervalSchedule,
+        maturity_terminal_interval_indices: Vec<usize>,
+    ) -> Self {
+        Self {
+            schema_version: VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+            output_schema_metadata: VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA,
+            response,
+            run_diagnostics,
+            calibration_hooks,
+            runtime_interval_schedule,
+            maturity_terminal_interval_indices,
+        }
+    }
+
+    pub fn try_new(
+        response: VanillaOptionPricingResponse,
+        run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
+        calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+        runtime_interval_schedule: PricingIntervalSchedule,
+        maturity_terminal_interval_indices: Vec<usize>,
+    ) -> Result<Self, VanillaOptionPricingRunResultError> {
+        let run_result = Self::new(
+            response,
+            run_diagnostics,
+            calibration_hooks,
+            runtime_interval_schedule,
+            maturity_terminal_interval_indices,
+        );
+
+        run_result.validate()?;
+
+        Ok(run_result)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingRunResultError> {
+        self.response
+            .validate()
+            .map_err(|source| VanillaOptionPricingRunResultError::InvalidResponse { source })?;
+
+        if let Some(run_diagnostics) = &self.run_diagnostics {
+            run_diagnostics.validate().map_err(|source| {
+                VanillaOptionPricingRunResultError::InvalidRunDiagnostics { source }
+            })?;
+        }
+
+        if self.maturity_terminal_interval_indices.is_empty() {
+            return Err(VanillaOptionPricingRunResultError::EmptyMaturityTerminalIntervalIndices);
+        }
+
+        for &terminal_interval_index in &self.maturity_terminal_interval_indices {
+            self.runtime_interval_schedule
+                .maturity_interval_hours(terminal_interval_index)
+                .map_err(|source| {
+                    VanillaOptionPricingRunResultError::InvalidRuntimeIntervalSchedule { source }
+                })?;
+        }
+
+        if let Some(calibration_hooks) = &self.calibration_hooks {
+            calibration_hooks.validate().map_err(|source| {
+                VanillaOptionPricingRunResultError::InvalidCalibrationHooks { source }
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for pricing run outputs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingRunResultError {
+    InvalidResponse {
+        source: VanillaOptionPricingResponseError,
+    },
+    InvalidRunDiagnostics {
+        source: VanillaOptionPricingRunDiagnosticsError,
+    },
+    InvalidCalibrationHooks {
+        source: VanillaOptionPricingCalibrationHooksError,
+    },
+    EmptyMaturityTerminalIntervalIndices,
+    InvalidRuntimeIntervalSchedule {
+        source: PricingIntervalScheduleError,
+    },
+}
+
+impl Display for VanillaOptionPricingRunResultError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidResponse { source } => {
+                write!(
+                    formatter,
+                    "response payload is invalid for run output: {source}"
+                )
+            }
+            Self::InvalidRunDiagnostics { source } => {
+                write!(formatter, "run diagnostics payload is invalid: {source}")
+            }
+            Self::InvalidCalibrationHooks { source } => {
+                write!(formatter, "calibration hooks payload is invalid: {source}")
+            }
+            Self::EmptyMaturityTerminalIntervalIndices => write!(
+                formatter,
+                "maturity_terminal_interval_indices must contain at least one entry"
+            ),
+            Self::InvalidRuntimeIntervalSchedule { source } => {
+                write!(
+                    formatter,
+                    "runtime interval schedule payload is invalid: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRunResultError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidResponse { source } => Some(source),
+            Self::InvalidRunDiagnostics { source } => Some(source),
+            Self::InvalidCalibrationHooks { source } => Some(source),
+            Self::InvalidRuntimeIntervalSchedule { source } => Some(source),
+            Self::EmptyMaturityTerminalIntervalIndices => None,
+        }
+    }
+}
+
+/// Build one pricing run output with optional diagnostics and calibration hooks.
+#[derive(Debug, Clone)]
+pub struct VanillaOptionPricingRunResultBuildInput {
+    pub response: VanillaOptionPricingResponse,
+    pub output_selection: VanillaOptionPricingOptionalOutputSelection,
+    pub market_inputs_for_calibration_hooks: Option<VanillaOptionPricingMarketInputs>,
+    pub transform_diagnostics_source: Option<ExponentialAffineTransformIntegrationResult>,
+    pub integration_quality_source: Option<PricingIntegrationQualityDiagnostics>,
+    pub spectral_source: Option<SpectralPricingDiagnostics>,
+    pub runtime_interval_schedule: PricingIntervalSchedule,
+    pub maturity_terminal_interval_indices: Vec<usize>,
+}
+
+/// Build one pricing run output with optional diagnostics and calibration hooks.
+pub fn build_vanilla_option_pricing_run_result(
+    input: VanillaOptionPricingRunResultBuildInput,
+) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError> {
+    let VanillaOptionPricingRunResultBuildInput {
+        response,
+        output_selection,
+        market_inputs_for_calibration_hooks,
+        transform_diagnostics_source,
+        integration_quality_source,
+        spectral_source,
+        runtime_interval_schedule,
+        maturity_terminal_interval_indices,
+    } = input;
+
+    let run_diagnostics = if response.is_successful() && output_selection.diagnostics_selected() {
+        if output_selection.include_transform_diagnostics && transform_diagnostics_source.is_none()
+        {
+            return Err(VanillaOptionPricingRunResultBuildError::MissingTransformDiagnosticsSource);
+        }
+
+        if output_selection.include_integration_quality_diagnostics
+            && integration_quality_source.is_none()
+            && spectral_source.is_none()
+        {
+            return Err(
+                VanillaOptionPricingRunResultBuildError::MissingIntegrationQualityDiagnosticsSource,
+            );
+        }
+
+        let selected_transform_diagnostics = if output_selection.include_transform_diagnostics {
+            transform_diagnostics_source
+        } else {
+            None
+        };
+
+        let selected_integration_quality =
+            if output_selection.include_integration_quality_diagnostics {
+                integration_quality_source
+            } else {
+                None
+            };
+
+        Some(
+            VanillaOptionPricingRunDiagnostics::try_new(
+                selected_transform_diagnostics,
+                selected_integration_quality,
+                spectral_source,
+            )
+            .map_err(|source| {
+                VanillaOptionPricingRunResultBuildError::InvalidRunDiagnostics { source }
+            })?,
+        )
+    } else {
+        None
+    };
+
+    let calibration_hooks =
+        if response.is_successful() && output_selection.include_calibration_hooks {
+            let market_inputs = market_inputs_for_calibration_hooks.ok_or(
+                VanillaOptionPricingRunResultBuildError::MissingMarketInputsForCalibrationHooks,
+            )?;
+
+            Some(
+            VanillaOptionPricingCalibrationHooks::from_pricing_response_with_optional_diagnostics(
+                &response,
+                market_inputs,
+                transform_diagnostics_source,
+                integration_quality_source,
+            )
+            .map_err(|source| {
+                VanillaOptionPricingRunResultBuildError::InvalidCalibrationHooks { source }
+            })?,
+        )
+        } else {
+            None
+        };
+
+    VanillaOptionPricingRunResult::try_new(
+        response,
+        run_diagnostics,
+        calibration_hooks,
+        runtime_interval_schedule,
+        maturity_terminal_interval_indices,
+    )
+    .map_err(|source| VanillaOptionPricingRunResultBuildError::InvalidRunResult { source })
+}
+
+/// Structured failures for pricing run output construction.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingRunResultBuildError {
+    MissingTransformDiagnosticsSource,
+    MissingIntegrationQualityDiagnosticsSource,
+    MissingMarketInputsForCalibrationHooks,
+    InvalidRunDiagnostics {
+        source: VanillaOptionPricingRunDiagnosticsError,
+    },
+    InvalidCalibrationHooks {
+        source: VanillaOptionPricingCalibrationHooksError,
+    },
+    InvalidRunResult {
+        source: VanillaOptionPricingRunResultError,
+    },
+}
+
+impl Display for VanillaOptionPricingRunResultBuildError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingTransformDiagnosticsSource => write!(
+                formatter,
+                "transform diagnostics were requested but no transform diagnostics source was provided"
+            ),
+            Self::MissingIntegrationQualityDiagnosticsSource => write!(
+                formatter,
+                "integration diagnostics were requested but no integration diagnostics source was provided"
+            ),
+            Self::MissingMarketInputsForCalibrationHooks => write!(
+                formatter,
+                "calibration hooks were requested but no market inputs were provided"
+            ),
+            Self::InvalidRunDiagnostics { source } => {
+                write!(formatter, "run diagnostics payload is invalid: {source}")
+            }
+            Self::InvalidCalibrationHooks { source } => {
+                write!(formatter, "calibration hooks payload is invalid: {source}")
+            }
+            Self::InvalidRunResult { source } => {
+                write!(formatter, "run output payload is invalid: {source}")
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRunResultBuildError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidRunDiagnostics { source } => Some(source),
+            Self::InvalidCalibrationHooks { source } => Some(source),
+            Self::InvalidRunResult { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+fn validate_finite_field(
+    value: f64,
+    field: &'static str,
+) -> Result<(), SpectralPricingDiagnosticsError> {
+    validate_finite_number(value, field).map_err(|source| {
+        SpectralPricingDiagnosticsError::InvalidFiniteField {
+            field: source.field,
+            value: source.value,
+        }
+    })
+}
+
+fn validate_positive_field(
+    value: f64,
+    field: &'static str,
+) -> Result<(), SpectralPricingDiagnosticsError> {
+    validate_positive_number(value, field).map_err(|source| {
+        SpectralPricingDiagnosticsError::InvalidPositiveField {
+            field: source.field,
+            value: source.value,
+        }
+    })
+}
+
+fn validate_non_negative_field(
+    value: f64,
+    field: &'static str,
+) -> Result<(), SpectralPricingDiagnosticsError> {
+    validate_non_negative_number(value, field).map_err(|source| {
+        SpectralPricingDiagnosticsError::InvalidNonNegativeField {
+            field: source.field,
+            value: source.value,
+        }
+    })
+}
+
+fn validate_interval_delta(interval_delta: f64) -> Result<i64, VanillaOptionPricingRequestError> {
+    duration_hours_to_nanos(interval_delta).map_err(|_| {
+        VanillaOptionPricingRequestError::InvalidIntervalDelta {
+            value: interval_delta,
+        }
+    })
+}
+
+fn validate_hawkes_boundary_state(
+    boundary_state: HawkesExcitationState,
+) -> Result<(), (&'static str, f64)> {
+    validate_hawkes_boundary_state_component("y_plus_plus", boundary_state.y_plus_plus)?;
+    validate_hawkes_boundary_state_component("y_plus_minus", boundary_state.y_plus_minus)?;
+    validate_hawkes_boundary_state_component("y_minus_plus", boundary_state.y_minus_plus)?;
+    validate_hawkes_boundary_state_component("y_minus_minus", boundary_state.y_minus_minus)?;
+
+    Ok(())
+}
+
+fn validate_hawkes_boundary_state_component(
+    field: &'static str,
+    value: f64,
+) -> Result<(), (&'static str, f64)> {
+    if !value.is_finite() || value < 0.0 {
+        return Err((field, value));
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VanillaOptionPricingMarketInputsPayload {
+    spot: f64,
+    strikes: Vec<f64>,
+    maturity_intervals: Vec<f64>,
+    risk_free_rate: f64,
+    dividend_yield: f64,
+}
+
+impl<'de> Deserialize<'de> for VanillaOptionPricingMarketInputs {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = VanillaOptionPricingMarketInputsPayload::deserialize(deserializer)?;
+
+        Self::try_new(
+            payload.spot,
+            payload.strikes,
+            payload.maturity_intervals,
+            payload.risk_free_rate,
+            payload.dividend_yield,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VanillaOptionPricingModelParametersPayload {
+    hawkes_kernel_parameters: HawkesKernelParameters,
+    news_process_configuration: NewsProcessConfiguration,
+    nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    return_clock_exposure_parameters: ReturnClockExposureParameters,
+    long_variance_parameters: LongVarianceParameters,
+    market_pressure_parameters: MarketPressureParameters,
+    pricing_kernel_parameters: VanillaOptionPricingKernelParameters,
+}
+
+impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = VanillaOptionPricingModelParametersPayload::deserialize(deserializer)?;
+
+        Self::try_new(
+            payload.hawkes_kernel_parameters,
+            payload.news_process_configuration,
+            payload.nig_shared_plus_shift_configuration,
+            payload.return_clock_exposure_parameters,
+            payload.long_variance_parameters,
+            payload.market_pressure_parameters,
+            payload.pricing_kernel_parameters,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnchoredVanillaOptionPricingBoundaryInputPayload {
+    interval_index: usize,
+    hawkes_boundary_state: HawkesExcitationState,
+    long_variance_boundary_state: LongVarianceState,
+    market_pressure_boundary_state: MarketPressureState,
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    interval_delta: f64,
+    observed_boundary_state: MeanReversionBoundaryState,
+}
+
+impl<'de> Deserialize<'de> for AnchoredVanillaOptionPricingBoundaryInput {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = AnchoredVanillaOptionPricingBoundaryInputPayload::deserialize(deserializer)?;
+
+        Self::try_new(
+            payload.interval_index,
+            payload.hawkes_boundary_state,
+            payload.long_variance_boundary_state,
+            payload.market_pressure_boundary_state,
+            payload.mean_reversion_fitted_parameters,
+            payload.interval_delta,
+            payload.observed_boundary_state,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VanillaOptionPricingRequestPayload {
+    market_inputs: VanillaOptionPricingMarketInputs,
+    payoff: VanillaOptionPayoffConfiguration,
+    boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+    model_parameters: VanillaOptionPricingModelParameters,
+    interval_delta: f64,
+}
+
+impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = VanillaOptionPricingRequestPayload::deserialize(deserializer)?;
+
+        let request = Self::new(
+            payload.market_inputs,
+            payload.payoff,
+            payload.boundary_input,
+            payload.model_parameters,
+            payload.interval_delta,
+        );
+
+        request
+            .validate()
+            .map(|()| request)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VanillaOptionPricingDiagnosticsPayload {
+    forward_price: f64,
+    discount_factor: f64,
+    maturity_interval: f64,
+    boundary_state_norm: f64,
+}
+
+impl<'de> Deserialize<'de> for VanillaOptionPricingDiagnostics {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = VanillaOptionPricingDiagnosticsPayload::deserialize(deserializer)?;
+
+        Self::try_new(
+            payload.forward_price,
+            payload.discount_factor,
+            payload.maturity_interval,
+            payload.boundary_state_norm,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VanillaOptionPricingResponsePayload {
+    pricing_status: VanillaOptionPricingStatus,
+    pricing_failure_diagnostic: Option<VanillaOptionPricingFailureDiagnostic>,
+    price: Option<f64>,
+    diagnostics: Option<VanillaOptionPricingDiagnostics>,
+    implied_volatility: Option<f64>,
+    implied_volatility_inversion_status: Option<VanillaOptionImpliedVolatilityInversionStatus>,
+}
+
+impl<'de> Deserialize<'de> for VanillaOptionPricingResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = VanillaOptionPricingResponsePayload::deserialize(deserializer)?;
+
+        Self::try_new(
+            payload.pricing_status,
+            payload.pricing_failure_diagnostic,
+            payload.price,
+            payload.diagnostics,
+            payload.implied_volatility,
+            payload.implied_volatility_inversion_status,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}

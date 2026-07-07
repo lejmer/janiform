@@ -1,0 +1,29 @@
+[package]
+name = "janiform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Umbrella Rust facade for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform"
+path = "src/lib.rs"
+
+[dependencies]
+janiform_affine_oracle = { package = "janiform-affine-oracle", path = "../janiform-affine-oracle" }
+janiform_calibration_artifacts = { package = "janiform-calibration-artifacts", path = "../janiform-calibration-artifacts" }
+janiform_calibration_runtime = { package = "janiform-calibration-runtime", path = "../janiform-calibration-runtime" }
+janiform_engine_pricing = { package = "janiform-engine-pricing", path = "../janiform-engine-pricing" }
+janiform_engine_simulation = { package = "janiform-engine-simulation", path = "../janiform-engine-simulation" }
+janiform_engine_sufficient_statistics = { package = "janiform-engine-sufficient-statistics", path = "../janiform-engine-sufficient-statistics" }
+janiform_foundations = { package = "janiform-foundations", path = "../janiform-foundations" }
+janiform_governance = { package = "janiform-governance", path = "../janiform-governance" }
+janiform_governance_bench = { package = "janiform-governance-bench", path = "../janiform-governance-bench" }
+janiform_market_time = { package = "janiform-market-time", path = "../janiform-market-time" }
+janiform_model_kernels = { package = "janiform-model-kernels", path = "../janiform-model-kernels" }
+janiform_validation = { package = "janiform-validation", path = "../janiform-validation" }
+janiform_verification = { package = "janiform-verification", path = "../janiform-verification" }
+serde = { workspace = true }
+serde_json = { workspace = true }

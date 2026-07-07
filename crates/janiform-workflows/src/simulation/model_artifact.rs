@@ -1,0 +1,418 @@
+use std::time::Instant;
+
+use chrono::{DateTime, Utc};
+use janiform::model::factors::interval_factor_grid::{IntervalFactorGrid, NANOS_PER_HOUR};
+use janiform::model::hawkes::HawkesExcitationState;
+use janiform::simulation::{
+    MeanReversionBoundaryState, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationRunOptions, SimulationProgressEvent,
+};
+use janiform::time::calendar::MarketState;
+use janiform_foundations::cancellation::CancellationToken;
+
+use crate::error::WorkflowError;
+use crate::model::{
+    FittedModelContext, ModelStateObservationData, build_coarse_simulation_model_inputs,
+    build_seeded_tick_simulation_model_inputs, build_sufficient_statistics_interval_factor_grids,
+    build_sufficient_statistics_model_inputs, estimate_current_state_from_observation_data,
+    fitted_model_context,
+};
+use crate::simulation::direct::{
+    CoarseIntervalExportSettings, DirectSimulationExportPlan, DirectSimulationJob,
+    SeededTickExportSettings,
+};
+
+use super::artifacts::write_model_artifact_simulation_sidecars;
+use super::job::run_simulation_job;
+use super::output::SimulationWorkflowOutput;
+use super::request::{
+    ModelArtifactSimulationKind, ModelArtifactSimulationWorkflowRequest, SimulationWorkflowRequest,
+};
+
+const CLOSED_INTERVAL_SEASONALITY_FACTOR: f64 = 0.0;
+
+/// Run a simulation workflow from a persisted model artifact payload.
+pub fn run_simulation_from_model_artifact(
+    request: ModelArtifactSimulationWorkflowRequest,
+    cancellation_token: CancellationToken,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<SimulationWorkflowOutput, WorkflowError> {
+    validate_request(&request)?;
+
+    cancellation_token.check_cancelled()?;
+
+    let started_at = Instant::now();
+    let prepared = prepare_model_artifact_simulation(request, cancellation_token.shared_handle())?;
+
+    let output = run_simulation_job(
+        prepared.workflow_request,
+        cancellation_token,
+        observer,
+        started_at,
+    )?;
+
+    if let Some(output_path) = prepared.sidecar_plan.output_path.as_deref() {
+        write_model_artifact_simulation_sidecars(
+            prepared.sidecar_plan.workflow_run_id.as_str(),
+            prepared.sidecar_plan.model_run_id.as_str(),
+            output_path,
+            &output.response_payload()?,
+        )?;
+    }
+
+    Ok(output)
+}
+
+struct PreparedModelArtifactSimulation {
+    workflow_request: SimulationWorkflowRequest,
+    sidecar_plan: ModelArtifactSimulationSidecarPlan,
+}
+
+struct ModelArtifactSimulationSidecarPlan {
+    workflow_run_id: String,
+    model_run_id: String,
+    output_path: Option<std::path::PathBuf>,
+}
+
+fn prepare_model_artifact_simulation(
+    request: ModelArtifactSimulationWorkflowRequest,
+    cancellation_token: CancellationToken,
+) -> Result<PreparedModelArtifactSimulation, WorkflowError> {
+    let context = runtime_context(&request)?;
+
+    cancellation_token.check_cancelled()?;
+
+    let interval_factor_grid = build_interval_factor_grid(&request, &context)?;
+
+    cancellation_token.check_cancelled()?;
+
+    let initial_state = resolve_initial_state(&request, &context)?;
+
+    cancellation_token.check_cancelled()?;
+
+    let prepared_job = build_direct_job(&request, &context, interval_factor_grid, initial_state)?;
+
+    // Intentional copies because normalized workflow execution owns metadata,
+    // while model-artifact sidecar writing still needs these identifiers.
+    let output_path = request.metadata.output_path.clone();
+    let workflow_run_id = request.metadata.run_id().to_string();
+    let model_run_id = context.model.run_id.clone();
+
+    Ok(PreparedModelArtifactSimulation {
+        workflow_request: SimulationWorkflowRequest {
+            metadata: request.metadata.into_defaulted_run_id(),
+            job: prepared_job.job,
+            export_plan: Some(prepared_job.export_plan),
+        },
+        sidecar_plan: ModelArtifactSimulationSidecarPlan {
+            workflow_run_id,
+            model_run_id,
+            output_path,
+        },
+    })
+}
+
+fn validate_request(request: &ModelArtifactSimulationWorkflowRequest) -> Result<(), WorkflowError> {
+    if request.horizon_interval_count == 0 {
+        return Err(validation_error(
+            "horizon_interval_count",
+            "must be a positive integer",
+        ));
+    }
+
+    if request.interval_duration_nanos <= 0 {
+        return Err(validation_error(
+            "interval_duration_nanos",
+            "must be a positive integer number of nanoseconds",
+        ));
+    }
+
+    if !request.reference_price.is_finite() || request.reference_price <= 0.0 {
+        return Err(validation_error(
+            "reference_price",
+            "must be finite and strictly positive",
+        ));
+    }
+
+    if request.export_batch_size == 0 {
+        return Err(validation_error("export_batch_size", "must be positive"));
+    }
+
+    Ok(())
+}
+
+fn runtime_context(
+    request: &ModelArtifactSimulationWorkflowRequest,
+) -> Result<FittedModelContext, WorkflowError> {
+    fitted_model_context(
+        &request.model_payload,
+        request.start_time_utc,
+        request.interval_duration_nanos,
+        request.horizon_interval_count,
+    )
+}
+
+fn build_interval_factor_grid(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+) -> Result<IntervalFactorGrid, WorkflowError> {
+    let mut interval_factor_grid = crate::model::build_interval_factor_grid(
+        context,
+        request.start_time_utc,
+        context.range_end_utc,
+        request.interval_duration_nanos,
+    )?;
+
+    if request.simulation_kind == ModelArtifactSimulationKind::CoarseInterval {
+        zero_closed_coarse_interval_seasonality_factors(&mut interval_factor_grid, context)?;
+    }
+
+    Ok(interval_factor_grid)
+}
+
+fn zero_closed_coarse_interval_seasonality_factors(
+    interval_factor_grid: &mut IntervalFactorGrid,
+    context: &FittedModelContext,
+) -> Result<(), WorkflowError> {
+    if interval_factor_grid.interval_duration_nanos >= NANOS_PER_HOUR {
+        return Ok(());
+    }
+
+    for (interval_start_utc_nanos, seasonality_factor) in interval_factor_grid
+        .interval_start_utc_nanos
+        .iter()
+        .zip(interval_factor_grid.seasonality_factor.iter_mut())
+    {
+        let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(*interval_start_utc_nanos);
+
+        let market_state = context
+            .calendar_registry
+            .resolve_market_state_at_utc(
+                context.model.session_resolution.exchange_code.as_str(),
+                timestamp_utc,
+            )
+            .map_err(|source| validation_error("calendar_registry", source.to_string()))?;
+
+        if market_state == MarketState::Closed {
+            *seasonality_factor = CLOSED_INTERVAL_SEASONALITY_FACTOR;
+        }
+    }
+
+    Ok(())
+}
+
+struct ResolvedInitialState {
+    excitation_state: HawkesExcitationState,
+    mean_reversion_boundary_state: Option<MeanReversionBoundaryState>,
+    start_anchor_value: f64,
+}
+
+fn resolve_initial_state(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+) -> Result<ResolvedInitialState, WorkflowError> {
+    let estimated_state = if request.continuation_data.is_some()
+        && (request.initial_excitation_state.is_none()
+            || request.initial_mean_reversion_boundary_state.is_none())
+    {
+        Some(estimate_current_state(request, context)?)
+    } else {
+        None
+    };
+
+    let excitation_state = match (request.initial_excitation_state, estimated_state.as_ref()) {
+        (Some(excitation_state), _) => excitation_state,
+        (None, Some(estimated_state)) => estimated_state.hawkes_excitation_state,
+        (None, None) => context
+            .fitted_parameters
+            .hawkes_fitted_parameters
+            .kernel_parameters
+            .stationary_excitation_state()
+            .map_err(|source| validation_error("kernel_parameters", source.to_string()))?,
+    };
+
+    let mean_reversion_boundary_state = request
+        .initial_mean_reversion_boundary_state
+        .or_else(|| estimated_state.map(|state| state.mean_reversion_boundary_state));
+
+    let start_anchor_value = mean_reversion_boundary_state
+        .as_ref()
+        .map(|boundary_state| boundary_state.anchor_value)
+        .unwrap_or(0.0);
+
+    Ok(ResolvedInitialState {
+        excitation_state,
+        mean_reversion_boundary_state,
+        start_anchor_value,
+    })
+}
+
+fn estimate_current_state(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+) -> Result<janiform_calibration_runtime::CurrentStateEstimationOutput, WorkflowError> {
+    let continuation_data = request
+        .continuation_data
+        .as_ref()
+        .ok_or_else(|| validation_error("continuation_data", "missing continuation data"))?;
+
+    estimate_current_state_from_observation_data(
+        context,
+        request.start_time_utc,
+        &ModelStateObservationData {
+            // Intentional copies because the shared model-state estimator owns
+            // observation columns while the workflow request remains borrowed.
+            observation_timestamp_utc_nanos: continuation_data
+                .observation_timestamp_utc_nanos
+                .clone(),
+            observation_trade_prices: continuation_data.observation_trade_prices.clone(),
+            observation_trade_sides: continuation_data.observation_trade_sides.clone(),
+            observed_price: continuation_data.observed_price,
+        },
+        None,
+    )
+    .map_err(|source| validation_error("continuation_data", source.to_string()))
+}
+
+struct PreparedDirectSimulationJob {
+    job: DirectSimulationJob,
+    export_plan: DirectSimulationExportPlan,
+}
+
+fn build_direct_job(
+    request: &ModelArtifactSimulationWorkflowRequest,
+    context: &FittedModelContext,
+    interval_factor_grid: IntervalFactorGrid,
+    initial_state: ResolvedInitialState,
+) -> Result<PreparedDirectSimulationJob, WorkflowError> {
+    let (runtime_interval_anchors, derived_boundary_state) =
+        materialize_mean_reversion_runtime_inputs(
+            context,
+            &interval_factor_grid,
+            initial_state.excitation_state,
+            initial_state.start_anchor_value,
+        )?;
+
+    let initial_mean_reversion_boundary_state = initial_state
+        .mean_reversion_boundary_state
+        .unwrap_or(derived_boundary_state);
+
+    match request.simulation_kind {
+        ModelArtifactSimulationKind::SeededTick => {
+            let model_inputs = build_seeded_tick_simulation_model_inputs(
+                context,
+                initial_state.excitation_state,
+                runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+                interval_factor_grid,
+            )?;
+
+            let run_config = janiform::simulation::SeededTickSimulationRunConfig::try_new(
+                request.seed,
+                request.start_time_utc,
+                request.horizon_interval_count,
+                model_inputs,
+                Some(SeededTickSimulationRunOptions {
+                    debug_trace_enabled: request.debug_trace_enabled,
+                    debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                        sample_every_nth_transition: request.sample_every_nth_transition,
+                        max_records_per_chunk: request.max_records_per_chunk,
+                    },
+                    state_snapshot_capture: request.state_snapshot_capture,
+                }),
+            )
+            .map_err(|source| validation_error("seeded_tick_request", source.to_string()))?;
+
+            Ok(PreparedDirectSimulationJob {
+                job: DirectSimulationJob::SeededTick {
+                    run_config: Box::new(run_config),
+                },
+                export_plan: DirectSimulationExportPlan::SeededTick(SeededTickExportSettings {
+                    // Intentional copy because export settings own the public
+                    // output column contract independent of the borrowed request.
+                    columns: request.output_columns.clone(),
+                    reference_price: request.reference_price,
+                    batch_size: request.export_batch_size,
+                }),
+            })
+        }
+        ModelArtifactSimulationKind::CoarseInterval => {
+            let model_inputs = build_sufficient_statistics_model_inputs(
+                context,
+                initial_state.excitation_state,
+                runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+            )?;
+
+            let coarse_model_inputs = build_coarse_simulation_model_inputs(context, model_inputs)?;
+
+            let interval_factor_grids =
+                build_sufficient_statistics_interval_factor_grids(context, interval_factor_grid)?;
+
+            let start_time_utc_nanos =
+                request
+                    .start_time_utc
+                    .timestamp_nanos_opt()
+                    .ok_or_else(|| {
+                        validation_error(
+                            "start_time_utc",
+                            "timestamp is outside the supported nanosecond range",
+                        )
+                    })?;
+
+            let coarse_request = janiform::simulation::CoarseSimulationRunRequest::try_new(
+                request.seed,
+                start_time_utc_nanos,
+                request.horizon_interval_count,
+                context.interval_delta,
+                coarse_model_inputs,
+                interval_factor_grids,
+            )
+            .map_err(|source| validation_error("coarse_interval_request", source.to_string()))?;
+
+            Ok(PreparedDirectSimulationJob {
+                job: DirectSimulationJob::CoarseInterval {
+                    request: Box::new(coarse_request),
+                },
+                export_plan: DirectSimulationExportPlan::CoarseInterval(
+                    CoarseIntervalExportSettings {
+                        // Intentional copies because export settings own their column
+                        // and calendar contracts after request construction completes.
+                        columns: request.output_columns.without_side_column(),
+                        calendar_registry: context.calendar_registry.clone(),
+                        exchange_code: context.model.session_resolution.exchange_code.clone(),
+                        reference_price: request.reference_price,
+                        batch_size: request.export_batch_size,
+                    },
+                ),
+            })
+        }
+    }
+}
+
+fn materialize_mean_reversion_runtime_inputs(
+    context: &FittedModelContext,
+    interval_factor_grid: &IntervalFactorGrid,
+    initial_excitation_state: HawkesExcitationState,
+    start_anchor_value: f64,
+) -> Result<
+    (
+        janiform::simulation::MeanReversionRuntimeIntervalAnchors,
+        MeanReversionBoundaryState,
+    ),
+    WorkflowError,
+> {
+    crate::model::materialize_mean_reversion_runtime_inputs(
+        context,
+        interval_factor_grid,
+        initial_excitation_state,
+        start_anchor_value,
+    )
+}
+
+fn validation_error(field: &'static str, message: impl Into<String>) -> WorkflowError {
+    WorkflowError::SimulationValidationFailed {
+        field,
+        message: message.into(),
+    }
+}

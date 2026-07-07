@@ -1,0 +1,2491 @@
+{
+  "scenarios": {
+    "calibration.orchestration.staged_run.report.v1::boundary_runtime_default_memory": {
+      "fields": {
+        "emitted_checkpoints": {
+          "item_profiles": [
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 7,
+          "type": "array"
+        },
+        "execution_mode": {
+          "type": "string",
+          "value": "memory"
+        },
+        "failure": {
+          "type": "null"
+        },
+        "failure_triage_policy": {
+          "type": "string",
+          "value": "mode_aware_failure_kind_and_checkpoint_context.v1"
+        },
+        "resumed_from_checkpoint_reference": {
+          "type": "null"
+        },
+        "resumed_from_last_successful_stage": {
+          "type": "null"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        "stage_reports": {
+          "item_profiles": [
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 7,
+          "type": "array"
+        },
+        "started_from_stage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "value": "success"
+        }
+      },
+      "type": "object"
+    },
+    "calibration.orchestration.staged_run.report.v1::boundary_runtime_explicit_disk_override": {
+      "fields": {
+        "emitted_checkpoints": {
+          "item_profiles": [
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 7,
+          "type": "array"
+        },
+        "execution_mode": {
+          "type": "string",
+          "value": "disk"
+        },
+        "failure": {
+          "type": "null"
+        },
+        "failure_triage_policy": {
+          "type": "string",
+          "value": "mode_aware_failure_kind_and_checkpoint_context.v1"
+        },
+        "resumed_from_checkpoint_reference": {
+          "type": "null"
+        },
+        "resumed_from_last_successful_stage": {
+          "type": "null"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        "stage_reports": {
+          "item_profiles": [
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "long_variance"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "news_shocks"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_backfit"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 7,
+          "type": "array"
+        },
+        "started_from_stage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "value": "success"
+        }
+      },
+      "type": "object"
+    },
+    "calibration.orchestration.staged_run.report.v1::direct_response_validation_nominal": {
+      "fields": {
+        "emitted_checkpoints": {
+          "item_profiles": [],
+          "length": 0,
+          "type": "array"
+        },
+        "execution_mode": {
+          "type": "string",
+          "value": "memory"
+        },
+        "failure": {
+          "type": "null"
+        },
+        "failure_triage_policy": {
+          "type": "string",
+          "value": "mode_aware_failure_kind_and_checkpoint_context.v1"
+        },
+        "resumed_from_checkpoint_reference": {
+          "type": "null"
+        },
+        "resumed_from_last_successful_stage": {
+          "type": "null"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        "stage_reports": {
+          "item_profiles": [
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "started_from_stage": {
+          "type": "null"
+        },
+        "status": {
+          "type": "string",
+          "value": "success"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.response.contract::direct_response_validation_nominal": {
+      "fields": {
+        "diagnostics": {
+          "fields": {
+            "boundary_state_norm": {
+              "type": "float"
+            },
+            "discount_factor": {
+              "type": "float"
+            },
+            "forward_price": {
+              "type": "float"
+            },
+            "maturity_interval": {
+              "type": "float"
+            }
+          },
+          "type": "object"
+        },
+        "implied_volatility": {
+          "type": "float"
+        },
+        "implied_volatility_inversion_status": {
+          "type": "string"
+        },
+        "price": {
+          "type": "float"
+        },
+        "pricing_failure_diagnostic": {
+          "type": "null"
+        },
+        "pricing_status": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.run_result.v1::boundary_runtime_nominal": {
+      "fields": {
+        "calibration_hooks": {
+          "fields": {
+            "forward_moneyness": {
+              "type": "float"
+            },
+            "hook_policy": {
+              "type": "string",
+              "value": "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1"
+            },
+            "integration_convergence_check_passed": {
+              "type": "bool"
+            },
+            "integration_numeric_quality_is_poor": {
+              "type": "bool"
+            },
+            "integration_truncation_check_passed": {
+              "type": "bool"
+            },
+            "log_moneyness": {
+              "type": "float"
+            },
+            "maturity_interval": {
+              "type": "float"
+            },
+            "option_price": {
+              "type": "float"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
+            },
+            "transform_status": {
+              "type": "null"
+            }
+          },
+          "type": "object"
+        },
+        "maturity_terminal_interval_indices": {
+          "item_profiles": [
+            {
+              "type": "int"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "output_schema_metadata": {
+          "fields": {
+            "calibration_hooks_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
+            },
+            "required_calibration_hooks_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "hook_policy"
+                },
+                {
+                  "type": "string",
+                  "value": "option_price"
+                },
+                {
+                  "type": "string",
+                  "value": "log_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "forward_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_interval"
+                },
+                {
+                  "type": "string",
+                  "value": "transform_status"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_numeric_quality_is_poor"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_convergence_check_passed"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_truncation_check_passed"
+                }
+              ],
+              "length": 10,
+              "type": "array"
+            },
+            "required_run_diagnostics_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "spectral"
+                }
+              ],
+              "length": 4,
+              "type": "array"
+            },
+            "required_run_result_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                },
+                {
+                  "type": "string",
+                  "value": "runtime_interval_schedule"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_terminal_interval_indices"
+                }
+              ],
+              "length": 7,
+              "type": "array"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+            }
+          },
+          "type": "object"
+        },
+        "response": {
+          "fields": {
+            "diagnostics": {
+              "fields": {
+                "boundary_state_norm": {
+                  "type": "float"
+                },
+                "discount_factor": {
+                  "type": "float"
+                },
+                "forward_price": {
+                  "type": "float"
+                },
+                "maturity_interval": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
+            "implied_volatility": {
+              "type": "float"
+            },
+            "implied_volatility_inversion_status": {
+              "type": "string"
+            },
+            "price": {
+              "type": "float"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "pricing_status": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "run_diagnostics": {
+          "fields": {
+            "integration_quality": {
+              "fields": {
+                "absolute_integral_estimate": {
+                  "type": "float"
+                },
+                "discounted_projection_price": {
+                  "type": "float"
+                },
+                "domain_policy": {
+                  "type": "string"
+                },
+                "engine_policy": {
+                  "type": "string"
+                },
+                "integral_estimate": {
+                  "type": "float"
+                },
+                "integrand_evaluation_count": {
+                  "type": "int"
+                },
+                "integration_interval_width": {
+                  "type": "float"
+                },
+                "integration_step_count": {
+                  "type": "int"
+                },
+                "integration_upper_bound": {
+                  "type": "float"
+                },
+                "max_abs_integrand": {
+                  "type": "float"
+                },
+                "numeric_quality_diagnostics": {
+                  "fields": {
+                    "coarse_integral_estimate": {
+                      "type": "float"
+                    },
+                    "convergence_absolute_difference": {
+                      "type": "float"
+                    },
+                    "convergence_absolute_tolerance": {
+                      "type": "float"
+                    },
+                    "convergence_check_passed": {
+                      "type": "bool"
+                    },
+                    "convergence_check_policy": {
+                      "type": "string"
+                    },
+                    "convergence_relative_difference": {
+                      "type": "float"
+                    },
+                    "convergence_relative_tolerance": {
+                      "type": "float"
+                    },
+                    "insufficient_convergence_resolution": {
+                      "type": "bool"
+                    },
+                    "numeric_quality_is_poor": {
+                      "type": "bool"
+                    },
+                    "quality_gate": {
+                      "type": "string"
+                    },
+                    "quality_gate_policy": {
+                      "type": "string"
+                    },
+                    "stability_policy": {
+                      "type": "string"
+                    },
+                    "terminal_integrand_absolute_tolerance": {
+                      "type": "float"
+                    },
+                    "terminal_integrand_absolute_value": {
+                      "type": "float"
+                    },
+                    "terminal_integrand_ratio": {
+                      "type": "float"
+                    },
+                    "terminal_integrand_ratio_tolerance": {
+                      "type": "float"
+                    },
+                    "truncation_check_passed": {
+                      "type": "bool"
+                    },
+                    "truncation_check_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "projection_policy": {
+                  "type": "string"
+                },
+                "projection_rule": {
+                  "type": "string"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "pricing.integration_quality.diagnostics.v1"
+                },
+                "stability_policy": {
+                  "type": "string"
+                },
+                "terminal_abs_integrand": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "spectral": {
+              "fields": {
+                "collocation_node_count": {
+                  "type": "int"
+                },
+                "collocation_policy": {
+                  "type": "string"
+                },
+                "deviation_domain_lower_bound": {
+                  "type": "float"
+                },
+                "deviation_domain_policy": {
+                  "type": "string"
+                },
+                "deviation_domain_upper_bound": {
+                  "type": "float"
+                },
+                "interval_diagnostics": {
+                  "item_profiles": [
+                    {
+                      "fields": {
+                        "current_anchor_value": {
+                          "type": "float"
+                        },
+                        "expected_hawkes_boundary_state_after": {
+                          "fields": {
+                            "y_minus_minus": {
+                              "type": "float"
+                            },
+                            "y_minus_plus": {
+                              "type": "float"
+                            },
+                            "y_plus_minus": {
+                              "type": "float"
+                            },
+                            "y_plus_plus": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "expected_hawkes_boundary_state_before": {
+                          "fields": {
+                            "y_minus_minus": {
+                              "type": "float"
+                            },
+                            "y_minus_plus": {
+                              "type": "float"
+                            },
+                            "y_plus_minus": {
+                              "type": "float"
+                            },
+                            "y_plus_plus": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "interval_delta": {
+                          "type": "float"
+                        },
+                        "interval_index": {
+                          "type": "int"
+                        },
+                        "maximum_solved_theta": {
+                          "type": "float"
+                        },
+                        "minimum_solved_theta": {
+                          "type": "float"
+                        },
+                        "next_anchor_value": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ],
+                  "length": 1,
+                  "type": "array"
+                },
+                "terminal_affine_measure_change": {
+                  "fields": {
+                    "absolute_martingale_residual": {
+                      "type": "float"
+                    },
+                    "long_variance_boundary_state": {
+                      "fields": {
+                        "level": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "long_variance_stationary_mean_reversion_level": {
+                      "type": "float"
+                    },
+                    "martingale_residual": {
+                      "type": "float"
+                    },
+                    "martingale_tolerance": {
+                      "type": "float"
+                    },
+                    "observed_log_moment_exponent": {
+                      "type": "float"
+                    },
+                    "option_smile_contribution": {
+                      "fields": {
+                        "boundary_level_to_stationary_level_ratio": {
+                          "type": "float"
+                        },
+                        "buy_event_loading": {
+                          "type": "float"
+                        },
+                        "event_feedback_enabled": {
+                          "type": "bool"
+                        },
+                        "sell_event_loading": {
+                          "type": "float"
+                        },
+                        "stochastic_long_variance_enabled": {
+                          "type": "bool"
+                        },
+                        "vol_of_vol": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target_log_moment_exponent": {
+                      "type": "float"
+                    },
+                    "terminal_cumulant_status": {
+                      "type": "string"
+                    },
+                    "theta": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "terminal_affine_policy": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "transform": {
+              "type": "null"
+            }
+          },
+          "type": "object"
+        },
+        "runtime_interval_schedule": {
+          "fields": {
+            "interval_deltas_hours": {
+              "item_profiles": [
+                {
+                  "type": "float"
+                }
+              ],
+              "length": 1,
+              "type": "array"
+            },
+            "interval_end_timestamps_utc_nanos": {
+              "item_profiles": [
+                {
+                  "type": "int"
+                }
+              ],
+              "length": 1,
+              "type": "array"
+            },
+            "metadata": {
+              "fields": {
+                "derivation_policy": {
+                  "type": "string"
+                },
+                "factor_assignment_policy": {
+                  "type": "string"
+                },
+                "policy_id": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "valuation_time_utc_nanos": {
+              "type": "int"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.run_result.v1::direct_run_result_validation_edge_optional_outputs_omitted": {
+      "fields": {
+        "calibration_hooks": {
+          "type": "null"
+        },
+        "maturity_terminal_interval_indices": {
+          "item_profiles": [
+            {
+              "type": "int"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "output_schema_metadata": {
+          "fields": {
+            "calibration_hooks_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
+            },
+            "required_calibration_hooks_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "hook_policy"
+                },
+                {
+                  "type": "string",
+                  "value": "option_price"
+                },
+                {
+                  "type": "string",
+                  "value": "log_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "forward_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_interval"
+                },
+                {
+                  "type": "string",
+                  "value": "transform_status"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_numeric_quality_is_poor"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_convergence_check_passed"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_truncation_check_passed"
+                }
+              ],
+              "length": 10,
+              "type": "array"
+            },
+            "required_run_diagnostics_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "spectral"
+                }
+              ],
+              "length": 4,
+              "type": "array"
+            },
+            "required_run_result_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                },
+                {
+                  "type": "string",
+                  "value": "runtime_interval_schedule"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_terminal_interval_indices"
+                }
+              ],
+              "length": 7,
+              "type": "array"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+            }
+          },
+          "type": "object"
+        },
+        "response": {
+          "fields": {
+            "diagnostics": {
+              "fields": {
+                "boundary_state_norm": {
+                  "type": "float"
+                },
+                "discount_factor": {
+                  "type": "float"
+                },
+                "forward_price": {
+                  "type": "float"
+                },
+                "maturity_interval": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
+            "implied_volatility": {
+              "type": "float"
+            },
+            "implied_volatility_inversion_status": {
+              "type": "string"
+            },
+            "price": {
+              "type": "float"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "pricing_status": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "run_diagnostics": {
+          "type": "null"
+        },
+        "runtime_interval_schedule": {
+          "fields": {
+            "interval_deltas_hours": {
+              "item_profiles": [
+                {
+                  "type": "float"
+                }
+              ],
+              "length": 1,
+              "type": "array"
+            },
+            "interval_end_timestamps_utc_nanos": {
+              "item_profiles": [
+                {
+                  "type": "int"
+                }
+              ],
+              "length": 1,
+              "type": "array"
+            },
+            "metadata": {
+              "fields": {
+                "derivation_policy": {
+                  "type": "string"
+                },
+                "factor_assignment_policy": {
+                  "type": "string"
+                },
+                "policy_id": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "valuation_time_utc_nanos": {
+              "type": "int"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
+        }
+      },
+      "type": "object"
+    },
+    "simulation.seeded_tick_event.path.v1::boundary_runtime_nominal": {
+      "fields": {
+        "diagnostics": {
+          "fields": {
+            "boundary_chunk_record_count": {
+              "type": "int"
+            },
+            "boundary_transport_bytes": {
+              "type": "int"
+            },
+            "boundary_transport_policy": {
+              "type": "string"
+            },
+            "event_count": {
+              "type": "int"
+            },
+            "materialized_event_count": {
+              "type": "int"
+            },
+            "materialized_transition_count": {
+              "type": "int"
+            },
+            "native_estimated_retained_bytes": {
+              "type": "int"
+            },
+            "native_runtime_seconds": {
+              "type": "float"
+            },
+            "python_materialization_seconds": {
+              "type": "float"
+            },
+            "python_response_construction_seconds": {
+              "type": "float"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick.path_diagnostics.v1"
+            },
+            "timing_diagnostics": {
+              "fields": {
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "latent_event_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "min_positive_interarrival_nanos": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "latent_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "observed_timestamp_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "min_positive_interarrival_nanos": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "observed_timestamp_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "simulation.seeded_tick_event.timing_diagnostics.v1"
+                },
+                "timestamp_batching_surface": {
+                  "fields": {
+                    "bucket_width_nanos": {
+                      "type": "null"
+                    },
+                    "bucket_width_source": {
+                      "type": "string"
+                    },
+                    "coarse_interval_compatibility_policy": {
+                      "type": "string"
+                    },
+                    "inference_policy": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "observation_policy": {
+                      "type": "string"
+                    },
+                    "same_session_observation_transition_count": {
+                      "type": "null"
+                    },
+                    "same_timestamp_continuation_count": {
+                      "type": "null"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "model.timestamp_batching_observation.v1"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "transition_count": {
+              "type": "int"
+            }
+          },
+          "type": "object"
+        },
+        "event_tape": {
+          "item_profiles": [
+            {
+              "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
+                "event_index": {
+                  "type": "int"
+                },
+                "latent_event_time_utc_nanos": {
+                  "type": "int"
+                },
+                "observed_log_price": {
+                  "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "market_pressure_state": {
+                  "type": "float"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 3,
+          "type": "array"
+        },
+        "event_tape_metadata": {
+          "fields": {
+            "event_ordering_policy": {
+              "type": "string",
+              "value": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
+            },
+            "event_record_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.record.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "lowercase_buy_or_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "state_snapshot_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.state_snapshot.v1"
+            },
+            "timestamp_batching_surface": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            }
+          },
+          "type": "object"
+        },
+        "fine_path": {
+          "item_profiles": [
+            {
+              "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
+                "latent_transition_time_utc_nanos": {
+                  "type": "int"
+                },
+                "market_state": {
+                  "type": "string"
+                },
+                "news_arrival_component": {
+                  "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "market_pressure_state": {
+                  "type": "float"
+                },
+                "return_components": {
+                  "fields": {
+                    "buy_side_return": {
+                      "type": "float"
+                    },
+                    "closed_gap_return": {
+                      "type": "float"
+                    },
+                    "open_jump_return": {
+                      "type": "float"
+                    },
+                    "sell_side_return": {
+                      "type": "float"
+                    },
+                    "total_return": {
+                      "type": "float"
+                    },
+                    "trading_time_return": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "transition_index": {
+                  "type": "int"
+                },
+                "transition_kind": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
+                "latent_transition_time_utc_nanos": {
+                  "type": "int"
+                },
+                "market_state": {
+                  "type": "string"
+                },
+                "news_arrival_component": {
+                  "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "market_pressure_state": {
+                  "type": "float"
+                },
+                "return_components": {
+                  "fields": {
+                    "buy_side_return": {
+                      "type": "float"
+                    },
+                    "closed_gap_return": {
+                      "type": "float"
+                    },
+                    "open_jump_return": {
+                      "type": "float"
+                    },
+                    "sell_side_return": {
+                      "type": "float"
+                    },
+                    "total_return": {
+                      "type": "float"
+                    },
+                    "trading_time_return": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "side": {
+                  "type": "null"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "transition_index": {
+                  "type": "int"
+                },
+                "transition_kind": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 5,
+          "type": "array"
+        },
+        "metadata": {
+          "fields": {
+            "event_projection_record_schema_version": {
+              "type": "string"
+            },
+            "path_record_schema_version": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "lowercase_buy_or_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "timestamp_batching_surface": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            },
+            "transition_ordering_policy": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "simulation.seeded_tick_event.path.v1"
+        }
+      },
+      "type": "object"
+    },
+    "simulation.seeded_tick_event.path.v1::direct_response_validation_nominal": {
+      "fields": {
+        "diagnostics": {
+          "fields": {
+            "boundary_chunk_record_count": {
+              "type": "int"
+            },
+            "boundary_transport_bytes": {
+              "type": "int"
+            },
+            "boundary_transport_policy": {
+              "type": "string"
+            },
+            "event_count": {
+              "type": "int"
+            },
+            "materialized_event_count": {
+              "type": "int"
+            },
+            "materialized_transition_count": {
+              "type": "int"
+            },
+            "native_estimated_retained_bytes": {
+              "type": "int"
+            },
+            "native_runtime_seconds": {
+              "type": "float"
+            },
+            "python_materialization_seconds": {
+              "type": "float"
+            },
+            "python_response_construction_seconds": {
+              "type": "float"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick.path_diagnostics.v1"
+            },
+            "timing_diagnostics": {
+              "fields": {
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "latent_event_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "latent_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "observed_timestamp_interarrivals": {
+                  "fields": {
+                    "interarrival_count": {
+                      "type": "int"
+                    },
+                    "zero_interarrival_count": {
+                      "type": "int"
+                    }
+                  },
+                  "type": "object"
+                },
+                "observed_timestamp_interval_ownership_policy": {
+                  "type": "string"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "simulation.seeded_tick_event.timing_diagnostics.v1"
+                },
+                "timestamp_batching_surface": {
+                  "fields": {
+                    "bucket_width_nanos": {
+                      "type": "null"
+                    },
+                    "bucket_width_source": {
+                      "type": "string"
+                    },
+                    "coarse_interval_compatibility_policy": {
+                      "type": "string"
+                    },
+                    "inference_policy": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "observation_policy": {
+                      "type": "string"
+                    },
+                    "same_session_observation_transition_count": {
+                      "type": "null"
+                    },
+                    "same_timestamp_continuation_count": {
+                      "type": "null"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "model.timestamp_batching_observation.v1"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "transition_count": {
+              "type": "int"
+            }
+          },
+          "type": "object"
+        },
+        "event_tape": {
+          "item_profiles": [
+            {
+              "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
+                "event_index": {
+                  "type": "int"
+                },
+                "latent_event_time_utc_nanos": {
+                  "type": "int"
+                },
+                "observed_log_price": {
+                  "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "market_pressure_state": {
+                  "type": "float"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "event_tape_metadata": {
+          "fields": {
+            "event_ordering_policy": {
+              "type": "string",
+              "value": "deterministic_tie_break.v1"
+            },
+            "event_record_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.record.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "buy_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "state_snapshot_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.state_snapshot.v1"
+            },
+            "timestamp_batching_surface": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            }
+          },
+          "type": "object"
+        },
+        "fine_path": {
+          "item_profiles": [
+            {
+              "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
+                "latent_transition_time_utc_nanos": {
+                  "type": "int"
+                },
+                "market_state": {
+                  "type": "string"
+                },
+                "news_arrival_component": {
+                  "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
+                },
+                "observed_timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "market_pressure_state": {
+                  "type": "float"
+                },
+                "return_components": {
+                  "fields": {
+                    "buy_side_return": {
+                      "type": "float"
+                    },
+                    "closed_gap_return": {
+                      "type": "float"
+                    },
+                    "open_jump_return": {
+                      "type": "float"
+                    },
+                    "sell_side_return": {
+                      "type": "float"
+                    },
+                    "total_return": {
+                      "type": "float"
+                    },
+                    "trading_time_return": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "transition_index": {
+                  "type": "int"
+                },
+                "transition_kind": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "fields": {
+            "event_projection_record_schema_version": {
+              "type": "string"
+            },
+            "path_record_schema_version": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "buy_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "timestamp_batching_surface": {
+              "fields": {
+                "bucket_width_nanos": {
+                  "type": "null"
+                },
+                "bucket_width_source": {
+                  "type": "string"
+                },
+                "coarse_interval_compatibility_policy": {
+                  "type": "string"
+                },
+                "inference_policy": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "observation_policy": {
+                  "type": "string"
+                },
+                "same_session_observation_transition_count": {
+                  "type": "null"
+                },
+                "same_timestamp_continuation_count": {
+                  "type": "null"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "model.timestamp_batching_observation.v1"
+                }
+              },
+              "type": "object"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "latent_event_time_and_observed_timestamp_utc_nanos.v1"
+            },
+            "transition_ordering_policy": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "simulation.seeded_tick_event.path.v1"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "schema_version": "python.workflow_response_schema_snapshot.v1"
+}

@@ -1,0 +1,239 @@
+{
+  "data_summary": {
+    "empirical_market_data": {
+      "event_count": 13979843,
+      "finite_return_count": 13979586,
+      "horizon": "5m",
+      "horizon_duration_nanos": 300000000000,
+      "label": "Empirical",
+      "original_timestamp_order_is_monotonic": true,
+      "positive_price_count": 13979843,
+      "price_column": "trade_price",
+      "return_summary": {
+        "maximum": 334.21068570433476,
+        "mean": -0.10576252728917994,
+        "minimum": -69.71803792987785,
+        "quantiles": {
+          "p001": -51.61142969278387,
+          "p01": -28.919664857234295,
+          "p05": -17.44650491714239,
+          "p50": -0.3679920514088053,
+          "p95": 16.79700288542918,
+          "p99": 29.754984332972487,
+          "p999": 76.02510377509475
+        },
+        "standard_deviation": 11.975753625097312
+      },
+      "return_unit": "log_return_basis_points",
+      "source_observation_count": 13979586,
+      "timestamp_max_utc": "2026-04-01T23:59:52.316025957+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.041603953+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "trade_price",
+      "value_null_count": 0
+    },
+    "synthetic_model_output": {
+      "event_count": 13974521,
+      "finite_return_count": 13974116,
+      "horizon": "5m",
+      "horizon_duration_nanos": 300000000000,
+      "label": "Janiform synthetic",
+      "original_timestamp_order_is_monotonic": true,
+      "positive_price_count": 13974521,
+      "price_column": "price",
+      "return_summary": {
+        "maximum": 164.00963604002783,
+        "mean": 0.37715975338732616,
+        "minimum": -129.38536141897217,
+        "quantiles": {
+          "p001": -78.60621667669321,
+          "p01": -47.69023846955989,
+          "p05": -26.50956754360223,
+          "p50": 0.0,
+          "p95": 27.06532289490582,
+          "p99": 52.10886104000778,
+          "p999": 100.39678282751413
+        },
+        "standard_deviation": 17.19778292335167
+      },
+      "return_unit": "log_return_basis_points",
+      "source_observation_count": 13974116,
+      "timestamp_max_utc": "2026-04-02T00:00:00+00:00",
+      "timestamp_min_utc": "2026-03-02T00:00:00.319524608+00:00",
+      "timestamp_null_count": 0,
+      "value_column": "price",
+      "value_null_count": 0
+    }
+  },
+  "figure": {
+    "id": "tick_return_distributions_5m_histogram_comparison",
+    "title": "Empirical vs Janiform synthetic ES 5m log-return distribution"
+  },
+  "generated_at_utc": "2026-06-26T00:40:14.676743+00:00",
+  "generator": {
+    "command": [
+      "paper\\scripts\\figures\\tick_return_distributions.py"
+    ],
+    "git_commit": "96af979123e08532075dc30ca27a40b41feff1b8",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.14.0 (tags/v3.14.0:ebf955d, Oct  7 2025, 10:15:03) [MSC v.1944 64 bit (AMD64)]",
+    "script_path": "paper/scripts/figures/tick_return_distributions.py"
+  },
+  "inputs": [
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "databento_converted",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "event_timestamp_utc",
+        "trade_price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "event_timestamp_utc",
+        "receive_timestamp_utc",
+        "trade_price",
+        "trade_size",
+        "trade_sign",
+        "bid_price",
+        "ask_price",
+        "bid_size",
+        "ask_size",
+        "bid_order_count",
+        "ask_order_count",
+        "instrument_id",
+        "publisher_id",
+        "sequence",
+        "flags",
+        "ts_in_delta",
+        "raw_symbol",
+        "source_file",
+        "source_date_utc",
+        "active_contract_symbol",
+        "is_roll_boundary_source_date",
+        "roll_adjustment_increment",
+        "cumulative_additive_back_adjustment",
+        "continuous_series_id",
+        "source_contract_symbol",
+        "raw_trade_price",
+        "raw_bid_price",
+        "raw_ask_price"
+      ],
+      "parquet_row_count": 13979843,
+      "parquet_row_group_count": 14,
+      "path": "data/databento-converted/ES_FUT-TBBO/continuous/es_continuous.parquet",
+      "role": "empirical_market_data",
+      "size_bytes": 392260938,
+      "timestamp_column": "event_timestamp_utc"
+    },
+    {
+      "artifact_type": "parquet",
+      "dataset_family": "janiform_synthetic",
+      "exists": true,
+      "instrument": "ES continuous future",
+      "loaded_columns": [
+        "timestamp_utc",
+        "price"
+      ],
+      "media_type": "application/vnd.apache.parquet",
+      "parquet_columns": [
+        "timestamp_utc",
+        "price",
+        "side",
+        "observed_log_price",
+        "anchor_value",
+        "deviation_from_anchor"
+      ],
+      "parquet_row_count": 13974521,
+      "parquet_row_group_count": 14,
+      "path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
+      "role": "synthetic_model_output",
+      "size_bytes": 155478887,
+      "timestamp_column": "timestamp_utc"
+    }
+  ],
+  "notes": [
+    "Tick returns are adjacent event-to-event log returns.",
+    "Clock-horizon returns use the last observed price at or before the horizon endpoint.",
+    "Histogram and KDE x-ranges use pooled empirical and synthetic return quantiles.",
+    "Single-dataset QQ plots compare against a fitted normal distribution."
+  ],
+  "outputs": [
+    {
+      "artifact_type": "pdf",
+      "exists": true,
+      "media_type": "application/pdf",
+      "path": "paper/assets/figures/tick_return_distributions/tick_return_distributions_5m_histogram_comparison.pdf",
+      "role": "figure",
+      "sha256": "7a9a6219a31aacb83acae192cb33636360d92f6574a4ce34ac59ec729fae99e5",
+      "size_bytes": 24496
+    }
+  ],
+  "parameters": {
+    "clock_horizon_return_policy": "last_observed_price_at_or_before_start_plus_horizon",
+    "histogram_bin_count": 160,
+    "horizons": [
+      {
+        "duration_nanos": null,
+        "label": "tick"
+      },
+      {
+        "duration_nanos": 1000000000,
+        "label": "1s"
+      },
+      {
+        "duration_nanos": 60000000000,
+        "label": "1m"
+      },
+      {
+        "duration_nanos": 300000000000,
+        "label": "5m"
+      },
+      {
+        "duration_nanos": 3600000000000,
+        "label": "1h"
+      },
+      {
+        "duration_nanos": 86400000000000,
+        "label": "daily"
+      }
+    ],
+    "kde_bandwidth_policy": "silverman_rule_1_06_sigma_n_to_negative_one_fifth",
+    "kde_point_count": 240,
+    "kde_policy": "gaussian_kde_approximated_from_histogram_bins",
+    "matplotlib_config_dir": "paper/build/matplotlib",
+    "plot_tail_probability": 0.001,
+    "return_scale": 10000.0,
+    "return_unit": "log_return_basis_points",
+    "style": [
+      "science",
+      "no-latex"
+    ],
+    "style_provider": "scienceplots"
+  },
+  "plot_summary": {
+    "plot_range_basis_points": {
+      "maximum": 94.0969560692863,
+      "minimum": -69.35658370315791
+    },
+    "plot_type": "histogram_with_binned_gaussian_kde",
+    "series": [
+      {
+        "label": "Empirical",
+        "lower_tail_excluded_count": 6,
+        "plotted_return_count": 13970492,
+        "upper_tail_excluded_count": 9088
+      },
+      {
+        "label": "Janiform synthetic",
+        "lower_tail_excluded_count": 27948,
+        "plotted_return_count": 13927302,
+        "upper_tail_excluded_count": 18866
+      }
+    ],
+    "x_axis": "log_return_basis_points",
+    "y_axis": "density"
+  },
+  "schema_version": "paper.figure_metadata.v1"
+}

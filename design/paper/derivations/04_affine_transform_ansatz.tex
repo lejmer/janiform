@@ -1,0 +1,98 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Affine transform ansatz}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Affine transform ansatz\\
+\textbf{Depends on.} Conditional trading block, news transform, long-variance normalization\\
+\textbf{Feeds.} Riccati system, affine domain constraints, terminal pricing measure
+
+\section{Purpose}
+
+State the exponential-affine form used for interval transforms when market
+pressure is a finite-state signed-balance CTMC.
+
+\section{Setup}
+
+Let \(\mathbf Y_t\) be the Hawkes reaction state, \(Z_t\) the long-variance
+state, and \(\Omega_t\in\{1,\ldots,K_\Omega\}\) the pressure state.
+The pressure support value in state \(k\) is \(b_k\in[-1,1]\), the physical
+pressure generator is \(\mathcal G^\Omega\), and the non-negative
+signed-balance exposure scale on the interval is \(e^\Omega\).
+
+For a transform return loading \(r_\Omega\) and pressure exposure risk price
+\(\rho_\Omega\), define the pressure diagonal loading
+\[
+    \ell_k^\Omega
+    =
+    (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_k.
+\]
+For physical moment and simulation transforms, \(\rho_\Omega=0\).
+
+\section{Ansatz}
+
+For terminal pressure values \(\mathbf f^\Omega(0)\), the interval transform
+has the form
+\[
+    F_k(\tau,\mathbf y,z)
+    =
+    \exp\!\left(C(\tau)+\mathbf D(\tau)\cdot\mathbf y+V(\tau)z\right)
+    f_k^\Omega(\tau),
+\]
+where \(k\) is the pressure state at the interval start in backward time.
+For an initial pressure distribution \(\mathbf p^\Omega_0\), the pressure
+factor is \(\mathbf p^\Omega_0\cdot\mathbf f^\Omega(\Delta)\).
+
+\section{Pressure factor}
+
+The finite-state pressure factor evolves by the backward Kolmogorov equation
+\[
+    \partial_\tau\mathbf f^\Omega(\tau)
+    =
+    \left(\mathcal G^\Omega+\operatorname{diag}(\ell_1^\Omega,\ldots,\ell_{K_\Omega}^\Omega)\right)
+    \mathbf f^\Omega(\tau).
+\]
+Thus
+\[
+    \mathbf f^\Omega(\Delta)
+    =
+    \exp\!\left(
+        \Delta\left(\mathcal G^\Omega+\operatorname{diag}(\boldsymbol\ell^\Omega)\right)
+    \right)\mathbf f^\Omega(0).
+\]
+
+\section{Separation}
+
+The Hawkes and long-variance affine terms remain exponential-affine because the
+pressure state changes side composition and anchor drift but does not add a
+Hawkes jump loading. The pressure contribution is finite-dimensional and
+multiplies the usual affine factor rather than appearing as a scalar loading in
+the Hawkes event Hamiltonians.
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Finite-state pressure factor
+& Pressure transform is a matrix exponential over support states.
+& \texttt{market\_pressure\_transform\_values}\\
+Initial pressure distribution
+& Boundary probabilities weight pressure transform values.
+& \texttt{market\_pressure\_transform\_log\_factor}\\
+Pressure-risk tangent
+& The derivative is the diagonal exposure loading \(-e^\Omega b_k\).
+& \texttt{market\_pressure\_transform\_values\_and\_derivative}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

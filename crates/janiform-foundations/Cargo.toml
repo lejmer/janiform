@@ -1,0 +1,26 @@
+[package]
+name = "janiform-foundations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Low-level shared foundation primitives for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_foundations"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+arrow-array = { workspace = true }
+chrono = { workspace = true }
+csv = { workspace = true }
+nalgebra = { workspace = true }
+parquet = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+arrow-schema = { workspace = true }

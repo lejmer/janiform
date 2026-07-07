@@ -1,0 +1,23 @@
+[package]
+name = "janiform-engine-sufficient-statistics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Sufficient-statistics runtime engine for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_engine_sufficient_statistics"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

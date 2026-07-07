@@ -1,0 +1,657 @@
+{
+  "schema_version": "preset.source.market_profiles.v1",
+  "bundle_id": "janiform_bundled_presets",
+  "bundle_version": "v1",
+  "generator_id": "janiform.curated_preset_generator",
+  "generator_version": "1.0.0",
+  "generated_on": "2026-05-30",
+  "presets": [
+    {
+      "preset_name": "eurusd_spot",
+      "display_name": "EUR/USD Spot",
+      "description": "Default EUR/USD spot profile with the bundled 24/5 FX session and suggested EU and US macro events.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.eurusd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "eu_us_macro_fx_core@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "eurusd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "eu_us_macro_fx_core",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "usdjpy_spot",
+      "display_name": "USD/JPY Spot",
+      "description": "Default USD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.usdjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "usdjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "gbpusd_spot",
+      "display_name": "GBP/USD Spot",
+      "description": "Default GBP/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.gbpusd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "gbpusd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "audusd_spot",
+      "display_name": "AUD/USD Spot",
+      "description": "Default AUD/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.audusd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "audusd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "usdcad_spot",
+      "display_name": "USD/CAD Spot",
+      "description": "Default USD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.usdcad_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "usdcad_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "usdchf_spot",
+      "display_name": "USD/CHF Spot",
+      "description": "Default USD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.usdchf_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "usdchf_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "nzdusd_spot",
+      "display_name": "NZD/USD Spot",
+      "description": "Default NZD/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.nzdusd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "nzdusd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "eurgbp_spot",
+      "display_name": "EUR/GBP Spot",
+      "description": "Default EUR/GBP spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.eurgbp_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "eurgbp_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "eurjpy_spot",
+      "display_name": "EUR/JPY Spot",
+      "description": "Default EUR/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.eurjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "eurjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "eurchf_spot",
+      "display_name": "EUR/CHF Spot",
+      "description": "Default EUR/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.eurchf_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "eurchf_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "euraud_spot",
+      "display_name": "EUR/AUD Spot",
+      "description": "Default EUR/AUD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.euraud_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "euraud_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "eurcad_spot",
+      "display_name": "EUR/CAD Spot",
+      "description": "Default EUR/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.eurcad_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "eurcad_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "eurnzd_spot",
+      "display_name": "EUR/NZD Spot",
+      "description": "Default EUR/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.eurnzd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "eurnzd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "gbpjpy_spot",
+      "display_name": "GBP/JPY Spot",
+      "description": "Default GBP/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.gbpjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "gbpjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "gbpchf_spot",
+      "display_name": "GBP/CHF Spot",
+      "description": "Default GBP/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.gbpchf_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "gbpchf_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "gbpaud_spot",
+      "display_name": "GBP/AUD Spot",
+      "description": "Default GBP/AUD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.gbpaud_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "gbpaud_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "gbpcad_spot",
+      "display_name": "GBP/CAD Spot",
+      "description": "Default GBP/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.gbpcad_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "gbpcad_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "gbpnzd_spot",
+      "display_name": "GBP/NZD Spot",
+      "description": "Default GBP/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.gbpnzd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "gbpnzd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "audjpy_spot",
+      "display_name": "AUD/JPY Spot",
+      "description": "Default AUD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.audjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "audjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "audchf_spot",
+      "display_name": "AUD/CHF Spot",
+      "description": "Default AUD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.audchf_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "audchf_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "audcad_spot",
+      "display_name": "AUD/CAD Spot",
+      "description": "Default AUD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.audcad_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "audcad_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "audnzd_spot",
+      "display_name": "AUD/NZD Spot",
+      "description": "Default AUD/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.audnzd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "audnzd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "nzdjpy_spot",
+      "display_name": "NZD/JPY Spot",
+      "description": "Default NZD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.nzdjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "nzdjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "nzdchf_spot",
+      "display_name": "NZD/CHF Spot",
+      "description": "Default NZD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.nzdchf_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "nzdchf_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "nzdcad_spot",
+      "display_name": "NZD/CAD Spot",
+      "description": "Default NZD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.nzdcad_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "nzdcad_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "cadjpy_spot",
+      "display_name": "CAD/JPY Spot",
+      "description": "Default CAD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.cadjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "cadjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "cadchf_spot",
+      "display_name": "CAD/CHF Spot",
+      "description": "Default CAD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.cadchf_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "cadchf_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.00001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "chfjpy_spot",
+      "display_name": "CHF/JPY Spot",
+      "description": "Default CHF/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "version_label": "2026.05",
+      "source_manifest_ids": ["sources.market_profiles.chfjpy_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "major_fx_currency_pair_universe", "version_label": "captured_2026-05-30"},
+        {"source_name": "bundled_session_reference", "version_label": "fx_spot_24_5@2026.05"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "chfjpy_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.001,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]}]
+      }
+    },
+    {
+      "preset_name": "us_equity_cash",
+      "display_name": "US Equity Cash",
+      "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
+      "version_label": "2026.03",
+      "source_manifest_ids": ["sources.market_profiles.us_equity_cash.v1"],
+      "upstream_source_versions": [
+        {"source_name": "bundled_session_reference", "version_label": "XNYS@2026.03"},
+        {"source_name": "bundled_known_news_reference", "version_label": "us_macro_core@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "us_equity_cash",
+        "session_preset_name": "XNYS",
+        "known_news_preset_name": "us_macro_core",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "America/New_York",
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp", "timestamp_est", "trade_time"]}]
+      }
+    },
+    {
+      "preset_name": "btcusd_spot",
+      "display_name": "BTC/USD Spot",
+      "description": "Default BTC/USD spot profile with continuous 24/7 trading and no known-news events enabled.",
+      "version_label": "2026.03",
+      "source_manifest_ids": ["sources.market_profiles.btcusd_spot.v1"],
+      "upstream_source_versions": [
+        {"source_name": "bundled_session_reference", "version_label": "crypto_24_7@2026.03"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "btcusd_spot",
+        "session_preset_name": "crypto_24_7",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.01,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["exchange_timestamp", "timestamp_utc", "trade_time_utc"]}]
+      }
+    },
+    {
+      "preset_name": "es_futures_globex",
+      "display_name": "ES Futures Globex",
+      "description": "Default E-mini S&P 500 futures profile with the bundled CME Globex session and no known-news events enabled.",
+      "version_label": "2026.03",
+      "source_manifest_ids": ["sources.market_profiles.es_futures_globex.v1"],
+      "upstream_source_versions": [
+        {"source_name": "bundled_session_reference", "version_label": "XCME@2026.03"},
+        {"source_name": "bundled_known_news_reference", "version_label": "none@2026.03"}
+      ],
+      "configuration": {
+        "profile_name": "es_futures_globex",
+        "session_preset_name": "XCME",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "tick_size": 0.25,
+        "column_alias_hints": [{"canonical_name": "timestamp", "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_recv"]}]
+      }
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Martingale tilt equation}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Martingale tilt equation for \(\theta\)\\
+\textbf{Depends on.} \texttt{08\_pricing\_density\_normalization.tex}\\
+\textbf{Feeds.} Risk-neutral characteristic function, terminal pricing measure, martingale diagnostics
+
+\section{Purpose}
+
+Derive the scalar equation that determines the terminal return tilt
+\(\theta\).
+The activity premia \(\pi_+\), \(\pi_-\), and signed-imbalance exposure risk
+price \(\rho_\Omega\) are pricing-kernel coordinates, while \(\theta\) is
+solved so that the discounted ex-dividend terminal price is a martingale.
+
+\section{Setup}
+
+Write the terminal log return as
+\[
+    R_{t,T}
+    =
+    d_{t,T}
+    +A_{t,T}^{\Omega}
+    +X_{t,T}^{\mathrm{core}},
+\]
+where \(d_{t,T}\) is deterministic conditional on \(\mathcal F_t\) and
+\(A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}}\) is the stochastic Janiform
+terminal component whose cumulant is \(K_{t,T}\).
+\(A_{t,T}^{\Omega}\) is the unweighted market-pressure anchor-pressure
+movement, while \(X_{t,T}^{\mathrm{core}}\) is the mean-reversion-weighted sum
+of interval core shocks.
+Let \(B_{t,T}^{\Omega}\) be the signed-balance exposure integral satisfying
+\(A_{t,T}^{\Omega}=\gamma_\Omega B_{t,T}^{\Omega}\).
+Under the normalized density from
+\texttt{08\_pricing\_density\_normalization.tex},
+\[
+    \frac{dQ^{\theta,\pi,\rho_\Omega}}{dP}\bigg|_{\mathcal F_T}
+    =
+    M_T(\theta,\pi_+,\pi_-,\rho_\Omega).
+\]
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(S_t\) & Valuation-time spot price & Strictly positive\\
+\(S_T\) & Terminal price, \(S_T=S_t e^{R_{t,T}}\) & Strictly positive\\
+\(r\) & Continuously compounded risk-free rate & Annualized real\\
+\(q\) & Continuously compounded dividend yield & Annualized real\\
+\(\tau\) & Year fraction from \(t\) to \(T\) & Positive\\
+\(\theta\) & Scalar martingale tilt & Real transform domain\\
+\(\pi_\pm\) & Activity-premium multipliers & Strictly positive\\
+\(\rho_\Omega\) & Signed-imbalance exposure risk price & Real finite\\
+\(B_{t,T}^{\Omega}\) & Signed-balance exposure integral & Real finite\\
+\(K_{t,T}\) & Physical stochastic terminal cumulant & Finite at requested arguments\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+The terminal price is \(S_T=S_t e^{R_{t,T}}\).
+& Translating the martingale condition into a first exponential moment.
+& Option pricing is performed on terminal prices, not only log returns.\\
+The pricing density is normalized.
+& Rewriting \(Q\)-expectations as ratios of \(P\)-moments.
+& The denominator cumulant cancels total probability.\\
+\(K_{t,T}\) is finite at both \((\theta,\rho_\Omega)\) and \((\theta+1,\rho_\Omega)\).
+& Evaluating the density denominator and the first price moment numerator.
+& The martingale equation requires both moments.\\
+The deterministic terminal component is known at valuation time.
+& Adding \(d_{t,T}\) outside the cumulant difference.
+& Deterministic log returns shift the log martingale equation directly.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Identity.} The martingale tilt \(\theta\) is any admissible
+real solution of
+\[
+    d_{t,T}
+    +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega)
+    -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
+    =
+    (r-q)\tau.
+\]
+The model uses this equation to derive \(\theta\).
+It is not an independent free pricing parameter.
+
+\section{Derivation}
+
+The ex-dividend martingale condition is
+\[
+    \mathbb E^{Q^{\theta,\pi,\rho_\Omega}}\!\left[\frac{S_T}{S_t}\mid\mathcal F_t\right]
+    =
+    e^{(r-q)\tau}.
+\]
+Since
+\[
+    \frac{S_T}{S_t}
+    =
+    e^{R_{t,T}}
+    =
+    e^{d_{t,T}}
+    e^{A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}}},
+\]
+the terminal expectation factorizes as
+\[
+    \mathbb E^{Q^{\theta,\pi,\rho_\Omega}}\!\left[e^{R_{t,T}}\mid\mathcal F_t\right]
+    =
+    e^{d_{t,T}}
+    \mathbb E^{Q^{\theta,\pi,\rho_\Omega}}\!\left[
+        e^{A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}}}
+        \mid\mathcal F_t
+    \right].
+\]
+
+Using the density \(M_T\), the stochastic expectation is
+\[
+    \mathbb E^{Q^{\theta,\pi,\rho_\Omega}}\!\left[
+        e^{A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}}}
+        \mid\mathcal F_t
+    \right]
+    =
+    \mathbb E^P\!\left[
+        e^{A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}}}
+        M_T(\theta,\pi_+,\pi_-,\rho_\Omega)
+        \mid\mathcal F_t
+    \right].
+\]
+Substituting the normalized density gives
+\[
+    \mathbb E^{Q^{\theta,\pi,\rho_\Omega}}\!\left[
+        e^{A_{t,T}^{\Omega}+X_{t,T}^{\mathrm{core}}}
+        \mid\mathcal F_t
+    \right]
+    =
+    \frac{
+        \mathbb E^P\!\left[
+            \exp\!\left(
+                (\theta+1)A_{t,T}^{\Omega}
+                +(\theta+1)X_{t,T}^{\mathrm{core}}
+                +\log(\pi_+)N_{t,T}^+
+                +\log(\pi_-)N_{t,T}^-
+                -\rho_\Omega B_{t,T}^{\Omega}
+            \right)
+            \mid\mathcal F_t
+        \right]
+    }{
+        \exp\!\left(K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)\right)
+    }.
+\]
+By definition of \(K_{t,T}\), this is
+\[
+    \exp\!\left(
+        K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
+    \right).
+\]
+Therefore
+\[
+    \mathbb E^{Q^{\theta,\pi,\rho_\Omega}}\!\left[e^{R_{t,T}}\mid\mathcal F_t\right]
+    =
+    \exp\!\left(
+        d_{t,T}
+        +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega)
+        -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
+    \right).
+\]
+Equating this to \(e^{(r-q)\tau}\) and taking logs gives
+\[
+    d_{t,T}
+    +K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega)
+    -K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega)
+    =
+    (r-q)\tau.
+\]
+This is the martingale tilt equation solved for \(\theta\).
+
+\section{Domain and validity}
+
+The equation is valid only for real \(\theta\) such that both
+\(\theta\) and \(\theta+1\) are inside the terminal cumulant domain for the
+given \(\pi_+\), \(\pi_-\), and \(\rho_\Omega\).
+The density must be normalized, the activity premia must be strictly positive,
+the pressure risk price must be finite,
+and the affine schedule evaluations must remain finite.
+Existence and uniqueness are numerical root-solving questions
+inside the admissible interval and are not implied by normalization alone.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item The martingale tilt is derived from no-arbitrage and the chosen pricing-kernel coordinates.
+    \item The same denominator cumulant used for density normalization appears in the martingale equation.
+    \item The numerator uses a \(+1\) shift because the martingale condition is a first price moment.
+    \item Martingale diagnostics should report the residual of this equation, not a fitted \(\theta\) objective.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Residual equation
+& The residual is \(d_{t,T}+K(\theta+1)-K(\theta)-(r-q)\tau\).
+& \texttt{evaluate\_terminal\_affine\_martingale\_residual} in \texttt{crates/janiform-engine-pricing/src/spectral/pricer/terminal\_affine/core.rs}\\
+Theta solve
+& The terminal affine pricer solves \(\theta\) through a bracketed local-tilt residual solve.
+& \texttt{solve\_terminal\_affine\_martingale\_theta} in \texttt{crates/janiform-engine-pricing/src/spectral/pricer/terminal\_affine/core.rs}\\
+Martingale diagnostics
+& The reported absolute martingale residual is within the configured tolerance.
+& Test \texttt{terminal\_affine\_measure\_change\_normalizes\_characteristic\_and\_martingale}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

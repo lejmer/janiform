@@ -1,0 +1,163 @@
+name: multiplatform-verification
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-rust-verification:
+    name: Linux Rust verification (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            package_args: >-
+              -p janiform-foundations
+              -p janiform-market-time
+              -p janiform-model-kernels
+              -p janiform-affine-oracle
+              -p janiform-event-log
+              -p janiform-test-support
+          - name: engines-validation
+            package_args: >-
+              -p janiform-engine-pricing
+              -p janiform-engine-simulation
+              -p janiform-engine-sufficient-statistics
+              -p janiform-validation
+          - name: calibration-workflows
+            package_args: >-
+              -p janiform-calibration-artifacts
+              -p janiform-calibration-runtime
+              -p janiform-work-scheduler
+              -p janiform-workflows
+              -p janiform-joint-refinement-worker
+          - name: verification
+            package_args: >-
+              -p janiform-verification
+          - name: interfaces-governance
+            package_args: >-
+              -p janiform
+              -p janiform-cli
+              -p janiform-terminal-ui
+              -p janiform-pybind
+              -p janiform-governance
+              -p janiform-governance-bench
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      TMPDIR: /tmp
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run Rust verification shard
+        run: cargo test --no-fail-fast ${{ matrix.package_args }}
+
+  linux-python-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      QT_QPA_PLATFORM: offscreen
+      TMPDIR: /tmp
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1 libgl1 libxkbcommon-x11-0
+
+      - name: Bootstrap Linux environment
+        run: ./scripts/bootstrap-linux.sh .venv-linux
+
+      - name: Remove Rust build artifacts before Python tests
+        run: cargo clean
+
+      - name: Run Python verification
+        run: ./scripts/test-python-linux.sh .venv-linux
+
+      - name: Verify generated artifacts
+        run: |
+          ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
+          ./.venv-linux/bin/python scripts/generate_internal_crate_graph_policy.py --check
+          ./.venv-linux/bin/python scripts/generate_third_party_notices.py --check
+
+  windows-build-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Windows build and smoke test frontend
+        shell: pwsh
+        run: python -m pip install --upgrade pip uv maturin
+
+      - name: Build Windows Python wheel
+        shell: pwsh
+        run: python -m maturin build --manifest-path crates/janiform-pybind/Cargo.toml --out dist
+
+      - name: Run Windows build smoke checks
+        shell: pwsh
+        run: |
+          $wheel = Get-ChildItem dist -Filter "*.whl" | Select-Object -First 1
+          if ($null -eq $wheel) {
+            throw "No Windows wheel was built."
+          }
+
+          python -m venv .wheel-smoke
+          $env:UV_PROJECT_ENVIRONMENT = ".wheel-smoke"
+          uv sync --no-install-project --frozen
+          .\.wheel-smoke\Scripts\python -m pip install pytest pytest-benchmark
+          .\.wheel-smoke\Scripts\python -m pip install --no-deps $wheel.FullName
+          .\.wheel-smoke\Scripts\python -c "import janiform; import janiform._native"
+          .\.wheel-smoke\Scripts\python -m janiform --help
+          .\.wheel-smoke\Scripts\python -m pytest -o pythonpath= `
+            tests/test_api_contract_guardrails.py `
+            tests/test_public_api_surface_map.py `
+            tests/test_experimental_api_surface.py

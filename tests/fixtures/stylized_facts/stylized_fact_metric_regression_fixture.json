@@ -1,0 +1,1800 @@
+{
+  "schema_version": "validation.stylized_fact.metric_regression.fixture.v1",
+  "fixture_set_id": "stylized_fact_metric_regression_fixture_v1",
+  "fixture_set_version": "1.0.0",
+  "schema_metadata": {
+    "schema_family": "validation.stylized_fact.metric_regression.fixture",
+    "schema_generation": "v1",
+    "forward_extension_policy": "additive_fields_only.v1"
+  },
+  "determinism_metadata": {
+    "case_order_policy": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
+  },
+  "tolerance_policies": [
+    {
+      "policy_id": "stylized_fact_exact_match_policy.v1",
+      "policy_kind": "deterministic_exact_match",
+      "policy_version": "1.0.0",
+      "point_estimate_absolute_tolerance": 1e-12,
+      "absolute_delta_tolerance": 1e-12,
+      "confidence_interval_bound_absolute_tolerance": 0.0,
+      "require_confidence_intervals": false
+    },
+    {
+      "policy_id": "stylized_fact_seeded_bootstrap_policy.v1",
+      "policy_kind": "bootstrap_confidence_interval",
+      "policy_version": "1.0.0",
+      "point_estimate_absolute_tolerance": 1e-12,
+      "absolute_delta_tolerance": 1e-12,
+      "confidence_interval_bound_absolute_tolerance": 1e-12,
+      "require_confidence_intervals": true
+    }
+  ],
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "activity_clustering",
+      "tail_skew",
+      "volatility_persistence",
+      "gap_behavior",
+      "sparse_insufficient_data",
+      "deterministic_exact_match",
+      "bootstrap_confidence_interval",
+      "two_horizons"
+    ],
+    "required_diagnostic_kinds": [
+      "activity_clustering",
+      "tail_skew",
+      "volatility_persistence",
+      "gap_behavior"
+    ],
+    "required_tolerance_policy_ids": [
+      "stylized_fact_exact_match_policy.v1",
+      "stylized_fact_seeded_bootstrap_policy.v1"
+    ],
+    "stable_fixture_ids": [
+      "activity_clustering_dense_sparse_exact_v1",
+      "tail_skew_dense_sparse_exact_v1",
+      "volatility_persistence_dense_sparse_bootstrap_v1",
+      "gap_behavior_dense_bootstrap_v1"
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "activity_clustering_dense_sparse_exact_v1",
+      "diagnostic_kind": "activity_clustering",
+      "tolerance_policy_id": "stylized_fact_exact_match_policy.v1",
+      "provenance": {
+        "baseline_source": "crates/janiform/tests/activity_clustering_diagnostics.rs",
+        "captured_at_utc": "2026-03-05T00:00:00Z",
+        "update_guidance": "Regenerate only when controlled activity-clustering diagnostics change intentionally."
+      },
+      "request_payload": {
+        "analysis_start_utc_nanos": 0,
+        "analysis_end_utc_nanos": 100,
+        "empirical_dataset": {
+          "dataset_id": "empirical",
+          "event_timestamps_utc_nanos": [
+            1,
+            5,
+            12,
+            18,
+            24,
+            41,
+            74,
+            82
+          ],
+          "return_observations": [
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
+          ]
+        },
+        "simulated_dataset": {
+          "dataset_id": "simulated",
+          "event_timestamps_utc_nanos": [
+            1,
+            5,
+            12,
+            18,
+            24,
+            41,
+            74,
+            82
+          ],
+          "return_observations": [
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
+          ]
+        },
+        "horizon_buckets": [
+          {
+            "horizon_label": "20n_dense",
+            "horizon_duration_nanos": 20
+          },
+          {
+            "horizon_label": "5n_sparse",
+            "horizon_duration_nanos": 5
+          }
+        ],
+        "bootstrap_configuration": {
+          "confidence_level": 0.95,
+          "replication_count": 300,
+          "block_length_interval_count": 3,
+          "random_seed": 1337
+        },
+        "sample_sufficiency_policy": {
+          "event_burst_duration_quantile_ratio": {
+            "minimum_sample_count": 1,
+            "minimum_effective_sample_count": 1,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.6
+          },
+          "event_interarrival_expected_shortfall_ratio": {
+            "minimum_sample_count": 2,
+            "minimum_effective_sample_count": 2,
+            "minimum_tail_observation_count": 1,
+            "minimum_horizon_coverage_ratio": 0.6
+          },
+          "volatility_abs_return_lag1_autocorrelation": {
+            "minimum_sample_count": 2,
+            "minimum_effective_sample_count": 1,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.6
+          }
+        },
+        "threshold_policy": {
+          "comparison_policy_id": "absolute_delta_threshold_policy.v1",
+          "event_burst_duration_quantile_ratio_max_absolute_delta": 0.35,
+          "event_interarrival_expected_shortfall_ratio_max_absolute_delta": 0.35,
+          "volatility_abs_return_lag1_autocorrelation_max_absolute_delta": 0.2
+        }
+      },
+      "expected_metrics": [
+        {
+          "horizon_label": "20n_dense",
+          "metric_id": "activity_burst_duration_quantile_ratio_q90_q50",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.0,
+          "expected_simulated_value": 1.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "20n_dense",
+          "metric_id": "activity_interarrival_expected_shortfall_ratio",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.1702127659574473,
+          "expected_simulated_value": 1.1702127659574473,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "20n_dense",
+          "metric_id": "volatility_abs_return_lag1_autocorrelation",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "activity_burst_duration_quantile_ratio_q90_q50",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 3.8000000000000007,
+          "expected_simulated_value": 3.8000000000000007,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "activity_interarrival_expected_shortfall_ratio",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 1.1702127659574473,
+          "expected_simulated_value": 1.1702127659574473,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "volatility_abs_return_lag1_autocorrelation",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": -0.8045454545454546,
+          "expected_simulated_value": -0.8045454545454546,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        }
+      ],
+      "tags": [
+        "activity_clustering",
+        "sparse_insufficient_data",
+        "deterministic_exact_match",
+        "two_horizons"
+      ],
+      "description": "Controlled activity-clustering fixture with one dense horizon and one sparse horizon."
+    },
+    {
+      "fixture_id": "tail_skew_dense_sparse_exact_v1",
+      "diagnostic_kind": "tail_skew",
+      "tolerance_policy_id": "stylized_fact_exact_match_policy.v1",
+      "provenance": {
+        "baseline_source": "crates/janiform/tests/tail_skew_diagnostics.rs",
+        "captured_at_utc": "2026-03-05T00:00:00Z",
+        "update_guidance": "Regenerate only when controlled tail-skew diagnostics change intentionally."
+      },
+      "request_payload": {
+        "analysis_start_utc_nanos": 0,
+        "analysis_end_utc_nanos": 810,
+        "empirical_dataset": {
+          "dataset_id": "empirical",
+          "return_observations": [
+            {
+              "timestamp_utc_nanos": 1,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 11,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 21,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 31,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 41,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 51,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 61,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 71,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 81,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 91,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 101,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 111,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 121,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 131,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 141,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 151,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 161,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 171,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 181,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 191,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 201,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 211,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 221,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 231,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 241,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 251,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 261,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 271,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 281,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 291,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 301,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 311,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 321,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 331,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 341,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 351,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 361,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 371,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 381,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 391,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 401,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 411,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 421,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 431,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 441,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 451,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 461,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 471,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 481,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 491,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 501,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 511,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 521,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 531,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 541,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 551,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 561,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 571,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 581,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 591,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 601,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 611,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 621,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 631,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 641,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 651,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 661,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 671,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 681,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 691,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 701,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 711,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 721,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 731,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 741,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 751,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 761,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 771,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 781,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 791,
+              "return_increment": 4.0
+            }
+          ]
+        },
+        "simulated_dataset": {
+          "dataset_id": "simulated",
+          "return_observations": [
+            {
+              "timestamp_utc_nanos": 1,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 11,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 21,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 31,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 41,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 51,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 61,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 71,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 81,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 91,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 101,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 111,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 121,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 131,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 141,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 151,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 161,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 171,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 181,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 191,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 201,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 211,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 221,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 231,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 241,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 251,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 261,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 271,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 281,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 291,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 301,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 311,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 321,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 331,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 341,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 351,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 361,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 371,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 381,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 391,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 401,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 411,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 421,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 431,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 441,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 451,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 461,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 471,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 481,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 491,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 501,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 511,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 521,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 531,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 541,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 551,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 561,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 571,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 581,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 591,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 601,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 611,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 621,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 631,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 641,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 651,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 661,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 671,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 681,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 691,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 701,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 711,
+              "return_increment": 4.0
+            },
+            {
+              "timestamp_utc_nanos": 721,
+              "return_increment": -4.0
+            },
+            {
+              "timestamp_utc_nanos": 731,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 741,
+              "return_increment": -1.0
+            },
+            {
+              "timestamp_utc_nanos": 751,
+              "return_increment": -0.5
+            },
+            {
+              "timestamp_utc_nanos": 761,
+              "return_increment": 0.5
+            },
+            {
+              "timestamp_utc_nanos": 771,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 781,
+              "return_increment": 2.0
+            },
+            {
+              "timestamp_utc_nanos": 791,
+              "return_increment": 4.0
+            }
+          ]
+        },
+        "horizon_buckets": [
+          {
+            "horizon_label": "10n_dense",
+            "horizon_duration_nanos": 10
+          },
+          {
+            "horizon_label": "5n_sparse",
+            "horizon_duration_nanos": 5
+          }
+        ],
+        "bootstrap_configuration": {
+          "confidence_level": 0.95,
+          "replication_count": 250,
+          "block_length_interval_count": 4,
+          "random_seed": 11221
+        },
+        "sample_sufficiency_policy": {
+          "returns_abs_quantile_shape_ratio_q99_q95": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_left_tail_expected_shortfall_to_var_ratio": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 1,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_bowley_skewness_quantile": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_signed_tail_expected_shortfall_imbalance": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 1,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_l_moment_lambda2": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_l_moment_tau3": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_central_variance": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_central_skewness": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          },
+          "returns_central_excess_kurtosis": {
+            "minimum_sample_count": 8,
+            "minimum_effective_sample_count": 6,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.9
+          }
+        }
+      },
+      "expected_metrics": [
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_abs_quantile_shape_ratio_q99_q95",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.0,
+          "expected_simulated_value": 1.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_left_tail_expected_shortfall_to_var_ratio",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.0,
+          "expected_simulated_value": 1.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_bowley_skewness_quantile",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_signed_tail_expected_shortfall_imbalance",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_l_moment_lambda2",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.3132911392405062,
+          "expected_simulated_value": 1.3132911392405062,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_l_moment_tau3",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_central_variance",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 5.379746835443038,
+          "expected_simulated_value": 5.379746835443038,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_central_skewness",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "10n_dense",
+          "metric_id": "returns_central_excess_kurtosis",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": -0.540284421460892,
+          "expected_simulated_value": -0.540284421460892,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_abs_quantile_shape_ratio_q99_q95",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 1.0,
+          "expected_simulated_value": 1.0,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_left_tail_expected_shortfall_to_var_ratio",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 1.0,
+          "expected_simulated_value": 1.0,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_bowley_skewness_quantile",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_signed_tail_expected_shortfall_imbalance",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_l_moment_lambda2",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 1.3132911392405062,
+          "expected_simulated_value": 1.3132911392405062,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_l_moment_tau3",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_central_variance",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 5.379746835443038,
+          "expected_simulated_value": 5.379746835443038,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_central_skewness",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "returns_central_excess_kurtosis",
+          "metric_variant": null,
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": -0.540284421460892,
+          "expected_simulated_value": -0.540284421460892,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        }
+      ],
+      "tags": [
+        "tail_skew",
+        "sparse_insufficient_data",
+        "deterministic_exact_match",
+        "two_horizons"
+      ],
+      "description": "Symmetric heavy-tail fixture with sparse 5n coverage gate to force insufficient data."
+    },
+    {
+      "fixture_id": "volatility_persistence_dense_sparse_bootstrap_v1",
+      "diagnostic_kind": "volatility_persistence",
+      "tolerance_policy_id": "stylized_fact_seeded_bootstrap_policy.v1",
+      "provenance": {
+        "baseline_source": "crates/janiform/tests/volatility_persistence_diagnostics.rs",
+        "captured_at_utc": "2026-03-05T00:00:00Z",
+        "update_guidance": "Regenerate only when controlled volatility-persistence diagnostics change intentionally."
+      },
+      "request_payload": {
+        "analysis_start_utc_nanos": 0,
+        "analysis_end_utc_nanos": 100,
+        "empirical_dataset": {
+          "dataset_id": "empirical",
+          "return_observations": [
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
+          ]
+        },
+        "simulated_dataset": {
+          "dataset_id": "simulated",
+          "return_observations": [
+            {
+              "timestamp_utc_nanos": 2,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 12,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 22,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 32,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 42,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 52,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 62,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 72,
+              "return_increment": -2.0
+            },
+            {
+              "timestamp_utc_nanos": 82,
+              "return_increment": 1.0
+            },
+            {
+              "timestamp_utc_nanos": 92,
+              "return_increment": -2.0
+            }
+          ]
+        },
+        "horizon_buckets": [
+          {
+            "horizon_label": "20n_dense",
+            "horizon_duration_nanos": 20
+          },
+          {
+            "horizon_label": "5n_sparse",
+            "horizon_duration_nanos": 5
+          }
+        ],
+        "lag_settings": [
+          {
+            "lag_label": "lag_1",
+            "lag_interval_count": 1
+          },
+          {
+            "lag_label": "lag_2",
+            "lag_interval_count": 2
+          }
+        ],
+        "bootstrap_configuration": {
+          "confidence_level": 0.95,
+          "replication_count": 300,
+          "block_length_interval_count": 3,
+          "random_seed": 1337
+        },
+        "sample_sufficiency_policy": {
+          "lagged_abs_return_autocorrelation": {
+            "minimum_sample_count": 2,
+            "minimum_effective_sample_count": 1,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.6
+          }
+        },
+        "threshold_policy": {
+          "comparison_policy_id": "absolute_delta_threshold_policy.v1",
+          "lagged_abs_return_autocorrelation_max_absolute_delta": 0.2
+        }
+      },
+      "expected_metrics": [
+        {
+          "horizon_label": "20n_dense",
+          "metric_id": "volatility_abs_return_acf_distribution_distance",
+          "metric_variant": "lag_1",
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": {
+            "lower_bound": 0.0,
+            "upper_bound": 0.0,
+            "confidence_level": 0.95
+          },
+          "expected_simulated_confidence_interval": {
+            "lower_bound": 0.0,
+            "upper_bound": 0.0,
+            "confidence_level": 0.95
+          }
+        },
+        {
+          "horizon_label": "20n_dense",
+          "metric_id": "volatility_abs_return_acf_distribution_distance",
+          "metric_variant": "lag_2",
+          "expected_status": "available",
+          "expected_empirical_value": 0.0,
+          "expected_simulated_value": 0.0,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": {
+            "lower_bound": 0.0,
+            "upper_bound": 0.0,
+            "confidence_level": 0.95
+          },
+          "expected_simulated_confidence_interval": {
+            "lower_bound": 0.0,
+            "upper_bound": 0.0,
+            "confidence_level": 0.95
+          }
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "volatility_abs_return_acf_distribution_distance",
+          "metric_variant": "lag_1",
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": -0.8045454545454546,
+          "expected_simulated_value": -0.8045454545454546,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        },
+        {
+          "horizon_label": "5n_sparse",
+          "metric_id": "volatility_abs_return_acf_distribution_distance",
+          "metric_variant": "lag_2",
+          "expected_status": "insufficient_data",
+          "expected_empirical_value": 0.5727272727272728,
+          "expected_simulated_value": 0.5727272727272728,
+          "expected_absolute_delta": null,
+          "expected_empirical_confidence_interval": null,
+          "expected_simulated_confidence_interval": null
+        }
+      ],
+      "tags": [
+        "volatility_persistence",
+        "sparse_insufficient_data",
+        "bootstrap_confidence_interval",
+        "two_horizons"
+      ],
+      "description": "Controlled volatility-persistence fixture with seeded bootstrap intervals and sparse coverage gating."
+    },
+    {
+      "fixture_id": "gap_behavior_dense_bootstrap_v1",
+      "diagnostic_kind": "gap_behavior",
+      "tolerance_policy_id": "stylized_fact_seeded_bootstrap_policy.v1",
+      "provenance": {
+        "baseline_source": "crates/janiform/tests/gap_behavior_diagnostics.rs",
+        "captured_at_utc": "2026-03-05T00:00:00Z",
+        "update_guidance": "Regenerate only when controlled gap-behavior diagnostics change intentionally."
+      },
+      "request_payload": {
+        "analysis_start_utc_nanos": 0,
+        "analysis_end_utc_nanos": 100,
+        "empirical_dataset": {
+          "dataset_id": "empirical",
+          "scenarios": [
+            {
+              "scenario_id": "empirical_intraday",
+              "exchange_code": "XNYS",
+              "scenario_class": "known_only",
+              "deterministic_replay_metadata": {
+                "replay_baseline_id": "baseline_intraday",
+                "event_calendar_binding_id": "calendar_binding_intraday",
+                "jump_observation_binding_id": "jump_obs_intraday",
+                "gap_observation_binding_id": "gap_obs_intraday",
+                "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+                "candidate_selection_rank": 0
+              },
+              "issue_traceability": {
+                "issue_id": "JAN-167",
+                "semantic_focus_tags": [
+                  "open_jump",
+                  "activity_coupling"
+                ]
+              },
+              "tags": [
+                "open_window",
+                "intraday"
+              ],
+              "event_observations": [
+                {
+                  "event_id": "event_open_0",
+                  "timestamp_utc_nanos": 1,
+                  "market_state": "open",
+                  "closed_window_regime": null,
+                  "activity_coupling_increment": 0.2,
+                  "open_jump_increment": -1.0,
+                  "closed_gap_increment": 0.0
+                },
+                {
+                  "event_id": "event_open_1",
+                  "timestamp_utc_nanos": 12,
+                  "market_state": "open",
+                  "closed_window_regime": null,
+                  "activity_coupling_increment": 0.3,
+                  "open_jump_increment": 3.0,
+                  "closed_gap_increment": 0.0
+                },
+                {
+                  "event_id": "event_open_2",
+                  "timestamp_utc_nanos": 21,
+                  "market_state": "open",
+                  "closed_window_regime": null,
+                  "activity_coupling_increment": 0.4,
+                  "open_jump_increment": -2.0,
+                  "closed_gap_increment": 0.0
+                }
+              ]
+            },
+            {
+              "scenario_id": "empirical_closed",
+              "exchange_code": "XNYS",
+              "scenario_class": "surprise_only",
+              "deterministic_replay_metadata": {
+                "replay_baseline_id": "baseline_closed",
+                "event_calendar_binding_id": "calendar_binding_closed",
+                "jump_observation_binding_id": "jump_obs_closed",
+                "gap_observation_binding_id": "gap_obs_closed",
+                "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+                "candidate_selection_rank": 0
+              },
+              "issue_traceability": {
+                "issue_id": "JAN-167",
+                "semantic_focus_tags": [
+                  "closed_gap",
+                  "overnight",
+                  "weekend"
+                ]
+              },
+              "tags": [
+                "closed_window",
+                "mixed_window"
+              ],
+              "event_observations": [
+                {
+                  "event_id": "event_closed_0",
+                  "timestamp_utc_nanos": 32,
+                  "market_state": "closed",
+                  "closed_window_regime": "overnight",
+                  "activity_coupling_increment": 0.5,
+                  "open_jump_increment": 0.0,
+                  "closed_gap_increment": -2.0
+                },
+                {
+                  "event_id": "event_closed_1",
+                  "timestamp_utc_nanos": 41,
+                  "market_state": "closed",
+                  "closed_window_regime": "overnight",
+                  "activity_coupling_increment": 0.2,
+                  "open_jump_increment": 0.0,
+                  "closed_gap_increment": 1.0
+                },
+                {
+                  "event_id": "event_closed_2",
+                  "timestamp_utc_nanos": 52,
+                  "market_state": "closed",
+                  "closed_window_regime": "weekend",
+                  "activity_coupling_increment": 0.5,
+                  "open_jump_increment": 0.0,
+                  "closed_gap_increment": -4.0
+                }
+              ]
+            }
+          ]
+        },
+        "simulated_dataset": {
+          "dataset_id": "simulated",
+          "scenarios": [
+            {
+              "scenario_id": "simulated_intraday",
+              "exchange_code": "XNYS",
+              "scenario_class": "known_only",
+              "deterministic_replay_metadata": {
+                "replay_baseline_id": "baseline_intraday",
+                "event_calendar_binding_id": "calendar_binding_intraday",
+                "jump_observation_binding_id": "jump_obs_intraday",
+                "gap_observation_binding_id": "gap_obs_intraday",
+                "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+                "candidate_selection_rank": 0
+              },
+              "issue_traceability": {
+                "issue_id": "JAN-167",
+                "semantic_focus_tags": [
+                  "open_jump",
+                  "activity_coupling"
+                ]
+              },
+              "tags": [
+                "open_window",
+                "intraday"
+              ],
+              "event_observations": [
+                {
+                  "event_id": "event_open_0",
+                  "timestamp_utc_nanos": 1,
+                  "market_state": "open",
+                  "closed_window_regime": null,
+                  "activity_coupling_increment": 0.2,
+                  "open_jump_increment": -1.0,
+                  "closed_gap_increment": 0.0
+                },
+                {
+                  "event_id": "event_open_1",
+                  "timestamp_utc_nanos": 12,
+                  "market_state": "open",
+                  "closed_window_regime": null,
+                  "activity_coupling_increment": 0.3,
+                  "open_jump_increment": 3.0,
+                  "closed_gap_increment": 0.0
+                },
+                {
+                  "event_id": "event_open_2",
+                  "timestamp_utc_nanos": 21,
+                  "market_state": "open",
+                  "closed_window_regime": null,
+                  "activity_coupling_increment": 0.4,
+                  "open_jump_increment": -2.0,
+                  "closed_gap_increment": 0.0
+                }
+              ]
+            },
+            {
+              "scenario_id": "simulated_closed",
+              "exchange_code": "XNYS",
+              "scenario_class": "surprise_only",
+              "deterministic_replay_metadata": {
+                "replay_baseline_id": "baseline_closed",
+                "event_calendar_binding_id": "calendar_binding_closed",
+                "jump_observation_binding_id": "jump_obs_closed",
+                "gap_observation_binding_id": "gap_obs_closed",
+                "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+                "candidate_selection_rank": 0
+              },
+              "issue_traceability": {
+                "issue_id": "JAN-167",
+                "semantic_focus_tags": [
+                  "closed_gap",
+                  "overnight",
+                  "weekend"
+                ]
+              },
+              "tags": [
+                "closed_window",
+                "mixed_window"
+              ],
+              "event_observations": [
+                {
+                  "event_id": "event_closed_0",
+                  "timestamp_utc_nanos": 32,
+                  "market_state": "closed",
+                  "closed_window_regime": "overnight",
+                  "activity_coupling_increment": 0.5,
+                  "open_jump_increment": 0.0,
+                  "closed_gap_increment": -2.0
+                },
+                {
+                  "event_id": "event_closed_1",
+                  "timestamp_utc_nanos": 41,
+                  "market_state": "closed",
+                  "closed_window_regime": "overnight",
+                  "activity_coupling_increment": 0.2,
+                  "open_jump_increment": 0.0,
+                  "closed_gap_increment": 1.0
+                },
+                {
+                  "event_id": "event_closed_2",
+                  "timestamp_utc_nanos": 52,
+                  "market_state": "closed",
+                  "closed_window_regime": "weekend",
+                  "activity_coupling_increment": 0.5,
+                  "open_jump_increment": 0.0,
+                  "closed_gap_increment": -4.0
+                }
+              ]
+            }
+          ]
+        },
+        "horizon_buckets": [
+          {
+            "horizon_label": "10n",
+            "horizon_duration_nanos": 10
+          }
+        ],
+        "bootstrap_configuration": {
+          "confidence_level": 0.95,
+          "replication_count": 300,
+          "block_length_interval_count": 3,
+          "random_seed": 9011
+        },
+        "sample_sufficiency_policy": {
+          "open_jump_abs_tail_expected_shortfall_ratio": {
+            "minimum_sample_count": 1,
+            "minimum_effective_sample_count": 1,
+            "minimum_tail_observation_count": 1,
+            "minimum_horizon_coverage_ratio": 0.01
+          },
+          "closed_gap_abs_tail_expected_shortfall_ratio": {
+            "minimum_sample_count": 1,
+            "minimum_effective_sample_count": 1,
+            "minimum_tail_observation_count": 1,
+            "minimum_horizon_coverage_ratio": 0.01
+          },
+          "closed_gap_vs_open_jump_wasserstein_distance": {
+            "minimum_sample_count": 1,
+            "minimum_effective_sample_count": 1,
+            "minimum_tail_observation_count": 0,
+            "minimum_horizon_coverage_ratio": 0.01
+          }
+        },
+        "threshold_policy": {
+          "comparison_policy_id": "absolute_delta_threshold_policy.v1",
+          "open_jump_abs_tail_expected_shortfall_ratio_max_absolute_delta": 0.35,
+          "closed_gap_abs_tail_expected_shortfall_ratio_max_absolute_delta": 0.35,
+          "closed_gap_vs_open_jump_wasserstein_distance_max_absolute_delta": 0.25
+        }
+      },
+      "expected_metrics": [
+        {
+          "horizon_label": "10n",
+          "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.0344827586206897,
+          "expected_simulated_value": 1.0344827586206897,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": {
+            "lower_bound": 1.0344827586206897,
+            "upper_bound": 1.0344827586206897,
+            "confidence_level": 0.95
+          },
+          "expected_simulated_confidence_interval": {
+            "lower_bound": 1.0344827586206897,
+            "upper_bound": 1.0344827586206897,
+            "confidence_level": 0.95
+          }
+        },
+        {
+          "horizon_label": "10n",
+          "metric_id": "closed_gap_abs_tail_expected_shortfall_ratio",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 1.0526315789473684,
+          "expected_simulated_value": 1.0526315789473684,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": {
+            "lower_bound": 1.0526315789473684,
+            "upper_bound": 1.0526315789473684,
+            "confidence_level": 0.95
+          },
+          "expected_simulated_confidence_interval": {
+            "lower_bound": 1.0526315789473684,
+            "upper_bound": 1.0526315789473684,
+            "confidence_level": 0.95
+          }
+        },
+        {
+          "horizon_label": "10n",
+          "metric_id": "closed_gap_vs_open_jump_wasserstein_distance",
+          "metric_variant": null,
+          "expected_status": "available",
+          "expected_empirical_value": 0.16666666666666666,
+          "expected_simulated_value": 0.16666666666666666,
+          "expected_absolute_delta": 0.0,
+          "expected_empirical_confidence_interval": {
+            "lower_bound": 0.16666666666666666,
+            "upper_bound": 2.0,
+            "confidence_level": 0.95
+          },
+          "expected_simulated_confidence_interval": {
+            "lower_bound": 0.16666666666666666,
+            "upper_bound": 2.1749999999999927,
+            "confidence_level": 0.95
+          }
+        }
+      ],
+      "tags": [
+        "gap_behavior",
+        "bootstrap_confidence_interval"
+      ],
+      "description": "Controlled open-vs-closed gap fixture with seeded bootstrap intervals."
+    }
+  ]
+}

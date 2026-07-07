@@ -1,0 +1,133 @@
+{
+  "schema_version": "nig.cross_engine.reference_fixture.v1",
+  "fixture_set_id": "nig_cross_engine_reference_fixture_v1",
+  "interface_policy": "shared_buy_sell_driver_parameters_interface_for_pricing_and_simulation.v1",
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1",
+    "seed_policy": "explicit_seed_per_sampling_case.v1"
+  },
+  "driver_configuration": {
+    "alpha": 2.3,
+    "beta_0": -0.8,
+    "delta": 0.7,
+    "mu": 0.1,
+    "delta_beta": -0.2
+  },
+  "exponent_cases": [
+    {
+      "fixture_id": "exp_real_u_mid",
+      "argument": {
+        "real": 0.75,
+        "imaginary": 0.0
+      },
+      "integrated_buy_intensity": 1.3,
+      "integrated_sell_intensity": 0.9,
+      "expected_buy_side_weighted_exponent": {
+        "real": -0.12884294981400618,
+        "imaginary": 0.015600581636001688
+      },
+      "expected_sell_side_weighted_exponent": {
+        "real": -0.09901738801144061,
+        "imaginary": -0.016089796396308413
+      },
+      "expected_combined_weighted_exponent": {
+        "real": -0.2278603378254468,
+        "imaginary": -0.0004892147603067255
+      },
+      "tags": [
+        "deterministic_numeric",
+        "cross_engine_contract"
+      ],
+      "description": "Reference real-axis argument with asymmetric integrated intensities."
+    },
+    {
+      "fixture_id": "exp_complex_quadrant_ii",
+      "argument": {
+        "real": -1.25,
+        "imaginary": 0.5
+      },
+      "integrated_buy_intensity": 0.8,
+      "integrated_sell_intensity": 1.1,
+      "expected_buy_side_weighted_exponent": {
+        "real": -0.22521459440396865,
+        "imaginary": 0.12377747362102264
+      },
+      "expected_sell_side_weighted_exponent": {
+        "real": -0.2065795291111793,
+        "imaginary": 0.27823478263196244
+      },
+      "expected_combined_weighted_exponent": {
+        "real": -0.43179412351514795,
+        "imaginary": 0.4020122562529851
+      },
+      "tags": [
+        "deterministic_numeric",
+        "cross_engine_contract"
+      ],
+      "description": "Complex argument with positive damping component and higher sell-side activity."
+    },
+    {
+      "fixture_id": "exp_complex_quadrant_iv",
+      "argument": {
+        "real": 2.0,
+        "imaginary": -1.75
+      },
+      "integrated_buy_intensity": 0.6,
+      "integrated_sell_intensity": 0.4,
+      "expected_buy_side_weighted_exponent": {
+        "real": -0.06740708135161623,
+        "imaginary": 0.5806714789505512
+      },
+      "expected_sell_side_weighted_exponent": {
+        "real": -0.3667019457620188,
+        "imaginary": 0.3368913513241375
+      },
+      "expected_combined_weighted_exponent": {
+        "real": -0.434109027113635,
+        "imaginary": 0.9175628302746887
+      },
+      "tags": [
+        "deterministic_numeric",
+        "cross_engine_contract"
+      ],
+      "description": "Complex argument in the fourth quadrant for cancellation-sensitive branch coverage."
+    }
+  ],
+  "sampling_sanity_cases": [
+    {
+      "fixture_id": "seeded_sampling_hourly_like",
+      "seed": 91177,
+      "sample_count": 30000,
+      "integrated_buy_intensity": 0.75,
+      "integrated_sell_intensity": 0.45,
+      "characteristic_function_argument_real": 0.7,
+      "expected_return_mean": 0.0,
+      "expected_return_variance": 0.4645059121527307,
+      "mean_tolerance": 0.04,
+      "variance_tolerance": 0.07,
+      "empirical_characteristic_function_absolute_tolerance": 0.03,
+      "tags": [
+        "statistical_tolerance",
+        "cross_engine_contract"
+      ],
+      "description": "Seeded sanity case that compares sampled return moments and empirical CF against pricing exponent."
+    }
+  ],
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "cross_engine_contract",
+      "deterministic_numeric",
+      "statistical_tolerance"
+    ],
+    "stable_exponent_fixture_ids": [
+      "exp_real_u_mid",
+      "exp_complex_quadrant_ii",
+      "exp_complex_quadrant_iv"
+    ],
+    "stable_sampling_fixture_ids": [
+      "seeded_sampling_hourly_like"
+    ]
+  }
+}

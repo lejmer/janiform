@@ -1,0 +1,77 @@
+{
+  "category": "session",
+  "configuration": {
+    "exchange_code": "CRYPTO",
+    "exchange_name": "Crypto Spot 24/7",
+    "recurring_closed_windows": [],
+    "regular_session_windows": [
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Friday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Saturday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Sunday"
+      }
+    ],
+    "timezone_name": "UTC"
+  },
+  "metadata": {
+    "description": "Continuous 24/7 spot-crypto trading hours expressed in UTC.",
+    "display_name": "Crypto Spot 24/7",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:7986a3e0d18ecb1456bea8dc03bcac4cc9072b7566d0ff3c3842bf6a8c54c0bb",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.sessions.crypto_24_7.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "crypto_spot_market_convention_review",
+          "version_label": "captured_2026-03-12"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "crypto_24_7",
+  "schema_version": "preset.artifact.session.v1"
+}

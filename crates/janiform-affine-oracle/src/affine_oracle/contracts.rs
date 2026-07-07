@@ -1,0 +1,970 @@
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::ops::Add;
+
+use serde::{Deserialize, Serialize};
+
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
+};
+use janiform_model_kernels::long_variance::{LongVarianceParameters, LongVarianceParametersError};
+use janiform_model_kernels::market_pressure::{
+    MarketPressureParameters, MarketPressureParametersValidationError, MarketPressureState,
+    MarketPressureStateValidationError,
+};
+use janiform_model_kernels::news::{
+    GammaSeverityMarkConfiguration, NewsComponentMarkScaleConfiguration,
+    NewsComponentMarkScaleConfigurationError, NewsMarkConfigurationError,
+};
+
+/// Canonical equation specification shared by pricing and sufficient-statistics solver consumers.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformEquationSpecification {
+    /// Hawkes parameters that provide `lambda_bar`, `beta`, `alpha`, and `rho`.
+    pub hawkes_kernel_parameters: HawkesKernelParameters,
+
+    /// Gamma mark parameters that provide `k_U` and `theta_U`.
+    pub gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+
+    /// Long-variance parameters for baseline return-clock uncertainty.
+    pub long_variance_parameters: LongVarianceParameters,
+
+    /// Market pressure-state parameters for slow anchor pressure.
+    pub market_pressure_parameters: MarketPressureParameters,
+}
+
+impl ExponentialAffineTransformEquationSpecification {
+    pub fn new(
+        hawkes_kernel_parameters: HawkesKernelParameters,
+        gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+        long_variance_parameters: LongVarianceParameters,
+        market_pressure_parameters: MarketPressureParameters,
+    ) -> Self {
+        Self {
+            hawkes_kernel_parameters,
+            gamma_severity_mark_configuration,
+            long_variance_parameters,
+            market_pressure_parameters,
+        }
+    }
+
+    pub fn try_new(
+        hawkes_kernel_parameters: HawkesKernelParameters,
+        gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+        long_variance_parameters: LongVarianceParameters,
+        market_pressure_parameters: MarketPressureParameters,
+    ) -> Result<Self, ExponentialAffineTransformEquationSpecificationError> {
+        let specification = Self::new(
+            hawkes_kernel_parameters,
+            gamma_severity_mark_configuration,
+            long_variance_parameters,
+            market_pressure_parameters,
+        );
+        specification.validate()?;
+        Ok(specification)
+    }
+
+    pub fn validate(&self) -> Result<(), ExponentialAffineTransformEquationSpecificationError> {
+        HawkesKernelParameters::try_new(
+            self.hawkes_kernel_parameters.lambda_bar,
+            self.hawkes_kernel_parameters.beta,
+            self.hawkes_kernel_parameters.alpha,
+            self.hawkes_kernel_parameters.rho,
+        )
+        .map_err(|source| {
+            ExponentialAffineTransformEquationSpecificationError::InvalidHawkesKernelParameters {
+                source,
+            }
+        })?;
+        self.gamma_severity_mark_configuration
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineTransformEquationSpecificationError::InvalidGammaSeverityMarkConfiguration {
+                    source,
+                }
+            })?;
+
+        self.long_variance_parameters.validate().map_err(|source| {
+            ExponentialAffineTransformEquationSpecificationError::InvalidLongVarianceParameters {
+                source,
+            }
+        })?;
+
+        self.market_pressure_parameters
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineTransformEquationSpecificationError::InvalidMarketPressureParameters {
+                    source,
+                }
+            })?;
+
+        Ok(())
+    }
+
+    /// Return `k_+ = [alpha_++, 0, alpha_-+, 0]`.
+    pub const fn k_plus(&self) -> HawkesKernelLoadings {
+        HawkesKernelLoadings {
+            plus_plus: self.hawkes_kernel_parameters.alpha.plus_plus,
+            plus_minus: 0.0,
+            minus_plus: self.hawkes_kernel_parameters.alpha.minus_plus,
+            minus_minus: 0.0,
+        }
+    }
+
+    /// Return `k_- = [0, alpha_+-, 0, alpha_--]`.
+    pub const fn k_minus(&self) -> HawkesKernelLoadings {
+        HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: self.hawkes_kernel_parameters.alpha.plus_minus,
+            minus_plus: 0.0,
+            minus_minus: self.hawkes_kernel_parameters.alpha.minus_minus,
+        }
+    }
+
+    /// Return `r = [rho_++, rho_+-, rho_-+, rho_--]`.
+    pub const fn r(&self) -> HawkesKernelLoadings {
+        self.hawkes_kernel_parameters.rho
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformEquationSpecificationError {
+    InvalidHawkesKernelParameters {
+        source: HawkesKernelParameterError,
+    },
+    InvalidGammaSeverityMarkConfiguration {
+        source: NewsMarkConfigurationError,
+    },
+    InvalidLongVarianceParameters {
+        source: LongVarianceParametersError,
+    },
+    InvalidMarketPressureParameters {
+        source: MarketPressureParametersValidationError,
+    },
+}
+
+impl Display for ExponentialAffineTransformEquationSpecificationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidHawkesKernelParameters { source } => write!(
+                formatter,
+                "equation specification hawkes_kernel_parameters are invalid: {source}"
+            ),
+            Self::InvalidGammaSeverityMarkConfiguration { source } => write!(
+                formatter,
+                "equation specification gamma_severity_mark_configuration is invalid: {source}"
+            ),
+            Self::InvalidLongVarianceParameters { source } => write!(
+                formatter,
+                "equation specification long_variance_parameters are invalid: {source}"
+            ),
+            Self::InvalidMarketPressureParameters { source } => write!(
+                formatter,
+                "equation specification market_pressure_parameters are invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformEquationSpecificationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidHawkesKernelParameters { source } => Some(source),
+            Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
+            Self::InvalidLongVarianceParameters { source } => Some(source),
+            Self::InvalidMarketPressureParameters { source } => Some(source),
+        }
+    }
+}
+
+/// One-interval news intensity input with explicit known/surprise components.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExponentialAffineTransformNewsIntensityInput {
+    pub known_news_intensity: f64,
+    pub surprise_news_intensity: f64,
+}
+
+impl ExponentialAffineTransformNewsIntensityInput {
+    pub const fn zero() -> Self {
+        Self {
+            known_news_intensity: 0.0,
+            surprise_news_intensity: 0.0,
+        }
+    }
+
+    pub fn try_new(
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
+    ) -> Result<Self, ExponentialAffineTransformNewsIntensityInputError> {
+        let input = Self {
+            known_news_intensity,
+            surprise_news_intensity,
+        };
+
+        input.validate()?;
+
+        Ok(input)
+    }
+
+    pub fn validate(self) -> Result<(), ExponentialAffineTransformNewsIntensityInputError> {
+        if !self.known_news_intensity.is_finite() || self.known_news_intensity < 0.0 {
+            return Err(
+                ExponentialAffineTransformNewsIntensityInputError::InvalidKnownNewsIntensity {
+                    value: self.known_news_intensity,
+                },
+            );
+        }
+
+        if !self.surprise_news_intensity.is_finite() || self.surprise_news_intensity < 0.0 {
+            return Err(
+                ExponentialAffineTransformNewsIntensityInputError::InvalidSurpriseNewsIntensity {
+                    value: self.surprise_news_intensity,
+                },
+            );
+        }
+
+        if !self.total_news_intensity().is_finite() {
+            return Err(
+                ExponentialAffineTransformNewsIntensityInputError::NonFiniteAggregateNewsIntensity {
+                    known_news_intensity: self.known_news_intensity,
+                    surprise_news_intensity: self.surprise_news_intensity,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn total_news_intensity(self) -> f64 {
+        self.known_news_intensity + self.surprise_news_intensity
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformNewsIntensityInputError {
+    InvalidKnownNewsIntensity {
+        value: f64,
+    },
+    InvalidSurpriseNewsIntensity {
+        value: f64,
+    },
+    NonFiniteAggregateNewsIntensity {
+        known_news_intensity: f64,
+        surprise_news_intensity: f64,
+    },
+}
+
+impl Display for ExponentialAffineTransformNewsIntensityInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidKnownNewsIntensity { value } => write!(
+                formatter,
+                "known_news_intensity must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSurpriseNewsIntensity { value } => write!(
+                formatter,
+                "surprise_news_intensity must be finite and non-negative, found {value}"
+            ),
+            Self::NonFiniteAggregateNewsIntensity {
+                known_news_intensity,
+                surprise_news_intensity,
+            } => write!(
+                formatter,
+                "known_news_intensity + surprise_news_intensity must be finite, found known_news_intensity={known_news_intensity}, surprise_news_intensity={surprise_news_intensity}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformNewsIntensityInputError {}
+
+/// Integrated-activity Laplace loadings split by baseline and endogenous source.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformActivityLoadings {
+    pub u_plus_baseline: ComplexScalar,
+    pub u_plus_endogenous: ComplexScalar,
+    pub u_minus_baseline: ComplexScalar,
+    pub u_minus_endogenous: ComplexScalar,
+}
+
+impl ExponentialAffineTransformActivityLoadings {
+    pub const fn new(
+        u_plus_baseline: ComplexScalar,
+        u_plus_endogenous: ComplexScalar,
+        u_minus_baseline: ComplexScalar,
+        u_minus_endogenous: ComplexScalar,
+    ) -> Self {
+        Self {
+            u_plus_baseline,
+            u_plus_endogenous,
+            u_minus_baseline,
+            u_minus_endogenous,
+        }
+    }
+
+    /// Build loadings for queries where baseline and endogenous activity share the same weight.
+    pub const fn total_activity(u_plus: ComplexScalar, u_minus: ComplexScalar) -> Self {
+        Self {
+            u_plus_baseline: u_plus,
+            u_plus_endogenous: u_plus,
+            u_minus_baseline: u_minus,
+            u_minus_endogenous: u_minus,
+        }
+    }
+
+    pub fn try_new(
+        u_plus_baseline: ComplexScalar,
+        u_plus_endogenous: ComplexScalar,
+        u_minus_baseline: ComplexScalar,
+        u_minus_endogenous: ComplexScalar,
+    ) -> Result<Self, ExponentialAffineTransformActivityLoadingsError> {
+        let loadings = Self::new(
+            u_plus_baseline,
+            u_plus_endogenous,
+            u_minus_baseline,
+            u_minus_endogenous,
+        );
+
+        loadings.validate()?;
+
+        Ok(loadings)
+    }
+
+    pub fn validate(self) -> Result<(), ExponentialAffineTransformActivityLoadingsError> {
+        ensure_finite_complex_activity_loading("u_plus_baseline", self.u_plus_baseline)?;
+        ensure_finite_complex_activity_loading("u_plus_endogenous", self.u_plus_endogenous)?;
+        ensure_finite_complex_activity_loading("u_minus_baseline", self.u_minus_baseline)?;
+        ensure_finite_complex_activity_loading("u_minus_endogenous", self.u_minus_endogenous)?;
+
+        Ok(())
+    }
+
+    pub(crate) fn is_zero(self) -> bool {
+        self.u_plus_baseline == ComplexScalar::new(0.0, 0.0)
+            && self.u_plus_endogenous == ComplexScalar::new(0.0, 0.0)
+            && self.u_minus_baseline == ComplexScalar::new(0.0, 0.0)
+            && self.u_minus_endogenous == ComplexScalar::new(0.0, 0.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformActivityLoadingsError {
+    InvalidComplexField {
+        field: &'static str,
+        value: ComplexScalar,
+    },
+}
+
+impl Display for ExponentialAffineTransformActivityLoadingsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidComplexField { field, value } => write!(
+                formatter,
+                "{field} must be finite as a complex scalar, found {value:?}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformActivityLoadingsError {}
+
+/// Solver input payload for one interval `Delta`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformInput {
+    pub equation_specification: ExponentialAffineTransformEquationSpecification,
+    pub activity_loadings: ExponentialAffineTransformActivityLoadings,
+    pub z_plus: ComplexScalar,
+    pub z_minus: ComplexScalar,
+    pub news_return_loading: ComplexScalar,
+    pub market_pressure_return_loading: ComplexScalar,
+    pub pressure_signed_imbalance_exposure_risk_price: f64,
+    pub seasonality_factor: f64,
+    pub news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    pub known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    pub surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    pub delta: f64,
+    pub initial_state: HawkesExcitationState,
+    pub initial_market_pressure_state: MarketPressureState,
+}
+
+impl ExponentialAffineTransformInput {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        equation_specification: ExponentialAffineTransformEquationSpecification,
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
+        z_plus: ComplexScalar,
+        z_minus: ComplexScalar,
+        news_return_loading: ComplexScalar,
+        market_pressure_return_loading: ComplexScalar,
+        pressure_signed_imbalance_exposure_risk_price: f64,
+        seasonality_factor: f64,
+        news_intensity: ExponentialAffineTransformNewsIntensityInput,
+        known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        delta: f64,
+        initial_state: HawkesExcitationState,
+        initial_market_pressure_state: MarketPressureState,
+    ) -> Self {
+        Self {
+            equation_specification,
+            activity_loadings,
+            z_plus,
+            z_minus,
+            news_return_loading,
+            market_pressure_return_loading,
+            pressure_signed_imbalance_exposure_risk_price,
+            seasonality_factor,
+            news_intensity,
+            known_news_component_mark_scales,
+            surprise_news_component_mark_scales,
+            delta,
+            initial_state,
+            initial_market_pressure_state,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        equation_specification: ExponentialAffineTransformEquationSpecification,
+        activity_loadings: ExponentialAffineTransformActivityLoadings,
+        z_plus: ComplexScalar,
+        z_minus: ComplexScalar,
+        news_return_loading: ComplexScalar,
+        market_pressure_return_loading: ComplexScalar,
+        pressure_signed_imbalance_exposure_risk_price: f64,
+        seasonality_factor: f64,
+        news_intensity: ExponentialAffineTransformNewsIntensityInput,
+        known_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        surprise_news_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        delta: f64,
+        initial_state: HawkesExcitationState,
+        initial_market_pressure_state: MarketPressureState,
+    ) -> Result<Self, ExponentialAffineTransformInputError> {
+        let input = Self::new(
+            equation_specification,
+            activity_loadings,
+            z_plus,
+            z_minus,
+            news_return_loading,
+            market_pressure_return_loading,
+            pressure_signed_imbalance_exposure_risk_price,
+            seasonality_factor,
+            news_intensity,
+            known_news_component_mark_scales,
+            surprise_news_component_mark_scales,
+            delta,
+            initial_state,
+            initial_market_pressure_state,
+        );
+
+        input.validate()?;
+
+        Ok(input)
+    }
+
+    pub fn validate(&self) -> Result<(), ExponentialAffineTransformInputError> {
+        self.equation_specification.validate().map_err(|source| {
+            ExponentialAffineTransformInputError::InvalidEquationSpecification { source }
+        })?;
+
+        self.activity_loadings.validate().map_err(|source| {
+            ExponentialAffineTransformInputError::InvalidActivityLoadings { source }
+        })?;
+
+        ensure_finite_complex_input("z_plus", self.z_plus)?;
+        ensure_finite_complex_input("z_minus", self.z_minus)?;
+        ensure_finite_complex_input("news_return_loading", self.news_return_loading)?;
+        ensure_finite_complex_input(
+            "market_pressure_return_loading",
+            self.market_pressure_return_loading,
+        )?;
+        ensure_finite_scalar_input(
+            "pressure_signed_imbalance_exposure_risk_price",
+            self.pressure_signed_imbalance_exposure_risk_price,
+        )?;
+
+        if !self.seasonality_factor.is_finite() || self.seasonality_factor < 0.0 {
+            return Err(
+                ExponentialAffineTransformInputError::InvalidSeasonalityFactor {
+                    value: self.seasonality_factor,
+                },
+            );
+        }
+
+        self.news_intensity.validate().map_err(|source| {
+            ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source }
+        })?;
+
+        self.known_news_component_mark_scales
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineTransformInputError::InvalidKnownNewsComponentMarkScales { source }
+            })?;
+
+        self.surprise_news_component_mark_scales
+            .validate()
+            .map_err(|source| {
+                ExponentialAffineTransformInputError::InvalidSurpriseNewsComponentMarkScales {
+                    source,
+                }
+            })?;
+
+        if !self.delta.is_finite() || self.delta <= 0.0 {
+            return Err(ExponentialAffineTransformInputError::InvalidDelta { value: self.delta });
+        }
+
+        validate_initial_state(self.initial_state)?;
+        self.initial_market_pressure_state
+            .validate_for_parameters(&self.equation_specification.market_pressure_parameters)
+            .map_err(|source| {
+                ExponentialAffineTransformInputError::InvalidInitialMarketPressureState { source }
+            })?;
+
+        Ok(())
+    }
+
+    pub(crate) fn is_exact_identity_query(&self) -> bool {
+        self.activity_loadings.is_zero()
+            && self.z_plus == ComplexScalar::new(1.0, 0.0)
+            && self.z_minus == ComplexScalar::new(1.0, 0.0)
+            && self.news_return_loading == ComplexScalar::new(0.0, 0.0)
+            && self.market_pressure_return_loading == ComplexScalar::new(0.0, 0.0)
+            && self.pressure_signed_imbalance_exposure_risk_price == 0.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformInputError {
+    InvalidEquationSpecification {
+        source: ExponentialAffineTransformEquationSpecificationError,
+    },
+    InvalidNewsIntensityInput {
+        source: ExponentialAffineTransformNewsIntensityInputError,
+    },
+    InvalidKnownNewsComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidSurpriseNewsComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidActivityLoadings {
+        source: ExponentialAffineTransformActivityLoadingsError,
+    },
+    InvalidComplexField {
+        field: &'static str,
+        value: ComplexScalar,
+    },
+    InvalidScalarField {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidSeasonalityFactor {
+        value: f64,
+    },
+    InvalidDelta {
+        value: f64,
+    },
+    InvalidInitialStateComponent {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidInitialMarketPressureState {
+        source: MarketPressureStateValidationError,
+    },
+}
+
+impl Display for ExponentialAffineTransformInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidEquationSpecification { source } => {
+                write!(
+                    formatter,
+                    "transform input equation specification is invalid: {source}"
+                )
+            }
+            Self::InvalidNewsIntensityInput { source } => {
+                write!(
+                    formatter,
+                    "transform input news_intensity is invalid: {source}"
+                )
+            }
+            Self::InvalidKnownNewsComponentMarkScales { source } => write!(
+                formatter,
+                "transform input known_news_component_mark_scales are invalid: {source}"
+            ),
+            Self::InvalidSurpriseNewsComponentMarkScales { source } => write!(
+                formatter,
+                "transform input surprise_news_component_mark_scales are invalid: {source}"
+            ),
+            Self::InvalidActivityLoadings { source } => {
+                write!(
+                    formatter,
+                    "transform input activity_loadings are invalid: {source}"
+                )
+            }
+            Self::InvalidComplexField { field, value } => write!(
+                formatter,
+                "{field} must be finite as a complex scalar, found {value:?}"
+            ),
+            Self::InvalidScalarField { field, value } => {
+                write!(formatter, "{field} must be finite, found {value}")
+            }
+            Self::InvalidSeasonalityFactor { value } => write!(
+                formatter,
+                "seasonality_factor must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidDelta { value } => write!(
+                formatter,
+                "delta must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidInitialStateComponent { field, value } => write!(
+                formatter,
+                "initial_state.{field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidInitialMarketPressureState { source } => write!(
+                formatter,
+                "initial_market_pressure_state is invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformInputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidEquationSpecification { source } => Some(source),
+            Self::InvalidNewsIntensityInput { source } => Some(source),
+            Self::InvalidKnownNewsComponentMarkScales { source } => Some(source),
+            Self::InvalidSurpriseNewsComponentMarkScales { source } => Some(source),
+            Self::InvalidActivityLoadings { source } => Some(source),
+            Self::InvalidInitialMarketPressureState { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Explicit 4D vector for `D(Delta)` in model order `[++, +-, -+, --]`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformDVector {
+    pub plus_plus: ComplexScalar,
+    pub plus_minus: ComplexScalar,
+    pub minus_plus: ComplexScalar,
+    pub minus_minus: ComplexScalar,
+}
+
+impl ExponentialAffineTransformDVector {
+    /// Return the additive identity in model order `[++, +-, -+, --]`.
+    pub fn zero() -> Self {
+        Self::new(
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+        )
+    }
+
+    pub fn new(
+        plus_plus: ComplexScalar,
+        plus_minus: ComplexScalar,
+        minus_plus: ComplexScalar,
+        minus_minus: ComplexScalar,
+    ) -> Self {
+        Self {
+            plus_plus,
+            plus_minus,
+            minus_plus,
+            minus_minus,
+        }
+    }
+
+    pub fn try_new(
+        plus_plus: ComplexScalar,
+        plus_minus: ComplexScalar,
+        minus_plus: ComplexScalar,
+        minus_minus: ComplexScalar,
+    ) -> Result<Self, ExponentialAffineTransformDVectorError> {
+        let vector = Self::new(plus_plus, plus_minus, minus_plus, minus_minus);
+        vector.validate()?;
+
+        Ok(vector)
+    }
+
+    pub fn validate(self) -> Result<(), ExponentialAffineTransformDVectorError> {
+        ensure_finite_complex_d_vector("plus_plus", self.plus_plus)?;
+        ensure_finite_complex_d_vector("plus_minus", self.plus_minus)?;
+        ensure_finite_complex_d_vector("minus_plus", self.minus_plus)?;
+        ensure_finite_complex_d_vector("minus_minus", self.minus_minus)?;
+
+        Ok(())
+    }
+
+    /// Componentwise addition in model order `[++, +-, -+, --]`.
+    pub fn plus(self, other: Self) -> Self {
+        self + other
+    }
+
+    /// Componentwise subtraction in model order `[++, +-, -+, --]`.
+    pub fn subtract(self, other: Self) -> Self {
+        Self::new(
+            self.plus_plus.subtract(other.plus_plus),
+            self.plus_minus.subtract(other.plus_minus),
+            self.minus_plus.subtract(other.minus_plus),
+            self.minus_minus.subtract(other.minus_minus),
+        )
+    }
+
+    /// Uniform scalar multiplication across all components.
+    pub fn scale(self, value: f64) -> Self {
+        Self::new(
+            self.plus_plus.scale(value),
+            self.plus_minus.scale(value),
+            self.minus_plus.scale(value),
+            self.minus_minus.scale(value),
+        )
+    }
+
+    /// Compute `D(Delta) · y_0`.
+    pub fn dot_state(self, state: HawkesExcitationState) -> ComplexScalar {
+        let mut total = ComplexScalar::new(0.0, 0.0);
+
+        total = total.plus(self.plus_plus.scale(state.y_plus_plus));
+        total = total.plus(self.plus_minus.scale(state.y_plus_minus));
+        total = total.plus(self.minus_plus.scale(state.y_minus_plus));
+
+        total.plus(self.minus_minus.scale(state.y_minus_minus))
+    }
+
+    /// Compute `D · w` using model-order component matching.
+    pub fn dot_loadings(self, loadings: HawkesKernelLoadings) -> ComplexScalar {
+        let mut total = ComplexScalar::new(0.0, 0.0);
+
+        total = total.plus(self.plus_plus.scale(loadings.plus_plus));
+        total = total.plus(self.plus_minus.scale(loadings.plus_minus));
+        total = total.plus(self.minus_plus.scale(loadings.minus_plus));
+
+        total.plus(self.minus_minus.scale(loadings.minus_minus))
+    }
+}
+
+impl Add for ExponentialAffineTransformDVector {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self::new(
+            self.plus_plus + other.plus_plus,
+            self.plus_minus + other.plus_minus,
+            self.minus_plus + other.minus_plus,
+            self.minus_minus + other.minus_minus,
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformDVectorError {
+    InvalidComponent {
+        field: &'static str,
+        value: ComplexScalar,
+    },
+}
+
+impl Display for ExponentialAffineTransformDVectorError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidComponent { field, value } => write!(
+                formatter,
+                "d_at_delta.{field} must be finite as a complex scalar, found {value:?}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformDVectorError {}
+
+/// Solver output for one interval `Delta`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformOutput {
+    pub c_at_delta: ComplexScalar,
+    pub d_at_delta: ExponentialAffineTransformDVector,
+    pub market_pressure_loading_at_delta: ComplexScalar,
+    pub transform_value: ComplexScalar,
+}
+
+impl ExponentialAffineTransformOutput {
+    pub fn new(
+        c_at_delta: ComplexScalar,
+        d_at_delta: ExponentialAffineTransformDVector,
+        market_pressure_loading_at_delta: ComplexScalar,
+        transform_value: ComplexScalar,
+    ) -> Self {
+        Self {
+            c_at_delta,
+            d_at_delta,
+            market_pressure_loading_at_delta,
+            transform_value,
+        }
+    }
+
+    pub fn try_new(
+        c_at_delta: ComplexScalar,
+        d_at_delta: ExponentialAffineTransformDVector,
+        market_pressure_loading_at_delta: ComplexScalar,
+        transform_value: ComplexScalar,
+    ) -> Result<Self, ExponentialAffineTransformOutputError> {
+        let output = Self::new(
+            c_at_delta,
+            d_at_delta,
+            market_pressure_loading_at_delta,
+            transform_value,
+        );
+        output.validate()?;
+
+        Ok(output)
+    }
+
+    pub fn validate(self) -> Result<(), ExponentialAffineTransformOutputError> {
+        if !self.c_at_delta.is_finite() {
+            return Err(ExponentialAffineTransformOutputError::InvalidCAtDelta {
+                value: self.c_at_delta,
+            });
+        }
+
+        self.d_at_delta
+            .validate()
+            .map_err(|source| ExponentialAffineTransformOutputError::InvalidDAtDelta { source })?;
+
+        if !self.market_pressure_loading_at_delta.is_finite() {
+            return Err(
+                ExponentialAffineTransformOutputError::InvalidMarketPressureLoadingAtDelta {
+                    value: self.market_pressure_loading_at_delta,
+                },
+            );
+        }
+
+        if !self.transform_value.is_finite() {
+            return Err(
+                ExponentialAffineTransformOutputError::InvalidTransformValue {
+                    value: self.transform_value,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformOutputError {
+    InvalidCAtDelta {
+        value: ComplexScalar,
+    },
+    InvalidDAtDelta {
+        source: ExponentialAffineTransformDVectorError,
+    },
+    InvalidMarketPressureLoadingAtDelta {
+        value: ComplexScalar,
+    },
+    InvalidTransformValue {
+        value: ComplexScalar,
+    },
+}
+
+impl Display for ExponentialAffineTransformOutputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidCAtDelta { value } => write!(
+                formatter,
+                "c_at_delta must be finite as a complex scalar, found {value:?}"
+            ),
+            Self::InvalidDAtDelta { source } => write!(formatter, "{source}"),
+            Self::InvalidMarketPressureLoadingAtDelta { value } => write!(
+                formatter,
+                "market_pressure_loading_at_delta must be finite as a complex scalar, found {value:?}"
+            ),
+            Self::InvalidTransformValue { value } => write!(
+                formatter,
+                "transform_value must be finite as a complex scalar, found {value:?}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformOutputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidDAtDelta { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+fn ensure_finite_complex_activity_loading(
+    field: &'static str,
+    value: ComplexScalar,
+) -> Result<(), ExponentialAffineTransformActivityLoadingsError> {
+    if !value.is_finite() {
+        return Err(
+            ExponentialAffineTransformActivityLoadingsError::InvalidComplexField { field, value },
+        );
+    }
+
+    Ok(())
+}
+
+fn ensure_finite_complex_input(
+    field: &'static str,
+    value: ComplexScalar,
+) -> Result<(), ExponentialAffineTransformInputError> {
+    if !value.is_finite() {
+        return Err(ExponentialAffineTransformInputError::InvalidComplexField { field, value });
+    }
+
+    Ok(())
+}
+
+fn ensure_finite_scalar_input(
+    field: &'static str,
+    value: f64,
+) -> Result<(), ExponentialAffineTransformInputError> {
+    if !value.is_finite() {
+        return Err(ExponentialAffineTransformInputError::InvalidScalarField { field, value });
+    }
+
+    Ok(())
+}
+
+fn ensure_finite_complex_d_vector(
+    field: &'static str,
+    value: ComplexScalar,
+) -> Result<(), ExponentialAffineTransformDVectorError> {
+    if !value.is_finite() {
+        return Err(ExponentialAffineTransformDVectorError::InvalidComponent { field, value });
+    }
+
+    Ok(())
+}
+
+fn validate_initial_state(
+    initial_state: HawkesExcitationState,
+) -> Result<(), ExponentialAffineTransformInputError> {
+    validate_initial_state_component("y_plus_plus", initial_state.y_plus_plus)?;
+    validate_initial_state_component("y_plus_minus", initial_state.y_plus_minus)?;
+    validate_initial_state_component("y_minus_plus", initial_state.y_minus_plus)?;
+    validate_initial_state_component("y_minus_minus", initial_state.y_minus_minus)?;
+
+    Ok(())
+}
+
+fn validate_initial_state_component(
+    field: &'static str,
+    value: f64,
+) -> Result<(), ExponentialAffineTransformInputError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(
+            ExponentialAffineTransformInputError::InvalidInitialStateComponent { field, value },
+        );
+    }
+
+    Ok(())
+}

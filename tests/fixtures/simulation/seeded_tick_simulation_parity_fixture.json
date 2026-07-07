@@ -1,0 +1,250 @@
+{
+  "schema_version": "simulation.seeded_tick.parity_fixture.v1",
+  "fixture_set_id": "seeded_tick_simulation_parity_fixture_v1",
+  "fixture_set_version": "0.2.0",
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "event_ordering_policy": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
+  },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "short_horizon",
+      "medium_horizon",
+      "near_tie",
+      "non_grid_event_time",
+      "coarse_summary"
+    ],
+    "stable_fixture_ids": [
+      "seeded_short_near_tie_2h_v1",
+      "seeded_medium_near_tie_12h_v1"
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "seeded_short_near_tie_2h_v1",
+      "seed": 68938,
+      "exchange_code": "XNYS",
+      "range_start_utc": "2024-01-22T15:00:00Z",
+      "range_end_utc": "2024-01-22T17:00:00Z",
+      "horizon_interval_count": 2,
+      "kernel_parameters": {
+        "lambda_bar": 0.8,
+        "beta": 1.5,
+        "alpha": {
+          "plus_plus": 0.3,
+          "plus_minus": 0.15,
+          "minus_plus": 0.1,
+          "minus_minus": 0.25
+        },
+        "rho": {
+          "plus_plus": 0.05,
+          "plus_minus": 0.02,
+          "minus_plus": 0.03,
+          "minus_minus": 0.06
+        }
+      },
+      "initial_excitation_state": {
+        "y_plus_plus": 0.2,
+        "y_plus_minus": 0.1,
+        "y_minus_plus": 0.15,
+        "y_minus_minus": 0.3
+      },
+      "seasonality_interval_factor_grids": [
+        0.95,
+        1.05
+      ],
+      "news_intensity_interval_factor_grids": [
+        0.02,
+        0.03
+      ],
+      "expected_timestamps_utc_nanos": [
+        1705935607209141285,
+        1705939096403120367
+      ],
+      "expected_side_sequence": [
+        "buy",
+        "sell"
+      ],
+      "expected_total_event_count": 2,
+      "expected_interval_event_counts": [
+        2,
+        0
+      ],
+      "expected_interval_buy_counts": [
+        1,
+        0
+      ],
+      "expected_interval_sell_counts": [
+        1,
+        0
+      ],
+      "expected_min_positive_timestamp_gap_nanos": 3489193979082,
+      "expected_has_non_grid_arrival": true,
+      "tags": [
+        "short_horizon",
+        "near_tie",
+        "non_grid_event_time",
+        "coarse_summary"
+      ],
+      "description": "Short two-interval seeded run with near-tied adjacent event-time arrivals under non-grid timestamps."
+    },
+    {
+      "fixture_id": "seeded_medium_near_tie_12h_v1",
+      "seed": 34033,
+      "exchange_code": "XNYS",
+      "range_start_utc": "2024-01-23T15:00:00Z",
+      "range_end_utc": "2024-01-24T03:00:00Z",
+      "horizon_interval_count": 12,
+      "kernel_parameters": {
+        "lambda_bar": 0.8,
+        "beta": 1.5,
+        "alpha": {
+          "plus_plus": 0.3,
+          "plus_minus": 0.15,
+          "minus_plus": 0.1,
+          "minus_minus": 0.25
+        },
+        "rho": {
+          "plus_plus": 0.05,
+          "plus_minus": 0.02,
+          "minus_plus": 0.03,
+          "minus_minus": 0.06
+        }
+      },
+      "initial_excitation_state": {
+        "y_plus_plus": 0.2,
+        "y_plus_minus": 0.1,
+        "y_minus_plus": 0.15,
+        "y_minus_minus": 0.3
+      },
+      "seasonality_interval_factor_grids": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "news_intensity_interval_factor_grids": [
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02
+      ],
+      "expected_timestamps_utc_nanos": [
+        1706022184861726479,
+        1706024383228637108,
+        1706025094057327787,
+        1706025516336672305,
+        1706025598615029756,
+        1706025667277279826,
+        1706026776158955876,
+        1706027127478941263,
+        1706027949123562463,
+        1706029118671545619,
+        1706029468716492061,
+        1706029844931548587,
+        1706029872965159653,
+        1706030230563191561,
+        1706030536749785013,
+        1706030555710497279,
+        1706031258001340973,
+        1706031751971642147,
+        1706033793534463957,
+        1706036304006608684,
+        1706043531880874865
+      ],
+      "expected_side_sequence": [
+        "sell",
+        "buy",
+        "sell",
+        "buy",
+        "sell",
+        "buy",
+        "buy",
+        "sell",
+        "buy",
+        "sell",
+        "buy",
+        "sell",
+        "sell",
+        "buy",
+        "sell",
+        "sell",
+        "sell",
+        "buy",
+        "buy",
+        "buy",
+        "buy"
+      ],
+      "expected_total_event_count": 21,
+      "expected_interval_event_counts": [
+        5,
+        5,
+        8,
+        2,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "expected_interval_buy_counts": [
+        2,
+        3,
+        3,
+        2,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "expected_interval_sell_counts": [
+        3,
+        2,
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "expected_min_positive_timestamp_gap_nanos": 18960712266,
+      "expected_has_non_grid_arrival": true,
+      "tags": [
+        "medium_horizon",
+        "near_tie",
+        "non_grid_event_time",
+        "coarse_summary"
+      ],
+      "description": "Medium twelve-interval seeded run with dense event-time arrivals and near-tied ordering behavior."
+    }
+  ]
+}

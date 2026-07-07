@@ -1,0 +1,8 @@
+{
+  "primary_output_path": "paper/data/synthetic_es_continuous/synthetic_es_continuous.parquet",
+  "report_path": "paper/data/synthetic_es_continuous/simulation_report.json",
+  "run_directory": "paper/data/synthetic_es_continuous",
+  "run_id": "simulate_model_20260626T003647Z",
+  "schema_version": "janiform.run_manifest.v1",
+  "workflow": "simulate"
+}

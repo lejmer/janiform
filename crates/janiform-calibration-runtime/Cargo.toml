@@ -1,0 +1,88 @@
+[package]
+name = "janiform-calibration-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Calibration runtime orchestration for Janiform."
+readme = "README.md"
+autotests = false
+
+[lib]
+name = "janiform_calibration_runtime"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
+janiform-engine-pricing = { path = "../janiform-engine-pricing" }
+janiform-engine-simulation = { path = "../janiform-engine-simulation" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+janiform-work-scheduler = { path = "../janiform-work-scheduler" }
+nalgebra = { workspace = true }
+parquet = { workspace = true }
+postcard = { workspace = true }
+puruspe = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sysinfo = { workspace = true }
+
+[dev-dependencies]
+janiform-engine-simulation = { path = "../janiform-engine-simulation" }
+
+[[test]]
+name = "artifact_regression_suite"
+path = "tests/artifact_regression_suite.rs"
+
+[[test]]
+name = "core_interfaces"
+path = "tests/core_interfaces.rs"
+
+[[test]]
+name = "current_state_estimation"
+path = "tests/current_state_estimation.rs"
+
+[[test]]
+name = "experiment_index"
+path = "tests/experiment_index.rs"
+
+[[test]]
+name = "joint_refinement_diagnostics"
+path = "tests/joint_refinement_diagnostics.rs"
+
+[[test]]
+name = "market_time_cross_crate_integration"
+path = "tests/market_time_cross_crate_integration.rs"
+
+[[test]]
+name = "mean_reversion_stage"
+path = "tests/mean_reversion_stage.rs"
+
+[[test]]
+name = "pricing_calibration_hook_consumer_integration"
+path = "tests/pricing_calibration_hook_consumer_integration.rs"
+
+[[test]]
+name = "reload_resolver"
+path = "tests/reload_resolver.rs"
+
+[[test]]
+name = "stage_execution"
+path = "tests/stage_execution.rs"
+
+[[test]]
+name = "stage_parameter_artifact"
+path = "tests/stage_parameter_artifact.rs"
+
+[[test]]
+name = "staged_runner"
+path = "tests/staged_runner.rs"

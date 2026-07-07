@@ -1,0 +1,398 @@
+{
+  "bundle_id": "janiform_bundled_presets",
+  "bundle_version": "v1",
+  "entries": [
+    {
+      "artifact_path": "market_profiles/audcad_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:46ce518effece4fb402fcd6e3481191102e59684e24ef88069f2e00c63666b59",
+      "description": "Default AUD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "AUD/CAD Spot",
+      "preset_name": "audcad_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/audchf_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:593442eca316a3206825391044d3e1d9a84e47575b8839a701b1a492f0d57114",
+      "description": "Default AUD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "AUD/CHF Spot",
+      "preset_name": "audchf_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/audjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:5ef8815027099cc528b731db0a4e90bd163b284e70956b21095b3eaefba5e046",
+      "description": "Default AUD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "AUD/JPY Spot",
+      "preset_name": "audjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/audnzd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:b454de63ae3a94a3501a99d406abd9304807956e4f63f47601cb2178b8e68d85",
+      "description": "Default AUD/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "AUD/NZD Spot",
+      "preset_name": "audnzd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/audusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:88ad87d427da2bca72728455e824e5eb23d2c4449acfa473f43aab41c761d600",
+      "description": "Default AUD/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "AUD/USD Spot",
+      "preset_name": "audusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/btcusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:fcd26605cdb037ea44ed3c857477f61c79662fb034766f5b449f420471ee7030",
+      "description": "Default BTC/USD spot profile with continuous 24/7 trading and no known-news events enabled.",
+      "display_name": "BTC/USD Spot",
+      "preset_name": "btcusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "market_profiles/cadchf_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:8d68fc874238bd24e6e3281149663899b0dcb97792725b351c847980485c3a08",
+      "description": "Default CAD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "CAD/CHF Spot",
+      "preset_name": "cadchf_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/cadjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:cf528451cfab2ba5cdd34e473355d15380c534be4519081ec8008fd07bd83628",
+      "description": "Default CAD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "CAD/JPY Spot",
+      "preset_name": "cadjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/chfjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:fde3c44d48dff7b582ac4212da9172ed6c7888fbeb9d4d714260edcf8663f587",
+      "description": "Default CHF/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "CHF/JPY Spot",
+      "preset_name": "chfjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/es_futures_globex.json",
+      "category": "market_profile",
+      "content_hash": "sha256:ea7e5cec2a608e3e75d90a52750f2187db9cfc37979db0569347c22a7ccbe638",
+      "description": "Default E-mini S&P 500 futures profile with the bundled CME Globex session and no known-news events enabled.",
+      "display_name": "ES Futures Globex",
+      "preset_name": "es_futures_globex",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "market_profiles/euraud_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:0e85c30d8e02145c2b49d63126615401df2562d9e368bafcc5d0ba2262af47c6",
+      "description": "Default EUR/AUD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "EUR/AUD Spot",
+      "preset_name": "euraud_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/eurcad_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:acf5caccbcdec98df81ecd2427e8edc851f0fd1bd515b7b0f59421f887e6be92",
+      "description": "Default EUR/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "EUR/CAD Spot",
+      "preset_name": "eurcad_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/eurchf_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:46a917e178c73fa7e7d031f602262f46b72da5232a8bdf44963271e11108dde9",
+      "description": "Default EUR/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "EUR/CHF Spot",
+      "preset_name": "eurchf_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/eurgbp_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:56d1a916021b7150272b66b5a6b97365a386afe6786da3876280def772442525",
+      "description": "Default EUR/GBP spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "EUR/GBP Spot",
+      "preset_name": "eurgbp_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/eurjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:3cc6c6f0c49d3bb1364ba15265697264f6e17714b57d328a07089dd71d10562d",
+      "description": "Default EUR/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "EUR/JPY Spot",
+      "preset_name": "eurjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/eurnzd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:f0d748397bd88ecba3b3ee315b8890d18e4f5a7f527ff3810695011f7dfa7eba",
+      "description": "Default EUR/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "EUR/NZD Spot",
+      "preset_name": "eurnzd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/eurusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:477065643133a7c83e1218c5d2f5b8d9a0046d53fe659cbf52e42475c0673df4",
+      "description": "Default EUR/USD spot profile with the bundled 24/5 FX session and suggested EU and US macro events.",
+      "display_name": "EUR/USD Spot",
+      "preset_name": "eurusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/gbpaud_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:cc82e6c679d621f4ae945ac6c63c66e9c2a51a5397b46670aa5f87a2db94b2ff",
+      "description": "Default GBP/AUD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "GBP/AUD Spot",
+      "preset_name": "gbpaud_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/gbpcad_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:1d255ccb2a8583bcb1c3b484efbbdb0246709d9f8359a54a7898bd2318e7d25d",
+      "description": "Default GBP/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "GBP/CAD Spot",
+      "preset_name": "gbpcad_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/gbpchf_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:0b931ed6742dba43fdc610a42d9fbba39e153eac79cc823e029ef417005dabf4",
+      "description": "Default GBP/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "GBP/CHF Spot",
+      "preset_name": "gbpchf_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/gbpjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:23db1a697138ba9705108db604e248498999af90b3e3fca8b1b1e726f443f80e",
+      "description": "Default GBP/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "GBP/JPY Spot",
+      "preset_name": "gbpjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/gbpnzd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:a3e5503d526ca555e4c0cd07c53339190bb78604edc88acfad3e8d74d98c2b75",
+      "description": "Default GBP/NZD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "GBP/NZD Spot",
+      "preset_name": "gbpnzd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/gbpusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:b512196956bc1731d17b44cc2bd6a01424300134da75787bd0170876911b692d",
+      "description": "Default GBP/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "GBP/USD Spot",
+      "preset_name": "gbpusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/nzdcad_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:57d6af50ff62ad4e77ae1c6dfb8d261c64ded0879ad5f35c0758077ef8a1db3f",
+      "description": "Default NZD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "NZD/CAD Spot",
+      "preset_name": "nzdcad_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/nzdchf_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:6121b9ae8b4f08521b976733f7b383d6fbcf68a612eabb48d81b83b6cae8ccfc",
+      "description": "Default NZD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "NZD/CHF Spot",
+      "preset_name": "nzdchf_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/nzdjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:a441358d8011a404f8cea59b7dbbfe7c22dda0ca505fad1a882535bf1470833b",
+      "description": "Default NZD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "NZD/JPY Spot",
+      "preset_name": "nzdjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/nzdusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:b308aec94a88929713f46dc967c11faead75f441445fb64fabdddc04be15faaf",
+      "description": "Default NZD/USD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "NZD/USD Spot",
+      "preset_name": "nzdusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/us_equity_cash.json",
+      "category": "market_profile",
+      "content_hash": "sha256:ab4ec048f5fb42c54c5461d7e3886196c953743e2b7288be2777caa4339925bc",
+      "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
+      "display_name": "US Equity Cash",
+      "preset_name": "us_equity_cash",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "market_profiles/usdcad_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:fcab73a49a96c9088e363557895d195091a60c7a83e4029ce38b96527b68b3bc",
+      "description": "Default USD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "USD/CAD Spot",
+      "preset_name": "usdcad_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/usdchf_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:9e420135faaaf55258a24ce373cfedcc34bcc91e84191c3ee87305896b605f94",
+      "description": "Default USD/CHF spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "USD/CHF Spot",
+      "preset_name": "usdchf_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "market_profiles/usdjpy_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:7fca8970e4636513ff238ca8ebd87e9ee74b9d55fb21e1a97021adbe71324d4a",
+      "description": "Default USD/JPY spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+      "display_name": "USD/JPY Spot",
+      "preset_name": "usdjpy_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    },
+    {
+      "artifact_path": "known_news/eu_us_macro_fx_core.json",
+      "category": "known_news",
+      "content_hash": "sha256:b5defb53bdf7b0f3593140d8b54a6c0f89ed325c46a197c45819d6c0ce379088",
+      "description": "2026 schedule for US macro core releases plus ECB monetary policy decisions.",
+      "display_name": "EU and US Macro FX Core 2026",
+      "preset_name": "eu_us_macro_fx_core",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/none.json",
+      "category": "known_news",
+      "content_hash": "sha256:b4676af7e7e574857864398150de1d939bf40552f060291919c0063d5cf5c898",
+      "description": "Explicitly disables scheduled known-news events.",
+      "display_name": "No Known News",
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/us_macro_core.json",
+      "category": "known_news",
+      "content_hash": "sha256:6fb760e9d4ccfbeaa05c40e6bf515d22232683efe6d804a9ab4d712bb6700a86",
+      "description": "2026 schedule for BLS CPI, BLS Employment Situation, and FOMC policy statements.",
+      "display_name": "US Macro Core 2026",
+      "preset_name": "us_macro_core",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/XCME.json",
+      "category": "session",
+      "content_hash": "sha256:22d25add402fc3529592ab1eed49e11edf8fb347fdd5ea464e40b14ae260462d",
+      "description": "CME Globex-style nearly continuous weekday futures session in Chicago time with the daily maintenance break from 16:00 to 17:00 and the weekend close from Friday 16:00 to Sunday 17:00.",
+      "display_name": "CME Globex Futures Session",
+      "preset_name": "XCME",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/XNAS.json",
+      "category": "session",
+      "content_hash": "sha256:d91754552b342b427801d7c1b903b6dac0d48cf80cf701efdb4e4acfa6fbf671",
+      "description": "Regular Nasdaq cash-market hours for weekday trading in New York local time.",
+      "display_name": "Nasdaq Cash Session",
+      "preset_name": "XNAS",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/XNYS.json",
+      "category": "session",
+      "content_hash": "sha256:47ca32a5123a5f5c6f68236d4817708a638d8a00521c96e8a5ee9c81de3e9fc3",
+      "description": "Regular NYSE cash-market hours for weekday trading in New York local time.",
+      "display_name": "New York Stock Exchange Cash Session",
+      "preset_name": "XNYS",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/crypto_24_7.json",
+      "category": "session",
+      "content_hash": "sha256:7986a3e0d18ecb1456bea8dc03bcac4cc9072b7566d0ff3c3842bf6a8c54c0bb",
+      "description": "Continuous 24/7 spot-crypto trading hours expressed in UTC.",
+      "display_name": "Crypto Spot 24/7",
+      "preset_name": "crypto_24_7",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/fx_spot_24_5.json",
+      "category": "session",
+      "content_hash": "sha256:0c95c3a3d3961a7952792a7cdd0e7ba64242fa7bf1a0b5c28088808b75689d90",
+      "description": "Week-round OTC FX spot session with the weekend close from Friday 17:00 New York time to Sunday 17:00 New York time.",
+      "display_name": "FX Spot 24/5",
+      "preset_name": "fx_spot_24_5",
+      "registry_scope": "built_in",
+      "version_label": "2026.05"
+    }
+  ],
+  "generated_on": "2026-05-30",
+  "schema_version": "preset.runtime.index.v1"
+}

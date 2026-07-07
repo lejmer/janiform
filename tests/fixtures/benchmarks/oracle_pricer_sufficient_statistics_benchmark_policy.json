@@ -1,0 +1,57 @@
+{
+  "schema_version": "benchmark.oracle_pricer_sufficient_statistics.policy.v1",
+  "policy_id": "oracle_pricer_sufficient_statistics_benchmark_policy_v1",
+  "policy_version": "1.0.0",
+  "rationale": {
+    "model_parameters": "Use one stable Hawkes-Gamma benchmark kernel with explicit spectral-radius margin and a neutral market-pressure block so oracle, pricing, and sufficient-statistics benchmarks measure throughput and latency under valid dynamics rather than domain failures.",
+    "oracle_solver_probes": "Use low-amplitude positive u probes and near-unity z probes to keep transform evaluations in a numerically stable region while still varying workload across invocations.",
+    "pricing_input_ranges": "Use bounded spot, strike, maturity, rate, and volatility ranges that remain realistic for vanilla option workloads and reduce CI flakiness from extreme pricing pathologies.",
+    "seed_partition": "Use fixed pairwise-distinct seed salts so oracle, pricing, and sufficient-statistics benchmarks remain reproducible while avoiding cross-component random-stream coupling."
+  },
+  "model_parameters": {
+    "hawkes_beta": 1.35,
+    "hawkes_alpha": {
+      "plus_plus": 0.21,
+      "plus_minus": 0.08,
+      "minus_plus": 0.11,
+      "minus_minus": 0.24
+    },
+    "hawkes_rho": {
+      "plus_plus": 0.03,
+      "plus_minus": 0.01,
+      "minus_plus": 0.02,
+      "minus_minus": 0.04
+    },
+    "gamma_shape_k": 1.8
+  },
+  "oracle_solver_probes": {
+    "u_probe_min": 0.0005,
+    "u_probe_max": 0.0015,
+    "z_probe_min": 0.985,
+    "z_probe_max": 0.995,
+    "seasonality_factor_min": 0.75,
+    "seasonality_factor_max": 1.1,
+    "news_intensity_factor_min": 0.005,
+    "news_intensity_factor_max": 0.04
+  },
+  "pricing_input_ranges": {
+    "spot_base": 90.0,
+    "spot_underlying_count_scale": 2.5,
+    "spot_noise_span": 8.0,
+    "strike_ratio_min": 0.8,
+    "strike_ratio_max": 1.2,
+    "maturity_multiplier_min": 0.5,
+    "maturity_bucket_scale": 0.25,
+    "risk_free_rate_min": 0.01,
+    "risk_free_rate_max": 0.03,
+    "dividend_yield_min": 0.002,
+    "dividend_yield_max": 0.014,
+    "volatility_min": 0.1,
+    "volatility_max": 0.4
+  },
+  "seed_partition": {
+    "oracle_component_seed_salt": 11914039502158642961,
+    "pricing_component_seed_salt": 2110907764627670569,
+    "sufficient_statistics_component_seed_salt": 4346409906557363443
+  }
+}

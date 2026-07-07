@@ -1,0 +1,328 @@
+use std::collections::BTreeMap;
+use std::str::FromStr;
+
+use chrono::{DateTime, Utc};
+use chrono_tz::Tz;
+use janiform_foundations::time::{
+    NANOS_PER_MINUTE, checked_ceil_to_interval_utc_nanos, utc_datetime_from_nanos,
+};
+use serde_json::Value;
+
+use crate::calendar::definition::resolve_market_state_for_definition_at_utc;
+use crate::calendar::errors::{
+    ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLookupError,
+    ExchangeCalendarResolveError, TimestampEventPreprocessingError,
+};
+use crate::calendar::preprocessing::preprocess_timestamp_events;
+use crate::calendar::types::{
+    ExchangeCalendarDefinition, ExchangeCalendarRegistryArtifact, MarketState,
+    TimestampEventInputRecord, TimestampEventPreprocessingOutput, TimestampEventSessionFilter,
+};
+use crate::calendar::validation::{require_non_empty, validate_iso_date};
+
+const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
+
+/// Open and closed exposure for a UTC interval under a loaded exchange calendar.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MarketStateIntervalExposure {
+    pub open_window_nanos: i64,
+    pub closed_window_nanos: i64,
+    pub open_window_share: f64,
+    pub closed_window_share: f64,
+}
+
+/// Immutable in-memory calendar registry keyed by exchange code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExchangeCalendarRegistry {
+    definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition>,
+}
+
+impl ExchangeCalendarRegistry {
+    /// Build a registry from a parsed registry artifact.
+    pub fn from_artifact(
+        artifact: ExchangeCalendarRegistryArtifact,
+    ) -> Result<Self, ExchangeCalendarRegistryLoadError> {
+        let schema_version = require_non_empty(artifact.schema_version, "schema_version")
+            .map_err(ExchangeCalendarRegistryLoadError::from_validation_error)?;
+        if schema_version != CALENDAR_REGISTRY_SCHEMA_VERSION {
+            return Err(
+                ExchangeCalendarRegistryLoadError::UnsupportedSchemaVersion {
+                    expected: CALENDAR_REGISTRY_SCHEMA_VERSION,
+                    actual: schema_version,
+                },
+            );
+        }
+
+        if artifact.exchanges.is_empty() {
+            return Err(ExchangeCalendarRegistryLoadError::MissingField { field: "exchanges" });
+        }
+
+        validate_iso_date(&artifact.artifact_date).map_err(|reason| {
+            ExchangeCalendarRegistryLoadError::MalformedDate {
+                field: "artifact_date",
+                value: artifact.artifact_date.clone(),
+                reason,
+            }
+        })?;
+
+        let mut definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition> =
+            BTreeMap::new();
+
+        for exchange_artifact in artifact.exchanges {
+            let exchange_code = exchange_artifact.exchange_code.trim().to_string();
+
+            let definition =
+                ExchangeCalendarDefinition::from_artifact(exchange_artifact).map_err(|source| {
+                    ExchangeCalendarRegistryLoadError::InvalidExchangeArtifact {
+                        exchange_code: (!exchange_code.is_empty()).then_some(exchange_code.clone()),
+                        source: Box::new(source),
+                    }
+                })?;
+
+            if definitions_by_exchange
+                .insert(exchange_code.clone(), definition)
+                .is_some()
+            {
+                return Err(ExchangeCalendarRegistryLoadError::DuplicateExchangeId {
+                    exchange_code,
+                });
+            }
+        }
+
+        Ok(Self {
+            definitions_by_exchange,
+        })
+    }
+
+    /// Lookup a loaded exchange by identifier.
+    pub fn get(&self, exchange_code: &str) -> Option<&ExchangeCalendarDefinition> {
+        self.definitions_by_exchange.get(exchange_code)
+    }
+
+    /// Lookup a loaded exchange by identifier with a structured error when missing.
+    pub fn get_required(
+        &self,
+        exchange_code: &str,
+    ) -> Result<&ExchangeCalendarDefinition, ExchangeCalendarRegistryLookupError> {
+        self.get(exchange_code).ok_or_else(|| {
+            ExchangeCalendarRegistryLookupError::MissingExchangeId {
+                exchange_code: exchange_code.to_string(),
+            }
+        })
+    }
+
+    /// Resolve market state for a UTC timestamp and exchange identifier.
+    ///
+    /// Boundary policy:
+    /// - Session windows are interpreted as half-open intervals `[open, close)`.
+    /// - Exact session open timestamp resolves to `MarketState::Open`.
+    /// - Exact session close timestamp resolves to `MarketState::Closed`.
+    ///   Rule precedence:
+    /// - Holidays resolve `MarketState::Closed` for the full local exchange date.
+    /// - Early-close windows override regular sessions when configured for a local date.
+    /// - Regular sessions apply when neither holiday nor early-close rule matches.
+    pub fn resolve_market_state_at_utc(
+        &self,
+        exchange_code: &str,
+        timestamp_utc: DateTime<Utc>,
+    ) -> Result<MarketState, ExchangeCalendarResolveError> {
+        let (definition, timezone) = self.required_definition_and_timezone(exchange_code)?;
+
+        Ok(resolve_market_state_for_definition_at_utc(
+            definition,
+            timezone,
+            timestamp_utc,
+        ))
+    }
+
+    /// Resolve open and closed exposure over a UTC interval.
+    ///
+    /// Session contracts are minute-resolution, so this routine evaluates the calendar
+    /// state over minute-bounded segments and sums exact nanosecond exposure.
+    pub fn resolve_market_state_exposure_in_utc_interval(
+        &self,
+        exchange_code: &str,
+        start_utc_nanos: i64,
+        end_utc_nanos: i64,
+    ) -> Result<MarketStateIntervalExposure, ExchangeCalendarResolveError> {
+        if end_utc_nanos <= start_utc_nanos {
+            return Err(ExchangeCalendarResolveError::NonIncreasingInterval {
+                start_utc_nanos,
+                end_utc_nanos,
+            });
+        }
+
+        if utc_datetime_from_nanos(start_utc_nanos).is_none() {
+            return Err(ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: start_utc_nanos,
+            });
+        }
+
+        if utc_datetime_from_nanos(end_utc_nanos).is_none() {
+            return Err(ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: end_utc_nanos,
+            });
+        }
+
+        let mut open_window_nanos = 0_i64;
+        let mut current_utc_nanos = start_utc_nanos;
+
+        while current_utc_nanos < end_utc_nanos {
+            let segment_end_utc_nanos =
+                next_minute_segment_boundary(current_utc_nanos, end_utc_nanos)?;
+
+            let current_timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(current_utc_nanos);
+
+            let segment_state =
+                self.resolve_market_state_at_utc(exchange_code, current_timestamp_utc)?;
+
+            if segment_state == MarketState::Open {
+                open_window_nanos += segment_end_utc_nanos - current_utc_nanos;
+            }
+
+            current_utc_nanos = segment_end_utc_nanos;
+        }
+
+        let total_window_nanos = end_utc_nanos - start_utc_nanos;
+        let closed_window_nanos = total_window_nanos - open_window_nanos;
+        let open_window_share = open_window_nanos as f64 / total_window_nanos as f64;
+
+        Ok(MarketStateIntervalExposure {
+            open_window_nanos,
+            closed_window_nanos,
+            open_window_share,
+            closed_window_share: 1.0 - open_window_share,
+        })
+    }
+
+    /// Preprocess timestamp events for deterministic seasonality workflows.
+    pub fn preprocess_timestamp_events(
+        &self,
+        exchange_code: &str,
+        input_records: Vec<TimestampEventInputRecord>,
+        session_filter: TimestampEventSessionFilter,
+        sparse_hour_event_threshold: usize,
+    ) -> Result<TimestampEventPreprocessingOutput, TimestampEventPreprocessingError> {
+        let (definition, timezone) = self
+            .required_definition_and_timezone(exchange_code)
+            .map_err(TimestampEventPreprocessingError::from_calendar_resolve_error)?;
+
+        preprocess_timestamp_events(
+            definition,
+            timezone,
+            exchange_code,
+            input_records,
+            session_filter,
+            sparse_hour_event_threshold,
+        )
+    }
+
+    fn required_definition_and_timezone(
+        &self,
+        exchange_code: &str,
+    ) -> Result<(&ExchangeCalendarDefinition, Tz), ExchangeCalendarResolveError> {
+        let definition = self
+            .get_required(exchange_code)
+            .map_err(ExchangeCalendarResolveError::from_lookup_error)?;
+
+        let timezone_name = definition.timezone_name();
+
+        let timezone = Tz::from_str(timezone_name).map_err(|_| {
+            ExchangeCalendarResolveError::InvalidTimezoneName {
+                exchange_code: exchange_code.to_string(),
+                timezone_name: timezone_name.to_string(),
+            }
+        })?;
+
+        Ok((definition, timezone))
+    }
+}
+
+fn next_minute_segment_boundary(
+    current_utc_nanos: i64,
+    end_utc_nanos: i64,
+) -> Result<i64, ExchangeCalendarResolveError> {
+    let next_minute_boundary = if current_utc_nanos.rem_euclid(NANOS_PER_MINUTE) == 0 {
+        current_utc_nanos.checked_add(NANOS_PER_MINUTE).ok_or(
+            ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: current_utc_nanos,
+            },
+        )?
+    } else {
+        checked_ceil_to_interval_utc_nanos(current_utc_nanos, NANOS_PER_MINUTE).ok_or(
+            ExchangeCalendarResolveError::TimestampOutOfRange {
+                timestamp_utc_nanos: current_utc_nanos,
+            },
+        )?
+    };
+
+    Ok(next_minute_boundary.min(end_utc_nanos))
+}
+
+/// Loader for parsing exchange calendar registry artifacts.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ExchangeCalendarRegistryLoader;
+
+impl ExchangeCalendarRegistryLoader {
+    /// Parse and load a registry from JSON artifact content.
+    pub fn load_from_json(
+        artifact_json: &str,
+    ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
+        let artifact = serde_json::from_str::<ExchangeCalendarRegistryArtifact>(artifact_json)
+            .map_err(ExchangeCalendarRegistryLoadError::from_deserialization_error)?;
+
+        ExchangeCalendarRegistry::from_artifact(artifact)
+    }
+
+    /// Load a registry from a parsed JSON document.
+    ///
+    /// The document may be either a direct `calendar.registry.v1` artifact or a
+    /// wrapper object containing the artifact in `calendar_registry`.
+    pub fn load_from_json_value(
+        document: Value,
+    ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
+        let artifact = registry_artifact_from_json_value(document)?;
+
+        ExchangeCalendarRegistry::from_artifact(artifact)
+    }
+}
+
+fn registry_artifact_from_json_value(
+    document: Value,
+) -> Result<ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError> {
+    serde_json::from_value(registry_artifact_payload(document)?)
+        .map_err(ExchangeCalendarRegistryLoadError::from_deserialization_error)
+}
+
+fn registry_artifact_payload(document: Value) -> Result<Value, ExchangeCalendarRegistryLoadError> {
+    match document {
+        Value::Object(mut fields) => {
+            let is_direct_registry = fields
+                .get("schema_version")
+                .and_then(Value::as_str)
+                .is_some_and(|schema_version| schema_version == CALENDAR_REGISTRY_SCHEMA_VERSION);
+
+            if is_direct_registry {
+                return Ok(Value::Object(fields));
+            }
+
+            let Some(registry_payload) = fields.remove("calendar_registry") else {
+                return Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+                    reason: "must be a calendar.registry.v1 object or contain calendar_registry"
+                        .to_string(),
+                });
+            };
+
+            if !registry_payload.is_object() {
+                return Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+                    reason: "calendar_registry must be an object".to_string(),
+                });
+            }
+
+            Ok(registry_payload)
+        }
+        _ => Err(ExchangeCalendarRegistryLoadError::MalformedArtifact {
+            reason: "artifact root must be a JSON object".to_string(),
+        }),
+    }
+}

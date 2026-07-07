@@ -1,0 +1,65 @@
+//! Governance, baselines, and regression orchestration for Janiform.
+
+#![forbid(unsafe_code)]
+
+mod deterministic_regression;
+mod performance_baseline;
+mod regression_drift_attribution;
+
+pub use deterministic_regression::{
+    CalendarStateRegressionCase, DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY,
+    DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION, IntervalFactorGridRegressionCase,
+    IntervalNewsIntensityRegressionSource, IntervalSeasonalityRegressionSource,
+    RegressionCaseFailure, RegressionCaseKind, RegressionCaseReport, RegressionHarnessError,
+    RegressionHarnessFallbackPolicy, RegressionHarnessReport, RegressionHarnessSummary,
+    RegressionHarnessToleranceConfig, VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
+    VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY, VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,
+    VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY, run_deterministic_regression_harness,
+};
+pub use performance_baseline::{
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_CAPTURE_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_COMPARISON_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_COMPARISON_REPORT_SCHEMA_VERSION,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_FORWARD_EXTENSION_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_OUTPUT_SCHEMA_METADATA_VERSION,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_OWNERSHIP_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_SCHEMA_FAMILY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_SCHEMA_GENERATION,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_SCHEMA_VERSION,
+    OraclePricerSufficientStatisticsPerformanceBaselineArtifact,
+    OraclePricerSufficientStatisticsPerformanceBaselineCaptureConfig,
+    OraclePricerSufficientStatisticsPerformanceBaselineCaptureConfigValidationError,
+    OraclePricerSufficientStatisticsPerformanceBaselineCaptureError,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonComponentEntry,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonError,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonSummary,
+    OraclePricerSufficientStatisticsPerformanceBaselineComponentMetrics,
+    OraclePricerSufficientStatisticsPerformanceBaselineLoadError,
+    OraclePricerSufficientStatisticsPerformanceBaselineOutputSchemaMetadata,
+    OraclePricerSufficientStatisticsPerformanceBaselineOwnershipMetadata,
+    OraclePricerSufficientStatisticsPerformanceBaselineProfileRecord,
+    OraclePricerSufficientStatisticsPerformanceBaselineSchemaMetadata,
+    OraclePricerSufficientStatisticsPerformanceBaselineSerializeError,
+    OraclePricerSufficientStatisticsPerformanceBaselineSourceReportMetadata,
+    OraclePricerSufficientStatisticsPerformanceBaselineSummary,
+    OraclePricerSufficientStatisticsPerformanceBaselineValidationError,
+    capture_oracle_pricer_sufficient_statistics_performance_baseline_artifact,
+    compare_oracle_pricer_sufficient_statistics_performance_baseline_versions,
+    load_oracle_pricer_sufficient_statistics_performance_baseline_from_json,
+    serialize_oracle_pricer_sufficient_statistics_performance_baseline_to_json,
+};
+pub use regression_drift_attribution::{
+    REGRESSION_DRIFT_ATTRIBUTION_CLASSIFICATION_POLICY,
+    REGRESSION_DRIFT_ATTRIBUTION_OUTPUT_SCHEMA_METADATA_VERSION,
+    REGRESSION_DRIFT_ATTRIBUTION_PERFORMANCE_LATENCY_THRESHOLD_ID,
+    REGRESSION_DRIFT_ATTRIBUTION_PERFORMANCE_THROUGHPUT_THRESHOLD_ID,
+    REGRESSION_DRIFT_ATTRIBUTION_REPORT_SCHEMA_VERSION,
+    REGRESSION_DRIFT_ATTRIBUTION_SCENARIO_SET_THRESHOLD_ID, RegressionDriftAttributionBuildError,
+    RegressionDriftAttributionComparisonContext, RegressionDriftAttributionEntry,
+    RegressionDriftAttributionOutputSchemaMetadata,
+    RegressionDriftAttributionPerformanceThresholds,
+    RegressionDriftAttributionPerformanceThresholdsError, RegressionDriftAttributionReport,
+    RegressionDriftAttributionStatus, RegressionDriftAttributionSummary, RegressionDriftCategory,
+    build_regression_drift_attribution_report, render_regression_drift_attribution_report,
+};

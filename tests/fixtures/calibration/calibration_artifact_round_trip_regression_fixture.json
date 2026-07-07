@@ -1,0 +1,167 @@
+{
+  "schema_version": "calibration.artifact_regression.fixture.v1",
+  "fixture_set_id": "calibration_artifact_round_trip_regression_fixture_v1",
+  "schema_metadata": {
+    "schema_family": "validation.calibration.artifact_regression.fixture",
+    "schema_generation": "v1",
+    "forward_extension_policy": "additive_fields_only.v1"
+  },
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
+  },
+  "canonical_regression_metadata": {
+    "required_artifact_categories": [
+      "dataset_snapshot",
+      "stage_parameter",
+      "validation_metric",
+      "manifest",
+      "experiment_index"
+    ],
+    "required_corruption_kinds": [
+      "missing_file",
+      "malformed_payload",
+      "unsupported_schema_version"
+    ],
+    "required_default_policy_surfaces": [
+      "cli",
+      "python_importable_api"
+    ],
+    "supported_validation_metric_roles": [
+      "comparison",
+      "diagnostics"
+    ]
+  },
+  "round_trip_cases": [
+    {
+      "fixture_id": "full_disk_run_all_artifact_categories",
+      "run_id": "run-artifact-regression-roundtrip",
+      "execution_mode": "disk",
+      "validation_metric_roles": [
+        "diagnostics",
+        "comparison"
+      ],
+      "expected_stage_order": [
+        "seasonality",
+        "hawkes",
+        "return_components",
+        "long_variance",
+        "news_shocks",
+        "return_backfit",
+        "mean_reversion",
+        "joint_refinement",
+        "finalization"
+      ],
+      "expect_experiment_index_record": true,
+      "description": "Full persisted calibration artifact set remains stable across write, load, reload, and experiment-index lookup paths."
+    }
+  ],
+  "corruption_cases": [
+    {
+      "fixture_id": "manifest_unsupported_schema_version",
+      "run_id": "run-artifact-regression-bad-manifest",
+      "execution_mode": "disk",
+      "selection": "complete_run",
+      "validation_metric_roles": [
+        "diagnostics"
+      ],
+      "artifact_target": {
+        "component_kind": "manifest"
+      },
+      "corruption_kind": "unsupported_schema_version",
+      "expected_error": {
+        "kind": "unsupported_schema",
+        "component_kind": "manifest",
+        "expected_schema_version": "calibration.artifact_registry.manifest.v1",
+        "found_schema_version": "calibration.artifact_registry.manifest.v2",
+        "diagnostic_substrings": [
+          "artifact manifest",
+          "run-artifact-regression-bad-manifest",
+          "artifact_manifest.json",
+          "unsupported schema"
+        ]
+      },
+      "description": "Manifest schema upgrades must fail clearly instead of guessing or coercing payloads."
+    },
+    {
+      "fixture_id": "dataset_snapshot_missing_file",
+      "run_id": "run-artifact-regression-missing-dataset",
+      "execution_mode": "disk",
+      "selection": "complete_run",
+      "validation_metric_roles": [
+        "diagnostics"
+      ],
+      "artifact_target": {
+        "component_kind": "dataset_snapshot"
+      },
+      "corruption_kind": "missing_file",
+      "expected_error": {
+        "kind": "missing_artifact_file",
+        "component_kind": "dataset_snapshot",
+        "diagnostic_substrings": [
+          "dataset snapshot artifact",
+          "run-artifact-regression-missing-dataset",
+          "dataset_snapshot.artifact.json"
+        ]
+      },
+      "description": "Incomplete artifact sets must report which dataset snapshot file is missing."
+    },
+    {
+      "fixture_id": "hawkes_stage_parameter_malformed_payload",
+      "run_id": "run-artifact-regression-malformed-hawkes",
+      "execution_mode": "disk",
+      "selection": "stage_subset",
+      "requested_stages": [
+        "hawkes"
+      ],
+      "validation_metric_roles": [],
+      "artifact_target": {
+        "component_kind": "stage_parameter",
+        "stage": "hawkes"
+      },
+      "corruption_kind": "malformed_payload",
+      "expected_error": {
+        "kind": "corrupted_artifact",
+        "component_kind": "stage_parameter",
+        "stage": "hawkes",
+        "diagnostic_substrings": [
+          "stage parameter artifact for `Hawkes`",
+          "run-artifact-regression-malformed-hawkes",
+          "hawkes.stage_parameter.artifact.json",
+          "corrupted"
+        ]
+      },
+      "description": "Malformed stage parameter payloads must identify the affected stage artifact and run."
+    },
+    {
+      "fixture_id": "comparison_validation_metric_unsupported_schema_version",
+      "run_id": "run-artifact-regression-bad-comparison",
+      "execution_mode": "disk",
+      "selection": "complete_run",
+      "validation_metric_roles": [
+        "comparison",
+        "diagnostics"
+      ],
+      "artifact_target": {
+        "component_kind": "validation_metric",
+        "artifact_role": "comparison"
+      },
+      "corruption_kind": "unsupported_schema_version",
+      "expected_error": {
+        "kind": "unsupported_schema",
+        "component_kind": "validation_metric",
+        "artifact_role": "comparison",
+        "expected_schema_version": "calibration.artifact_registry.validation_metric.v1",
+        "found_schema_version": "calibration.artifact_registry.validation_metric.v2",
+        "diagnostic_substrings": [
+          "validation metric artifact for role `comparison`",
+          "run-artifact-regression-bad-comparison",
+          "comparison.validation_metric.artifact.json",
+          "unsupported schema"
+        ]
+      },
+      "description": "Unsupported validation-metric schemas must fail with role-specific artifact context."
+    }
+  ]
+}

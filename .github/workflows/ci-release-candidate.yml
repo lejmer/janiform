@@ -1,0 +1,265 @@
+name: ci-release-candidate
+
+on:
+  push:
+    branches:
+      - "release/v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without leading v
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  release-source-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.release-version.outputs.version }}
+    permissions:
+      contents: read
+    env:
+      TMPDIR: /tmp
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve release version
+        id: release-version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          REF_NAME="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [[ "${REF_NAME}" != release/v* ]]; then
+            echo "Expected release branch name release/vX.Y.Z, found ${REF_NAME}" >&2
+            exit 1
+          fi
+
+          echo "version=${REF_NAME#release/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check source version consistency
+        run: python scripts/ci/check_release_version.py --version "${{ steps.release-version.outputs.version }}"
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  # Release test workloads run locally for release sign-off because
+  # GitHub-hosted free runners do not provide enough runtime capacity for them.
+  # linux-rust-tests:
+  #   name: Linux Rust tests (${{ matrix.name }})
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 20
+  #   permissions:
+  #     contents: read
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - name: core
+  #           package_args: >-
+  #             -p janiform-foundations
+  #             -p janiform-market-time
+  #             -p janiform-model-kernels
+  #             -p janiform-affine-oracle
+  #             -p janiform-event-log
+  #             -p janiform-test-support
+  #         - name: engines-validation
+  #           package_args: >-
+  #             -p janiform-engine-pricing
+  #             -p janiform-engine-simulation
+  #             -p janiform-engine-sufficient-statistics
+  #             -p janiform-validation
+  #         - name: calibration-workflows
+  #           package_args: >-
+  #             -p janiform-calibration-artifacts
+  #             -p janiform-calibration-runtime
+  #             -p janiform-work-scheduler
+  #             -p janiform-workflows
+  #             -p janiform-joint-refinement-worker
+  #         - name: verification
+  #           package_args: >-
+  #             -p janiform-verification
+  #         - name: interfaces-governance
+  #           package_args: >-
+  #             -p janiform
+  #             -p janiform-cli
+  #             -p janiform-terminal-ui
+  #             -p janiform-pybind
+  #             -p janiform-governance
+  #             -p janiform-governance-bench
+  #   env:
+  #     TMPDIR: /tmp
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v6
+  #
+  #     - name: Install Rust toolchain
+  #       uses: dtolnay/rust-toolchain@stable
+  #
+  #     - name: Install Python
+  #       uses: actions/setup-python@v6
+  #       with:
+  #         python-version: "3.12"
+  #
+  #     - name: Run Rust verification shard
+  #       run: cargo test --locked --no-fail-fast ${{ matrix.package_args }}
+
+  linux-wheel:
+    if: github.event_name != 'pull_request'
+    needs: release-source-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      TMPDIR: /tmp
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        run: python -m pip install --upgrade pip uv "maturin>=1.9,<2.0"
+
+      - name: Build Linux wheel and sdist
+        run: |
+          python -m maturin build --release --locked --out dist
+          python -m maturin sdist --out dist
+
+      - name: Check wheel contents
+        run: python scripts/ci/check_wheel_contents.py dist/*.whl
+
+      # Release smoke tests run locally for release sign-off.
+      # - name: Smoke installed Linux wheel
+      #   run: |
+      #     python -m venv .wheel-smoke
+      #     UV_PROJECT_ENVIRONMENT=.wheel-smoke uv sync --no-install-project --frozen
+      #     ./.wheel-smoke/bin/python scripts/ci/smoke_installed_wheel.py \
+      #       --wheel dist/*.whl \
+      #       --no-deps
+      #
+      # - name: Smoke installed sdist
+      #   run: |
+      #     python -m venv .sdist-smoke
+      #     . .sdist-smoke/bin/activate
+      #     python -m pip install --upgrade pip
+      #     python -m pip install dist/*.tar.gz
+      #     python scripts/ci/smoke_installed_wheel.py \
+      #       --expected-version "${{ needs.release-source-checks.outputs.version }}"
+
+      - name: Build Linux standalone CLI archive
+        run: |
+          cargo build --release --locked -p janiform-cli
+          python scripts/ci/package_cli_archive.py \
+            --binary target/release/janiform \
+            --version "${{ needs.release-source-checks.outputs.version }}" \
+            --target x86_64-unknown-linux-gnu \
+            --output-dir dist
+
+      # - name: Smoke Linux standalone CLI archive
+      #   run: python scripts/ci/smoke_cli_archive.py dist/janiform-cli-*.tar.gz
+
+      - name: Upload Linux release candidate artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-release-candidate-artifacts
+          path: dist
+          if-no-files-found: error
+
+  windows-wheel:
+    if: github.event_name != 'pull_request'
+    needs: release-source-checks
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build frontend
+        shell: pwsh
+        run: python -m pip install --upgrade pip uv "maturin>=1.9,<2.0"
+
+      - name: Build Windows wheel
+        shell: pwsh
+        run: python -m maturin build --release --locked --out dist
+
+      - name: Check wheel contents
+        shell: pwsh
+        run: python scripts/ci/check_wheel_contents.py (Get-ChildItem dist -Filter "*.whl").FullName
+
+      # Release smoke tests run locally for release sign-off.
+      # - name: Smoke installed Windows wheel
+      #   shell: pwsh
+      #   run: |
+      #     python -m venv .wheel-smoke
+      #     $env:UV_PROJECT_ENVIRONMENT = ".wheel-smoke"
+      #     $wheelPath = (Get-ChildItem dist -Filter "*.whl").FullName
+      #     uv sync --no-install-project --frozen
+      #     .\.wheel-smoke\Scripts\python scripts/ci/smoke_installed_wheel.py `
+      #       --wheel $wheelPath `
+      #       --no-deps
+
+      - name: Build Windows standalone CLI archive
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p janiform-cli
+          python scripts/ci/package_cli_archive.py `
+            --binary target/release/janiform.exe `
+            --version "${{ needs.release-source-checks.outputs.version }}" `
+            --target x86_64-pc-windows-msvc `
+            --output-dir dist
+
+      # - name: Smoke Windows standalone CLI archive
+      #   shell: pwsh
+      #   run: python scripts/ci/smoke_cli_archive.py (Get-ChildItem dist -Filter "janiform-cli-*.zip").FullName
+
+      - name: Upload Windows release candidate artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-release-candidate-artifacts
+          path: dist
+          if-no-files-found: error

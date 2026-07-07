@@ -1,0 +1,320 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Sufficient-statistics consistency}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Sufficient-statistics consistency\\
+\textbf{Depends on.} \texttt{01\_long\_variance\_normalization.tex},
+\texttt{03\_conditional\_cf\_mgf\_trading\_block.tex},
+\texttt{04\_affine\_transform\_ansatz.tex},
+\texttt{07\_terminal\_cumulant\_adapter.tex}\\
+\textbf{Feeds.} Sufficient-statistics consistency propositions, simulation aggregation validation, affine pricing bridge
+
+\section{Purpose}
+
+Show that seeded tick simulation, direct coarse generation,
+sufficient-statistics sampling, and affine pricing preserve the same
+interval decomposition.
+The point is not that these paths use identical numerical algorithms, but that
+they condition on and propagate the same mathematical objects.
+
+\section{Setup}
+
+On an interval \(k=[t_k,t_{k+1})\), define the decomposed sufficient-statistics
+vector
+\[
+    \mathcal S_k
+    =
+    \left(
+        B_{Z,k}^+,
+        E_k^+,
+        B_{Z,k}^-,
+        E_k^-,
+        N_k^+,
+        N_k^-,
+        \mathbf Y_{t_{k+1}},
+        \Omega_{t_{k+1}},
+        \Delta A_k^\Omega
+    \right).
+\]
+Here \(B_{Z,k}^\pm\) are total long-variance-scaled baseline exposures,
+\(E_k^\pm\) are total endogenous activity exposures, \(N_k^\pm\) are total
+side event counts, \(\mathbf Y_{t_{k+1}}\) is the terminal Hawkes excitation
+state, \(\Omega_{t_{k+1}}\) is the terminal market pressure state, and
+\(\Delta A_k^\Omega\) is the market-pressure anchor-pressure movement.
+
+Open-news and closed-gap return increments are additional additive return
+components.
+They are conditionally independent of the NIG trading-time draws after their
+realized marks and routing state are fixed, and they affect future activity
+through their Hawkes news excitation.
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(\mathcal S_k\) & Decomposed interval sufficient statistics & Non-negative clocks and counts, positive terminal \(Z\), finite terminal \(\Omega\)\\
+\(B_{Z,k}^\pm\) & Baseline exposure scaled by long variance & Non-negative business time\\
+\(E_k^\pm\) & Endogenous side activity exposure & Non-negative business time\\
+\(A_{\mathrm{return},k}^\pm\) & Effective NIG return clock & \(B_{Z,k}^\pm+\eta_\pm E_k^\pm\)\\
+\(N_k^\pm\) & Total buy and sell event counts & Non-negative integers\\
+\(\mathbf Y_{t_{k+1}}\) & Terminal Hawkes excitation state & Non-negative vector\\
+\(\Omega_{t_{k+1}}\) & Terminal market pressure state & Finite real\\
+\(\Delta A_k^\Omega\) & Market-pressure anchor-pressure movement & Finite log return\\
+\(\mathbf Y_{t_k}\) & Hawkes excitation state at interval start & Non-negative vector\\
+\(\Delta M_k,\Delta G_k\) & Open-news and closed-gap return increments & Finite log returns\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+The NIG trading drivers are conditionally independent of the event-state path after conditioning on return clocks.
+& Generating or transforming interval trading returns from \(A_k^\pm\).
+& The return law depends on activity only through the side return clocks.\\
+The Hawkes boundary update depends on elapsed time and event-time weighted
+endogenous and news terminal contributions.
+& Propagating \(\mathbf Y_{t_k}\) to \(\mathbf Y_{t_{k+1}}\).
+& Counts alone are not a sufficient boundary replay statistic once intra-interval
+placement affects terminal excitation.\\
+Long variance affects baseline return clocks.
+& Including \(B_{Z,k}^\pm\) in \(\mathcal S_k\).
+& Pricing and multi-interval simulation need realized baseline exposure.\\
+Market pressure state affects anchor-pressure movement and has its own terminal state.
+& Including \(\Omega_{t_{k+1}}\) and \(\Delta A_k^\Omega\) in \(\mathcal S_k\).
+& Pricing and multi-interval simulation need both unweighted anchor movement and future market pressure memory.\\
+Baseline and endogenous activity are kept separate.
+& Defining \(B_Z^\pm\) and \(E^\pm\) rather than only \(A^\pm\).
+& Pricing and diagnostic queries need different loadings for predictable and excitation-driven activity.\\
+Open news and closed gaps are additive return components with explicit routing.
+& Adding \(\Delta M_k+\Delta G_k\) outside the trading-time NIG block.
+& The same return decomposition can be used by tick, coarse, and sufficient-statistics paths.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Proposition.} Conditional on \(\mathcal S_k\), realized news
+and gap return components, and the interval boundary state, the interval
+return law and the next structural boundary state are determined by the same
+objects for seeded tick aggregation, direct coarse generation,
+sufficient-statistics sampling, and affine pricing.
+
+The trading-time return law is
+\[
+    X_{\mathrm{tr},h}
+    =
+    \left(L_{A_k^+}^+-A_k^+m_+\right)
+    -
+    \left(L_{A_k^-}^--A_k^-m_-\right),
+    \qquad
+    A_k^\pm=B_{Z,k}^\pm+\eta_\pm E_k^\pm.
+\]
+The full interval core return is
+\[
+    X_k
+    =
+    X_{\mathrm{tr},h}
+    +\Delta M_k+\Delta G_k.
+\]
+The observed interval movement also includes the market-pressure anchor
+movement and any residual-component relaxation:
+\[
+    \Delta X_k
+    =
+    \Delta A_k^\Omega
+    +(\phi_k-1)D_k
+    +X_k.
+\]
+The Hawkes boundary state is persisted explicitly:
+\[
+    \mathbf Y_{t_{k+1}}
+    =
+    e^{-\beta\Delta_k}\mathbf Y_{t_k}
+    +C^{Y,+}_k
+    +C^{Y,-}_k
+    +C^{Y,J}_k,
+\]
+where \(C^{Y,+}_k\), \(C^{Y,-}_k\), and \(C^{Y,J}_k\) are the
+event-time weighted terminal contributions from buy events, sell events, and
+news activity loadings.
+The market pressure boundary state and anchor movement are persisted
+explicitly:
+\[
+    \Omega_{t_{k+1}}
+    =
+    \Psi_\Delta(
+        \Omega_{t_k};
+        N_k^+,
+        N_k^-,
+        \{\tau_m^\pm\},
+        \Delta_k,
+        \mu_{\Omega,k}^{\mathrm{sgn}}
+    ),
+\]
+where \(\{\tau_m^\pm\}\) denotes the hidden or observed event placements needed
+to compute the terminal pressure state and integrated pressure state.
+
+\section{Derivation}
+
+Start from the Janiform interval return decomposition:
+\[
+    X_k
+    =
+    \left(L_{A_k^+}^+-A_k^+m_+\right)
+    -
+    \left(L_{A_k^-}^--A_k^-m_-\right)
+    +\Delta M_k+\Delta G_k.
+\]
+Given \(\mathcal S_k\), the side return clocks are fixed:
+\[
+    A_k^+=B_{Z,k}^++\eta_+E_k^+,
+    \qquad
+    A_k^-=B_{Z,k}^-+\eta_-E_k^-.
+\]
+By the conditional CF/MGF derivation, the NIG trading block depends on the
+interval path only through \(A_k^+\) and \(A_k^-\).
+Thus, any construction that preserves \(B_{Z,k}^\pm\) and \(E_k^\pm\)
+preserves the conditional trading-time law.
+
+The jump and gap components enter additively:
+\[
+X_k=X_{\mathrm{tr},h}+\Delta M_k+\Delta G_k.
+\]
+Open-window news returns are routed through \(\Delta M_k\), while closed-window
+returns are stored as \(\Delta G_k\) until reopening.
+Once these components are fixed, the total return is fixed up to the same
+trading-time NIG draw.
+
+For the Hawkes state, the continuous part over the interval is deterministic
+decay between jumps.
+Side events and news loadings add fixed excitation increments at their event
+times.
+Therefore, conditional on \(\mathbf Y_{t_k}\), \(\Delta_k\), and the
+event-time weighted terminal contributions, the terminal state is
+\[
+    \mathbf Y_{t_{k+1}}
+    =
+    e^{-\beta\Delta_k}\mathbf Y_{t_k}
+    +\sum_{m=1}^{N_k^+}e^{-\beta(t_{k+1}-\tau_m^+)}\mathbf k_+
+    +\sum_{m=1}^{N_k^-}e^{-\beta(t_{k+1}-\tau_m^-)}\mathbf k_-
+    +\sum_j e^{-\beta(t_{k+1}-\tau_j^J)}U_j^J\boldsymbol\rho.
+\]
+Seeded tick aggregation obtains these quantities by summing over generated
+events.
+Direct coarse and sufficient-statistics paths do not need to expose event tapes,
+but they must materialize the same terminal contribution statistics internally
+or persist the terminal state explicitly.
+
+For market pressure, \(\Omega\) is a finite-state CTMC over side-balance
+levels \(b_k\in[-1,1]\).
+Let \(\mathbf p_k\) be the boundary probability vector and
+\(\mathcal G^\Omega\) the physical pressure generator.
+Preserving the terminal pressure state and the integrated signed-balance
+exposure
+\[
+    B_k^\Omega
+    =
+    \int_{t_k}^{t_{k+1}} b_{\Omega_u}\,dE_u^\Omega
+\]
+preserves anchor-pressure movement without requiring an event tape.
+The conditional mean formulas are
+\[
+    \mathbf p_{k+1}
+    =
+    \exp(\mathcal G^\Omega\Delta_k)\mathbf p_k
+\]
+and
+\[
+    \mathbb E[B_k^\Omega\mid \mathbf p_k]
+    =
+    \left(
+        \int_0^{\Delta_k}\mathbf b^\top\exp(\mathcal G^\Omega u)\mathbf p_k\,du
+    \right)e_k^\Omega.
+\]
+The anchor increment is
+\(\Delta A_k^\Omega=\gamma_\Omega B_k^\Omega\), and coarse workflows carry
+the terminal pressure state and anchor increment rather than an event tape.
+
+Affine pricing uses the same decomposition in transform form.
+The affine schedule transform takes separate loadings for
+\[
+    B_Z^+,\quad E^+,\quad B_Z^-,
+    \quad E^-,\quad N^+,\quad N^-,
+    \quad Z_T,\quad \Omega_T,\quad \Delta A^\Omega,
+\]
+where the activity loadings apply to total activity exposure and the count
+loadings apply to total events.
+It evaluates the joint transform by propagating \((C,\mathbf D,V,W)\).
+The terminal cumulant adapter in \texttt{07\_terminal\_cumulant\_adapter.tex}
+maps pricing arguments into those same activity, count, and market-pressure
+loadings.
+
+Therefore, the four paths are consistent at the level of the transition law
+whenever they preserve \(\mathcal S_k\), the routed news/gap return
+components, and the shared boundary-state transition.
+
+\section{Domain and validity}
+
+The consistency statement is valid for admissible model parameters and
+intervals satisfying the affine and simulation-domain constraints:
+non-negative finite activity clocks, non-negative integer counts, positive
+long-variance boundary and terminal states, finite market pressure
+states, finite market-pressure anchor movement, finite routed news and
+gap returns, valid Hawkes and market-pressure state updates, and finite
+NIG side-driver transforms or samples.
+
+The statistic \(\mathcal S_k\) is sufficient for the trading-time return law
+and the structural transition pieces listed above.
+It is not a claim that all diagnostic paths use identical random-number streams
+or identical numerical approximations.
+Distributional equality between seeded aggregation and direct coarse generation
+must be checked by the paper's aggregation and sufficient-statistics plots.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item Tick aggregation and direct coarse generation can be compared on decomposed statistics, not only on final returns.
+    \item Pricing uses the same baseline/endogenous activity split as simulation and sufficient-statistics sampling.
+    \item Return-generation diagnostics should preserve trading-time, open-jump, closed-gap, market-pressure anchor, and total-return components.
+    \item Boundary-state updates should be tested against the same Hawkes and market-pressure transition maps used by event simulation.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Statistic contract
+& The interval statistic stores baseline and endogenous side activity, total side activity, and side counts with consistency validation.
+& \texttt{SufficientStatisticsIntervalStatistics} in \texttt{crates/janiform-affine-oracle/src/sufficient\_statistics/contracts.rs}\\
+Transform-slice expectations
+& The affine transform slices extract expected side activity, baseline activity, endogenous activity, and side counts from a shared transform.
+& \texttt{derive\_expected\_interval\_statistics\_from\_validated\_transform\_slices} in \texttt{crates/janiform-affine-oracle/src/sufficient\_statistics/execution.rs}\\
+Return generation
+& Sampled statistics feed the shared return-decomposition API and route open news versus closed gaps explicitly.
+& Tests \texttt{interval\_return\_generator\_open\_window\_routes\_open\_jump\_and\_suppresses\_closed\_gap} and \texttt{interval\_return\_generator\_closed\_window\_routes\_closed\_gap\_and\_supports\_optional\_breakdown}\\
+Boundary update consistency
+& Updating from sampled counts matches the canonical Hawkes transition sequence.
+& Test \texttt{boundary\_state\_update\_is\_consistent\_with\_shared\_transition\_api\_reference\_sequence}\\
+Deterministic carryover
+& Replaying the same interval statistics path gives the same terminal excitation states.
+& Test \texttt{boundary\_state\_update\_preserves\_deterministic\_multi\_interval\_carryover}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

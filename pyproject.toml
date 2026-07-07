@@ -4,27 +4,48 @@ build-backend = "maturin"
 
 [project]
 name = "janiform"
-description = "Python package and CLI for the Janiform SDE."
+description = "Python package and CLI for Janiform, a realistic high-frequency return model."
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
 requires-python = ">=3.12"
 dynamic = ["version"]
-dependencies = []
+dependencies = [
+    "numpy>=2.4",
+    "orjson>=3.11",
+    "pandas>=3.0",
+    "pyarrow>=23.0",
+]
 
 [project.optional-dependencies]
+test = [
+    "matplotlib>=3.10",
+    "pyqt6>=6.10",
+    "pytest>=9.0",
+    "pytest-benchmark>=5.2",
+    "pytest-cov>=7.0",
+]
 dev = [
-    "maturin>=1.8,<2.0",
-    "pytest>=8.0",
+    "janiform[test]",
+    "maturin>=1.9,<2.0",
+]
+paper = [
+    "matplotlib>=3.10",
+    "scienceplots>=2.2.1",
 ]
 
 [project.scripts]
-janiform = "janiform.cli:main"
+janiform = "janiform.__main__:main"
 
 [tool.maturin]
 bindings = "pyo3"
-manifest-path = "crates/pybind/Cargo.toml"
+manifest-path = "crates/janiform-pybind/Cargo.toml"
 module-name = "janiform._native"
 python-source = "python"
 
 [tool.pytest.ini_options]
+addopts = [
+    "--benchmark-storage=file://./.pytest_cache/benchmark",
+]
 pythonpath = ["python"]
-testpaths = ["tests/python"]
+testpaths = ["tests"]

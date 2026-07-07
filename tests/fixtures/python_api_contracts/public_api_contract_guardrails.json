@@ -1,0 +1,1908 @@
+{
+  "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
+  "approved_snapshot_sha256": "f3e21b2702da43426b1ed62a91ebdbf5e7f0945f5d26c6b0eb011e3a5d92f437",
+  "change_log": [
+    {
+      "approved_on": "2026-03-08",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The staged calibration surface now derives close-open gap candidates internally from raw boundary observations so callers no longer perform mechanical preprocessing outside Janiform.",
+      "snapshot_sha256": "358a892617b023f392f0dc8ac52eabac32045ff6750e62e5c02e6be86753ee6c",
+      "summary": "Replace staged close-open gap candidate inputs with raw boundary observations and explicit detection policy."
+    },
+    {
+      "approved_on": "2026-03-08",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Calibration now exposes a market-data-first request boundary with explicit provenance and normalization selections while keeping staged execution as the advanced path.",
+      "snapshot_sha256": "9c450deecc8eb0cacf9b439d380a58ad73e6aaee48a81bc79c3157a61d08d63a",
+      "summary": "Add the market-data calibration request contract and recommended CLI entry point."
+    },
+    {
+      "approved_on": "2026-03-08",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The market-data-first calibration surface now exposes a public preparation result with diagnostics and provenance, plus a direct market-data runner, so examples and tooling can stay on the user-facing path instead of dropping to staged orchestration.",
+      "snapshot_sha256": "755eb7fa5226593fd99c93fb0df97a0fdb265e24d50ab7d2824b39dbb42adf5b",
+      "summary": "Add public market-data preparation and run entrypoints with surfaced diagnostics."
+    },
+    {
+      "approved_on": "2026-03-08",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The split calibration package now exposes its public namespace through package re-exports without rewriting symbol origin metadata, so introspection reflects the defining submodules.",
+      "snapshot_sha256": "5b105221fd94cb8677c81a4c821f8085f5b7f619d05d5833bf4d96004fc54f74",
+      "summary": "Record calibration package re-exports without module-origin shims."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The coarse-interval runner is now a public simulation workflow, so the Python contract snapshot must include the new simulation request and path artifacts instead of leaving the workflow behind private native bindings.",
+      "snapshot_sha256": "5f8da080a8f36bf3b38507e46ca8c569ab26f52a9da9d5b05e653f6803396bd6",
+      "summary": "Add the public coarse-interval simulation surface under janiform.simulation."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The simulation surface now lives in a package with private submodules, so public imports stay stable while API introspection records the defining submodule for shared contracts and workflow types.",
+      "snapshot_sha256": "a7dda4981972a2c1184326ae1ec3bb99666f1aeb9e30a8d46a35d5995ef2244b",
+      "summary": "Record janiform.simulation package-backed re-exports without module-origin shims."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public Python contracts now treat signed trade labels as the canonical Hawkes calibration input and expose seeded simulation as a priced fine path with derived event replay, so the approved snapshot must match the new design-faithful workflow surface.",
+      "snapshot_sha256": "66a69ecac6c6689f360bbc512bd82773444f1d012078dbd9bc33e7ea34f876b7",
+      "summary": "Record the signed-trade calibration surface and canonical seeded priced fine path."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The guardrail now snapshots stringified callable annotations so Linux and Windows produce the same approved public API signature records even when annotation evaluation availability differs between environments.",
+      "snapshot_sha256": "6e0d465d0f865fdc83cd727053891a14dc84dc18662dd702982ad5dd472482ab",
+      "summary": "Normalize public API guardrail signatures for cross-platform snapshot stability."
+    },
+    {
+      "approved_on": "2026-03-11",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Hawkes calibration now accepts unsigned directional-label diagnostics and an observed source regime instead of caller-supplied raw objective terms, so the public calibration contracts must expose the new regime and diagnostics models and the updated candidate constructor.",
+      "snapshot_sha256": "f5e463e1011fb377589cd4ba62d081d5266e76f90b60b461c22711570515ba07",
+      "summary": "Replace public Hawkes candidate objective terms with unsigned-regime diagnostics."
+    },
+    {
+      "approved_on": "2026-03-11",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Consumers now need one canonical path from calibration seasonality output to runtime hourly factors, so the public hourly-factor surface exposes a helper that materializes the normalized event-level signal and mean-renormalizes it instead of encouraging manual component recomposition.",
+      "snapshot_sha256": "ed6fb02efc07873f443ce2915cc2ea3f10f9736f2b6d95c03a9c6e315ad2cb8c",
+      "summary": "Add a public helper for runtime-ready hourly seasonality from calibration payloads."
+    },
+    {
+      "approved_on": "2026-03-11",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Simulation and factor-loading workflows now derive fixed UTC interval grids from interval specifications instead of forcing exact UTC-hour boundaries while retaining hourly-calibrated control inputs.",
+      "snapshot_sha256": "72d964914f2b12abf2c7b20185ae710d9538c8d00f65aac552e49ed5dde599b7",
+      "summary": "Generalized hourly-factor public APIs to accept fixed-width interval specifications and expose interval duration metadata."
+    },
+    {
+      "approved_on": "2026-03-11",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The staged return-components calibration contract now exposes raw observed open-session returns, activity-lift evidence, and explicit objective weights so callers provide empirical evidence instead of pre-baked NIG candidates and forced jump structure.",
+      "snapshot_sha256": "b7c6035b6924c5ace138467a8fce9228702107fd66ef1d96a0ff70da2c7067d3",
+      "summary": "Replace public return-components NIG candidate inputs with observed return evidence and diagnostics weights."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seeded simulation now returns lazy fine-path and event-tape views with explicit boundary diagnostics, replacing the eager full-path JSON round-trip and surfacing the new response metadata in the approved Python API snapshot.",
+      "snapshot_sha256": "7b84737ad782c120a5de559f6ff762b6b94b205aae98f5188e14f0bab8aa5256",
+      "summary": "Record lazy seeded simulation views and boundary diagnostics in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-data calibration now resolves sessions automatically when a common workflow provides enough evidence, so the public calibration contracts expose optional session overrides plus a surfaced session-resolution artifact that can be reused for calibration and simulation preparation.",
+      "snapshot_sha256": "f203382515736c3f8ca202892f58311a2f54bde2baa6be3758afe907cb2ad036",
+      "summary": "Expose automatic session resolution diagnostics and make manual session-definition inputs optional."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level calibration surface now exposes typed session, known-news, and market-profile preset references with explicit override patches and full explicit configuration payloads, replacing any need for ad hoc preset kwargs and making provenance serialization part of the approved public contract.",
+      "snapshot_sha256": "5ff5192b6936874174e5c35d45f8cde9f8268559b4379ca24fbde69ede81381b",
+      "summary": "Add typed preset reference contracts for high-level session, known-news, and market-profile configuration."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "planning/programmatic_preset_generation_plan.md"
+      ],
+      "rationale": "Calibration now exposes a public preset registry with bundled runtime artifacts, deterministic export, and user-defined preset loading, so the approved Python contract snapshot must include the new registry types, preset artifact metadata, and resolved export surface.",
+      "snapshot_sha256": "0ba0f156c175f317d95d6d2e1e4f865b48a5becd2160a885ef3d1cfa8b0aa929",
+      "summary": "Add bundled preset registry, artifact metadata, and deterministic preset export contracts."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Calibration now exposes one resolved preset-workflow configuration with component-level provenance, deterministic override fields, inferred-session diagnostics, and explicit known-news recommendation outcomes, so the approved Python API snapshot must include the new resolution contracts and entrypoint.",
+      "snapshot_sha256": "2fb63cc1bc83d3f860fee48e351dc0d5d2d9d0b41644125fe435f04cd46e7c05",
+      "summary": "Add canonical resolved preset-workflow configuration contracts and resolution diagnostics."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Calibration now exposes a default estimator-model-report object model on top of the canonical market-data preparation and staged runner path, so the approved Python API snapshot must include the new high-level fit classes under janiform.calibration.",
+      "snapshot_sha256": "fa2e9186e7de1c712609d1f9276ca53431022fcff6434d5de01cdd11e7bcaf1b",
+      "summary": "Add the JaniformEstimator, JaniformModel, and JaniformFitReport high-level fit surface."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now lives in a private implementation module whose name reflects its actual role, so the approved API snapshot must update the recorded origin metadata for the public calibration fit classes.",
+      "snapshot_sha256": "25996317231a00a4eace0e37a1fd86d3776c7b563760d9ce5e6085b41c1933b6",
+      "summary": "Rename the private calibration high-level implementation module to _fit_api."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The Python surface policy now treats curated workflow roots and public domain submodules as complementary supported import paths, so the approved snapshot must include the new janiform.simulation.seeded module and the updated document version instead of preserving the old facade-only assumption.",
+      "snapshot_sha256": "f457863a7e3d7ad66799c7ce0d4b3e4eb9645cd14adde0f276291094a9e4a0da",
+      "summary": "Reset the Python namespace policy to allow curated roots plus public domain submodules."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "GammaSeverityMarkConfiguration is pricing-owned and was only exposed from janiform.simulation through a lazy module __getattr__ alias to dodge an import cycle, so the approved surface now removes that hack and requires callers to import the type from janiform.pricing instead.",
+      "snapshot_sha256": "6a09538fba008a1f330b39e897e70c481b2381d517d586232286ea1651397ebe",
+      "summary": "Remove the lazy simulation alias for the pricing-owned GammaSeverityMarkConfiguration."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The simulation namespace now exposes janiform.simulation.coarse, janiform.simulation.seeded, and janiform.simulation.shared as the supported discoverable package map while removing the old underscore-backed structure, so the approved snapshot must track the new modules and the moved symbol origins.",
+      "snapshot_sha256": "4a21fe0c03431f645f3ae87241fc367e7d8f7169004104cbff60d2a563b32317",
+      "summary": "Approve simulation subpackage decomposition for coarse, seeded, and shared surfaces."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The shared simulation package now keeps helper machinery out of its __init__ facade, so the approved snapshot must record that the public validation error type is defined in janiform.simulation.shared.errors while remaining re-exported from janiform.simulation.shared and janiform.simulation.seeded.",
+      "snapshot_sha256": "0170fa45f95e17c467f35171a4141a344492ef3f54cdcd24fc1614961f7758e4",
+      "summary": "Record helper extraction from janiform.simulation.shared.__init__."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public seeded simulation convenience surface now re-exports the public calendar and hourly-factor types referenced by load_hourly_factor_contract_for_simulation so callers can follow the helper signature directly from janiform.simulation or janiform.simulation.seeded without dropping into separate modules first.",
+      "snapshot_sha256": "1e8ad2f98fbb91a7d4a28aff30b4295ed39ebf6906c90e1c4a1498e8e59992b6",
+      "summary": "Re-export seeded hourly-factor loader signature types from simulation convenience surfaces."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Calibration now exposes supported fit, market_data, staged, presets, and sessions submodules while keeping janiform.calibration as a curated convenience root, so the approved contract snapshot must track both the root and the new ownership paths.",
+      "snapshot_sha256": "972e860cab0239cc3f40bdc38a59acbcb95eede124c9d3fe92cc11aeb09d6bf4",
+      "summary": "Approve calibration public submodule decomposition."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Calibration now exposes supported ownership submodules for fit, market-data, presets, sessions, and staged execution, so the approved contract snapshot must track those explicit import paths instead of only the package roots.",
+      "snapshot_sha256": "fd9cf11e8068c74d52f8c25e526c689fb568fbaf988b66a536a341811bc057e6",
+      "summary": "Deepen calibration public submodule decomposition into ownership modules."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Staged calibration ownership now lives in explicit inputs, results, and runtime modules instead of hidden private monoliths, so the approved snapshot must reflect the deeper public submodule map and the reduced runtime surface.",
+      "snapshot_sha256": "c99c7ab2d17564b1f7a396e562c4ef4a62058566986dee8b99cf917b883d2b64",
+      "summary": "Split staged calibration into public input, result, and runtime ownership modules."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public namespace policy already treats janiform.cli and its documented command and parsing submodules as supported imports, so the approved snapshot must track those modules directly instead of leaving the CLI surface outside the real contract guardrail.",
+      "snapshot_sha256": "b84b83bb7bfdf18b79c435c11ca1d71cfdafc7592a4c5a1e6fc72d88e78b58af",
+      "summary": "Track supported CLI modules in the public API contract snapshot."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The CLI foundation now lives in a Click command tree and the old parser-construction submodules were removed, so the approved public API snapshot must drop janiform.cli.parsing.* instead of treating deleted argparse scaffolding as supported imports.",
+      "snapshot_sha256": "7af75087de818c36c4a5d42b7d2d276ba291869105f89c14139ad65350e7d809",
+      "summary": "Remove the deleted janiform.cli.parsing public modules from the approved API snapshot."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The Click migration now uses a native Click command boundary with keyword parameters and shared Click context instead of synthetic parser-result objects, so the approved CLI-module signatures must drop the temporary Namespace-based bridge.",
+      "snapshot_sha256": "e47696f241d6b0ee8178b5dbe9cb6fed4f2cbb135c817b9812de8812f4ce2b77",
+      "summary": "Approve the Click-native CLI command boundary and remove parser-emulation signatures."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The CLI redesign replaces the old calibration, simulation, and fit-and-simulate roots with the canonical fit and simulate workflow tree, so the approved public API snapshot must remove the deleted CLI symbols and record the new command identifiers that now define the supported surface.",
+      "snapshot_sha256": "d63e4bfd807f8bc02f392adff6a8f88b80a4be0513f2bbe22e4e08690e858a40",
+      "summary": "Approve the fit/simulate CLI command-tree reset in the public API snapshot."
+    },
+    {
+      "approved_on": "2026-03-14",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now defaults the common tick-data path internally and the CLI exposes the beginner inspect/explain flow, so the approved snapshot must record the relaxed JaniformEstimator constructor plus the new fit-inspect CLI constants instead of preserving the older contract-shaped minimum path.",
+      "snapshot_sha256": "76802c4436a5e914fb8a7fd1f032207a1519f4449920293b8c36dd7eee499821",
+      "summary": "Approve zero-config high-level fit defaults and the fit-inspect CLI surface."
+    },
+    {
+      "approved_on": "2026-03-14",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The Python cleanup pass standardizes Optional usage, removes annotated varargs from CLI callbacks, and replaces dict[str, object] style document hints with the repo-preferred shapes so the approved snapshot must follow the tightened typing contract.",
+      "snapshot_sha256": "6cc2bf7c3c993c9e87a59d7572d43b64a67a18849411f22bd11c9c7de7089d36",
+      "summary": "Approve the Python type-hint hygiene pass for CLI and document-shaped helpers."
+    },
+    {
+      "approved_on": "2026-03-14",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The first-use workflow reset makes fit, simulate, and price one coherent family with durable CLI outputs, interval-driven simulation, model-driven pricing, and explicit library output-path plus silent controls, so the approved snapshot must track the new workflow method signatures and the renamed CLI pricing constants instead of preserving the execution-input-first contract.",
+      "snapshot_sha256": "a880bedcef1bd94cfa3bd3b6d68acb345ca85a2e67ce919c4cfbb49601f607e3",
+      "summary": "Approve the first-use workflow redesign for durable CLI artifacts, interval-driven simulate, and model-driven price."
+    },
+    {
+      "approved_on": "2026-03-14",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level simulation surface now returns a Janiform-owned result object with native tabular export helpers while preserving workflow diagnostics and metadata instead of exposing the raw coarse or seeded payloads directly.",
+      "snapshot_sha256": "3dd4c4e6d3ec7897e9c0492366a2bc7d788c857b35ef4b2e452d1dd7642793bd",
+      "summary": "Approve JaniformSimulationResult as the high-level simulate return surface."
+    },
+    {
+      "approved_on": "2026-03-15",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Tick-price input policy now distinguishes only between an explicit single-price column and a derived bid-ask midpoint, so the approved Python and CLI contract snapshot must drop the arbitrary trade-price and close-price variants and reflect the simpler input and output schema model.",
+      "snapshot_sha256": "87ca6aba5029031f66f36fdc8fdfb592a7b4ecf6f8b0bb9b91cc140d165008ca",
+      "summary": "Approve the simplified explicit-price versus midpoint tick-price policy surface."
+    },
+    {
+      "approved_on": "2026-03-15",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "CLI helper modules remain importable ownership boundaries, but underscore-prefixed callbacks and utility helpers are internal implementation details rather than approved public exports, so the snapshot must stop treating those names as part of the supported Python contract.",
+      "snapshot_sha256": "de73c4c3bdb4c6bd09a92d7fc59c2d79e53efeab0e6e00aefafd9de699809303",
+      "summary": "Remove underscore-prefixed helper names from Python __all__ exports and the approved API snapshot."
+    },
+    {
+      "approved_on": "2026-03-15",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Duplicate tick rows are now preserved by default and the terminal-facing workflow commands render structured errors while still exposing the same public modules, so the approved snapshot must record the removed duplicate-record error enum member, the optional normalization policy field, and the updated CLI error helper signature.",
+      "snapshot_sha256": "40a6336c4222bda9a7489d5ff25493904b5539d098143d3add4840d7428e5a3b",
+      "summary": "Approve duplicate-preserving tick normalization defaults and structured terminal CLI error rendering."
+    },
+    {
+      "approved_on": "2026-03-17",
+      "docs_updated": [
+        "README.md"
+      ],
+      "rationale": "The staged return-components observed return contract now carries a per-return sell-share proxy so continuous-return calibration can fit the same side-mixed trading-time object that runtime simulates instead of collapsing everything onto one global sell-share.",
+      "snapshot_sha256": "99e5f6e1ea5ef674063d6a68830f4c98a73e4b595039dc1883b38d8b49516812",
+      "summary": "Approve per-return sell-share proxies in the public staged return-components contract."
+    },
+    {
+      "approved_on": "2026-03-17",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Calibration candidate search now exposes CPU-count control consistently through the high-level estimator and the staged optimizer settings contract so callers can tune parallel candidate evaluation without dropping into private implementation hooks.",
+      "snapshot_sha256": "4d7e2b9c7c3e259ce121825c58f92a902b58783d309904a9b51eefe96653d881",
+      "summary": "Approve public CPU-count controls for high-level and staged calibration."
+    },
+    {
+      "approved_on": "2026-03-17",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The staged return-components objective contract now separates surprise-arrival fit quality from jump-magnitude fit, so the approved Python snapshot must include the new public surprise_arrival_fit_weight field in the staged objective-weight model.",
+      "snapshot_sha256": "bcc26d41606d421b120394924dbea78ca0f6c0da5d171926e8445de3681c1e57",
+      "summary": "Approve staged surprise-arrival objective weighting as a distinct public contract field."
+    },
+    {
+      "approved_on": "2026-03-19",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The default full staged calibration workflow now includes a public joint-refinement final stage, so the approved Python snapshot must expose the extra CalibrationStage enum member used by the high-level estimator, market-data preparation diagnostics, and staged request contract.",
+      "snapshot_sha256": "211e4e39849eb407e4ba4f13def5b0854ef27196fedc5d06434418185778f9ad",
+      "summary": "Approve the public joint_refinement staged calibration enum member."
+    },
+    {
+      "approved_on": "2026-03-20",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seeded simulation now moves its lazy Python boundary over typed native chunk columns instead of chunked JSON while preserving the same public response values, so the approved snapshot must record the renamed seeded boundary transport policy constant.",
+      "snapshot_sha256": "0a7661a37d9a753ef106fa9e8d79eb31acb40ca87402c2766db833447c23bdce",
+      "summary": "Approve the typed-column seeded simulation boundary transport policy."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Staged calibration responses now expose diagnostic artifact bundles in memory mode and diagnostic artifact references in disk mode, so the approved Python contract snapshot must record the extra staged response fields instead of preserving the older report shape without calibration diagnostics.",
+      "snapshot_sha256": "3d21e7073fd4d51e5367321fb7a53967e48aed1616b878d406455994e2bf2c8c",
+      "summary": "Approve staged calibration diagnostic artifact fields in the public Python response contract."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-data translation now keeps the full dataset boundary inside Rust and exposes only execution-ready artifacts, diagnostics, provenance, and fit-level summaries to Python, so the approved snapshot must drop raw loaded-input records from the public translation result and record the new summary fields and keyword cpu_count override.",
+      "snapshot_sha256": "c6ad7cdd7f8f77b9d2bffe7fc43aa890369f634b34bbd453431ee083a501a823",
+      "summary": "Approve the Rust-owned market-data translation result boundary."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The old Python-owned full-dataset ingestion and session-resolution APIs are no longer part of the supported public surface now that source loading, session inference, and preprocessing live on the Rust boundary, so the approved snapshot must stop exporting those record-heavy contracts and workflow helpers.",
+      "snapshot_sha256": "f61dd3f3afaed5b79d84a224fd2f8ccbd1cc7c6289f1f6f814d8d7c8ee4e2de6",
+      "summary": "Remove the deprecated Python full-dataset ingestion and session-resolution workflow exports."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The remaining Python cleanup leaves janiform.calibration.sessions.resolution as a helper-only module with no schema-owning workflow boundary, so the approved snapshot must stop recording stale private schema metadata there and match the trimmed source-loading and session-helper implementation.",
+      "snapshot_sha256": "44b419c87d30e911e1c27fbca77ea28b5423936494b81d74473caa8145befb86",
+      "summary": "Approve the helper-only cleanup for Python session-resolution and source-loading modules."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Promoted `_run_staged_calibration_with_raw_payload_and_events` to the public API since it may be useful for developers to have access to it.",
+      "snapshot_sha256": "67bbbd9a213f54cd2f3ca4ae9c773f86c579203cf6a30b92ee4a300e7eca58f5",
+      "summary": "Approve the promotion of `_run_staged_calibration_with_raw_payload_and_events` to the public API, removing the underscore from the name at the same time."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The anchor-deviation rollout adds canonical mean-reversion model and runtime contracts that are re-exported through janiform.calibration and janiform.simulation, so the approved Python snapshot must record the new public symbols without inventing ad hoc anchor payloads in later workflow layers.",
+      "snapshot_sha256": "6a4f5d07d27442a96372bafdddf8734f5442e8a6ae4f933b40adddde24f7a168",
+      "summary": "Approve the canonical public mean-reversion contracts for calibration and simulation."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Mean-reversion is now a supported shared domain module instead of a private underscore-backed implementation shard, so the approved snapshot must record janiform.mean_reversion as the ownership path while keeping the curated calibration and simulation re-exports intact.",
+      "snapshot_sha256": "d47b2a14bdd99c92f307c364b415674115e6a4b40634a53b0eb6f14f326a79a7",
+      "summary": "Approve janiform.mean_reversion as the canonical ownership path for mean-reversion contracts."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The shared contract namespace now lives under one public janiform.contracts package, replacing both the private underscore helper module and the short-lived janiform.mean_reversion surface, so the approved snapshot must record that single canonical contract import path and its exported validation primitives.",
+      "snapshot_sha256": "844122adb0c484b0b1a54251014e558fecb257fb7f3895e7d3e81a5253998549",
+      "summary": "Approve janiform.contracts as the single public contract namespace."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seeded simulation now requires explicit mean-reversion runtime inputs, publishes observed-state fine-path and event-tape fields, and re-exports the disabled seeded mean-reversion helper from the public simulation packages, so the approved snapshot must record the updated request and record contracts instead of preserving the pre-anchor-deviation surface.",
+      "snapshot_sha256": "26bf85efda04185dcc9efc368bac2917110a200ebe45807c121b6e3ca11dc5c6",
+      "summary": "Approve the seeded simulation observed-state contract rollout in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-03-25",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The anchor-deviation rollout now surfaces observed-state end-of-interval fields on the public coarse simulation and sufficient-statistics contracts, so the approved Python API snapshot must record those fields explicitly instead of preserving the earlier core-return-only shapes.",
+      "snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
+      "summary": "Approve observed-state coarse simulation and sufficient-statistics contract fields in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-03-25",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The staged calibration surface now includes an explicit mean-reversion stage input with lower-frequency observed log-price samples and the corresponding public stage enum value, so the approved Python snapshot must record the new execution-input field and input contracts instead of preserving the pre-anchor-deviation orchestration boundary.",
+      "snapshot_sha256": "133fcfeccbaacb8364bab3bf112adf08b7bf1a642ec6b2acd123ec0136c71bcf",
+      "summary": "Approve the public staged-calibration mean-reversion execution input contracts."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The pricing contract now exposes one canonical anchored boundary input and state-dependent local tilt diagnostic surface, so the approved Python API snapshot must replace the old Hawkes-only pricing request field and include the shared mean-reversion pricing contracts re-exported from janiform.pricing.",
+      "snapshot_sha256": "acb3778034012161c69dd7f52e8ea9a536cf484cdd41f77a135352e831fa352c",
+      "summary": "Replace the Hawkes-only pricing boundary request with anchored pricing contracts and local tilt diagnostics."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Anchored vanilla pricing now accepts interval-aligned execution factors across the full pricing horizon and surfaces anchored recursion diagnostics in the optional run output, so the approved Python snapshot must record the new execution-input and run-diagnostics shapes.",
+      "snapshot_sha256": "8b5bc5fa04c955ff18184a18e0154682236fd84e26b1593fb7e1740defe1b098",
+      "summary": "Approve interval-aligned pricing execution inputs and anchored recursion run diagnostics."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "High-level market-data calibration now exposes an explicit mean-reversion configuration on the public request and estimator surfaces, so callers can request anchor estimation from JaniformEstimator and janiform fit without assembling staged mean-reversion inputs by hand.",
+      "snapshot_sha256": "822725a4d5ec5b574c634ea5ef67ef37ac409fb11fafc728f32faf0ca3a63d4c",
+      "summary": "Add an explicit high-level mean-reversion calibration configuration to market-data requests and JaniformEstimator."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Python now stays config-first while Rust owns calibration evidence preparation, so the approved public surface must replace staged evidence tuples with prepared-handle and artifact-backed runtime boundaries.",
+      "snapshot_sha256": "fe279a5bda09b886940f8106be7bf16ca90ec0f473e12408aa6233f080badfcc",
+      "summary": "Reset calibration public contracts around prepared native artifacts instead of Python-owned staged evidence graphs."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public calibration preparation contracts now carry concrete `CalibrationStage` tuples and the exported `PreparedCalibrationExecutionHandle` type instead of `Any` or `object`, and the obsolete staged-translation compatibility alias is removed entirely from the estimator path.",
+      "snapshot_sha256": "e559c16885dcdb42d8ffa372f961b5c4a03cc31a09a5f7744d6026a7ed386793",
+      "summary": "Approve the concrete prepared-handle typing cleanup and remove the obsolete staged translation alias."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "README.md",
+        "docs/getting-started/quickstart.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing, sufficient_statistics, and coarse simulation now consume native-backed hourly-factor artifacts instead of Python tuple-owned interval-factor contracts, so the approved Python snapshot must remove the old execution-input tuple helpers and record the artifact-backed request fields and signatures.",
+      "snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
+      "summary": "Approve the hourly-factor artifact boundary reset for pricing, sufficient_statistics, and coarse simulation."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The reduction pass now also removes category-specific preset registry passthrough methods that only forwarded into the generic resolver or serializer without adding validation or policy. In-repo callers now use the canonical generic preset operations directly, so the approved snapshot must follow the smaller preset registry surface in addition to the earlier simulation-surface reductions.",
+      "snapshot_sha256": "fc84a697c504c33fcec52b414fd3a34f9da0f27233d39da4ac3367ff5c07640f",
+      "summary": "Approve the preset registry passthrough deletion."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level model loader now reconstructs resolved preset and session contracts through the canonical ownership modules instead of restating those payload parsers inside janiform.model, and the session-registry materialization helpers now live behind the private janiform.calibration.sessions._resolution module boundary instead of a public-looking helper module.",
+      "snapshot_sha256": "d79c8175d37a4f48c49de859a31892f4e5d3de2405981a4f7ef3ae9f27044fee",
+      "summary": "Approve the model parser consolidation and the internal sessions helper module rename."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Helper-only CLI plumbing modules no longer sit on public-looking module paths. The document loader, CLI error normalization, CLI rendering, and the fit, pricing, development, and shared command builders now live behind internal underscore module boundaries, and the public API snapshot must stop treating the old developer and model-workflow command modules as supported public imports.",
+      "snapshot_sha256": "26d337d09aba5d61793af4c73c017f8aeabea474389e7d3759b5fc675fdcc99a",
+      "summary": "Approve the CLI helper-module internalization pass."
+    },
+    {
+      "approved_on": "2026-03-28",
+      "docs_updated": [
+        "README.md"
+      ],
+      "rationale": "Anchored pricing now derives the Q anchor path internally from the observed boundary state and local tilted recursion, so the public Python pricing contracts remove the caller-supplied runtime anchor grid and carry the full news process configuration on pricing model parameters.",
+      "snapshot_sha256": "151f1688090990f1b795e567e9c4269215c5a4583a077d876c8ad5acfb18878b",
+      "summary": "Replace the pricing runtime-anchor-grid request surface with endogenous Q boundary recursion."
+    },
+    {
+      "approved_on": "2026-03-29",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The canonical mean-reversion surface is now endogenous-only, so the public Python API no longer exposes disabled or constant anchor families and the seeded helper name now matches the runtime-generated anchor policy.",
+      "snapshot_sha256": "17cde437ed5bf98564dec7e988c6fa48701336c44370177776f7ed530af8c9fa",
+      "summary": "Remove legacy mean-reversion anchor families from the approved Python API surface."
+    },
+    {
+      "approved_on": "2026-03-29",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "High-level calibration and pricing expose explicit solver, preprocessing, and pricing projection settings on the public Python request surfaces, so callers can override source-only defaults without rebuilding Janiform.",
+      "snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
+      "summary": "Approve explicit high-level solver, preprocessing, and pricing projection settings on the public Python API surface."
+    },
+    {
+      "approved_on": "2026-03-29",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-data preparation now exposes explicit source-probe, normalization, and session-planning phases on the public Python surface while keeping bulk tick ownership in Rust, and built-in session provenance is now reported directly instead of being obscured behind temporary explicit session-definition files.",
+      "snapshot_sha256": "4a7a5535f48cf3c18c889e1a8f46a6de30cbb5f72ebf80b670b1e37d6a0d0dd7",
+      "summary": "Approve the phase-based market-data preparation surface and bundled session provenance metadata."
+    },
+    {
+      "approved_on": "2026-03-31",
+      "docs_updated": [
+        "README.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public mean-reversion surface now uses the pressure-to-level endogenous anchor contract, so shared boundary-state and runtime-anchor payloads carry pressure-state fields and anchor-model calibration parameters directly. The public simulation roots also expose typed progress callbacks, and the staged calibration root now surfaces failure-summary helpers that were already part of the supported control-plane path.",
+      "snapshot_sha256": "546c1dd9b761b4cadf6030c1cae9e1951ff6c094bf309dc95c47a4aa746ae305",
+      "summary": "Approve the pressure-to-level mean-reversion contract and shared simulation progress surface."
+    },
+    {
+      "approved_on": "2026-04-01",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Public Python signatures that describe native-backed runtime artifacts now refer to Janiform-owned protocol boundary types instead of concrete janiform._native implementation classes, so the approved snapshot records the supported control-plane contract rather than a private extension-module detail.",
+      "snapshot_sha256": "63ddfcc18c3d85388085d6589a90988dce2344974c5987cddd93491ffbd6ee16",
+      "summary": "Approve protocol-based native boundary annotations in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-04-02",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now exposes a public current-state estimation contract and method, and the model-driven price and simulate entrypoints accept observed continuation data so they can derive the live Hawkes boundary state inside Janiform instead of defaulting to synthetic zero or stationary behavior when recent observations are available.",
+      "snapshot_sha256": "f06dd0e0b4687db1759fda9bf6ba49c42417335cbe3956f7b8f00b6e2e37d02f",
+      "summary": "Approve the public fitted-model current-state estimation surface and observed-data high-level defaults."
+    },
+    {
+      "approved_on": "2026-04-02",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The current-state estimation surface now accepts batch tick data that matches the fitted market-data shape instead of row-shaped per-observation Python contracts, and the native boundary consumes aligned timestamp, price, and side columns without per-trade wrapper structs.",
+      "snapshot_sha256": "89d162b1c5f8bcf71abf1a0934cf0e9aa7cc55012670d994ee1a0adbd1826fc6",
+      "summary": "Approve the tabular current-state request surface and remove per-trade observation wrappers."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "High-level simulation now treats observed continuation data as the default live-state continuation boundary for both seeded and coarse backends, and the seeded response records the market-pressure state alongside the mean-reversion boundary so continuation behavior can be inspected from exported simulation outputs.",
+      "snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
+      "summary": "Approve live-state continuation defaults and exported seeded pressure-state boundary fields."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Fitted models now expose one canonical multi-node pricing surface for arbitrary option batches and strike-by-expiry grids, so callers stay on Janiform-owned batch and surface contracts instead of managing Python loops over single-node pricing.",
+      "snapshot_sha256": "01a9f35b6a9e55b34cd5aebd6bb7cfda8e8075068a345ca2af8a124cc2ecde6b",
+      "summary": "Approve the fitted-model batch pricing and option-surface pricing APIs."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Mean-reversion models are a domain surface used across calibration, pricing, sufficient_statistics, and simulation, so the public Python API now owns them under janiform.mean_reversion and its contracts submodule instead of treating them as generic helpers under janiform.contracts.",
+      "snapshot_sha256": "02c0e7993977faf6bad13a335eccc04de17ca5bc243cdc80b4e7c71c94ea08f0",
+      "summary": "Move mean-reversion contracts from janiform.contracts into the janiform.mean_reversion package."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Mean-reversion contracts remain owned by janiform.mean_reversion, so janiform.calibration no longer republishes them as convenience aliases. The approved public surface now makes that ownership boundary explicit instead of implying the contracts belong to the calibration root.",
+      "snapshot_sha256": "0c4bd060e62018e4ae7b34e4ae7180fbd48d2caeb798ffc88f5755a839c1c472",
+      "summary": "Remove mean-reversion convenience re-exports from janiform.calibration.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.mean_reversion"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Stylized-fact and validation report surfaces now use ContractModel dataclasses and package-owned contracts submodules instead of TypedDict artifacts and the validation.types module. The approved snapshot must record the new janiform.stylized_facts package shape, the janiform.stylized_facts.contracts and janiform.validation.contracts submodules, and the dataclass-backed contract signatures that replace the old dict-shaped report models.",
+      "snapshot_sha256": "233d767c87bb8ae5d9bf1bd87d6dcfe2f94e5a8a96c41f23671691cc663ec4ea",
+      "summary": "Approve dataclass report contracts and package-owned stylized-facts and validation contract submodules.",
+      "updated_surfaces": [
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
+        "janiform.validation",
+        "janiform.validation.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Hourly-factor source, settings, and schema dataclasses are now ContractModel contracts owned by a dedicated janiform.hourly_factors.contracts submodule, while the public root stays a curated package that re-exports workflows and artifacts without keeping all implementation and contract types inside one oversized module.",
+      "snapshot_sha256": "4977afb60c4e90793b183f824bb2a01ce2146713166cbe22b9cf4312bb73ffce",
+      "summary": "Approve the package-owned hourly-factor contracts submodule and ContractModel dataclasses.",
+      "updated_surfaces": [
+        "janiform.hourly_factors",
+        "janiform.hourly_factors.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seasonality now follows the same package-owned public-surface pattern as other domains: enums and request or schema dataclasses live in janiform.seasonality.contracts, native-result wrappers live in internal artifact modules, and the root package stays a curated re-export surface instead of one monolithic file.",
+      "snapshot_sha256": "d4b0e7e07e3572e077e8baf127f41874b8e39456f258fe931e11a22b13ac4c02",
+      "summary": "Approve the package-owned seasonality contracts submodule and split the seasonality monolith.",
+      "updated_surfaces": [
+        "janiform.seasonality",
+        "janiform.seasonality.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Hourly-factor provider exceptions now follow the same package structure as other domain surfaces by living in janiform.hourly_factors.errors rather than inside the workflow implementation module, so the approved snapshot must record the new owning module for those public error types.",
+      "snapshot_sha256": "e47188f60c140ff7b8b5aadaeaea67a4aea3ee3dc1b75f1fc2621a76dcb317f8",
+      "summary": "Approve package-owned hourly-factor error modules.",
+      "updated_surfaces": [
+        "janiform.hourly_factors"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Sufficient-statistics now follows the same package-owned surface pattern as other domains: contract dataclasses live in janiform.sufficient_statistics.contracts, validation errors live in janiform.sufficient_statistics.errors, and workflow serialization and validation entrypoints live outside the contract definitions so the root package is a curated re-export surface instead of one monolithic module.",
+      "snapshot_sha256": "42f67b00fb4031e1be5d5d1245266f1fb042ad60f400b83fc7c77dd914e5dff0",
+      "summary": "Approve the package-owned sufficient-statistics contracts submodule and split the sufficient-statistics monolith.",
+      "updated_surfaces": [
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "The sufficient-statistics surface does not own a distinct validation-failure contract and the previous alias only renamed ContractValidationFailure without adding behavior or type distinction, so the approved snapshot now removes that redundant public symbol.",
+      "snapshot_sha256": "e8819ca6af84acdaec92507e757fcc06df65e6934eee4304d7567283d3b8cda6",
+      "summary": "Remove the redundant sufficient-statistics validation-failure alias.",
+      "updated_surfaces": [
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Vanilla-option pricing now follows the same package-owned public-surface pattern as other domains: contract dataclasses live in janiform.pricing.contracts, workflow entrypoints live in janiform.pricing.workflow, and validation errors live in janiform.pricing.errors. The approved snapshot also removes the redundant VanillaOptionPricingValidationFailure alias because it only renamed ContractValidationFailure without adding a distinct pricing-owned type.",
+      "snapshot_sha256": "01c0c87b349c0e95f9a3bf9af310e92c242f401dce6cc313c5ac9820cbcec858",
+      "summary": "Approve the package-owned pricing contracts submodule and split the pricing monolith.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "The mean-reversion surface has exactly one supported anchor-model shape, so the public Python contracts and calibration configuration no longer carry a selector field or exported kind enum. The approved snapshot must therefore remove those discriminator-shaped fields and signatures from the shared mean-reversion, calibration, pricing, sufficient_statistics, and simulation surfaces instead of preserving a fake extensibility point.",
+      "snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
+      "summary": "Remove the mean-reversion discriminator and exported kind enum from the public Python API surface.",
+      "updated_surfaces": [
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts",
+        "janiform.simulation",
+        "janiform.simulation.shared"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Janiform pricing results now expose package-owned implied-volatility outputs directly on the single-node, batch, and surface pricing contracts, together with explicit inversion-status fields that keep node-level failures aligned inside the same pricing artifacts. The approved snapshot must therefore add the shared inversion-status enum and the new implied-volatility fields across janiform.pricing and janiform.pricing.fitted instead of forcing callers to solve for implied volatility outside Janiform.",
+      "snapshot_sha256": "250f8ddd6643bddf94c791e2998dddd72c3dea3ea1e3cddb54b97f3ce4523e87",
+      "summary": "Approve public implied-volatility outputs on pricing responses and fitted-model pricing surfaces.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.calibration.fit",
+        "janiform.pricing.fitted"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Fitted-model pricing now exposes grouped homogeneous batches and maturity summaries as the canonical multi-node surface, while flat arbitrary-node batch contracts and per-node batch diagnostics are removed. The approved snapshot must therefore replace the old fitted-model batch pricing exports with grouped batch request and result contracts, add cpu_count controls on grouped and surface entrypoints, and record the maturity-summary-owned diagnostics surface.",
+      "snapshot_sha256": "90223e7393914277ab616eb684d5cae64aaafc39886caaea9c9bfffb742a65c0",
+      "summary": "Approve grouped fitted-model pricing batches and maturity-summary diagnostics.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.pricing.fitted"
+      ]
+    },
+    {
+      "approved_on": "2026-04-04",
+      "docs_updated": [],
+      "rationale": "High-level fit now infers the workflow scope from the supplied inputs, exposes option-snapshot valuation time and flat carry on the public fit and market-data request boundaries, and exports the flat-carry contract from the public market-data surface. The approved snapshot must therefore replace the old explicit full_without_option_surface estimator constructor default, add the new option-snapshot and carry fields to the market-data request signatures, and record the new CalibrationFlatCarryInput export across the calibration ownership modules.",
+      "snapshot_sha256": "734af8b58e91150f158cf3f88f07b34b2b482a64b04e0302e1a43df80fb3f6d4",
+      "summary": "Approve inferred high-level fit scope and public option-snapshot carry request fields.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.request"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public pricing package now owns a typed volatility-surface workflow alongside the existing single-option runner. The approved snapshot must therefore add the surface request, execution input, response, node-table, run-result, and workflow serialization helpers across janiform.pricing and janiform.pricing.contracts so callers can price, inspect, and export one surface artifact without rebuilding node rows outside the library.",
+      "snapshot_sha256": "79b70ee53d8a3acc23e67e51aecbd6946f181b31716b1b6e1b443a5654fda886",
+      "summary": "Approve the public vanilla-option surface pricing artifact and workflow.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The pricing contracts now own their own validation and JSON or payload roundtrips directly through from_mapping, to_payload, and to_json. The approved snapshot must therefore remove the redundant validate, serialize, and deserialize pass-through helpers from janiform.pricing and janiform.pricing.workflow instead of preserving wrapper functions that add no behavior.",
+      "snapshot_sha256": "00a4e8216447118e2b7f2df5827db326257c975c590ee818de35f4856b9d1565",
+      "summary": "Remove redundant pricing workflow validation and serialization wrappers.",
+      "updated_surfaces": [
+        "janiform.pricing"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md"
+      ],
+      "rationale": "High-level fitted-model pricing now accepts expiry timestamps, expiry dates, and relative tenors directly on the public pricing surface instead of forcing callers to precompute Janiform maturity intervals. The approved snapshot must therefore replace the old maturity-interval request fields on the high-level grouped-batch and surface contracts and expose the shared date parser in janiform.contracts.",
+      "snapshot_sha256": "2ac2196d3747295e3ec620082dcb1ff11611e8fdab912290a30a4c551529bef6",
+      "summary": "Approve direct expiry and tenor inputs on the high-level pricing API.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing now uses one canonical surface-level market-input contract across single-option and surface workflows instead of exposing separate node-shaped and surface-shaped public market-input objects. The approved snapshot must therefore replace the old scalar strike and maturity fields on VanillaOptionPricingMarketInputs with vectorized strikes and maturity_intervals, remove the redundant VanillaOptionSurfacePricingMarketInputs export, and record that VanillaOptionSurfacePricingRequest now refers to the unified pricing market-input contract.",
+      "snapshot_sha256": "ad5877fb23e4758fce79007fc3be77763542c4f68ab6e34880bee33c7f293b4e",
+      "summary": "Approve the unified surface-level pricing market-input contract.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing now returns explicit per-node priceability status and failure diagnostics across single-option, grouped batch, and surface workflows. The approved snapshot must therefore add the public pricing-status and failure-diagnostic types, replace always-present node outputs with optional node values on failed paths, and record the aligned failure-stage and failure-reason grids on batch and surface artifacts.",
+      "snapshot_sha256": "f05de78f872e6f7f9e89447283d0354bf3e3ad22cde994bffde6e139b083bfa7",
+      "summary": "Approve public node-level priceability diagnostics for pricing workflows.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.pricing.fitted",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.pricing.surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-06",
+      "docs_updated": [],
+      "rationale": "The public Python surface now reflects the CLI ownership refactor, the staged runtime exposes the prepared-handle helpers that high-level workflows and tools patch directly, and shared contract helpers are recorded from their defining modules instead of legacy wrapper paths. The approved snapshot must therefore align the guardrails with the thin janiform.cli module, the live staged-runtime helper exports, and the current package-owned contract layout.",
+      "snapshot_sha256": "d93cacfdcebdfa0aa71a1c7d345ac6b5e70b88b712a03819e157e12ea449e719",
+      "summary": "Approve the thin CLI module surface and live staged-runtime helper exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit.state_estimation",
+        "janiform.calibration.sessions",
+        "janiform.calibration.sessions.contracts",
+        "janiform.calibration.staged.runtime",
+        "janiform.cli",
+        "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now groups pricing, state-estimation, and fit-inference ownership under dedicated subpackages instead of flat helper modules, and the observed snapshot pricing results are part of the public fit-pricing surface. The approved snapshot must therefore record janiform.calibration.fit.state as the public state-estimation module, keep janiform.pricing.fitted as the canonical pricing ownership package, and align the root calibration exports with the observed snapshot result types that are already part of the supported workflow surface.",
+      "snapshot_sha256": "c3391f66a5e9c807c3685a8ae979b13ab9909bff76e0ef99be12be926056d9d4",
+      "summary": "Approve the fit package ownership subpackages and observed snapshot pricing exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.pricing.fitted",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [],
+      "rationale": "The refactored fit package now uses responsibility-based internal names instead of leaking the old high_level label through private implementation symbols, so the approved snapshot records the cleaned model persistence constant name without changing the serialized schema value.",
+      "snapshot_sha256": "2ec178a2fcfccac53ac7d83c22238e1a4338757079d7922b019327f76c6f621c",
+      "summary": "Record the fit package naming cleanup in the approved Python API snapshot."
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [],
+      "rationale": "The high-level fit API now separates the simple raising path from the reporting path, so JaniformEstimator.fit no longer changes shape based on a boolean flag and the public surface records JaniformFitResult plus the explicit fit_with_report entrypoint.",
+      "snapshot_sha256": "555a8617be8123075dee0a45a858ead6f0d116bbc0800f1462df1b399d0f3b20",
+      "summary": "Approve the split high-level fit and fit_with_report API surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.result"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The fit package now treats execution, inference, preparation, and runtime helpers as internal _-prefixed implementation modules, removes estimator compatibility base classes from the public contract metadata, and keeps janiform.calibration.fit.state focused on public state-estimation contracts rather than implementation helpers.",
+      "snapshot_sha256": "c94779cccc923c255570983f2c03b80244879498c727728365d2622a0d6869f6",
+      "summary": "Curate the fit package boundary around public facades and internal workflow modules.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The calibration root now exposes only the main high-level fit facade and root-level validation errors. Internal fitted-model helper behavior now lives in private _runtime service modules instead of on JaniformModel.",
+      "snapshot_sha256": "0531c541cbbf5a4ddf5ba2ece8c55830a0555073e5676c23451da0677f4b2b90",
+      "summary": "Shrink the calibration root and remove model-private runtime helper exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.model"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The fitted-model pricing package now exposes grids, surface, summaries, and market_snapshot as explicit public concept modules. Internal pricing helpers live under internal and market_snapshot subpackages instead of underscore helper files.",
+      "snapshot_sha256": "b5bfbd27a42e7f0fe670281b271f4922a2d3509a07ee860c6bfa6fac66a04d9c",
+      "summary": "Reshape fitted-model pricing around concept modules and subpackages.",
+      "updated_surfaces": [
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.grids",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.summaries",
+        "janiform.pricing.fitted.surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "The janiform.calibration.fit root now stays focused on the main estimator, fitted model, and fit-result classes, while pricing and state contracts are imported from their ownership submodules.",
+      "snapshot_sha256": "c886b713602bce476e0e1228ec204d4666382321789d3d9d98a21eba969028ad",
+      "summary": "Narrow janiform.calibration.fit to the curated high-level surface.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.pricing.fitted",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "The option-grid pricing surface now uses grid-based contract names that match JaniformModel.price_option_grids, so callers no longer have to translate between grouped-batch naming and the public method vocabulary.",
+      "snapshot_sha256": "5c6a9bb84d0f55f20ebb329734d25349caef47269068e89a4fb051337da27c0d",
+      "summary": "Rename grouped-batch option pricing contracts to grid-based names.",
+      "updated_surfaces": [
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.grids",
+        "janiform.pricing.fitted.market_snapshot"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "Give market_snapshot tabular inputs a real public owner module and import public pricing types in JaniformModel from their owning modules instead of the pricing barrel or private workflow modules.",
+      "snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
+      "summary": "Add market_snapshot.inputs as the public owner of TabularFrameInput and align model imports with owner modules.",
+      "updated_surfaces": [
+        "janiform.model",
+        "janiform.pricing.fitted.market_snapshot.inputs"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The shared janiform.contracts package now reexports every public require_* helper that lives in janiform.contracts.base, while package-internal modules import those helpers from the defining base module instead of the public barrel. The approved snapshot must therefore widen the janiform.contracts public surface to include the remaining validation helpers without preserving barrel imports inside the package.",
+      "snapshot_sha256": "f7fdbfd372e8380ebf8307107fa8413f2d6e89202032a041bc758f7abf520a36",
+      "summary": "Approve the full shared require_* helper surface on janiform.contracts.",
+      "updated_surfaces": [
+        "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-15",
+      "docs_updated": [
+        "design/joint_refinement_option_calibration_rewrite_tasks.md"
+      ],
+      "rationale": "The market-data calibration request now exposes explicit joint-refinement option refinement controls for candidate shortlist sizing and audit-tier pricing, while keeping both controls optional and defaulted for normal calibration.",
+      "snapshot_sha256": "8270651846d53828a6c7ddd7400d29c7c3659c70ed6e2de805d993cc22fbc6e0",
+      "summary": "Expose joint-refinement option refinement and audit controls on the market-data request.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.request"
+      ]
+    },
+    {
+      "approved_on": "2026-04-15",
+      "docs_updated": [],
+      "rationale": "The high-level JaniformEstimator and market-data request now expose a dynamics-search restart count so users can adjust restart frontier breadth without constructing staged execution inputs.",
+      "snapshot_sha256": "5ae2066822598ee94ef8eaa5045ce9363ff185372e4e0e0dfb6493b210e3085f",
+      "summary": "Expose dynamics-search restart count on high-level calibration.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.request"
+      ]
+    },
+    {
+      "approved_on": "2026-04-21",
+      "docs_updated": [],
+      "rationale": "The high-level calibration API now exposes resume settings and pricing-interval schedule policy on JaniformEstimator, simulation results use the shared SimulationKind discriminator, and fitted-model pricing adds public observed option-surface result types under janiform.pricing.fitted and janiform.pricing.fitted.market_surface.",
+      "snapshot_sha256": "697ef5fad8f9669595d112dd04ab23697c2fcf2cc19451513257e87b37e23c4f",
+      "summary": "Approve the resume-aware high-level calibration surface and public observed option-surface pricing results.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-24",
+      "docs_updated": [],
+      "rationale": "The checked-in public API snapshot is already current, and the guardrail approval hash must match that exact snapshot serialization so the approval manifest validates the repository state.",
+      "snapshot_sha256": "31fd287bf268789262f0f3e75535df17d544f7185a8bf5e7943ec729624bbab8",
+      "summary": "Align the public API approval manifest with the checked-in snapshot hash.",
+      "updated_surfaces": [
+        "public_api_contract_guardrails"
+      ]
+    },
+    {
+      "approved_on": "2026-04-25",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The sufficient-statistics contracts are now owned by janiform.sufficient_statistics instead of janiform.risk, with the old public type names replaced directly because the package is pre-v0.1 and does not carry compatibility aliases.",
+      "snapshot_sha256": "ac908c602553dc879df212a115fe096416728400c133c0d3d41fc59b29a642b9",
+      "summary": "Approve the sufficient-statistics package rename.",
+      "updated_surfaces": [
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-26",
+      "docs_updated": [],
+      "rationale": "Preset registry lookup now resolves through the Rust native registry for bundled and user-registered presets, so the Python public surface no longer exposes separate BuiltInPresetRegistry and UserPresetRegistry owner classes.",
+      "snapshot_sha256": "8750c71911594588bc981c2b22fd04e3868d6327854802362e8ff3b54c112e59",
+      "summary": "Approve the Rust-owned preset registry surface.",
+      "updated_surfaces": [
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-04-26",
+      "docs_updated": [],
+      "rationale": "Preset artifact contracts and native artifact serialization helpers now live under janiform.calibration.presets.artifacts, while janiform.calibration.presets.registry only exposes registry/index/export contracts.",
+      "snapshot_sha256": "fcafb0adca4830ac3f3244b001a318be620a160d862356503c8e9ae030db2b73",
+      "summary": "Approve the split preset artifact and registry ownership surfaces.",
+      "updated_surfaces": [
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.artifacts",
+        "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-04-26",
+      "docs_updated": [],
+      "rationale": "Market-data preparation now accepts the native worker-count override at the Python boundary so high-level fitting and direct market-data preparation use the same Rust preparation path.",
+      "snapshot_sha256": "36f333355ba26ac1aac0f6dbc4d43396402de077146576e58b4d0ed17af240c6",
+      "summary": "Approve the Rust-backed market-data preparation boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-04-27",
+      "docs_updated": [],
+      "rationale": "High-level fit reports and fitted-model payloads no longer retain full stage payloads or candidate datasets across the Rust-to-Python boundary. Python receives compact staged summaries and model metadata while Rust owns persisted stage artifacts and fitted parameter selection. The fitted-model module no longer exposes the imported model-persistence schema constant through a fake-private alias.",
+      "snapshot_sha256": "62f5d703cb71ec2bcf4e53332bda85c3e4e93f3e2fc87b4accbfa43e8850feb1",
+      "summary": "Remove retained stage payloads from the high-level fit report surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.report"
+      ]
+    },
+    {
+      "approved_on": "2026-04-28",
+      "docs_updated": [],
+      "rationale": "High-level fit now exposes the same typed progress callback boundary as simulation from a model artifact, so users can observe Rust-owned workflow progress without Python owning a second progress implementation.",
+      "snapshot_sha256": "7081d05aeb1f591ccde2db6250e1a6067b797436b0441dfde9fdbd57c9816495",
+      "summary": "Approve typed fit progress callback events.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.model"
+      ]
+    },
+    {
+      "approved_on": "2026-04-28",
+      "docs_updated": [],
+      "rationale": "Simulation entrypoints now accept terminal progress mode at the Python boundary so Rust owns simulation progress UX while Python remains a thin native adapter. The existing progress callback remains an event observation hook rather than the CLI UX path.",
+      "snapshot_sha256": "69eb017ca4dfb4a17f7b00d18e43627e05e9009110a2700db7ad3aa8d7649400",
+      "summary": "Approve Rust-owned simulation terminal progress boundaries.",
+      "updated_surfaces": [
+        "janiform.model",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-04-28",
+      "docs_updated": [
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing surface workflows now expose the same typed progress callback boundary as fit and simulation, so users can observe Rust-owned workflow progress without Python owning a separate progress implementation.",
+      "snapshot_sha256": "74b2bc4daac39eadfd10abe6eeb06de88f33507443b8fcc8d415edd8fd59b97f",
+      "summary": "Approve typed pricing progress callback events.",
+      "updated_surfaces": [
+        "janiform.pricing"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/workflows/presets-and-market-data.md"
+      ],
+      "rationale": "Preset artifact handling now exposes the public PresetArtifact union for generic artifact passing while PresetRegistry exposes typed category-specific resolver methods. The dynamic resolver is private so user code can avoid casts when requesting a known preset category.",
+      "snapshot_sha256": "0d0c0367a8a9b0da7bf94adb3ec30537b54c7b3cc678d25077ac4970a8038b14",
+      "summary": "Approve typed preset registry resolution methods.",
+      "updated_surfaces": [
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/workflows/presets-and-market-data.md"
+      ],
+      "rationale": "Preset dependency collection now uses snapshot naming in the Python API so callers do not mistake the method for a side-effecting file export. The CLI export command still writes the resolved snapshot payload to stdout.",
+      "snapshot_sha256": "a8bb472d63c0b591fef76d7a70ccf705e83004d37d39b21ecd2f690f9da2bbfb",
+      "summary": "Rename resolved preset export API to resolved preset snapshot API.",
+      "updated_surfaces": [
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The Python CLI implementation and its public janiform.cli constants module have been retired. The wheel entrypoint now delegates directly into the Rust CLI through the native boundary, so the public Python API snapshot no longer advertises Python-owned CLI constants or exit-code contracts.",
+      "snapshot_sha256": "e9ba113534f0bdcaaf10c436eb23f6ae8355b43cca4890be49d05d0b383d3bd2",
+      "summary": "Remove the retired Python CLI public surface.",
+      "updated_surfaces": [
+        "janiform.cli"
+      ]
+    },
+    {
+      "approved_on": "2026-05-02",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Python no longer owns CLI-oriented stylized-fact markdown rendering. Rust validation and CLI rendering own that output path, while Python keeps the typed report contracts and Plotly figure adapter for library workflows.",
+      "snapshot_sha256": "53a7be7e9696ff1ba9a4a841a0c3362d56a7f40143b95b051c128f559249dfe4",
+      "summary": "Remove the Python stylized-fact markdown renderer.",
+      "updated_surfaces": [
+        "janiform.stylized_facts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Rust owns workflow progress event schemas and serializes callback payloads across the Python boundary, so Python no longer exposes duplicate event contracts or phase enums.",
+      "snapshot_sha256": "2944f101f2348f942178dbf56d2ba78e1f45ee14c1d0aaba1a2ae33f606d9ced",
+      "summary": "Remove Python-owned workflow progress event contracts from the public API.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-03",
+      "docs_updated": [
+        "docs/interfaces/python.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md",
+        "docs/workflows/presets-and-market-data.md",
+        "docs/workflows/price-derivatives.md",
+        "docs/workflows/simulate-paths.md"
+      ],
+      "rationale": "The fitted model is now owned by janiform.model, simulation result inspection is owned by janiform.simulation, and fitted-model option pricing contracts live under janiform.pricing.fitted. The calibration fit package now keeps only the estimator, fit report, and fit result surface.",
+      "snapshot_sha256": "f509e861886618954dcae2a56c378c5492ed56e7502aeca9afce5b98ea1f0a09",
+      "summary": "Move model, simulation result, and fitted-pricing API ownership out of calibration fit.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.simulation",
+        "janiform.simulation.result"
+      ]
+    },
+    {
+      "approved_on": "2026-05-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Prepared calibration execution artifact persistence is no longer a Python-owned workflow output. Rust owns persisted workflow artifacts, so the public market-data output preferences contract no longer exposes the staged execution input emission switch.",
+      "snapshot_sha256": "e51e7e11d5b164f455c9eb803f515d5083715d7abb85d63071009c5b5123ca46",
+      "summary": "Remove the Python prepared-execution artifact emission preference.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-04",
+      "docs_updated": [
+        "docs/workflows/model-validation.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Janiform does not need native plot support for stylized facts initially. Let people choose what to plot and build their plots of this themselves if they need them.",
+      "snapshot_sha256": "8779b3501a364f93bcd754bfddd3398cef2d5306430bec20b7aa52bc5be3c9f1",
+      "summary": "Remove native plot support for stylized facts from Janiform initial release.",
+      "updated_surfaces": [
+        "janiform.stylized_facts.contracts",
+        "janiform.stylized_facts.workflows"
+      ]
+    },
+    {
+      "approved_on": "2026-05-08",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Market-data source summaries now expose invalid source-row drops separately from duplicate drops so option-surface quote filtering is visible to Python callers and generated reports.",
+      "snapshot_sha256": "1cd08ca84fcef9e2a2828a34120083cb7e674e61c742e6951c7ef369fdd6ea2a",
+      "summary": "Expose invalid-row counts in market-data source summaries.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.ingestion",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-09",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Observed-options pricing now returns native result payloads without embedding the large raw grid-batch result inside each snapshot. The Python ergonomic snapshot wrapper therefore treats raw_result as optional while preserving the priced node contract.",
+      "snapshot_sha256": "d2957c8c3ff42fd64375b344c4fb0ef2a6bc921e8af12353c2c0bd5a77bf35eb",
+      "summary": "Make observed snapshot raw grid payload optional.",
+      "updated_surfaces": [
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_snapshot"
+      ]
+    },
+    {
+      "approved_on": "2026-05-13",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/simulate-paths.md"
+      ],
+      "rationale": "Calibration accepts an optional user-provided tick size, seeded simulation exposes fitted return-mark and tick-grid observation inputs, and coarse interval simulation carries the same fitted observation contracts as seeded tick simulation instead of using a different interval policy.",
+      "snapshot_sha256": "2fabe8b0e6616d8812ca735919b121669df67c147f38a4afbf4892e1c98cc22f",
+      "summary": "Expose fitted tick-grid and return-mark runtime inputs.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-23",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/calibration-diagnostics.md"
+      ],
+      "rationale": "Calibration now exposes option refinement and finalization as first-class staged calibration steps, records deterministic calibration effort and warning policy controls, and carries fitted return-mark factors through public vanilla-option pricing request contracts so pricing and staged calibration use the same validated runtime inputs.",
+      "snapshot_sha256": "f66c7528a12d8b2048790681ad2c8d33257c1364d3be165255b1ba469f2667ab",
+      "summary": "Approve staged option refinement, finalization, and pricing runtime contract fields.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged",
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-24",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Observed-options pricing now exposes an optional physical terminal-distribution diagnostic request and result so Python callers can compare model-P volatility equivalents with observed and model-Q option surfaces without owning artifact persistence.",
+      "snapshot_sha256": "e6c87d8cbcd368b9fbc5270a7866279f762b6c858b516814fa691c78712d7c7c",
+      "summary": "Expose observed-options physical distribution diagnostics.",
+      "updated_surfaces": [
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-05-25",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "design/janiform_compact_model_spec.tex"
+      ],
+      "rationale": "Return-size seasonality has been removed from the public runtime contracts. Simulation and pricing now carry explicit Hawkes-excitation return-clock exposure parameters so deterministic calendar seasonality remains an event-intensity input rather than a direct return-size scaler.",
+      "snapshot_sha256": "2bceb609277aebc6034e14f39336e0905322cec11c28dcd13b6728e6141756a2",
+      "summary": "Replace public return-mark runtime fields with return-clock exposure parameters.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.return_clock",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-27",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "design/janiform_compact_model_spec.tex"
+      ],
+      "rationale": "Long variance is now a first-class public runtime state and parameter contract across calibration, simulation, and pricing, and terminal-affine option pricing reports terminal-affine diagnostics instead of the prior transform-stage diagnostic fields.",
+      "snapshot_sha256": "e21b853b8900ff2dc7231ab2a9891e44260148a9186139747ba69fa34bed23bf",
+      "summary": "Approve public long-variance runtime contracts and terminal-affine pricing diagnostics.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.staged",
+        "janiform.long_variance",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-28",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "design/janiform_compact_model_spec.tex"
+      ],
+      "rationale": "News and gap shocks now use shape-only unit-mean Gamma severity and coupled Gamma-normal return marks with open and closed surprise intensity controls, so the public contracts remove the legacy free Gamma scale, Kou mark, coupled-gap, and single surprise-intensity fields.",
+      "snapshot_sha256": "af0c0ef04cd7ba8828e1186ca89e2d73f4bdf9f5bb21d82325440d1940c2a652",
+      "summary": "Approve public coupled Gamma-normal news shock contracts.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.hourly_factors",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-05-29",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Option workflows now expose price-coordinate policy, resolved coordinate diagnostics, warning summaries, and opt-in calibration diagnostics through the public Python fit and market-data surfaces.",
+      "snapshot_sha256": "96c1d96a7b7664b864ba42ab590d0480780ac26ed6b2564e4d2362f993169b41",
+      "summary": "Approve public price-coordinate and calibration diagnostic controls.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-05-29",
+      "rationale": "Calibration requests now accept optional coarse historical data and an explicit tick-objective usage policy, so the public contract snapshot must include the new typed request fields and diagnostics.",
+      "snapshot_sha256": "f1e0199e2678261777fa9452707694b3921e5d287262a4a0018c5fea22af1692",
+      "summary": "Expose multi-resolution coarse data evidence in the Python calibration boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.request",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Coarse historical bars now expose typed timestamp semantics so the default industry-standard open-time interpretation is explicit while close-time sources remain selectable.",
+      "snapshot_sha256": "0d8dc0cb1121d0cae306104acb86b676ed7abdaffef908b85cf24d27322ceb2c",
+      "summary": "Expose coarse timestamp semantics in the Python calibration boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "The public calibration boundary now names optional lower-frequency OHLCV and close-only inputs as coarse data, matching the existing tick data wording and avoiding a finance-ambiguous training label.",
+      "snapshot_sha256": "8eec57cd395a04e5cd515616b4d3caa5c6015b72635f8063f25be0b59628d359",
+      "summary": "Rename lower-frequency calibration evidence fields and CLI flags to coarse data.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.request",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-05-30",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public API snapshot now records direct public methods on contract-model symbols, so generated reference documentation includes existing callable surfaces such as JaniformModel.simulate instead of only listing dataclass fields.",
+      "snapshot_sha256": "02626cafd3ed78c5591e0255c1dd48f849de0899e08fb8fa7f0b940a57a4781e",
+      "summary": "Record contract-model public methods in the Python API reference.",
+      "updated_surfaces": [
+        "python public API contract snapshot",
+        "docs/reference/python-api.md"
+      ]
+    },
+    {
+      "approved_on": "2026-05-31",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/calibration-diagnostics.md",
+        "docs/workflows/fit-models.md"
+      ],
+      "rationale": "Full calibration now exposes the visible return-distribution backfit stage so staged execution, resume controls, and public Python stage enums can refer to the variance-budget pass directly.",
+      "snapshot_sha256": "a1833076a70106d90359ab9d6ca82595da16f8f7843fb7bbafea74d9ec220dfd",
+      "summary": "Expose the return-distribution backfit stage in public calibration contracts.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
+      ]
+    },
+    {
+      "approved_on": "2026-06-03",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/workflows/presets-and-market-data.md"
+      ],
+      "rationale": "Market-profile contracts now carry an optional tick-size fallback so users can specify profile tick sizes directly while the high-level estimator and CLI keep explicit tick-size values as the highest-precedence source.",
+      "snapshot_sha256": "f4848abf781d16ba0270dbb0bba874db83cd73a5f40dbd12aae10d3cfbc8417e",
+      "summary": "Expose optional tick-size fallback on market-profile preset contracts.",
+      "updated_surfaces": [
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.references"
+      ]
+    },
+    {
+      "approved_on": "2026-06-07",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The pricing failure-stage enum now describes the active spectral projection layer instead of the removed direct Fourier inversion implementation.",
+      "snapshot_sha256": "e51085c95f918a3a32a33fef0ef2b83661eac24acc25263bba67119a47e65809",
+      "summary": "Rename the public pricing failure stage from Fourier pricing to pricing projection.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The interval factor grid is now the public contract for deterministic interval-aligned seasonality and news intensity materialization, replacing the removed hourly-factor package, hourly-specific field names, and the legacy seasonality-factor shorthand policy label.",
+      "snapshot_sha256": "bb5e9d0291ff2122693e91cdf0d120ac157ecb19cdf79e44d5f4965ae7858af7",
+      "summary": "Replace the public hourly-factor Python surface with interval factor grids.",
+      "updated_surfaces": [
+        "janiform.interval_factor_grids",
+        "janiform.interval_factor_grids.contracts",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.simulation.seeded",
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Validation errors are exposed as typed exception classes, so the public Python calibration and seeded-simulation surfaces no longer export the redundant validation-failure contract-model aliases.",
+      "snapshot_sha256": "55ffc8102f4a8460d1ce1a0103fed574bc3175927662f86aa43a290934310fb3",
+      "summary": "Remove validation-failure contract-model aliases from the public Python surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.simulation",
+        "janiform.simulation.seeded",
+        "janiform.simulation.shared"
+      ]
+    },
+    {
+      "approved_on": "2026-06-13",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Runtime interval seasonality now materializes the fitted structural Fourier clock directly, so the public helper no longer accepts event-signal interpolation settings or a raw-level preservation flag.",
+      "snapshot_sha256": "dae97dce311e3629a68bd4f4917b8c5f6b56535972a8d3974583577f7a42403a",
+      "summary": "Simplify runtime interval seasonality source construction to the structural clock contract.",
+      "updated_surfaces": [
+        "janiform.interval_factor_grids"
+      ]
+    },
+    {
+      "approved_on": "2026-06-14",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seeded tick and direct coarse simulation now model timestamp batching as an explicit observation-layer contract, so the public simulation API must expose the shared request policy, seeded metadata contract, timing diagnostics, distinct latent versus observed timestamp fields, and the coarse request policy needed to keep direct interval semantics explicit.",
+      "snapshot_sha256": "54f62914c337911c3170736a07979ce7d7179d358d366d7de2f3e4fd602c2087",
+      "summary": "Expose timestamp batching observation contracts across seeded and coarse simulation.",
+      "updated_surfaces": [
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-06-14",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-data calibration now infers timestamp batching during preparation when return components are selected, and the public API must surface that automatic observation-layer decision as a typed diagnostic instead of leaving it implicit in downstream simulation inputs.",
+      "snapshot_sha256": "646a578c70ec059ca5632d8a93ff90232834b7329f5029895a424676e0c304b0",
+      "summary": "Expose market-data timestamp batching inference diagnostics.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.timestamp_batching_surface",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow"
+      ]
+    },
+    {
+      "approved_on": "2026-06-15",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The timestamp batching observation contract now carries the fitted same-timestamp continuation count and same-session transition count so seeded simulation can generate the observed zero-interarrival rate instead of only reporting the timestamp quantum.",
+      "snapshot_sha256": "7d616dca8137a63580cd5ae06865336364c10f5d0300209f642cb053ba6a8ce1",
+      "summary": "Expose fitted timestamp batching continuation counts.",
+      "updated_surfaces": [
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded"
+      ]
+    },
+    {
+      "approved_on": "2026-06-16",
+      "rationale": "Timestamp batching and Hawkes source-activity attribution are calibrated as a first-class stage between Hawkes and return-components calibration, so the public stage enum and market-data diagnostics expose that workflow boundary directly.",
+      "snapshot_sha256": "7a03fff6b7fcf03693de80f2d937f891a54209ac67420afd5b8cd501c368955c",
+      "summary": "Add the observation-models calibration stage to public calibration contracts.",
+      "updated_surfaces": [
+        "janiform.calibration.staged",
+        "janiform.calibration.market_data"
+      ]
+    },
+    {
+      "approved_on": "2026-06-18",
+      "rationale": "Model-based forecasting is now exposed as a first-class Python result surface with persisted forecast bundles, while the old observed-options physical-distribution diagnostic is removed because it was a pricing diagnostic rather than a forecast workflow.",
+      "snapshot_sha256": "bef51b8e89fdcdcbc817bbe47329085768fa0adf802a8d6eb25dc15b9e0e97f4",
+      "summary": "Add fitted-model forecast results and remove observed-options physical-distribution diagnostics.",
+      "updated_surfaces": [
+        "janiform.forecast",
+        "janiform.model",
+        "janiform.pricing.fitted",
+        "janiform.pricing.fitted.market_snapshot",
+        "janiform.pricing.fitted.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "Forecasts now accept the fitted-model current-state contract and expose a state tracker so users can update Hawkes, long-variance, and mean-reversion state from signed ticks before computing conditional terminal distributions, while the no-state forecast keeps a model-only default boundary.",
+      "snapshot_sha256": "95f94ba61e85233dde0cc5c11f6ac89521d5dadf9ebf34ffecad6a506b17c34c",
+      "summary": "Add state-conditioned fitted-model forecasts and tracker snapshots.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.state",
+        "janiform.model"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "The public Python contracts now expose market-pressure Omega state and parameters as first-class model inputs while mean reversion keeps only the temporary observed-state deviation contract.",
+      "snapshot_sha256": "2d42f92ef3e865ead5b963c71d433392a708efdbcd5236ea4e3290cbf5660d90",
+      "summary": "Replace mean-reversion pressure contracts with market pressure state.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.mean_reversion",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "Mean-reversion calibration now uses the Rust BIC selector directly after removing the old predictive-evidence validation path, so Python no longer exposes an ignored predictive evidence alpha request field.",
+      "snapshot_sha256": "3dc087a38c970d838bf3bc1fa93161d93556bd0a38f89693a39617d59c1954ee",
+      "summary": "Remove the mean-reversion predictive evidence alpha public parameter.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-06-19",
+      "rationale": "The public Omega factor is named for the latent economic concept it represents, so the Python surface uses market-pressure modules, contracts, fields, and state columns throughout the supported API.",
+      "snapshot_sha256": "efff344dc2e3243a079ed93da68b7b1451dcdfd202016b4043ca081ec361146e",
+      "summary": "Rename public Omega contracts to market pressure.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-20",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market pressure is represented by a latent side-balance state distribution with explicit support, physical transition rates, and state weights.",
+      "snapshot_sha256": "49c7d74a0a115d015d8136718c8611de2f9c6f25f9e5ff34f7471b98c24f4ea1",
+      "summary": "Expose side-balance CTMC market-pressure contracts.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-20",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "Market-data preparation now owns the price discretization and timestamp batching surfaces, while return-components owns Hawkes return source responsibilities. The removed observation-models stage and renamed timestamp batching surface diagnostics are intentional pre-v0.1 breaking API changes.",
+      "snapshot_sha256": "cb2c5d9f5433ed20e604d7f0488ee5ba3d86a52b228c3a0aa7a1adbc21e1ec81",
+      "summary": "Replace observation-model public API names with market-data surface diagnostics."
+    },
+    {
+      "approved_on": "2026-06-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-pressure dynamics are physical fitted dynamics, while option pricing carries the economically explicit signed-imbalance exposure risk price in the vanilla option pricing kernel. The public contract removes the static pressure measure mapping from model dynamics and exposes the pressure-risk price with the other pricing-kernel parameters.",
+      "snapshot_sha256": "7b3f4e2b5d3c16ec06a4fc0aace3648e24fefc4063590acab88e7d3717c8a231",
+      "summary": "Move market-pressure measure change into the pricing kernel.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-21",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "The calibration objective now scores coherent objective families with covariance geometry. The previous scalar stylized-fact Huber cutoff and diagnostic-family admissibility threshold are no longer part of the public request surface.",
+      "snapshot_sha256": "e1081fc19dda28d257f2069f8ec6a467226851428a1e19d374f7c35dd8fa0b4f",
+      "summary": "Remove scalar stylized-fact objective policy knobs from calibration requests.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data"
+      ]
+    },
+    {
+      "approved_on": "2026-06-21",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Restart search effort is controlled by candidate count and restart-pool budget scales. The unused poll-round effort fields are removed from the public calibration request surface.",
+      "snapshot_sha256": "5c46473f38ecfb48efcfc423d735c534bd34a3b22110a541720349d711d7fab4",
+      "summary": "Remove unused poll-round effort controls from calibration requests.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
+      ]
+    },
+    {
+      "approved_on": "2026-06-24",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Market-pressure fitted dynamics expose one physical transition-rate set and one anchor drift coefficient, so the Python contract stores those fields directly on market-pressure parameters.",
+      "snapshot_sha256": "e8894eac31905211b5bab73addd3be401e415c50b0aa345073c83af2820f70c1",
+      "summary": "Flatten market-pressure parameter measure fields.",
+      "updated_surfaces": [
+        "janiform.market_pressure",
+        "janiform.pricing",
+        "janiform.simulation",
+        "janiform.sufficient_statistics"
+      ]
+    },
+    {
+      "approved_on": "2026-06-25",
+      "docs_updated": [
+        "docs/reference/python-api.md",
+        "docs/reference/cli.md"
+      ],
+      "rationale": "Joint refinement effort controls use candidate terminology across the Python request contracts, estimator constructor, calibration effort payload, and CLI flag surface.",
+      "snapshot_sha256": "bb5f9b0f5f457d37397e12a8f1a2dd030e843e0cf9e38a6505b18bb638305c53",
+      "summary": "Rename joint refinement candidate-budget controls.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged"
+      ]
+    },
+    {
+      "approved_on": "2026-07-06",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The approved snapshot hash records the checked-in public API surface so the guardrail manifest validates the current deterministic snapshot serialization.",
+      "snapshot_sha256": "f3e21b2702da43426b1ed62a91ebdbf5e7f0945f5d26c6b0eb011e3a5d92f437",
+      "summary": "Align the public API guardrail manifest with the checked-in snapshot hash.",
+      "updated_surfaces": [
+        "public_api_contract_guardrails"
+      ]
+    }
+  ],
+  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",
+  "schema_version": "python.public_api_contract.guardrail_manifest.v1"
+}

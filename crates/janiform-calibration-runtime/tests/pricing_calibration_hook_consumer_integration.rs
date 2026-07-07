@@ -1,0 +1,303 @@
+mod support;
+
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
+    solve_exponential_affine_transform_with_settings,
+};
+use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
+use janiform_engine_pricing::{
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntegrationNumericQualityDiagnostics,
+    PricingIntegrationProjectionRule, PricingIntegrationQualityDiagnostics,
+    PricingIntegrationQualityGate, PricingIntervalSchedule, PricingIntervalScheduleMetadata,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingKernelParameters, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    VanillaOptionPricingRunResultBuildInput, VanillaOptionPricingStatus,
+    build_pricing_transform_input, build_vanilla_option_pricing_run_result,
+};
+use janiform_engine_pricing::{
+    PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
+    PRICING_INTEGRATION_QUALITY_GATE_POLICY, SPECTRAL_PRICING_COLLOCATION_POLICY,
+    SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY, SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+};
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::time::NANOS_PER_HOUR;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+};
+use janiform_model_kernels::market_pressure::{MarketPressureParameters, MarketPressureState};
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
+use janiform_model_kernels::news::{
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+
+fn reference_affine_transform_solver_settings() -> ExponentialAffineTransformSolverSettings {
+    ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        64,
+    )
+    .expect("solver settings should construct")
+    .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Disabled)
+}
+
+fn reference_integration_quality_diagnostics(
+    maturity_interval: f64,
+) -> PricingIntegrationQualityDiagnostics {
+    PricingIntegrationQualityDiagnostics {
+        schema_version: PRICING_INTEGRATION_QUALITY_DIAGNOSTICS_SCHEMA_VERSION,
+        engine_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+        domain_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
+        projection_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
+        stability_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+        projection_rule: PricingIntegrationProjectionRule::SpectralCosCollocation,
+        integration_upper_bound: 10.0,
+        integration_step_count: 64,
+        integration_interval_width: 10.0 / 64.0,
+        integrand_evaluation_count: 64,
+        integral_estimate: 12.5,
+        absolute_integral_estimate: 12.5,
+        max_abs_integrand: 12.5,
+        terminal_abs_integrand: 0.0,
+        discounted_projection_price: 12.5,
+        numeric_quality_diagnostics: PricingIntegrationNumericQualityDiagnostics {
+            stability_policy: SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
+            convergence_check_policy: SPECTRAL_PRICING_COLLOCATION_POLICY,
+            truncation_check_policy: SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
+            quality_gate_policy: PRICING_INTEGRATION_QUALITY_GATE_POLICY,
+            quality_gate: PricingIntegrationQualityGate::DiagnosticsOnly,
+            convergence_absolute_tolerance: maturity_interval,
+            convergence_relative_tolerance: 1.0,
+            terminal_integrand_absolute_tolerance: maturity_interval,
+            terminal_integrand_ratio_tolerance: 1.0,
+            coarse_integral_estimate: 12.5,
+            convergence_absolute_difference: 0.0,
+            convergence_relative_difference: 0.0,
+            terminal_integrand_absolute_value: 0.0,
+            terminal_integrand_ratio: 0.0,
+            convergence_check_passed: true,
+            truncation_check_passed: true,
+            insufficient_convergence_resolution: false,
+            numeric_quality_is_poor: false,
+        },
+    }
+}
+
+#[test]
+fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
+            .expect("market inputs should construct");
+    let maturity_interval = market_inputs
+        .single_maturity_interval()
+        .expect("market inputs should have a single maturity interval");
+
+    let forward_price = market_inputs.spot
+        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_interval).exp();
+
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
+
+    let response = VanillaOptionPricingResponse::try_new(
+        VanillaOptionPricingStatus::Succeeded,
+        None,
+        Some(12.5),
+        Some(
+            VanillaOptionPricingDiagnostics::try_new(
+                forward_price,
+                discount_factor,
+                maturity_interval,
+                0.55,
+            )
+            .expect("response diagnostics should construct"),
+        ),
+        Some(0.2),
+        Some(janiform_engine_pricing::VanillaOptionImpliedVolatilityInversionStatus::Succeeded),
+    )
+    .expect("response should construct");
+
+    let model_parameters = VanillaOptionPricingModelParameters::try_new(
+        HawkesKernelParameters::try_new(
+            0.8,
+            1.6,
+            HawkesKernelLoadings {
+                plus_plus: 0.2,
+                plus_minus: 0.1,
+                minus_plus: 0.1,
+                minus_minus: 0.25,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.1,
+                plus_minus: 0.05,
+                minus_plus: 0.05,
+                minus_minus: 0.1,
+            },
+        )
+        .expect("kernel parameters should construct"),
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    open_baseline_intensity: 0.75,
+                    closed_baseline_intensity: 0.75,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_drift: 0.0,
+                return_jump_volatility: 1.0,
+            },
+        )
+        .expect("news process configuration should construct"),
+        NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("NIG shared-plus-shift configuration should construct"),
+        janiform_model_kernels::return_clock::ReturnClockExposureParameters::neutral(),
+        janiform_model_kernels::long_variance::LongVarianceParameters::neutral(),
+        MarketPressureParameters::no_anchor_impact(),
+        VanillaOptionPricingKernelParameters::identity(),
+    )
+    .expect("pricing model parameters should construct");
+
+    let pricing_request = VanillaOptionPricingRequest::try_new(
+        market_inputs.clone(),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        AnchoredVanillaOptionPricingBoundaryInput::try_new(
+            0,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+            janiform_model_kernels::long_variance::LongVarianceState::unit(),
+            MarketPressureState::neutral(),
+            MeanReversionFittedParameters::zero_kappa(),
+            1.0,
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+                .expect("zero observed boundary state should construct"),
+        )
+        .expect("endogenous anchored boundary input should construct"),
+        model_parameters,
+        1.0,
+    )
+    .expect("pricing request should construct");
+
+    let transform_input = build_pricing_transform_input(
+        &pricing_request,
+        ComplexScalar::new(0.2, -0.1),
+        ComplexScalar::new(0.3, 0.05),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(0.95, 0.02),
+        1.1,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
+            .expect("pricing-hook test news intensity should construct"),
+    )
+    .expect("pricing transform input should construct");
+
+    let transform_diagnostics = solve_exponential_affine_transform_with_settings(
+        transform_input,
+        reference_affine_transform_solver_settings(),
+    )
+    .expect("transform solve should succeed");
+
+    let integration_diagnostics = reference_integration_quality_diagnostics(maturity_interval);
+
+    let numeric_quality = integration_diagnostics.numeric_quality_diagnostics;
+
+    let run_output =
+        build_vanilla_option_pricing_run_result(VanillaOptionPricingRunResultBuildInput {
+            response,
+            output_selection: VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+            market_inputs_for_calibration_hooks: Some(market_inputs),
+            transform_diagnostics_source: Some(transform_diagnostics),
+            integration_quality_source: Some(integration_diagnostics),
+            spectral_source: None,
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 0.5),
+            maturity_terminal_interval_indices: vec![0],
+        })
+        .expect("run output should include diagnostics and calibration hooks");
+
+    let run_diagnostics = run_output
+        .run_diagnostics
+        .expect("run diagnostics should be present");
+    assert!(run_diagnostics.transform.is_some());
+    assert!(run_diagnostics.integration_quality.is_some());
+
+    let calibration_hooks = run_output
+        .calibration_hooks
+        .expect("calibration hooks should be present");
+    let calibration_observation =
+        build_option_surface_calibration_observation_from_pricing_hooks(calibration_hooks)
+            .expect("calibration adapter should accept emitted hooks");
+
+    assert_eq!(
+        calibration_observation.option_price,
+        calibration_hooks.option_price
+    );
+    assert_eq!(
+        calibration_observation.log_moneyness,
+        calibration_hooks.log_moneyness
+    );
+    assert_eq!(
+        calibration_observation.forward_moneyness,
+        calibration_hooks.forward_moneyness
+    );
+    assert_eq!(
+        calibration_observation.integration_numeric_quality_is_poor,
+        Some(numeric_quality.numeric_quality_is_poor)
+    );
+    assert_eq!(
+        calibration_observation.integration_convergence_check_passed,
+        Some(numeric_quality.convergence_check_passed)
+    );
+    assert_eq!(
+        calibration_observation.integration_truncation_check_passed,
+        Some(numeric_quality.truncation_check_passed)
+    );
+}
+
+fn build_uniform_runtime_interval_schedule(
+    interval_count: usize,
+    interval_delta: f64,
+) -> PricingIntervalSchedule {
+    let interval_duration_nanos_float = interval_delta * NANOS_PER_HOUR as f64;
+    let interval_duration_nanos = interval_duration_nanos_float as i64;
+
+    assert_eq!(
+        interval_duration_nanos as f64, interval_duration_nanos_float,
+        "test runtime interval schedule requires an exact nanosecond interval"
+    );
+
+    PricingIntervalSchedule::try_new(
+        0,
+        PricingIntervalScheduleMetadata {
+            policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
+            derivation_policy:
+                "pricing_calibration_hook_consumer_integration.synthetic_schedule.v1".to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_interval_factor_grid_source_intervals.v1"
+                    .to_string(),
+        },
+        (1..=interval_count)
+            .map(|interval_index| interval_index as i64 * interval_duration_nanos)
+            .collect(),
+    )
+    .expect("uniform runtime interval schedule should construct")
+}

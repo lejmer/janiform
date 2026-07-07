@@ -1,0 +1,21 @@
+[package]
+name = "janiform-terminal-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared semantic terminal rendering and progress adapters for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_terminal_ui"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+comfy-table = { workspace = true }
+console = { workspace = true }
+indicatif = { workspace = true }
+janiform-foundations = { path = "../janiform-foundations" }
+textwrap = { workspace = true }
+thiserror = "2.0.17"

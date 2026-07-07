@@ -1,0 +1,24 @@
+[package]
+name = "janiform-market-time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared market-time infrastructure for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_market_time"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+janiform-work-scheduler = { path = "../janiform-work-scheduler" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+janiform-test-support = { path = "../janiform-test-support" }

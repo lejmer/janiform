@@ -1,0 +1,10 @@
+{
+  "market_profile": "eurusd_spot",
+  "schema_version": "examples.persisted_model_cache_metadata.v1",
+  "tail_row_count": 5000,
+  "tick_data_path": "data/Synthetic_EURUSD_Data_1M_ticks.parquet",
+  "tick_data_signature": {
+    "modified_time_ns": 1773606315979790400,
+    "size_bytes": 16574940
+  }
+}

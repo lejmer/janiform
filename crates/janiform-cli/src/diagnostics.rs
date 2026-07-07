@@ -1,0 +1,92 @@
+use std::io;
+use std::io::Write;
+
+use serde::Serialize;
+
+use crate::context::CommandContext;
+use crate::context::GlobalCliOptions;
+use crate::context::OutputMode;
+use crate::context::output_mode_from_options;
+use crate::error::CliError;
+
+pub(crate) fn write_error(error: CliError, context: &CommandContext) -> io::Result<()> {
+    match context.output_mode() {
+        OutputMode::Json => write_json_error(error),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => {
+            write_terminal_error(error, context.stderr_renderer())
+        }
+    }
+}
+
+pub(crate) fn write_error_without_context(
+    error: CliError,
+    options: &GlobalCliOptions,
+) -> io::Result<()> {
+    match output_mode_from_options(options) {
+        OutputMode::Json => write_json_error(error),
+        OutputMode::Terminal | OutputMode::Quiet | OutputMode::Silent => write_terminal_error(
+            error,
+            janiform_terminal_ui::TerminalRenderer::new(false, None),
+        ),
+    }
+}
+
+pub(crate) fn write_error_for_parse_failure(
+    error: CliError,
+    requested_json: bool,
+) -> io::Result<()> {
+    if requested_json {
+        write_json_error(error)
+    } else {
+        write_terminal_error(
+            error,
+            janiform_terminal_ui::TerminalRenderer::new(false, None),
+        )
+    }
+}
+
+fn write_terminal_error(
+    error: CliError,
+    renderer: janiform_terminal_ui::TerminalRenderer,
+) -> io::Result<()> {
+    if error.terminal_error_block_is_redundant() {
+        return Ok(());
+    }
+
+    let report = miette::Report::new(error);
+
+    let block = janiform_terminal_ui::FailureBlock {
+        title: "Error".to_string(),
+        reason: report.to_string(),
+        details: Vec::new(),
+    };
+
+    renderer.write_stderr(&block.render(&renderer))
+}
+
+fn write_json_error(error: CliError) -> io::Result<()> {
+    let message = error.to_string();
+
+    let payload = JsonError {
+        status: "error",
+        code: error.code(),
+        message: &message,
+        exit_code: error.exit_code() as u8,
+    };
+
+    let mut stdout = io::stdout().lock();
+
+    serde_json::to_writer(&mut stdout, &payload)?;
+
+    writeln!(stdout)?;
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct JsonError<'a> {
+    status: &'static str,
+    code: &'static str,
+    message: &'a str,
+    exit_code: u8,
+}

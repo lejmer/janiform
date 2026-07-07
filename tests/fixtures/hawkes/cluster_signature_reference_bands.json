@@ -1,0 +1,119 @@
+{
+  "schema_version": "hawkes.cluster_signature.reference_bands.v1",
+  "band_set_id": "hawkes_cluster_signature_regression_bands_v1",
+  "band_set_version": "1.2.0",
+  "determinism_policy": "fixed_seed_batch_statistical_reference_windows.v1",
+  "clustering_regression": {
+    "seed_start": 20000,
+    "seed_count": 32,
+    "interval_count": 72,
+    "interval_duration_nanos": 3600000000000,
+    "seasonality_factor": 1.0,
+    "news_intensity": 0.02,
+    "reference_bands": {
+      "fano_factor_gap": {
+        "lower_bound": 4.7,
+        "upper_bound": 5.5
+      },
+      "lag_one_autocorrelation_gap": {
+        "lower_bound": 0.1,
+        "upper_bound": 0.25
+      },
+      "clustered_lag_one_autocorrelation": {
+        "lower_bound": 0.64,
+        "upper_bound": 0.72
+      },
+      "clustered_non_grid_run_ratio": {
+        "lower_bound": 0.95,
+        "upper_bound": 1.0
+      }
+    }
+  },
+  "scale_consistency_regression": {
+    "seed_start": 40000,
+    "seed_count": 24,
+    "total_duration_nanos": 86400000000000,
+    "fine_interval_duration_nanos": 900000000000,
+    "seasonality_factor": 1.0,
+    "news_intensity": 0.01,
+    "horizon_bands": [
+      {
+        "horizon_label": "15m",
+        "coarse_interval_duration_nanos": 900000000000,
+        "relative_total_event_count_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.0
+        },
+        "absolute_buy_share_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.0
+        },
+        "absolute_sell_share_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.0
+        },
+        "absolute_log_sell_to_buy_ratio_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.0
+        }
+      },
+      {
+        "horizon_label": "1h",
+        "coarse_interval_duration_nanos": 3600000000000,
+        "relative_total_event_count_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.15
+        },
+        "absolute_buy_share_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.08
+        },
+        "absolute_sell_share_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.08
+        },
+        "absolute_log_sell_to_buy_ratio_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.25
+        }
+      },
+      {
+        "horizon_label": "1d",
+        "coarse_interval_duration_nanos": 86400000000000,
+        "relative_total_event_count_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.65
+        },
+        "absolute_buy_share_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.12
+        },
+        "absolute_sell_share_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.12
+        },
+        "absolute_log_sell_to_buy_ratio_delta": {
+          "lower_bound": 0.0,
+          "upper_bound": 0.6
+        }
+      }
+    ]
+  },
+  "change_log": [
+    {
+      "policy_version": "1.2.0",
+      "recorded_at_utc": "2026-03-11T00:00:00Z",
+      "rationale": "Refresh the clustering-panel reference bands after the fixed-seed seeded-event baseline shifted toward higher fano-factor separation and lower lag-one autocorrelation separation, while the scale-consistency panel remained stable."
+    },
+    {
+      "policy_version": "1.1.0",
+      "recorded_at_utc": "2026-03-01T00:00:00Z",
+      "rationale": "Refresh clustering reference bands after seeded event-time Hawkes scheduling alignment changed deterministic clustered lag-one autocorrelation and fano-factor gap levels."
+    },
+    {
+      "policy_version": "1.0.0",
+      "recorded_at_utc": "2026-02-21T00:00:00Z",
+      "rationale": "Initial reference-band baseline for clustered-event statistical regression checks."
+    }
+  ]
+}

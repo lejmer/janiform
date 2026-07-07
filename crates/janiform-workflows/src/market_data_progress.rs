@@ -1,0 +1,466 @@
+//! Shared market-data progress adapters for workflow frontends.
+
+use std::time::Instant;
+
+use janiform::calibration::market_data::{
+    CalibrationTimestampBatchingSurfaceDiagnostic, MarketDataLoadingProgressEvent,
+    MarketDataPreparationProgressPhase,
+};
+use janiform::model::timestamp_batching_surface::TimestampBatchingMode;
+use janiform_event_log::{
+    EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunEvent, RunEventPayload,
+    RunMetricUpdateEvent, RunPhaseRef, RunProgressEvent, WorkflowRef,
+};
+use janiform_terminal_ui::{ProgressContractError, ProgressMeasure};
+
+use crate::progress::VolatileProgressGate;
+
+/// Time-gated loading progress policy shared by terminal and machine outputs.
+#[derive(Debug, Default)]
+pub struct MarketDataLoadingProgressGate {
+    progress_gate: VolatileProgressGate<(&'static str, &'static str)>,
+}
+
+impl MarketDataLoadingProgressGate {
+    /// Return whether the loading event should be emitted now.
+    pub fn should_emit(&mut self, event: &MarketDataLoadingProgressEvent) -> bool {
+        self.progress_gate.should_emit(
+            Instant::now(),
+            (event.source.source_id(), event.phase.phase_id()),
+            event.completed_records,
+            event.total_records.unwrap_or(0),
+        )
+    }
+}
+
+/// Convert a market-data loading event into a terminal progress measure.
+pub fn market_data_loading_progress_measure(
+    event: &MarketDataLoadingProgressEvent,
+) -> Result<ProgressMeasure, ProgressContractError> {
+    if !event.phase.uses_record_count() {
+        return Ok(ProgressMeasure::Unbounded);
+    }
+
+    match event.total_records {
+        Some(total_records) if total_records > 0 => {
+            ProgressMeasure::bounded(event.completed_records.min(total_records), total_records)
+        }
+        Some(_) | None => Ok(ProgressMeasure::Unbounded),
+    }
+}
+
+/// Return the latest signal for a market-data loading event.
+pub fn market_data_loading_progress_signal(event: &MarketDataLoadingProgressEvent) -> String {
+    event.latest_signal()
+}
+
+/// Return the latest signal for a market-data preparation phase.
+pub fn market_data_preparation_progress_signal(
+    phase: MarketDataPreparationProgressPhase,
+) -> String {
+    phase.latest_signal().to_string()
+}
+
+pub(crate) fn should_emit_market_data_loading_progress(
+    progress_gate: &mut MarketDataLoadingProgressGate,
+    event: &MarketDataLoadingProgressEvent,
+) -> bool {
+    progress_gate.should_emit(event)
+}
+
+pub(crate) fn market_data_loading_run_event(
+    run_id: &str,
+    workflow: WorkflowRef,
+    event: &MarketDataLoadingProgressEvent,
+) -> RunEvent {
+    RunEvent::new(
+        run_id,
+        workflow,
+        EventDeliveryPriority::DroppableVolatile,
+        RunEventPayload::Progress(RunProgressEvent {
+            stage: None,
+            phase: Some(RunPhaseRef::labeled(
+                "market_data_loading",
+                "Loading market data",
+            )),
+            subphase: Some(RunPhaseRef::labeled(
+                format!("{}.{}", event.source.source_id(), event.phase.phase_id()),
+                event.phase_signal(),
+            )),
+            measures: market_data_loading_event_measures(event),
+        }),
+    )
+}
+
+pub(crate) fn market_data_preparation_run_event(
+    run_id: &str,
+    workflow: WorkflowRef,
+    phase: MarketDataPreparationProgressPhase,
+) -> RunEvent {
+    RunEvent::new(
+        run_id,
+        workflow,
+        EventDeliveryPriority::DroppableVolatile,
+        RunEventPayload::Progress(RunProgressEvent {
+            stage: None,
+            phase: Some(RunPhaseRef::labeled(
+                "market_data_preparation",
+                "Preparing market data",
+            )),
+            subphase: Some(RunPhaseRef::labeled(phase.phase_id(), phase.phase_label())),
+            measures: Vec::new(),
+        }),
+    )
+}
+
+pub(crate) fn market_data_timestamp_batching_surface_run_event(
+    run_id: &str,
+    workflow: WorkflowRef,
+    diagnostic: &CalibrationTimestampBatchingSurfaceDiagnostic,
+) -> RunEvent {
+    RunEvent::new(
+        run_id,
+        workflow,
+        EventDeliveryPriority::Required,
+        RunEventPayload::MetricUpdate(RunMetricUpdateEvent {
+            stage: None,
+            phase: Some(RunPhaseRef::labeled(
+                "market_data_preparation",
+                "Preparing market data",
+            )),
+            measures: timestamp_batching_surface_measures(diagnostic),
+        }),
+    )
+}
+
+fn market_data_loading_event_measure(
+    event: &MarketDataLoadingProgressEvent,
+) -> EventProgressMeasure {
+    match event.total_records {
+        Some(total_records) if total_records > 0 => EventProgressMeasure::BoundedCount {
+            metric_id: "market_data_records".to_string(),
+            label: Some("market data records".to_string()),
+            completed_units: event.completed_records.min(total_records),
+            total_units: total_records,
+        },
+        Some(total_records) => EventProgressMeasure::EvaluationCount {
+            metric_id: "market_data_records".to_string(),
+            label: Some("market data records".to_string()),
+            completed_evaluations: event.completed_records.min(total_records),
+            evaluation_budget: Some(total_records),
+        },
+        None => EventProgressMeasure::EvaluationCount {
+            metric_id: "market_data_records".to_string(),
+            label: Some("market data records".to_string()),
+            completed_evaluations: event.completed_records,
+            evaluation_budget: None,
+        },
+    }
+}
+
+fn market_data_loading_event_measures(
+    event: &MarketDataLoadingProgressEvent,
+) -> Vec<EventProgressMeasure> {
+    if !event.phase.uses_record_count() {
+        return Vec::new();
+    }
+
+    vec![market_data_loading_event_measure(event)]
+}
+
+fn timestamp_batching_surface_measures(
+    diagnostic: &CalibrationTimestampBatchingSurfaceDiagnostic,
+) -> Vec<EventProgressMeasure> {
+    let mut measures = vec![
+        EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.state".to_string(),
+            label: Some("timestamp batching state".to_string()),
+            value: diagnostic.state.state_id().to_string(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.mode".to_string(),
+            label: Some("timestamp batching mode".to_string()),
+            value: diagnostic
+                .timestamp_batching_surface
+                .mode
+                .mode_id()
+                .to_string(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.inference_policy".to_string(),
+            label: Some("timestamp batching inference policy".to_string()),
+            value: diagnostic
+                .timestamp_batching_surface
+                .inference_policy
+                .to_string(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.observation_policy".to_string(),
+            label: Some("timestamp batching surface policy".to_string()),
+            value: diagnostic
+                .timestamp_batching_surface
+                .observation_policy
+                .to_string(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.diagnostic_policy".to_string(),
+            label: Some("timestamp batching diagnostic policy".to_string()),
+            value: diagnostic.diagnostic_policy.to_string(),
+        },
+        EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.message".to_string(),
+            label: Some("timestamp batching surface".to_string()),
+            value: diagnostic.message.to_string(),
+        },
+    ];
+
+    if diagnostic.timestamp_batching_surface.mode == TimestampBatchingMode::FixedBucketFloor
+        && let Some(bucket_width_nanos) = diagnostic.timestamp_batching_surface.bucket_width_nanos
+    {
+        measures.push(EventProgressMeasure::Text {
+            metric_id: "market_data.timestamp_batching_surface.bucket_width_nanos".to_string(),
+            label: Some("timestamp batching bucket width nanos".to_string()),
+            value: bucket_width_nanos.to_string(),
+        });
+
+        if let Some(same_timestamp_continuation_count) = diagnostic
+            .timestamp_batching_surface
+            .same_timestamp_continuation_count
+        {
+            measures.push(EventProgressMeasure::Text {
+                metric_id:
+                    "market_data.timestamp_batching_surface.same_timestamp_continuation_count"
+                        .to_string(),
+                label: Some("timestamp batching same timestamp continuation count".to_string()),
+                value: same_timestamp_continuation_count.to_string(),
+            });
+        }
+
+        if let Some(same_session_observation_transition_count) = diagnostic
+            .timestamp_batching_surface
+            .same_session_observation_transition_count
+        {
+            measures.push(EventProgressMeasure::Text {
+                metric_id: "market_data.timestamp_batching_surface.same_session_observation_transition_count"
+                        .to_string(),
+                label: Some("timestamp batching same-session transition count".to_string()),
+                value: same_session_observation_transition_count.to_string(),
+            });
+        }
+
+        if let Some(continuation_probability) = diagnostic
+            .timestamp_batching_surface
+            .same_timestamp_continuation_probability()
+        {
+            measures.push(EventProgressMeasure::Scalar {
+                metric_id: "market_data.timestamp_batching_surface.continuation_probability"
+                    .to_string(),
+                label: Some("timestamp batching continuation probability".to_string()),
+                value: continuation_probability,
+            });
+        }
+    }
+
+    measures
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform::calibration::market_data::{
+        CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY,
+        CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION,
+        CalibrationTimestampBatchingSurfaceDiagnostic,
+        CalibrationTimestampBatchingSurfaceDiagnosticState, MarketDataLoadingProgressEvent,
+        MarketDataLoadingProgressPhase, MarketDataLoadingSource,
+        MarketDataPreparationProgressPhase,
+    };
+    use janiform::model::timestamp_batching_surface::TimestampBatchingSurface;
+    use janiform_event_log::RunEventPayload;
+    use janiform_terminal_ui::ProgressMeasure;
+
+    use super::{
+        market_data_loading_progress_measure, market_data_loading_progress_signal,
+        market_data_loading_run_event, market_data_preparation_progress_signal,
+        market_data_timestamp_batching_surface_run_event,
+    };
+
+    #[test]
+    fn market_data_loading_progress_uses_bounded_measure_when_total_is_known() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::ReadingRecords,
+            4,
+            Some(10),
+        );
+
+        assert!(market_data_loading_progress_measure(&event).is_ok());
+        assert_eq!(
+            market_data_loading_progress_signal(&event),
+            "tick data: reading records 4/10 records"
+        );
+    }
+
+    #[test]
+    fn market_data_loading_progress_uses_unbounded_measure_without_total() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::ReadingRecords,
+            4,
+            None,
+        );
+
+        assert!(market_data_loading_progress_measure(&event).is_ok());
+        assert_eq!(
+            market_data_loading_progress_signal(&event),
+            "tick data: reading records 4 records"
+        );
+    }
+
+    #[test]
+    fn market_data_loading_progress_reports_active_timestamp_batching_inference() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::TickData,
+            MarketDataLoadingProgressPhase::InferringTimestampBatchingSurface,
+            0,
+            None,
+        );
+
+        assert!(market_data_loading_progress_measure(&event).is_ok());
+        assert_eq!(
+            market_data_loading_progress_signal(&event),
+            "tick data: inferring timestamp batching surface"
+        );
+    }
+
+    #[test]
+    fn market_data_loading_progress_uses_unbounded_measure_for_non_record_work() {
+        let event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::MarketData,
+            MarketDataLoadingProgressPhase::BuildingCalibrationInputs,
+            0,
+            Some(10),
+        );
+
+        assert_eq!(
+            market_data_loading_progress_measure(&event),
+            Ok(ProgressMeasure::Unbounded)
+        );
+        assert_eq!(
+            market_data_loading_progress_signal(&event),
+            "market data: building calibration input candidates"
+        );
+    }
+
+    #[test]
+    fn market_data_loading_run_event_omits_count_measure_for_non_record_work() {
+        let loading_event = MarketDataLoadingProgressEvent::new(
+            MarketDataLoadingSource::MarketData,
+            MarketDataLoadingProgressPhase::BuildingCalibrationInputs,
+            0,
+            Some(10),
+        );
+
+        let run_event = market_data_loading_run_event(
+            "run-1",
+            janiform_event_log::WorkflowRef::labeled("fit", "Fit"),
+            &loading_event,
+        );
+
+        let RunEventPayload::Progress(progress) = run_event.payload else {
+            panic!("market-data loading progress should be emitted as progress");
+        };
+
+        assert_eq!(progress.measures, Vec::new());
+    }
+
+    #[test]
+    fn market_data_preparation_progress_uses_phase_signal() {
+        assert_eq!(
+            market_data_preparation_progress_signal(
+                MarketDataPreparationProgressPhase::BuildingExecutionInput
+            ),
+            "materializing staged execution input"
+        );
+    }
+
+    #[test]
+    fn timestamp_batching_surface_progress_event_is_required_metric_update() {
+        let diagnostic = CalibrationTimestampBatchingSurfaceDiagnostic {
+            schema_version: CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION
+                .to_string(),
+            diagnostic_policy: CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY.to_string(),
+            state: CalibrationTimestampBatchingSurfaceDiagnosticState::DisabledNoDetectableBatching,
+            return_components_stage_selected: true,
+            timestamp_batching_surface: TimestampBatchingSurface::disabled(),
+            message: "timestamp batching surface evaluated".to_string(),
+        };
+
+        let event = market_data_timestamp_batching_surface_run_event(
+            "run-1",
+            janiform_event_log::WorkflowRef::labeled("fit", "Fit"),
+            &diagnostic,
+        );
+
+        let RunEventPayload::MetricUpdate(metric_update) = event.payload else {
+            panic!("timestamp batching diagnostic should be emitted as metric update");
+        };
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Text { metric_id, value, .. }
+                if metric_id == "market_data.timestamp_batching_surface.state"
+                    && value == "disabled_no_detectable_batching"
+        )));
+    }
+
+    #[test]
+    fn timestamp_batching_surface_progress_event_reports_fitted_continuation_metrics() {
+        let timestamp_batching_surface =
+            TimestampBatchingSurface::fixed_bucket_floor(1_000, "test_source", 2, 10)
+                .expect("timestamp batching fixture should validate");
+
+        let diagnostic = CalibrationTimestampBatchingSurfaceDiagnostic {
+            schema_version: CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_SCHEMA_VERSION
+                .to_string(),
+            diagnostic_policy: CALIBRATION_TIMESTAMP_BATCHING_SURFACE_DIAGNOSTIC_POLICY.to_string(),
+            state: CalibrationTimestampBatchingSurfaceDiagnosticState::InferredFixedBucket,
+            return_components_stage_selected: true,
+            timestamp_batching_surface,
+            message: "timestamp batching surface inferred".to_string(),
+        };
+
+        let event = market_data_timestamp_batching_surface_run_event(
+            "run-1",
+            janiform_event_log::WorkflowRef::labeled("fit", "Fit"),
+            &diagnostic,
+        );
+
+        let RunEventPayload::MetricUpdate(metric_update) = event.payload else {
+            panic!("timestamp batching diagnostic should be emitted as metric update");
+        };
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Text { metric_id, value, .. }
+                if metric_id
+                    == "market_data.timestamp_batching_surface.same_timestamp_continuation_count"
+                    && value == "2"
+        )));
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Text { metric_id, value, .. }
+                if metric_id
+                    == "market_data.timestamp_batching_surface.same_session_observation_transition_count"
+                    && value == "10"
+        )));
+
+        assert!(metric_update.measures.iter().any(|measure| matches!(
+            measure,
+            janiform_event_log::ProgressMeasure::Scalar { metric_id, value, .. }
+                if metric_id
+                    == "market_data.timestamp_batching_surface.continuation_probability"
+                    && *value == 2.0 / 10.0
+        )));
+    }
+}

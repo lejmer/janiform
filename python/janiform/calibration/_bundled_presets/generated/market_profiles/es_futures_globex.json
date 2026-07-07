@@ -1,0 +1,63 @@
+{
+  "category": "market_profile",
+  "configuration": {
+    "column_alias_hints": [
+      {
+        "aliases": [
+          "event_timestamp_utc",
+          "timestamp_utc",
+          "ts_recv"
+        ],
+        "canonical_name": "timestamp"
+      }
+    ],
+    "known_news_policy": "suggest_only",
+    "known_news_reference": {
+      "configuration": null,
+      "override_patch": null,
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "usage_mode": "named"
+    },
+    "profile_name": "es_futures_globex",
+    "session_reference": {
+      "configuration": null,
+      "exchange_code_hint": null,
+      "override_patch": null,
+      "preset_name": "XCME",
+      "registry_scope": "built_in",
+      "timezone_name_hint": null,
+      "usage_mode": "named"
+    },
+    "tick_size": 0.25,
+    "timestamp_timezone_name": "UTC"
+  },
+  "metadata": {
+    "description": "Default E-mini S&P 500 futures profile with the bundled CME Globex session and no known-news events enabled.",
+    "display_name": "ES Futures Globex",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:ea7e5cec2a608e3e75d90a52750f2187db9cfc37979db0569347c22a7ccbe638",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.market_profiles.es_futures_globex.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "none@2026.03"
+        },
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "XCME@2026.03"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "es_futures_globex",
+  "schema_version": "preset.artifact.market_profile.v1"
+}

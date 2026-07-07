@@ -1,0 +1,217 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Long-variance unit-mean normalization}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Long-variance unit-mean normalization\\
+\textbf{Depends on.} \texttt{15\_fourier\_business\_time\_clock\_interval\_factor\_grid.tex}\\
+\textbf{Feeds.} P12, first-moment guard, affine schedule transform, terminal pricing measure
+
+\section{Purpose}
+
+Derive the mean-reversion level that makes the physical long-variance state
+have stationary first moment one.
+This fixes the scale of \(Z_t\), so persistent
+variance memory changes return-clock exposure without introducing an
+unidentified unconditional variance multiplier.
+
+\section{Setup}
+
+Work under the physical measure \(P\).
+The long-variance state follows
+\[
+    dZ_t
+    =
+    \kappa_z(\bar z-Z_t)\,dt
+    +\sigma_z\sqrt{Z_t}\,dW_t^Z
+    +\chi_+\,dN_t^+
+    +\chi_-\,dN_t^-.
+\]
+
+The event feedback terms are uncompensated positive jumps. Let
+\(\lambda_{\mathrm{stat}}^+\) and \(\lambda_{\mathrm{stat}}^-\) denote the
+stationary buy and sell event rates under the mean-normalized deterministic
+baseline exposure represented by the interval factor grid and the expected news
+activity loading used for the interval family being normalized.
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(Z_t\) & Long-variance state & Positive\\
+\(\kappa_z\) & Mean-reversion rate & Positive inverse time\\
+\(\bar z\) & Mean-reversion level & Positive\\
+\(\sigma_z\) & Volatility of the long-variance diffusion & Non-negative\\
+\(\chi_+\) & Buy-event long-variance jump loading & Non-negative\\
+\(\chi_-\) & Sell-event long-variance jump loading & Non-negative\\
+\(\lambda_{\mathrm{stat}}^+\) & Stationary buy event rate & Non-negative inverse time\\
+\(\lambda_{\mathrm{stat}}^-\) & Stationary sell event rate & Non-negative inverse time\\
+\(b_Z\) & Stationary event-feedback drift into \(Z_t\) & Inverse time\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+The Hawkes activity system has finite stationary side event rates.
+& Taking expectations of \(dN_t^\pm\).
+& The first-moment equation needs finite \(\lambda_{\mathrm{stat}}^\pm\).\\
+Event loadings \(\chi_\pm\) are deterministic non-negative constants.
+& Pulling jump sizes outside event-count expectations.
+& Positive event feedback must enter as a linear first-moment drift.\\
+The Brownian innovation has zero conditional mean.
+& Taking expectations of \(\sigma_z\sqrt{Z_t}\,dW_t^Z\).
+& The diffusion term should not move the first moment.\\
+The normalization target is \(\mathbb E^P[Z_t]=1\) in stationarity.
+& Solving for \(\bar z\).
+& This identifies the scale of the long-variance factor.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Identity.} Define the stationary event-feedback drift
+\[
+    b_Z
+    =
+    \chi_+\lambda_{\mathrm{stat}}^+
+    +\chi_-\lambda_{\mathrm{stat}}^-.
+\]
+
+The mean-reversion level that gives \(Z_t\) unit stationary first moment is
+\[
+    \bar z
+    =
+    1-\frac{b_Z}{\kappa_z}
+    =
+    1-
+    \frac{
+        \chi_+\lambda_{\mathrm{stat}}^+
+        +\chi_-\lambda_{\mathrm{stat}}^-
+    }{\kappa_z}.
+\]
+
+\section{Derivation}
+
+Let \(m(t)=\mathbb E^P[Z_t]\).
+Taking first moments in the long-variance state
+equation gives
+\[
+    \frac{d}{dt}m(t)
+    =
+    \kappa_z\bar z
+    -\kappa_z m(t)
+    +\chi_+\lambda_t^+
+    +\chi_-\lambda_t^-.
+\]
+
+In stationarity, \(\lambda_t^\pm=\lambda_{\mathrm{stat}}^\pm\) at the
+first-moment level and \(m(t)=m_\infty\), so
+\[
+    0
+    =
+    \kappa_z\bar z
+    -\kappa_z m_\infty
+    +\chi_+\lambda_{\mathrm{stat}}^+
+    +\chi_-\lambda_{\mathrm{stat}}^-.
+\]
+
+Solving for the stationary first moment gives
+\[
+    m_\infty
+    =
+    \bar z
+    +
+    \frac{
+        \chi_+\lambda_{\mathrm{stat}}^+
+        +\chi_-\lambda_{\mathrm{stat}}^-
+    }{\kappa_z}
+    =
+    \bar z+\frac{b_Z}{\kappa_z}.
+\]
+
+This should not be a second unconditional variance scale,
+so the normalization sets \(m_\infty=1\), so that \(Z_t\) is a dimensionless
+relative variance multiplier.
+Therefore
+\[
+    1
+    =
+    \bar z+\frac{b_Z}{\kappa_z},
+\]
+and hence
+\[
+    \bar z
+    =
+    1-\frac{b_Z}{\kappa_z}.
+\]
+
+The diffusion parameter \(\sigma_z\) does not appear in the first-moment
+normalization because the Brownian term has zero conditional mean.
+
+\section{Domain and validity}
+
+The identity is valid when
+\[
+    \kappa_z>0,\qquad
+    \sigma_z\ge 0,\qquad
+    \chi_+\ge 0,\qquad
+    \chi_-\ge 0,
+\]
+the stationary side event rates are finite and non-negative, and the derived
+level satisfies
+\[
+    \bar z>0.
+\]
+
+The strict positivity condition is equivalent to the first-moment guard derived
+separately:
+\[
+    \kappa_z>
+    \chi_+\lambda_{\mathrm{stat}}^+
+    +\chi_-\lambda_{\mathrm{stat}}^-.
+\]
+
+This is not a full statement that all higher moments exist, only a unit first-moment normalization.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item The long-variance factor has an identified unit scale under the physical measure.
+    \item Positive event feedback does not raise the unconditional mean of \(Z_t\), because \(\bar z\) is lowered by exactly the stationary event-feedback contribution.
+    \item The baseline return-clock exposure can use \(Z_t\) as a persistent relative variance multiplier around deterministic baseline opportunity.
+    \item Any admissible calibration or pricing contract must carry enough information to derive the stationary side event rates used in \(b_Z\).
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Exact first-moment substitution
+& \(\kappa_z(\bar z-1)+b_Z=0\) after substituting the derived \(\bar z\).
+& \texttt{check\_long\_variance\_first\_moment.py}\\
+Kernel stationary-level contract
+& \texttt{stationary\_mean\_reversion\_level} returns \(1-b_Z/\kappa_z\).
+& Unit test \texttt{stationary\_mean\_reversion\_level\_offsets\_event\_feedback\_drift}\\
+Exogenous-source contract
+& Stationary rates include exogenous Hawkes target source rates before deriving \(\bar z\).
+& Unit test \texttt{stationary\_mean\_reversion\_level\_includes\_exogenous\_hawkes\_source\_rates}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

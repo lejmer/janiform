@@ -1,0 +1,63 @@
+{
+  "category": "market_profile",
+  "configuration": {
+    "column_alias_hints": [
+      {
+        "aliases": [
+          "exchange_timestamp",
+          "timestamp_utc",
+          "trade_time_utc"
+        ],
+        "canonical_name": "timestamp"
+      }
+    ],
+    "known_news_policy": "suggest_only",
+    "known_news_reference": {
+      "configuration": null,
+      "override_patch": null,
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "usage_mode": "named"
+    },
+    "profile_name": "btcusd_spot",
+    "session_reference": {
+      "configuration": null,
+      "exchange_code_hint": null,
+      "override_patch": null,
+      "preset_name": "crypto_24_7",
+      "registry_scope": "built_in",
+      "timezone_name_hint": null,
+      "usage_mode": "named"
+    },
+    "tick_size": 0.01,
+    "timestamp_timezone_name": "UTC"
+  },
+  "metadata": {
+    "description": "Default BTC/USD spot profile with continuous 24/7 trading and no known-news events enabled.",
+    "display_name": "BTC/USD Spot",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:fcd26605cdb037ea44ed3c857477f61c79662fb034766f5b449f420471ee7030",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.market_profiles.btcusd_spot.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "none@2026.03"
+        },
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "crypto_24_7@2026.03"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "btcusd_spot",
+  "schema_version": "preset.artifact.market_profile.v1"
+}

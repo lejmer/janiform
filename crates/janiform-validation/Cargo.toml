@@ -1,0 +1,24 @@
+[package]
+name = "janiform-validation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Model validation domains for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_validation"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
+janiform-foundations = { path = "../janiform-foundations" }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+janiform-test-support = { path = "../janiform-test-support" }

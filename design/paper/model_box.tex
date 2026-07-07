@@ -1,0 +1,277 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+
+\title{Janiform model box}
+\author{}
+\date{}
+
+\begin{document}
+    \maketitle
+
+    \section*{Mathematical formulation}
+
+    The log price decomposes into an anchor and a residual log-price component:
+    \[
+        \log S_t=\log S_0+A_t^\Omega+D_t.
+    \]
+    The residual component satisfies
+    \[
+        dD_t
+        =
+        -\kappa D_t\,dt
+        +d\widetilde L^+_{A_t^+}
+        -d\widetilde L^-_{A_t^-}
+        +dM_t
+        +dG_t,
+        \qquad
+        \kappa\ge0.
+    \]
+    Equivalently,
+    \[
+        d\log S_t
+        =
+        dA_t^\Omega
+        -\kappa D_t\,dt
+        +d\widetilde L^+_{A_t^+}
+        -d\widetilde L^-_{A_t^-}
+        +dM_t
+        +dG_t.
+    \]
+    Thus \(\kappa>0\) makes \(D_t\) decay toward zero, while
+    \(\kappa=0\) leaves the residual component unreverted.
+    The anchor-pressure component is driven by the finite-state market pressure
+    state:
+    \[
+        dA_t^\Omega
+        =
+        \gamma_\Omega b_{\Omega_t}\,dE_t^\Omega.
+    \]
+    Here \(\Omega_t\in\{1,\ldots,K_\Omega\}\), \(b_k\in[-1,1]\) is the fitted
+    signed side-balance level for state \(k\), \(E^\Omega\) is the non-negative
+    signed-balance exposure clock, and \(\gamma_\Omega\) maps signed imbalance
+    exposure into anchor drift.
+    The business-time drivers \(L^\pm\) are independent NIG Lévy processes.
+    They share \((\alpha,\delta,\mu)\) and have side-specific skew parameters
+    \[
+        \beta_+=\beta_0,
+        \qquad
+        \beta_-=\beta_0+\Delta_\beta.
+    \]
+    Their unit-business-time means are
+    \[
+        m_\pm
+        =
+        \mu+\delta\frac{\beta_\pm}{\sqrt{\alpha^2-\beta_\pm^2}},
+    \]
+    and the compensated drivers are
+    \[
+        \widetilde L_t^\pm
+        =
+        L_t^\pm-m_\pm t.
+    \]
+
+    Define the open-market clock indicator
+    \[
+        \mathcal O(t)
+        =
+        \begin{cases}
+            1, & t \text{ is open-market time},\\
+            0, & t \text{ is closed-market time}.
+        \end{cases}
+    \]
+
+    The recurring baseline activity clock is the Fourier business-time clock
+    \[
+        s_\star(t)=\exp(g_\star(t)),
+    \]
+    with
+    \[
+        g_\star(t)
+        =
+        c_0
+        +
+        \sum_{a\in\{\mathrm{intraday},\mathrm{weekly},\mathrm{annual}\}}
+        \sum_{n=1}^{K_a}
+        \left[
+            c_{a,n}\cos(2\pi n\phi_a(t))
+            +
+            d_{a,n}\sin(2\pi n\phi_a(t))
+        \right],
+    \]
+    where \(\phi_a(t)\) are exchange-local recurring calendar phases.
+    Runtime consumers materialize this source clock over requested intervals
+    \(I_k=[t_k,t_{k+1})\), \(\Delta_k=t_{k+1}-t_k\), as non-negative interval
+    factors \(s_k\) satisfying
+    \[
+        s_k\Delta_k
+        =
+        \frac{
+            \int_{I_k}\mathcal O(u)s_\star(u)\,du
+        }{
+            n_{\mathcal K}
+        },
+        \qquad
+        n_{\mathcal K}
+        =
+        \frac{
+            \sum_j\int_{I_j}\mathcal O(u)s_\star(u)\,du
+        }{
+            \sum_j\int_{I_j}\mathcal O(u)\,du
+        },
+    \]
+    whenever the requested range has positive open exposure.
+    If it has no open exposure, all materialized seasonality factors
+    are zero.
+
+    The buy and sell return clocks are
+    \begin{gather*}
+        A_t^+
+        =
+        \int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
+        +
+        \eta_+\int_0^t \mathcal O(u)
+        \big(Y_u^{++}+Y_u^{+-}\big)\,du,\\
+        A_t^-
+        =
+        \int_0^t \mathcal O(u)s_\star(u)\bar\lambda Z_u\,du
+        +
+        \eta_-\int_0^t \mathcal O(u)
+        \big(Y_u^{-+}+Y_u^{--}\big)\,du.\\
+    \end{gather*}
+    Equivalently,
+    \begin{gather*}
+        dA_t^+
+        =
+        \mathcal O(t)
+        \left[
+            s_\star(t)\bar\lambda Z_t
+            +
+            \eta_+\big(Y_t^{++}+Y_t^{+-}\big)
+        \right]dt,\\
+        dA_t^-
+        =
+        \mathcal O(t)
+        \left[
+            s_\star(t)\bar\lambda Z_t
+            +
+            \eta_-\big(Y_t^{-+}+Y_t^{--}\big)
+        \right]dt.\\
+    \end{gather*}
+
+    Trade arrivals have intensities
+    \[
+        \lambda_t^+
+        =
+        \mathcal O(t)
+        \left(s_\star(t)\bar\lambda+Y_t^{++}+Y_t^{+-}\right),
+        \qquad
+        \lambda_t^-
+        =
+        \mathcal O(t)
+        \left(s_\star(t)\bar\lambda+Y_t^{-+}+Y_t^{--}\right),
+    \]
+    with Hawkes reaction state
+    \[
+        dY_t^{ij}
+        =
+        -\beta Y_t^{ij}\,dt
+        +
+        \alpha_{ij}\,dN_t^j
+        +
+        \rho_{ij}\,dJ_t,
+        \qquad i,j\in\{+,-\}.
+    \]
+    The universal market pressure state is a birth-death CTMC over ordered
+    signed-balance support levels:
+    \[
+        \mathbb P(dN_t^+\mid dN_t^++dN_t^->0,\Omega_t=k)
+        =
+        \frac{1+b_k}{2},
+        \qquad
+        \mathbb P(dN_t^-\mid dN_t^++dN_t^->0,\Omega_t=k)
+        =
+        \frac{1-b_k}{2}.
+    \]
+    The CTMC changes side composition through \(b_{\Omega_t}\) while preserving
+    total event-arrival activity.
+    Write \(\mathcal G^\Omega\) for its physical CTMC generator.
+
+    The long-variance state is
+    \[
+        dZ_t
+        =
+        \kappa_z(\bar z-Z_t)\,dt
+        +
+        \sigma_z\sqrt{Z_t}\,dW_t^Z
+        +
+        \chi_+\,dN_t^+
+        +
+        \chi_-\,dN_t^-,
+    \]
+    Here \(\bar z\) is chosen so that \(Z_t\) has unit stationary mean.
+
+    At news times \(\tau_m^c\), \(c\in\{\mathrm{known},\mathrm{surprise}\}\),
+    \begin{gather*}
+        U_m^c\sim\Gamma(k_U,1/k_U),
+        \qquad
+        Z_m^{N,c}\sim\mathcal N(0,1),\\
+        J_m^c=a_c U_m^c,
+        \qquad
+        \zeta_m^c
+        =
+        m_c U_m^c+\sigma_c\sqrt{U_m^c}Z_m^{N,c}.\\
+    \end{gather*}
+    The news activity-shock process is
+    \[
+        J_t
+        =
+        \sum_{c\in\{\mathrm{known},\mathrm{surprise}\}}
+        \sum_{\tau_m^c\le t}J_m^c.
+    \]
+    Writing \(r(\tau)\) for the first reopening time after a closed-market news
+    arrival, the open-news jump process is
+    \[
+        M_t
+        =
+        \sum_{c\in\{\mathrm{known},\mathrm{surprise}\}}
+        \sum_{\tau_m^c\le t}\mathcal O(\tau_m^c)\zeta_m^c.
+    \]
+    The closed-session reopening-gap process is
+    \[
+        G_t
+        =
+        \sum_{c\in\{\mathrm{known},\mathrm{surprise}\}}
+        \sum_{r(\tau_m^c)\le t}
+        \big(1-\mathcal O(\tau_m^c)\big)\zeta_m^c.
+    \]
+
+    \section*{Parameter families}
+
+    The model parameters are naturally grouped as
+    \begin{gather*}
+        \Theta_{\mathrm{NIG}}
+        =
+        (\alpha,\beta_0,\Delta_\beta,\delta,\mu),\\
+        \Theta_{\mathrm{trade}}
+        =
+        (\bar\lambda,s_\star(\cdot),\beta,\alpha_{ij},\rho_{ij},
+        \eta_+,\eta_-),\\
+        \Theta_Z
+        =
+        (\kappa_z,\sigma_z,\chi_+,\chi_-,Z_0),\\
+        \Theta_{\mathrm{news}}
+        =
+        \left(k_U,\nu^{\mathrm{known}},\nu^{\mathrm{surprise}},
+        a_c,m_c,\sigma_c\right)_{c\in\{\mathrm{known},\mathrm{surprise}\}},\\
+        \Theta_\Omega
+        =
+        (\{b_k\}_{k=1}^{K_\Omega},\mathcal G^\Omega,\gamma_\Omega,\mathbf p^\Omega_0),\\
+        \Theta_{\mathrm{obs}}
+        =
+        (\kappa,A_0^\Omega,D_0),
+    \end{gather*}
+    plus the calendar defining open and closed market states.
+
+\end{document}

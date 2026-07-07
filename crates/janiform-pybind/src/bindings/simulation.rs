@@ -1,0 +1,18 @@
+mod events;
+mod export;
+mod fields;
+mod model_inputs;
+mod output;
+mod path;
+mod request;
+mod workflow;
+
+use pyo3::prelude::{Bound, PyResult};
+use pyo3::types::PyModule;
+
+pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    workflow::register_functions(module)?;
+    export::register_functions(module)?;
+    path::register_functions(module)?;
+    Ok(())
+}

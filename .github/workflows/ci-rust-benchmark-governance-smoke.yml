@@ -1,0 +1,90 @@
+name: ci-rust-benchmark-governance-smoke
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_call:
+    inputs:
+      target_ref:
+        description: Git ref to check out when this workflow is reused
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Git ref to check out for a manual benchmark run
+        required: false
+        default: develop
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-benchmark-governance-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Record local verification policy
+        run: echo "Rust benchmark governance smoke workloads run locally."
+
+      # Rust benchmark governance smoke workloads run locally because
+      # GitHub-hosted free runners do not provide enough runtime capacity for them.
+      # - name: Check out repository
+      #   uses: actions/checkout@v6
+      #   with:
+      #     ref: ${{ inputs.target_ref || github.ref }}
+      #
+      # - name: Install Rust toolchain
+      #   uses: dtolnay/rust-toolchain@stable
+      #
+      # - name: Install Python
+      #   uses: actions/setup-python@v6
+      #   with:
+      #     python-version: "3.12"
+      #
+      # - name: Run Rust benchmark governance smoke workloads
+      #   run: |
+      #     mkdir -p .artifacts/benchmark-tier
+      #     cargo test -p janiform-governance-bench --test benchmark_scenario_catalog -- --nocapture | tee .artifacts/benchmark-tier/benchmark_scenario_catalog.log
+      #     cargo test -p janiform-governance-bench --test oracle_pricer_sufficient_statistics_benchmark_harness -- --nocapture | tee .artifacts/benchmark-tier/oracle_pricer_sufficient_statistics_benchmark_harness.log
+      #     cargo test -p janiform-governance --test performance_baseline_capture_and_storage -- --nocapture | tee .artifacts/benchmark-tier/performance_baseline_capture_and_storage.log
+      #     cargo test -p janiform-governance --test regression_drift_attribution_reports -- --nocapture | tee .artifacts/benchmark-tier/regression_drift_attribution_reports.log
+      #
+      # - name: Build scenario and baseline links
+      #   if: always()
+      #   run: |
+      #     python3 scripts/ci/write_benchmark_artifact_index.py \
+      #       --output-dir .artifacts/benchmark-tier \
+      #       --repository "${{ github.repository }}" \
+      #       --git-sha "${{ github.sha }}" \
+      #       --run-id "${{ github.run_id }}" \
+      #       --scenario-path "tests/fixtures/benchmarks/benchmark_scenario_catalog.json" \
+      #       --baseline-path "tests/fixtures/benchmarks/oracle_pricer_sufficient_statistics_performance_baseline_v1_1.json"
+      #
+      # - name: Publish benchmark smoke summary
+      #   if: always()
+      #   run: |
+      #     cat .artifacts/benchmark-tier/benchmark_artifact_index.md >> "$GITHUB_STEP_SUMMARY"
+      #     echo "" >> "$GITHUB_STEP_SUMMARY"
+      #     echo "- Scope: benchmark smoke validation for wiring, schema stability, and baseline artifact hooks" >> "$GITHUB_STEP_SUMMARY"
+      #     echo "- Workloads: \`benchmark_scenario_catalog\`, \`oracle_pricer_sufficient_statistics_benchmark_harness\`, \`performance_baseline_capture_and_storage\`, \`regression_drift_attribution_reports\`" >> "$GITHUB_STEP_SUMMARY"
+      #     echo "- Trigger policy: pushes to \`develop\`, manual dispatch, and reusable from release automation" >> "$GITHUB_STEP_SUMMARY"
+      #
+      # - name: Emit benchmark smoke failure context with links
+      #   if: failure()
+      #   run: |
+      #     echo "Benchmark smoke workload failed. Scenario and baseline links:"
+      #     cat .artifacts/benchmark-tier/benchmark_artifact_index.md
+      #
+      # - name: Upload benchmark smoke artifacts
+      #   if: always()
+      #   uses: actions/upload-artifact@v7
+      #   with:
+      #     name: benchmark-smoke-workload-artifacts
+      #     path: .artifacts/benchmark-tier
+      #     if-no-files-found: error

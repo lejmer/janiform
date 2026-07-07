@@ -1,0 +1,129 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Riccati and finite-state pressure system}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Riccati ODE system for \(C,\mathbf D,V\) and pressure values\\
+\textbf{Depends on.} \texttt{04\_affine\_transform\_ansatz.tex}\\
+\textbf{Feeds.} Affine solver, domain constraints, terminal pricing measure
+
+\section{Purpose}
+
+Derive the interval equations used by the affine oracle when pressure is a
+finite-state signed-balance factor.
+
+\section{Hamiltonians}
+
+Let
+\[
+    \mathbf k_+=(\alpha_{++},0,\alpha_{-+},0),
+    \qquad
+    \mathbf k_-=(0,\alpha_{+-},0,\alpha_{--}).
+\]
+For transform loadings \(u_+^B,u_+^E,u_-^B,u_-^E,z_+,z_-\), define
+\[
+    H_+^B(\mathbf D,V)
+    =
+    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+)-1-u_+^B,
+\]
+\[
+    H_-^B(\mathbf D,V)
+    =
+    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-)-1-u_-^B,
+\]
+\[
+    H_+^E(\mathbf D,V)
+    =
+    z_+\exp(\mathbf D\cdot\mathbf k_+ + V\chi_+)-1-u_+^E,
+\]
+\[
+    H_-^E(\mathbf D,V)
+    =
+    z_-\exp(\mathbf D\cdot\mathbf k_- + V\chi_-)-1-u_-^E.
+\]
+Market pressure does not enter these Hamiltonians as a Hawkes jump loading.
+
+\section{System}
+
+The Hawkes loading equations are
+\[
+\begin{aligned}
+    D_{++}'(\tau) &= -\beta D_{++}(\tau) + H_+^E(\mathbf D(\tau),V(\tau)),\\
+    D_{+-}'(\tau) &= -\beta D_{+-}(\tau) + H_+^E(\mathbf D(\tau),V(\tau)),\\
+    D_{-+}'(\tau) &= -\beta D_{-+}(\tau) + H_-^E(\mathbf D(\tau),V(\tau)),\\
+    D_{--}'(\tau) &= -\beta D_{--}(\tau) + H_-^E(\mathbf D(\tau),V(\tau)).
+\end{aligned}
+\]
+The long-variance loading is
+\[
+    V'(\tau)
+    =
+    -\kappa_zV(\tau)
+    +\frac{1}{2}\sigma_z^2V(\tau)^2
+    -s_k\bar\lambda(u_+^B+u_-^B).
+\]
+The scalar cumulant is
+\[
+    C'(\tau)
+    =
+    \kappa_z\bar zV(\tau)
+    +s_k\bar\lambda
+    \left(
+        H_+^B(\mathbf D(\tau),V(\tau))+u_+^B
+        +H_-^B(\mathbf D(\tau),V(\tau))+u_-^B
+    \right)
+    +\mathcal N_k(\mathbf D(\tau),q),
+\]
+where \(\mathcal N_k\) is the known-news plus surprise-news transform term.
+
+For pressure support \(b_k\), physical generator \(\mathcal G^\Omega\),
+exposure scale \(e^\Omega\), return loading \(r_\Omega\), drift loading
+\(\gamma_\Omega\), and pressure risk price \(\rho_\Omega\),
+\[
+    \partial_\tau\mathbf f^\Omega(\tau)
+    =
+    \left(
+        \mathcal G^\Omega+
+        \operatorname{diag}\left(
+            (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_1,
+            \ldots,
+            (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_{K_\Omega}
+        \right)
+    \right)\mathbf f^\Omega(\tau).
+\]
+
+\section{Consequence}
+
+The pressure system is linear in the pressure value vector.
+It does not require an additional Riccati state and it does not alter Hawkes
+total event-arrival activity.
+Pressure affects transforms through signed-balance exposure and through the
+terminal pressure state distribution.
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Hamiltonians
+& Event Hamiltonians depend on \(\mathbf D,V,z_\pm,u_\pm\), not on a scalar pressure loading.
+& \texttt{evaluate\_exponential\_affine\_transform\_hamiltonians}\\
+Pressure values
+& Pressure contribution is solved by a finite-state matrix exponential.
+& \texttt{market\_pressure\_transform\_values}\\
+Schedule composition
+& Terminal pressure values carry backward through schedule intervals.
+& \texttt{solve\_exponential\_affine\_schedule\_cumulant}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

@@ -1,0 +1,24 @@
+[package]
+name = "janiform-pybind"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "PyO3 bindings for Janiform."
+readme = "README.md"
+
+[lib]
+name = "_native"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+chrono = { workspace = true }
+janiform = { path = "../janiform" }
+janiform-cli = { path = "../janiform-cli" }
+janiform-event-log = { path = "../janiform-event-log" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-workflows = { path = "../janiform-workflows" }
+pyo3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

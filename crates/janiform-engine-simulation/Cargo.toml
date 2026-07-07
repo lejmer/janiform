@@ -1,0 +1,29 @@
+[package]
+name = "janiform-engine-simulation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Simulation runtime engine for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_engine_simulation"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+statrs = { workspace = true }
+tracing = "0.1.41"
+
+[dev-dependencies]
+serde_json = { workspace = true }

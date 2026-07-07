@@ -1,0 +1,85 @@
+{
+  "category": "session",
+  "configuration": {
+    "exchange_code": "FXSPOT",
+    "exchange_name": "OTC FX Spot 24/5",
+    "recurring_closed_windows": [
+      {
+        "end_time": "17:00",
+        "end_weekday": "Sunday",
+        "reason": "weekend_close",
+        "start_time": "17:00",
+        "start_weekday": "Friday"
+      }
+    ],
+    "regular_session_windows": [
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Friday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Saturday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "spot",
+        "open_time": "00:00",
+        "weekday": "Sunday"
+      }
+    ],
+    "timezone_name": "America/New_York"
+  },
+  "metadata": {
+    "description": "Week-round OTC FX spot session with the weekend close from Friday 17:00 New York time to Sunday 17:00 New York time.",
+    "display_name": "FX Spot 24/5",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:0c95c3a3d3961a7952792a7cdd0e7ba64242fa7bf1a0b5c28088808b75689d90",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.sessions.fx_spot_24_5.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "fx_spot_market_convention_review",
+          "version_label": "captured_2026-05-30"
+        }
+      ]
+    },
+    "version_label": "2026.05"
+  },
+  "preset_name": "fx_spot_24_5",
+  "schema_version": "preset.artifact.session.v1"
+}

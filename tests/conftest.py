@@ -1,0 +1,258 @@
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from janiform.calendar import CalendarRegistry
+from tests.support.fixture_validation import (
+    CALENDAR_REGRESSION_FIXTURE_SET_ID,
+    OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
+    SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID,
+    STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
+    CalendarRegressionCase,
+    CalendarRegressionFixtureDocument,
+    OpenClosedGapBehaviorCase,
+    OpenClosedGapBehaviorFixtureDocument,
+    ScaleConsistencyRegressionCase,
+    ScaleConsistencyRegressionFixtureDocument,
+    SeededTickSimulationParityCase,
+    SeededTickSimulationParityFixtureDocument,
+    StylizedFactMetricRegressionCase,
+    StylizedFactMetricRegressionFixtureDocument,
+    ValidationFixtureManifestDocument,
+    ValidationFixtureManifestEntry,
+    load_calendar_regression_fixture_document,
+    load_open_closed_gap_behavior_fixture_document,
+    load_scale_consistency_regression_fixture_document,
+    load_seeded_tick_simulation_parity_fixture_document,
+    load_manifest_entry_payload,
+    load_stylized_fact_metric_regression_fixture_document,
+    load_validation_fixture_manifest,
+    sorted_manifest_entries,
+)
+
+
+@pytest.fixture(scope="session")
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="session")
+def python_source_root(project_root: Path) -> Path:
+    return project_root / "python"
+
+
+@pytest.fixture(scope="session")
+def validation_fixture_manifest_path() -> Path:
+    return (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "validation"
+        / "validation_fixture_manifest.json"
+    )
+
+
+@pytest.fixture(scope="session")
+def fixtures_root() -> Path:
+    return Path(__file__).resolve().parent / "fixtures"
+
+
+@pytest.fixture(scope="session")
+def validation_fixture_manifest_document(
+    validation_fixture_manifest_path: Path,
+) -> ValidationFixtureManifestDocument:
+    return load_validation_fixture_manifest(validation_fixture_manifest_path)
+
+
+@pytest.fixture(scope="session")
+def validation_fixture_manifest_entries(
+    validation_fixture_manifest_document: ValidationFixtureManifestDocument,
+) -> list[ValidationFixtureManifestEntry]:
+    return sorted_manifest_entries(validation_fixture_manifest_document)
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == CALENDAR_REGRESSION_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {CALENDAR_REGRESSION_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_fixture_path(
+    fixtures_root: Path,
+    calendar_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / calendar_regression_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
+def scale_consistency_regression_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_fixture_document(
+    fixtures_root: Path,
+    calendar_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> CalendarRegressionFixtureDocument:
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        calendar_regression_manifest_entry,
+    )
+    return load_calendar_regression_fixture_document(fixture_payload_bytes)
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_cases(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> list[CalendarRegressionCase]:
+    return list(calendar_regression_fixture_document["cases"])
+
+
+@pytest.fixture(scope="session")
+def calendar_registry_json(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> str:
+    registry_artifact: dict[str, Any] = calendar_regression_fixture_document["calendar_registry"]
+    return json.dumps(registry_artifact)
+
+
+@pytest.fixture()
+def calendar_registry(calendar_registry_json: str) -> CalendarRegistry:
+    return CalendarRegistry(calendar_registry_json)
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_fixture_path(
+    fixtures_root: Path,
+    open_closed_gap_behavior_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / open_closed_gap_behavior_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_fixture_document(
+    fixtures_root: Path,
+    open_closed_gap_behavior_manifest_entry: ValidationFixtureManifestEntry,
+) -> OpenClosedGapBehaviorFixtureDocument:
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        open_closed_gap_behavior_manifest_entry,
+    )
+    return load_open_closed_gap_behavior_fixture_document(fixture_payload_bytes)
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_cases(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+) -> list[OpenClosedGapBehaviorCase]:
+    return list(open_closed_gap_behavior_fixture_document["cases"])
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_fixture_path(
+    fixtures_root: Path,
+    stylized_fact_metric_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / stylized_fact_metric_regression_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_fixture_document(
+    fixtures_root: Path,
+    stylized_fact_metric_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> StylizedFactMetricRegressionFixtureDocument:
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        stylized_fact_metric_regression_manifest_entry,
+    )
+    return load_stylized_fact_metric_regression_fixture_document(fixture_payload_bytes)
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_cases(
+    stylized_fact_metric_regression_fixture_document: StylizedFactMetricRegressionFixtureDocument,
+) -> list[StylizedFactMetricRegressionCase]:
+    return list(stylized_fact_metric_regression_fixture_document["cases"])
+
+
+@pytest.fixture(scope="session")
+def scale_consistency_regression_fixture_path(
+    fixtures_root: Path,
+    scale_consistency_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / scale_consistency_regression_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
+def scale_consistency_regression_fixture_document(
+    fixtures_root: Path,
+    scale_consistency_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> ScaleConsistencyRegressionFixtureDocument:
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        scale_consistency_regression_manifest_entry,
+    )
+    return load_scale_consistency_regression_fixture_document(fixture_payload_bytes)
+
+
+@pytest.fixture(scope="session")
+def scale_consistency_regression_cases(
+    scale_consistency_regression_fixture_document: ScaleConsistencyRegressionFixtureDocument,
+) -> list[ScaleConsistencyRegressionCase]:
+    return list(scale_consistency_regression_fixture_document["cases"])
+
+
+@pytest.fixture(scope="session")
+def seeded_tick_simulation_parity_fixture_path(fixtures_root: Path) -> Path:
+    return fixtures_root / "simulation" / "seeded_tick_simulation_parity_fixture.json"
+
+
+@pytest.fixture(scope="session")
+def seeded_tick_simulation_parity_fixture_document(
+    seeded_tick_simulation_parity_fixture_path: Path,
+) -> SeededTickSimulationParityFixtureDocument:
+    return load_seeded_tick_simulation_parity_fixture_document(
+        seeded_tick_simulation_parity_fixture_path.read_bytes(),
+    )
+
+
+@pytest.fixture(scope="session")
+def seeded_tick_simulation_parity_cases(
+    seeded_tick_simulation_parity_fixture_document: SeededTickSimulationParityFixtureDocument,
+) -> list[SeededTickSimulationParityCase]:
+    return list(seeded_tick_simulation_parity_fixture_document["cases"])

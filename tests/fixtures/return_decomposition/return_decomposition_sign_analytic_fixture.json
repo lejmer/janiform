@@ -1,0 +1,157 @@
+{
+  "schema_version": "return.decomposition.sign_analytic_fixture.v1",
+  "fixture_set_id": "return_decomposition_sign_analytic_fixture_v1",
+  "fixture_set_version": "1.0.0",
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
+  },
+  "analytic_metadata": {
+    "required_scenario_intents": [
+      "buy_only",
+      "sell_only",
+      "combined"
+    ],
+    "stable_fixture_ids_by_scenario_intent": {
+      "buy_only": [
+        "buy_only_analytic_sign_reference"
+      ],
+      "sell_only": [
+        "sell_only_analytic_sign_reference"
+      ],
+      "combined": [
+        "combined_analytic_sign_reference"
+      ]
+    }
+  },
+  "driver_configuration": {
+    "alpha": 2.3,
+    "beta_0": -0.8,
+    "delta": 0.7,
+    "mu": 0.1,
+    "delta_beta": -0.2
+  },
+  "cases": [
+    {
+      "fixture_id": "buy_only_analytic_sign_reference",
+      "scenario_intent": "buy_only",
+      "argument": {
+        "real": 0.65,
+        "imaginary": -0.25
+      },
+      "return_decomposition": {
+        "a_plus": 1.4,
+        "a_minus": 0.0,
+        "gap": 0.0
+      },
+      "gap_characteristic_factor": {
+        "real": 1.0,
+        "imaginary": 0.0
+      },
+      "expected_output": {
+        "buy_side_weighted_exponent": {
+          "real": -0.08022078961919771,
+          "imaginary": 0.08602049890486509
+        },
+        "sell_side_weighted_exponent": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "combined_weighted_exponent": {
+          "real": -0.08022078961919771,
+          "imaginary": 0.08602049890486509
+        },
+        "trading_time_characteristic_factor": {
+          "real": 0.9195001015404676,
+          "imaginary": 0.07929152726757452
+        },
+        "combined_characteristic_factor": {
+          "real": 0.9195001015404676,
+          "imaginary": 0.07929152726757452
+        }
+      },
+      "description": "Buy-only analytic case with unity gap factor so combined characteristic factor equals the trading-time factor."
+    },
+    {
+      "fixture_id": "sell_only_analytic_sign_reference",
+      "scenario_intent": "sell_only",
+      "argument": {
+        "real": 0.9,
+        "imaginary": 0.15
+      },
+      "return_decomposition": {
+        "a_plus": 0.0,
+        "a_minus": 1.1,
+        "gap": 0.0
+      },
+      "gap_characteristic_factor": {
+        "real": 1.0,
+        "imaginary": 0.0
+      },
+      "expected_output": {
+        "buy_side_weighted_exponent": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "sell_side_weighted_exponent": {
+          "real": -0.1526039975830721,
+          "imaginary": -0.08305048539878863
+        },
+        "combined_weighted_exponent": {
+          "real": -0.1526039975830721,
+          "imaginary": -0.08305048539878863
+        },
+        "trading_time_characteristic_factor": {
+          "real": 0.8555107149530543,
+          "imaginary": -0.0712143864469992
+        },
+        "combined_characteristic_factor": {
+          "real": 0.8555107149530543,
+          "imaginary": -0.0712143864469992
+        }
+      },
+      "description": "Sell-only analytic case that validates psi_minus(-u) usage against a positive-u regression candidate."
+    },
+    {
+      "fixture_id": "combined_analytic_sign_reference",
+      "scenario_intent": "combined",
+      "argument": {
+        "real": -0.45,
+        "imaginary": 0.2
+      },
+      "return_decomposition": {
+        "a_plus": 0.8,
+        "a_minus": 1.3,
+        "gap": -0.2
+      },
+      "gap_characteristic_factor": {
+        "real": 0.91,
+        "imaginary": -0.18
+      },
+      "expected_output": {
+        "buy_side_weighted_exponent": {
+          "real": -0.026805381171081655,
+          "imaginary": 0.024817076554385944
+        },
+        "sell_side_weighted_exponent": {
+          "real": -0.03737148683133637,
+          "imaginary": 0.04939666391222033
+        },
+        "combined_weighted_exponent": {
+          "real": -0.06417686800241802,
+          "imaginary": 0.07421374046660627
+        },
+        "trading_time_characteristic_factor": {
+          "real": 0.9352576377670622,
+          "imaginary": 0.06953667640178006
+        },
+        "combined_characteristic_factor": {
+          "real": 0.863601052120347,
+          "imaginary": -0.10506799927245133
+        }
+      },
+      "description": "Combined buy plus sell plus explicit gap-factor case for full decomposition and sign behavior coverage."
+    }
+  ]
+}

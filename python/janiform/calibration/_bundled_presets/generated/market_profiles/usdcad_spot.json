@@ -1,0 +1,67 @@
+{
+  "category": "market_profile",
+  "configuration": {
+    "column_alias_hints": [
+      {
+        "aliases": [
+          "event_timestamp_utc",
+          "timestamp_utc",
+          "ts_utc"
+        ],
+        "canonical_name": "timestamp"
+      }
+    ],
+    "known_news_policy": "suggest_only",
+    "known_news_reference": {
+      "configuration": null,
+      "override_patch": null,
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "usage_mode": "named"
+    },
+    "profile_name": "usdcad_spot",
+    "session_reference": {
+      "configuration": null,
+      "exchange_code_hint": null,
+      "override_patch": null,
+      "preset_name": "fx_spot_24_5",
+      "registry_scope": "built_in",
+      "timezone_name_hint": null,
+      "usage_mode": "named"
+    },
+    "tick_size": 1e-05,
+    "timestamp_timezone_name": "UTC"
+  },
+  "metadata": {
+    "description": "Default USD/CAD spot profile with the bundled 24/5 FX session and no known-news events enabled.",
+    "display_name": "USD/CAD Spot",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:fcab73a49a96c9088e363557895d195091a60c7a83e4029ce38b96527b68b3bc",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.market_profiles.usdcad_spot.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "none@2026.03"
+        },
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "fx_spot_24_5@2026.05"
+        },
+        {
+          "source_name": "major_fx_currency_pair_universe",
+          "version_label": "captured_2026-05-30"
+        }
+      ]
+    },
+    "version_label": "2026.05"
+  },
+  "preset_name": "usdcad_spot",
+  "schema_version": "preset.artifact.market_profile.v1"
+}

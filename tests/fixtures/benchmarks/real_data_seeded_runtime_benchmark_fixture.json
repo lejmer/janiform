@@ -1,0 +1,45 @@
+{
+  "dataset_source_policy": "checked_in_synthetic_eurusd_parquet_row_slice.v1",
+  "fixture_loading_order_policy": "fixture_id_ascending.v1",
+  "fixture_set_id": "real_data_seeded_runtime_fixture_set_v1",
+  "fixtures": [
+    {
+      "coarse_horizon_interval_count": 96,
+      "coarse_interval": "1h",
+      "description": "Bounded checked-in EUR/USD parquet slice used to benchmark the repaired real-data seeded runtime path.",
+      "execution_mode": "memory",
+      "fixture_id": "synthetic_eurusd_parquet_slice_240000_8192row_v1",
+      "fixture_version": "1.0.0",
+      "market_profile": "eurusd_spot",
+      "cpu_count": 2,
+      "materialization_access_patterns": [
+        {
+          "access_kind": "event_tape_head",
+          "pattern_id": "event_tape_first_chunk",
+          "record_count": 256
+        },
+        {
+          "access_kind": "full_seeded_export_to_pandas",
+          "pattern_id": "full_seeded_tick_export"
+        }
+      ],
+      "seeded_horizon_interval_count": 96,
+      "simulation_start_time_utc": "2026-03-18T20:00:00+00:00",
+      "simulation_seed": 17,
+      "source_price_column": "close",
+      "source_tick_data_format": "parquet",
+      "source_tick_data_path": "data/Synthetic_EURUSD_Data_1M_ticks.parquet",
+      "source_tick_data_row_count": 8192,
+      "source_tick_data_row_offset": 240000,
+      "source_timestamp_column": "time",
+      "source_trade_sign_column": null,
+      "tags": [
+        "checked_in_dataset_slice",
+        "unsigned_market_data",
+        "seeded_runtime"
+      ]
+    }
+  ],
+  "schema_version": "benchmark.real_data_seeded_runtime.fixture.v1",
+  "unsigned_market_data_policy": "checked_in_fixture_omits_trade_sign_column_and_relies_on_unsigned_fit_path.v1"
+}

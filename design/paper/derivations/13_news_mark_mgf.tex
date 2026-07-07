@@ -1,0 +1,226 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{News mark MGF}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} News mark MGF \(M_c(q,r)\)\\
+\textbf{Depends on.} \texttt{03\_conditional\_cf\_mgf\_trading\_block.tex}\\
+\textbf{Feeds.} Conditional CF/MGF of a trading block, affine Riccati system, affine domain constraints
+
+\section{Purpose}
+
+Derive the component-level transform for a coupled news mark.
+The result is the mark MGF \(M_c(q,r)\) used when a news arrival
+simultaneously contributes an activity shock and a return jump.
+
+\section{Setup}
+
+Fix a news component \(c\in\{\mathrm{known},\mathrm{surprise}\}\).
+At one arrival time, draw a shared severity mark and a return-shock mark
+\[
+    U\sim\Gamma(k_U,\theta_U),
+    \qquad
+    \theta_U=\frac{1}{k_U},
+    \qquad
+    Z^N\sim\mathcal N(0,1),
+\]
+with \(U\) independent of \(Z^N\).
+The gamma law uses the shape-scale parameterization,
+so \(\mathbb E[U]=k_U\theta_U=1\).
+
+The component scales are \(a_c\ge0\), \(m_c\in\mathbb R\), and
+\(\sigma_c\ge0\).
+The activity shock and return jump are
+\[
+    J^c=a_c U,
+    \qquad
+    \zeta^c=m_c U+\sigma_c\sqrt{U}\,Z^N.
+\]
+The transform arguments are \(r\), the loading on the activity shock, and
+\(q\), the loading on the return jump.
+
+\section{Notation}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Symbol & Meaning & Units or domain\\
+\midrule
+\(c\) & News component & \(\{\mathrm{known},\mathrm{surprise}\}\)\\
+\(U\) & Shared severity mark & \(\Gamma(k_U,1/k_U)\), non-negative\\
+\(Z^N\) & Return-shock mark & Standard normal\\
+\(a_c\) & Activity-coupling scale & Non-negative\\
+\(m_c\) & Return-jump drift per severity unit & Real\\
+\(\sigma_c\) & Return-jump volatility per square-root severity unit & Non-negative\\
+\(J^c\) & Activity shock mark & Non-negative\\
+\(\zeta^c\) & Coupled return-jump mark & Real\\
+\(r\) & Activity-shock transform loading & Complex\\
+\(q\) & Return-jump transform loading & Complex\\
+\(M_c(q,r)\) & Joint mark MGF & Finite on the stated domain\\
+\bottomrule
+\end{tabularx}
+
+\section{Assumptions used}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Assumption & Where it is used & Why it is needed\\
+\midrule
+\(U\sim\Gamma(k_U,1/k_U)\) with \(k_U>0\).
+& Evaluating the outer gamma MGF.
+& Gives unit-mean severity and a closed-form mark transform.\\
+\(Z^N\sim\mathcal N(0,1)\) and is independent of \(U\).
+& Conditioning on \(U\) before evaluating the normal MGF.
+& Produces the variance term \(\frac12 q^2\sigma_c^2 U\).\\
+The same \(U\) drives \(J^c\) and \(\zeta^c\).
+& Writing both marks inside one expectation.
+& Encodes the shared-severity coupling between activity and returns.\\
+The transform argument lies inside the gamma moment domain.
+& Applying the gamma MGF.
+& Ensures \(M_c(q,r)\) is finite.\\
+\bottomrule
+\end{tabularx}
+
+\section{Result}
+
+\noindent\textbf{Identity.} For a news component \(c\),
+\[
+    M_c(q,r)
+    =
+    \mathbb E\left[\exp\left(rJ^c+q\zeta^c\right)\right]
+    =
+    \left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right)^{-k_U}.
+\]
+
+Equivalently, the log mark MGF is
+\[
+    \ell_c(q,r)
+    =
+    \log M_c(q,r)
+    =
+    -k_U\log\left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right).
+\]
+
+\section{Derivation}
+
+Start from the joint transform of the activity shock and return jump:
+\[
+M_c(q,r)
+=
+\mathbb E\left[
+    \exp\left(ra_cU+q\left(m_cU+\sigma_c\sqrt{U}\,Z^N\right)\right)
+\right].
+\]
+Condition on \(U\):
+\[
+    M_c(q,r)
+    =
+    \mathbb E\left[
+        \exp\left((ra_c+qm_c)U\right)
+        \mathbb E\left[
+            \exp\left(q\sigma_c\sqrt{U}\,Z^N\right)\mid U
+        \right]
+    \right].
+\]
+For a standard normal \(Z^N\),
+\[
+    \mathbb E\left[
+        \exp\left(q\sigma_c\sqrt{U}\,Z^N\right)\mid U
+    \right]
+    =
+    \exp\left(\frac{1}{2}q^2\sigma_c^2U\right),
+\]
+where the formula is interpreted by analytic continuation for complex
+arguments within the transform domain.
+
+Therefore
+\[
+    M_c(q,r)
+    =
+    \mathbb E\left[
+        \exp\left(
+            \left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)U
+        \right)
+    \right].
+\]
+Let
+\[
+    s_c(q,r)
+    =
+    ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2.
+\]
+The gamma MGF for \(U\sim\Gamma(k_U,\theta_U)\) is
+\[
+    \mathbb E[e^{sU}]=(1-\theta_U s)^{-k_U},
+    \qquad
+    \operatorname{Re}(s)<\frac{1}{\theta_U}.
+\]
+Substituting \(s=s_c(q,r)\) gives
+\[
+    M_c(q,r)
+    =
+    \left(1-\theta_U s_c(q,r)\right)^{-k_U}
+    =
+    \left(
+        1-\theta_U\left(ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2\right)
+    \right)^{-k_U}.
+\]
+
+\section{Domain and validity}
+
+The result requires \(k_U>0\), \(\theta_U=1/k_U\), \(a_c\ge0\),
+\(\sigma_c\ge0\), and finite \(m_c\).
+The transform is valid when
+\[
+    \operatorname{Re}\left(
+        ra_c+qm_c+\frac{1}{2}q^2\sigma_c^2
+    \right)
+    <
+    \frac{1}{\theta_U}.
+\]
+For the affine schedule transform, \(r\) is supplied by the Hawkes loading,
+typically \(r=\mathbf D(\tau)\cdot\mathbf r\), and this domain condition must
+hold along the Riccati path for every active news component.
+
+\section{Consequences}
+
+\begin{itemize}
+    \item The same closed-form \(M_c(q,r)\) handles activity-only, return-only, and joint news-mark queries.
+    \item The shared severity creates transform coupling through the single scalar \(s_c(q,r)\).
+    \item A component with \(a_c=0\) and \(m_c=\sigma_c=0\) contributes \(M_c(q,r)=1\), so inactive news marks do not alter the transform.
+    \item The affine domain constraint for news marks is exactly the gamma MGF moment-domain constraint evaluated along the schedule.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Gamma severity normalization
+& Sampled severity marks have mean one and second moment \(1+1/k_U\).
+& Test \texttt{gamma\_severity\_distribution\_regression\_matches\_unit\_mean\_moments} in \texttt{crates/janiform-model-kernels/tests/news\_coupling\_distribution\_regression.rs}\\
+Gamma-normal construction
+& The constructed activity shock is \(a_cU\), and the constructed return jump is \(m_cU+\sigma_c\sqrt U Z^N\).
+& Test \texttt{gamma\_normal\_news\_mark\_couples\_activity\_and\_return\_to\_shared\_severity} in \texttt{crates/janiform-model-kernels/tests/news\_coupling\_distribution\_regression.rs}\\
+Component validation
+& Activity coupling is non-negative, return volatility is non-negative, and return jumps without activity coupling are rejected.
+& \texttt{NewsComponentMarkScaleConfiguration::validate} in \texttt{crates/janiform-model-kernels/src/news/configuration.rs}\\
+Affine use
+& The schedule transform uses \(M_c(q,\mathbf D(\tau)\cdot\mathbf r)\) and \(\ell_c(q,\mathbf D(\tau)\cdot\mathbf r)\).
+& \texttt{design/janiform\_compact\_model\_spec.tex}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}

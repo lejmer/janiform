@@ -1,0 +1,23 @@
+[package]
+name = "janiform-affine-oracle"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared affine-oracle solver contracts and implementation for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_affine_oracle"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+nalgebra = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+janiform-test-support = { path = "../janiform-test-support" }
+serde_json = { workspace = true }

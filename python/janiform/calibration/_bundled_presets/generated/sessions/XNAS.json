@@ -1,0 +1,65 @@
+{
+  "category": "session",
+  "configuration": {
+    "exchange_code": "XNAS",
+    "exchange_name": "Nasdaq Stock Market",
+    "recurring_closed_windows": [],
+    "regular_session_windows": [
+      {
+        "close_time": "16:00",
+        "label": "cash",
+        "open_time": "09:30",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "cash",
+        "open_time": "09:30",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "cash",
+        "open_time": "09:30",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "cash",
+        "open_time": "09:30",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "cash",
+        "open_time": "09:30",
+        "weekday": "Friday"
+      }
+    ],
+    "timezone_name": "America/New_York"
+  },
+  "metadata": {
+    "description": "Regular Nasdaq cash-market hours for weekday trading in New York local time.",
+    "display_name": "Nasdaq Cash Session",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:d91754552b342b427801d7c1b903b6dac0d48cf80cf701efdb4e4acfa6fbf671",
+      "generated_on": "2026-05-30",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.sessions.XNAS.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "nasdaq_trader_market_hours_reference",
+          "version_label": "captured_2026-03-12"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "XNAS",
+  "schema_version": "preset.artifact.session.v1"
+}

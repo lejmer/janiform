@@ -1,11 +1,58 @@
 [workspace]
-members = ["crates/core", "crates/pybind"]
+members = [
+    "crates/janiform-affine-oracle",
+    "crates/janiform-validation",
+    "crates/janiform-calibration-artifacts",
+    "crates/janiform-calibration-runtime",
+    "crates/janiform-cli",
+    "crates/janiform-terminal-ui",
+    "crates/janiform-engine-pricing",
+    "crates/janiform-engine-sufficient-statistics",
+    "crates/janiform-engine-simulation",
+    "crates/janiform-event-log",
+    "crates/janiform-foundations",
+    "crates/janiform-governance",
+    "crates/janiform-governance-bench",
+    "crates/janiform-joint-refinement-worker",
+    "crates/janiform-market-time",
+    "crates/janiform-model-kernels",
+    "crates/janiform-pybind",
+    "crates/janiform-test-support",
+    "crates/janiform-verification",
+    "crates/janiform-work-scheduler",
+    "crates/janiform-workflows",
+    "crates/janiform",
+]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
 rust-version = "1.89"
 version = "0.1.0"
+license = "AGPL-3.0-only"
 
 [workspace.dependencies]
-pyo3 = { version = "0.24.2", features = ["abi3-py312", "extension-module"] }
+arrow-array = "58.1.0"
+arrow-schema = "58.1.0"
+chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.10.4"
+clap = { version = "=4.5.55", features = ["derive"] }
+comfy-table = { version = "7.2.1", default-features = false, features = ["custom_styling"] }
+console = "0.16.3"
+crossbeam-channel = "0.5.15"
+csv = "1.4.0"
+ctrlc = "3.5"
+indicatif = "0.18.4"
+nalgebra = { version = "0.34.2", default-features = false, features = ["std"] }
+parquet = "58.1.0"
+postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
+pyo3 = { version = "0.28.3", features = ["abi3-py312", "extension-module"] }
+puruspe = "0.4.4"
+rand = "0.8.5"
+rayon = "1.11.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = { version = "1.0.145", features = ["float_roundtrip"] }
+sha2 = "0.10.9"
+statrs = "0.18.0"
+sysinfo = "0.38.4"
+textwrap = "0.16.2"

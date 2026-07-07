@@ -1,0 +1,488 @@
+{
+  "schema_version": "affine_oracle.solver.reference_fixture.v1",
+  "fixture_set_id": "affine_oracle_solver_reference_fixture_v1",
+  "equation_mapping_policy": "compact_model_spec_section_8_named_component_mapping.v1",
+  "default_solver_policy": "fourth_order_runge_kutta_fixed_step_with_hawkes_decay_stability_floor.v1",
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1",
+    "solver_output_determinism": "fixed_solver_settings_and_inputs.v1"
+  },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "deterministic_numeric",
+      "one_interval_solver",
+      "reference_regression"
+    ],
+    "stable_fixture_ids": [
+      "linear_closed_form_hourly_real",
+      "nonlinear_complex_hourly_reference",
+      "nonlinear_complex_subhour_reference"
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "linear_closed_form_hourly_real",
+      "solver_settings": {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 64
+      },
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.0,
+              "plus_minus": 0.0,
+              "minus_plus": 0.0,
+              "minus_minus": 0.0
+            },
+            "rho": {
+              "plus_plus": 0.0,
+              "plus_minus": 0.0,
+              "minus_plus": 0.0,
+              "minus_minus": 0.0
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8
+          },
+          "long_variance_parameters": {
+            "mean_reversion_rate": 1.0,
+            "vol_of_vol": 0.0,
+            "stationary_return_energy_rate_per_hour": 0.0,
+            "return_energy_loading": 0.0,
+            "buy_event_loading": 0.0,
+            "sell_event_loading": 0.0
+          },
+          "market_pressure_parameters": {
+            "side_imbalance_levels": [
+              0.0
+            ],
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
+          }
+        },
+        "pressure_signed_imbalance_exposure_risk_price": 0.0,
+        "activity_loadings": {
+          "u_plus_baseline": {
+            "real": 0.2,
+            "imaginary": 0.0
+          },
+          "u_plus_endogenous": {
+            "real": 0.2,
+            "imaginary": 0.0
+          },
+          "u_minus_baseline": {
+            "real": 0.3,
+            "imaginary": 0.0
+          },
+          "u_minus_endogenous": {
+            "real": 0.3,
+            "imaginary": 0.0
+          }
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "news_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "market_pressure_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "seasonality_factor": 1.1,
+        "news_intensity": {
+          "known_news_intensity": 0.0,
+          "surprise_news_intensity": 0.0
+        },
+        "known_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "surprise_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "delta": 1.0,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        },
+        "initial_market_pressure_state": {
+          "state_weights": [
+            1.0
+          ]
+        }
+      },
+      "expected_status": "completed",
+      "expected_output": {
+        "c_at_delta": {
+          "real": -0.44000000000000045,
+          "imaginary": 0.0
+        },
+        "d_at_delta": {
+          "plus_plus": {
+            "real": -0.11646763128494497,
+            "imaginary": 0.0
+          },
+          "plus_minus": {
+            "real": -0.11646763128494497,
+            "imaginary": 0.0
+          },
+          "minus_plus": {
+            "real": -0.17470144692741743,
+            "imaginary": 0.0
+          },
+          "minus_minus": {
+            "real": -0.17470144692741743,
+            "imaginary": 0.0
+          }
+        },
+        "market_pressure_loading_at_delta": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "transform_value": {
+          "real": 0.5222328403128708,
+          "imaginary": 0.0
+        }
+      },
+      "tolerances": {
+        "c_at_delta_absolute_tolerance": 5e-10,
+        "d_component_absolute_tolerance": 5e-10,
+        "transform_value_absolute_tolerance": 5e-10
+      },
+      "tags": [
+        "deterministic_numeric",
+        "one_interval_solver",
+        "reference_regression"
+      ],
+      "description": "Analytic linear-reference case with zero alpha and rho to anchor solver drift checks."
+    },
+    {
+      "fixture_id": "nonlinear_complex_hourly_reference",
+      "solver_settings": {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 64
+      },
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.2,
+              "plus_minus": 0.08,
+              "minus_plus": 0.1,
+              "minus_minus": 0.24
+            },
+            "rho": {
+              "plus_plus": 0.03,
+              "plus_minus": 0.02,
+              "minus_plus": 0.01,
+              "minus_minus": 0.04
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8
+          },
+          "long_variance_parameters": {
+            "mean_reversion_rate": 1.0,
+            "vol_of_vol": 0.0,
+            "stationary_return_energy_rate_per_hour": 0.0,
+            "return_energy_loading": 0.0,
+            "buy_event_loading": 0.0,
+            "sell_event_loading": 0.0
+          },
+          "market_pressure_parameters": {
+            "side_imbalance_levels": [
+              0.0
+            ],
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
+          }
+        },
+        "pressure_signed_imbalance_exposure_risk_price": 0.0,
+        "activity_loadings": {
+          "u_plus_baseline": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_plus_endogenous": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_minus_baseline": {
+            "real": 0.3,
+            "imaginary": 0.05
+          },
+          "u_minus_endogenous": {
+            "real": 0.3,
+            "imaginary": 0.05
+          }
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 0.95,
+          "imaginary": 0.02
+        },
+        "news_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "market_pressure_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "seasonality_factor": 1.1,
+        "news_intensity": {
+          "known_news_intensity": 0.0,
+          "surprise_news_intensity": 0.08
+        },
+        "known_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "surprise_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "delta": 1.0,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        },
+        "initial_market_pressure_state": {
+          "state_weights": [
+            1.0
+          ]
+        }
+      },
+      "expected_status": "completed",
+      "expected_output": {
+        "c_at_delta": {
+          "real": -0.5402994151788634,
+          "imaginary": 0.0666523253825892
+        },
+        "d_at_delta": {
+          "plus_plus": {
+            "real": -0.13549473886759153,
+            "imaginary": 0.06229008939817648
+          },
+          "plus_minus": {
+            "real": -0.13549473886759153,
+            "imaginary": 0.06229008939817648
+          },
+          "minus_plus": {
+            "real": -0.2274821961857874,
+            "imaginary": -0.01772949121734341
+          },
+          "minus_minus": {
+            "real": -0.2274821961857874,
+            "imaginary": -0.01772949121734341
+          }
+        },
+        "market_pressure_loading_at_delta": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "transform_value": {
+          "real": 0.4459166090525063,
+          "imaginary": 0.04017053054876329
+        }
+      },
+      "tolerances": {
+        "c_at_delta_absolute_tolerance": 1e-11,
+        "d_component_absolute_tolerance": 1e-11,
+        "transform_value_absolute_tolerance": 1e-11
+      },
+      "tags": [
+        "deterministic_numeric",
+        "one_interval_solver",
+        "reference_regression"
+      ],
+      "description": "Nonlinear complex-valued one-hour run with non-zero alpha, rho, and news_intensity for high-signal equation drift detection."
+    },
+    {
+      "fixture_id": "nonlinear_complex_subhour_reference",
+      "solver_settings": {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 96
+      },
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.2,
+              "plus_minus": 0.08,
+              "minus_plus": 0.1,
+              "minus_minus": 0.24
+            },
+            "rho": {
+              "plus_plus": 0.03,
+              "plus_minus": 0.02,
+              "minus_plus": 0.01,
+              "minus_minus": 0.04
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8
+          },
+          "long_variance_parameters": {
+            "mean_reversion_rate": 1.0,
+            "vol_of_vol": 0.0,
+            "stationary_return_energy_rate_per_hour": 0.0,
+            "return_energy_loading": 0.0,
+            "buy_event_loading": 0.0,
+            "sell_event_loading": 0.0
+          },
+          "market_pressure_parameters": {
+            "side_imbalance_levels": [
+              0.0
+            ],
+            "transition_rates": {
+              "upward_transition_rates": [],
+              "downward_transition_rates": []
+            },
+            "anchor_drift_per_signed_balance": 0.0
+          }
+        },
+        "pressure_signed_imbalance_exposure_risk_price": 0.0,
+        "activity_loadings": {
+          "u_plus_baseline": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_plus_endogenous": {
+            "real": 0.2,
+            "imaginary": -0.1
+          },
+          "u_minus_baseline": {
+            "real": 0.3,
+            "imaginary": 0.05
+          },
+          "u_minus_endogenous": {
+            "real": 0.3,
+            "imaginary": 0.05
+          }
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 0.95,
+          "imaginary": 0.02
+        },
+        "news_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "market_pressure_return_loading": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "seasonality_factor": 1.1,
+        "news_intensity": {
+          "known_news_intensity": 0.0,
+          "surprise_news_intensity": 0.08
+        },
+        "known_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "surprise_news_component_mark_scales": {
+          "activity_coupling_scale": 1.0,
+          "return_jump_drift": 0.0,
+          "return_jump_volatility": 0.0
+        },
+        "delta": 0.5,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        },
+        "initial_market_pressure_state": {
+          "state_weights": [
+            1.0
+          ]
+        }
+      },
+      "expected_status": "completed",
+      "expected_output": {
+        "c_at_delta": {
+          "real": -0.25823288963962376,
+          "imaginary": 0.0322814272336369
+        },
+        "d_at_delta": {
+          "plus_plus": {
+            "real": -0.08181508093523089,
+            "imaginary": 0.03905023070308086
+          },
+          "plus_minus": {
+            "real": -0.08181508093523089,
+            "imaginary": 0.03905023070308086
+          },
+          "minus_plus": {
+            "real": -0.139894823490838,
+            "imaginary": -0.01137851971704391
+          },
+          "minus_minus": {
+            "real": -0.139894823490838,
+            "imaginary": -0.01137851971704391
+          }
+        },
+        "market_pressure_loading_at_delta": {
+          "real": 0.0,
+          "imaginary": 0.0
+        },
+        "transform_value": {
+          "real": 0.6568337226668383,
+          "imaginary": 0.03063638648643061
+        }
+      },
+      "tolerances": {
+        "c_at_delta_absolute_tolerance": 1e-11,
+        "d_component_absolute_tolerance": 1e-11,
+        "transform_value_absolute_tolerance": 1e-11
+      },
+      "tags": [
+        "deterministic_numeric",
+        "one_interval_solver",
+        "reference_regression"
+      ],
+      "description": "Nonlinear sub-hour run for interval-parametric Delta coverage without stochastic dependence."
+    }
+  ]
+}

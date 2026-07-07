@@ -1,0 +1,110 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx}
+
+\title{Affine domain constraints}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent\textbf{Status.} Draft\\
+\textbf{Plan item.} Affine transform admissibility\\
+\textbf{Depends on.} \texttt{05\_riccati\_ode\_system\_for\_c\_d\_v.tex}\\
+\textbf{Feeds.} Pricing-domain diagnostics, benchmark governance
+
+\section{Purpose}
+
+State the admissibility conditions for affine transform evaluation with
+finite-state market pressure.
+
+\section{Inputs}
+
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Input & Meaning & Domain\\
+\midrule
+\(\mathbf Y_0\) & Initial Hawkes state & Componentwise finite non-negative\\
+\(Z_0\) & Initial long-variance state & Finite positive\\
+\(\mathbf p^\Omega_0\) & Initial pressure state distribution & Finite non-negative weights with positive sum\\
+\(\mathcal G^\Omega\) & Physical pressure generator & Finite non-negative off-diagonal rates with zero row sums\\
+\(b_k\) & Pressure side-balance support & Ordered finite values in \([-1,1]\)\\
+\(\gamma_\Omega\) & Anchor drift per signed-balance exposure & Finite real\\
+\(\rho_\Omega\) & Pressure exposure risk price & Finite real\\
+\(\pi_\pm\) & Activity-risk premia & Strictly positive\\
+\bottomrule
+\end{tabularx}
+
+\section{Conditions}
+
+The Hawkes and news transform domain requires every evaluated news mark MGF to
+remain finite:
+\[
+    \operatorname{Re}\!\left(
+        (\mathbf D(\tau)\cdot\mathbf r)a_c
+        +qm_c
+        +\frac{1}{2}q^2\sigma_c^2
+    \right)
+    <
+    \frac{1}{\theta_U}
+\]
+for each news component \(c\) and \(\tau\in[0,\Delta]\).
+
+The long-variance Riccati equation must have a finite solution \(V(\tau)\) on
+the whole interval.
+This is the usual CIR-style moment-domain condition induced by the quadratic
+term in \(V\).
+
+The pressure transform requires the finite matrix
+\[
+    \mathcal G^\Omega+\operatorname{diag}\left(
+        (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_1,
+        \ldots,
+        (r_\Omega\gamma_\Omega-\rho_\Omega)e^\Omega b_{K_\Omega}
+    \right)
+\]
+and finite terminal pressure values.
+For finite \(K_\Omega\), finite rates, finite support, and finite loadings, the
+matrix exponential exists for every finite interval length.
+
+\section{Pricing density}
+
+The terminal density is admissible only when the denominator cumulant is finite
+and the activity premia are strictly positive.
+The martingale tilt is admissible only when both cumulants required by the
+martingale equation are finite:
+\[
+    K_{t,T}(\theta,\log\pi_+,\log\pi_-,\rho_\Omega),
+    \qquad
+    K_{t,T}(\theta+1,\log\pi_+,\log\pi_-,\rho_\Omega).
+\]
+
+\section{Consequences}
+
+\begin{itemize}
+    \item Pressure admissibility is finite-state matrix-exponential admissibility.
+    \item Pressure-domain failures are model-domain failures, not hidden fallback cases.
+    \item The pressure risk price changes signed-imbalance exposure weighting under the terminal density without creating a second physical pressure model.
+\end{itemize}
+
+\section{Checks}
+
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+Check & Expected result & Evidence location\\
+\midrule
+Pressure parameters
+& Support, rates, and drift loading validate before transform evaluation.
+& \texttt{MarketPressureParameters::validate}\\
+Pressure transform
+& Non-finite pressure loading or terminal values are rejected.
+& \texttt{market\_pressure\_transform\_values}\\
+Pricing kernel
+& Activity premia are positive and pressure risk price is finite.
+& \texttt{VanillaOptionPricingKernelParameters::validate}\\
+\bottomrule
+\end{tabularx}
+
+\end{document}
