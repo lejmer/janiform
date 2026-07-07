@@ -1,0 +1,103 @@
+name: Issue
+description: Report a bug, installation problem, documentation gap, or feature request.
+title: "[Issue]: "
+body:
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue type
+      description: Choose the closest match.
+      options:
+        - Bug
+        - Installation problem
+        - Documentation gap
+        - Feature request
+        - Question
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Choose the part of Janiform that is most closely related.
+      options:
+        - Installation and release artifacts
+        - Command line interface
+        - Python package
+        - Calibration and model fitting
+        - Simulation
+        - Pricing
+        - Presets and market data
+        - Documentation
+        - Repository maintenance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the issue or request in a few sentences.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Janiform version
+      description: Use `janiform --version` or `python -c "import janiform; print(janiform.__version__)"` when available.
+      placeholder: "0.1.0"
+
+  - type: dropdown
+    id: installation_method
+    attributes:
+      label: Installation method
+      description: Choose how Janiform is installed or being run.
+      options:
+        - GitHub Release Python wheel
+        - GitHub Release standalone CLI archive
+        - Source checkout
+        - Not installed
+        - Other
+
+  - type: dropdown
+    id: operating_system
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - WSL
+        - Other
+
+  - type: textarea
+    id: reproduction_or_context
+    attributes:
+      label: Reproduction or context
+      description: For bugs, include the smallest reproduction. For requests, explain the workflow or use case.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+
+  - type: textarea
+    id: expected_result
+    attributes:
+      label: Expected result
+      description: Describe the behavior or outcome that would resolve the issue.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Paste relevant terminal output or error messages.
+      render: shell
+
+  - type: textarea
+    id: extra_context
+    attributes:
+      label: Extra context
+      description: Add any other details that may help triage the issue.
