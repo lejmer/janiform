@@ -8890,8 +8890,8 @@
 ### `StylizedFactHorizonComparisonExportedArtifactFile`
 
 - Kind: `contract_model`
-- Signature: `(artifact_kind: 'str', file_name: 'str', absolute_path: 'str') -> 'None'`
-- Fields: `artifact_kind`, `file_name`, `absolute_path`
+- Signature: `(artifact_kind: 'str', file_name: 'str', path: 'str') -> 'None'`
+- Fields: `artifact_kind`, `file_name`, `path`
 
 <a id="python-api-symbol-janiform-stylized-facts-contracts-stylizedfacthorizoncomparisonhorizonreport"></a>
 ### `StylizedFactHorizonComparisonHorizonReport`

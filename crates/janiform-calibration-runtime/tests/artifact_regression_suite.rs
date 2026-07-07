@@ -920,7 +920,7 @@ fn assert_regression_reload_error_matches(
             );
             assert_eq!(
                 path,
-                format_path(&expected_path),
+                format_path(expected_path),
                 "fixture_id={} unexpected missing-artifact path",
                 corruption_case.fixture_id
             );
@@ -946,7 +946,7 @@ fn assert_regression_reload_error_matches(
             );
             assert_eq!(
                 path,
-                format_path(&expected_path),
+                format_path(expected_path),
                 "fixture_id={} unexpected corrupted-artifact path",
                 corruption_case.fixture_id
             );
@@ -973,7 +973,7 @@ fn assert_regression_reload_error_matches(
             );
             assert_eq!(
                 path,
-                format_path(&expected_path),
+                format_path(expected_path),
                 "fixture_id={} unexpected unsupported-schema path",
                 corruption_case.fixture_id
             );

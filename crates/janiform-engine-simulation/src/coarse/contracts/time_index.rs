@@ -277,6 +277,10 @@ pub(super) fn validate_excitation_state(
     Ok(())
 }
 
+pub(super) fn build_string_list(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use janiform_foundations::time::NANOS_PER_HOUR;
@@ -306,8 +310,4 @@ mod tests {
             IntervalDeltaGridError::NotRepresentableAsUtcNanoseconds { .. }
         ));
     }
-}
-
-pub(super) fn build_string_list(values: &[&str]) -> Vec<String> {
-    values.iter().map(|value| (*value).to_string()).collect()
 }

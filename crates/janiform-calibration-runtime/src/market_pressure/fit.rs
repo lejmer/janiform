@@ -1383,10 +1383,7 @@ mod tests {
     }
 
     fn test_nig_configuration() -> NigSharedPlusShiftConfiguration {
-        let configuration =
-            NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
-                .expect("test NIG configuration is valid");
-
-        configuration
+        NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+            .expect("test NIG configuration is valid")
     }
 }

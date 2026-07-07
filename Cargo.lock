@@ -1007,7 +1007,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "janiform"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "janiform-affine-oracle",
  "janiform-calibration-artifacts",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-affine-oracle"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "janiform-foundations",
  "janiform-model-kernels",
@@ -1040,7 +1040,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-calibration-artifacts"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-engine-pricing",
@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-calibration-runtime"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
@@ -1104,7 +1104,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-engine-pricing"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-affine-oracle",
@@ -1119,7 +1119,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-engine-simulation"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-engine-sufficient-statistics"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "janiform-affine-oracle",
  "janiform-foundations",
@@ -1148,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-event-log"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-foundations"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-governance"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
@@ -1190,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-governance-bench"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "criterion",
@@ -1208,14 +1208,14 @@ dependencies = [
 
 [[package]]
 name = "janiform-joint-refinement-worker"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "janiform-calibration-runtime",
 ]
 
 [[package]]
 name = "janiform-market-time"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1229,7 +1229,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-model-kernels"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-pybind"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform",
@@ -1257,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-terminal-ui"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "comfy-table",
  "console",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-test-support"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
@@ -1281,7 +1281,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-validation"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-calibration-artifacts",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-verification"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-affine-oracle",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-work-scheduler"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "janiform-foundations",
  "rayon",
@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-workflows"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",

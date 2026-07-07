@@ -21,7 +21,10 @@ fn bench_oracle_solver_inner_path(criterion: &mut Criterion) {
 
     group.bench_function(case.profile_id, |bench| {
         bench.iter_batched(
-            || case.transform_input,
+            || {
+                // Each Criterion batch owns its transform input.
+                case.transform_input.clone()
+            },
             |transform_input| {
                 let result = solve_exponential_affine_transform_with_settings(
                     transform_input,

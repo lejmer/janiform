@@ -197,7 +197,9 @@
       "status": "existing",
       "kind": "production",
       "layer": "event_log",
-      "allowed_internal_dependencies": []
+      "allowed_internal_dependencies": [
+        "janiform-foundations"
+      ]
     },
     "janiform-terminal-ui": {
       "status": "existing",

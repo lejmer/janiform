@@ -21,7 +21,7 @@ use support::shared::{
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
     let fitted_parameters = build_mean_reversion_parameters();
 
-    let serialized = serde_json::to_value(&fitted_parameters)
+    let serialized = serde_json::to_value(fitted_parameters)
         .expect("mean reversion fitted parameters should serialize");
 
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
