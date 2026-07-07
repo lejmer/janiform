@@ -13,7 +13,9 @@
 
 A high-frequency return model written in Rust, capable of realistic simulation of market prices and derivatives pricing. Janiform comes both as a command-line interface and an importable Python package.
 
-> **NOTE:** Janiform is pre-v0.1. Install it from a source checkout with the local bootstrap scripts.
+Install Janiform from the artifacts attached to the
+[latest GitHub Release](https://github.com/lejmer/janiform/releases/latest).
+The Python wheel includes the importable package and the `janiform` command.
 
 ## Why the name
 
@@ -24,19 +26,21 @@ Janiform is named after Janus, the Roman god of duality, transitions, and thresh
 ### Linux
 
 ```bash
-./scripts/bootstrap-linux.sh .venv --release-wheel-dev
+python -m venv .venv
 source .venv/bin/activate
+python -m pip install ./path/to/janiform-<version>-<platform>.whl
 janiform --help
-python -m examples.introductory.first_model
+python -c "import janiform; print(janiform.__version__)"
 ```
 
 ### Windows
 
 ```powershell
-./scripts/bootstrap-win.ps1 .venv --release-wheel-dev
+py -m venv .venv
 . .\.venv\Scripts\Activate.ps1
+python -m pip install .\path\to\janiform-<version>-<platform>.whl
 janiform --help
-python -m examples.introductory.first_model
+python -c "import janiform; print(janiform.__version__)"
 ```
 
 ## Fastest Python path
