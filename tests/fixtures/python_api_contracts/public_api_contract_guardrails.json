@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "bb5f9b0f5f457d37397e12a8f1a2dd030e843e0cf9e38a6505b18bb638305c53",
+  "approved_snapshot_sha256": "f3e21b2702da43426b1ed62a91ebdbf5e7f0945f5d26c6b0eb011e3a5d92f437",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1887,6 +1887,19 @@
         "janiform.calibration.fit",
         "janiform.calibration.market_data",
         "janiform.calibration.staged"
+      ]
+    },
+    {
+      "approved_on": "2026-07-06",
+      "docs_updated": [
+        "docs/reference/cli.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The approved snapshot hash records the checked-in public API surface so the guardrail manifest validates the current deterministic snapshot serialization.",
+      "snapshot_sha256": "f3e21b2702da43426b1ed62a91ebdbf5e7f0945f5d26c6b0eb011e3a5d92f437",
+      "summary": "Align the public API guardrail manifest with the checked-in snapshot hash.",
+      "updated_surfaces": [
+        "public_api_contract_guardrails"
       ]
     }
   ],

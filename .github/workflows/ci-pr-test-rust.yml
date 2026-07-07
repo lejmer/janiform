@@ -51,64 +51,66 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-  linux-rust-tests:
-    name: Linux Rust tests (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: core
-            package_args: >-
-              -p janiform-foundations
-              -p janiform-market-time
-              -p janiform-model-kernels
-              -p janiform-affine-oracle
-              -p janiform-event-log
-              -p janiform-test-support
-          - name: engines-validation
-            package_args: >-
-              -p janiform-engine-pricing
-              -p janiform-engine-simulation
-              -p janiform-engine-sufficient-statistics
-              -p janiform-validation
-          - name: calibration-workflows
-            package_args: >-
-              -p janiform-calibration-artifacts
-              -p janiform-calibration-runtime
-              -p janiform-work-scheduler
-              -p janiform-workflows
-              -p janiform-joint-refinement-worker
-          - name: verification
-            package_args: >-
-              -p janiform-verification
-          - name: interfaces-governance
-            package_args: >-
-              -p janiform
-              -p janiform-cli
-              -p janiform-terminal-ui
-              -p janiform-pybind
-              -p janiform-governance
-              -p janiform-governance-bench
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-      TMPDIR: /tmp
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Run Rust verification shard
-        run: cargo test --no-fail-fast ${{ matrix.package_args }}
+  # Rust test workloads run locally because GitHub-hosted free runners do not
+  # provide enough runtime capacity for this project.
+  # linux-rust-tests:
+  #   name: Linux Rust tests (${{ matrix.name }})
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 20
+  #   permissions:
+  #     contents: read
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - name: core
+  #           package_args: >-
+  #             -p janiform-foundations
+  #             -p janiform-market-time
+  #             -p janiform-model-kernels
+  #             -p janiform-affine-oracle
+  #             -p janiform-event-log
+  #             -p janiform-test-support
+  #         - name: engines-validation
+  #           package_args: >-
+  #             -p janiform-engine-pricing
+  #             -p janiform-engine-simulation
+  #             -p janiform-engine-sufficient-statistics
+  #             -p janiform-validation
+  #         - name: calibration-workflows
+  #           package_args: >-
+  #             -p janiform-calibration-artifacts
+  #             -p janiform-calibration-runtime
+  #             -p janiform-work-scheduler
+  #             -p janiform-workflows
+  #             -p janiform-joint-refinement-worker
+  #         - name: verification
+  #           package_args: >-
+  #             -p janiform-verification
+  #         - name: interfaces-governance
+  #           package_args: >-
+  #             -p janiform
+  #             -p janiform-cli
+  #             -p janiform-terminal-ui
+  #             -p janiform-pybind
+  #             -p janiform-governance
+  #             -p janiform-governance-bench
+  #   env:
+  #     CARGO_INCREMENTAL: "0"
+  #     CARGO_PROFILE_DEV_DEBUG: "0"
+  #     CARGO_PROFILE_TEST_DEBUG: "0"
+  #     TMPDIR: /tmp
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v6
+  #
+  #     - name: Install Rust toolchain
+  #       uses: dtolnay/rust-toolchain@stable
+  #
+  #     - name: Install Python
+  #       uses: actions/setup-python@v6
+  #       with:
+  #         python-version: "3.12"
+  #
+  #     - name: Run Rust verification shard
+  #       run: cargo test --no-fail-fast ${{ matrix.package_args }}

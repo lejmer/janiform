@@ -1890,7 +1890,7 @@ fn stage_parameter_artifact_input(
                     stage_seed_derivation_policy: metadata.stage_seed_derivation_policy.to_string(),
                     solver_settings: metadata.solver_settings.clone(),
                 },
-                fitted_parameters: payload.fitted_parameters.clone(),
+                fitted_parameters: payload.fitted_parameters,
                 diagnostics: payload.diagnostics.clone(),
                 return_components_input_transport: payload.return_components_input_transport,
                 return_components_selected_candidate_id: payload

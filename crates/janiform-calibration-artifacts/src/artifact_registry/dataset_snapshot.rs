@@ -783,6 +783,56 @@ impl Display for CalibrationDatasetSnapshotArtifactValidationError {
 
 impl Error for CalibrationDatasetSnapshotArtifactValidationError {}
 
+fn validate_exact_metadata_field(
+    field: &'static str,
+    expected: &'static str,
+    found: &str,
+) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
+    if found != expected {
+        return Err(
+            CalibrationDatasetSnapshotArtifactValidationError::MetadataFieldMismatch {
+                field,
+                expected,
+                found: found.to_string(),
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_non_empty_provenance_field(
+    field: &'static str,
+    value: &str,
+) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
+    if !is_non_empty_string(value) {
+        return Err(
+            CalibrationDatasetSnapshotArtifactValidationError::EmptyProvenanceField { field },
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_exact_string_list(
+    field: &'static str,
+    expected: &[&str],
+    found: &[String],
+) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
+    let expected_fields: Vec<String> = expected.iter().map(|value| (*value).to_string()).collect();
+    if found != expected_fields.as_slice() {
+        return Err(
+            CalibrationDatasetSnapshotArtifactValidationError::RequiredFieldListMismatch {
+                field,
+                expected: expected_fields,
+                found: found.to_vec(),
+            },
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CalibrationDatasetInputName, build_calibration_dataset_snapshot_artifact};
@@ -844,54 +894,4 @@ mod tests {
             ],
         );
     }
-}
-
-fn validate_exact_metadata_field(
-    field: &'static str,
-    expected: &'static str,
-    found: &str,
-) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
-    if found != expected {
-        return Err(
-            CalibrationDatasetSnapshotArtifactValidationError::MetadataFieldMismatch {
-                field,
-                expected,
-                found: found.to_string(),
-            },
-        );
-    }
-
-    Ok(())
-}
-
-fn validate_non_empty_provenance_field(
-    field: &'static str,
-    value: &str,
-) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
-    if !is_non_empty_string(value) {
-        return Err(
-            CalibrationDatasetSnapshotArtifactValidationError::EmptyProvenanceField { field },
-        );
-    }
-
-    Ok(())
-}
-
-fn validate_exact_string_list(
-    field: &'static str,
-    expected: &[&str],
-    found: &[String],
-) -> Result<(), CalibrationDatasetSnapshotArtifactValidationError> {
-    let expected_fields: Vec<String> = expected.iter().map(|value| (*value).to_string()).collect();
-    if found != expected_fields.as_slice() {
-        return Err(
-            CalibrationDatasetSnapshotArtifactValidationError::RequiredFieldListMismatch {
-                field,
-                expected: expected_fields,
-                found: found.to_vec(),
-            },
-        );
-    }
-
-    Ok(())
 }

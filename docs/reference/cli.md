@@ -45,7 +45,7 @@ This document contains the help content for the `janiform` command-line program.
 
 Janiform is a high-frequency return model for realistic simulation of market prices and derivative valuation.
 
-This command-line interface fits the model from market data, then uses fitted models for simulation, derivative valuation, reporting, and validation. Use command help for details on each task.
+This command-line interface fits models from market data, then uses fitted models for simulation, derivative valuation, and forecasting. Use command help for details on each task.
 
 Output modes:
   default terminal output writes summaries to stdout and progress to stderr
@@ -1502,7 +1502,7 @@ Use this when another tool has already prepared the interval-level simulation in
 
 Forecast expected path and terminal distribution from a fitted Janiform model.
 
-The forecast command uses the saved affine model directly. It does not accept tick data and does not run Monte Carlo. It writes a forecast bundle containing forecast.json, expected_path, and terminal_distribution tables.
+The forecast command uses a saved affine model directly. It writes a forecast bundle containing a forecast summary, expected path, and terminal distribution tables.
 
 **Usage:** `janiform forecast [OPTIONS]`
 
