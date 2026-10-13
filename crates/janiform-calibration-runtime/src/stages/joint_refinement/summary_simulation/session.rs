@@ -16,10 +16,12 @@ use crate::stages::joint_metrics::{
     return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
     scale_normalized_returns, tick_count_series,
 };
+use crate::stages::long_variance::covariance::variance_covariances;
 use crate::stages::long_variance::metrics::{
     LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
     long_variance_horizon_summaries,
 };
+use crate::stages::long_variance::observations::hourly_realized_variance;
 use janiform_calibration_artifacts::{
     JointRefinementStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
 };
@@ -65,6 +67,8 @@ pub(crate) struct JointRefinementSummarySimulationWorkloadEstimate {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementSummarySimulationSessionContext {
+    /// Whether observed persistence targets require covariance summaries for every candidate.
+    pub variance_persistence_enabled: bool,
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
     pub known_scheduled_event_timestamps_utc_nanos: Vec<i64>,
@@ -174,6 +178,7 @@ pub enum JointRefinementSummarySimulationWorkerResponse {
 
 #[derive(Debug, Clone)]
 pub struct JointRefinementSummarySimulationSessionState {
+    variance_persistence_enabled: bool,
     calendar_registry: ExchangeCalendarRegistry,
     exchange_code: String,
     hourly_simulation_start_utc: DateTime<Utc>,
@@ -290,6 +295,7 @@ impl JointRefinementSummaryCollector {
 
     pub(crate) fn finish(
         mut self,
+        long_variance_enabled: bool,
         observed_tick_shape_target_count: usize,
         observed_5m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds,
         observed_15m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds,
@@ -381,6 +387,14 @@ impl JointRefinementSummaryCollector {
             });
 
         JointRefinementSeedSummary {
+            simulated_variance_covariances: if long_variance_enabled {
+                variance_covariances(
+                    &hourly_realized_variance(&self.simulated_5m_intervals),
+                    false,
+                )
+            } else {
+                Vec::new()
+            },
             simulated_5m_intervals: self.simulated_5m_intervals,
             simulated_15m_intervals: self.simulated_15m_intervals,
             simulated_tick_shape_returns: scale_normalized_returns(
@@ -554,6 +568,7 @@ pub fn initialize_joint_refinement_summary_simulation_session(
     .map_err(|source| source.to_string())?;
 
     Ok(JointRefinementSummarySimulationSessionState {
+        variance_persistence_enabled: session_context.variance_persistence_enabled,
         calendar_registry,
         exchange_code: session_context.exchange_code.clone(),
         hourly_simulation_start_utc,
@@ -613,6 +628,7 @@ pub fn simulate_joint_refinement_seed_summary_in_process(
 
     Ok((
         collector.finish(
+            session_state.variance_persistence_enabled,
             session_state.observed_tick_shape_target_count,
             session_state.observed_5m_business_time_bucket_thresholds,
             session_state.observed_15m_business_time_bucket_thresholds,
@@ -1448,6 +1464,19 @@ pub(crate) mod tests {
 
         (
             JointRefinementSeedSummary {
+                simulated_variance_covariances: if !fixture
+                    .session_context
+                    .variance_persistence_enabled
+                {
+                    Vec::new()
+                } else {
+                    crate::stages::long_variance::covariance::variance_covariances(
+                        &crate::stages::long_variance::observations::hourly_realized_variance(
+                            &simulated_5m_intervals,
+                        ),
+                        false,
+                    )
+                },
                 simulated_5m_intervals: simulated_5m_intervals.clone(),
                 simulated_15m_intervals: simulated_15m_intervals.clone(),
                 simulated_tick_shape_returns: scale_normalized_returns(
@@ -1553,6 +1582,7 @@ pub(crate) mod tests {
                     .expect("selected hawkes observed open-session event rate should resolve");
 
             let observed_data = build_observed_data(JointRefinementObservedDataBuildInput {
+                long_variance_fit: None,
                 calendar_registry: &calendar_registry,
                 exchange_code: "XNYS",
                 return_components_fitted_parameters: &return_components_payload.fitted_parameters,
@@ -1586,6 +1616,9 @@ pub(crate) mod tests {
 
             JointRefinementSummarySimulationFixture {
                 session_context: JointRefinementSummarySimulationSessionContext {
+                    variance_persistence_enabled: !observed_data
+                        .observed_variance_covariances
+                        .is_empty(),
                     calendar_registry_artifact: build_exchange_calendar_registry_artifact(
                         &calendar_registry,
                         "XNYS",

@@ -100,6 +100,8 @@ pub(in crate::stages::joint_refinement) fn build_parameter_bounds(
         &mut upper_bounds,
         baseline_hawkes_kernel_parameters,
         baseline_long_variance_parameters,
+        observed_data.variance_persistence_fit.as_ref(),
+        !observed_data.observed_variance_covariances.is_empty(),
     )?;
 
     apply_option_pricing_kernel_bounds(

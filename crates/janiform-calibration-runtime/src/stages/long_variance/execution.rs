@@ -19,6 +19,7 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_work_scheduler::{DynamicWorkPoolStatus, StaticWorkPoolInput, run_static_work_pool};
 
+use super::observations::observed_realized_variance;
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
 use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use crate::stages::hawkes::HawkesStageFittedPayload;
@@ -50,10 +51,8 @@ use crate::stages::tick_objective_data::{
     retained_open_session_returns_for_tick_objectives, source_window_for_retained_tick_objectives,
 };
 
-const LONG_VARIANCE_ESTIMATION_POLICY: &str = concat!(
-    "fixed_lag_median_return_persistence_with_future_activity_and_energy_loading_",
-    "and_standard_cir_dispersion_projection.v1",
-);
+const LONG_VARIANCE_ESTIMATION_POLICY: &str =
+    "hourly_realized_variance_profiled_cir_covariance_with_observation_noise.v1";
 const LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY: &str =
     "unit_stationary_mean_with_mean_normalized_seasonal_baseline_and_uncompensated_feedback.v1";
 pub(crate) const LONG_VARIANCE_ACTIVE_PARAMETER_COUNT: usize = 5;
@@ -360,10 +359,6 @@ fn build_long_variance_fitted_stage_payload(
         progress_sender,
     } = input;
 
-    let baseline_parameters = return_components_stage_payload
-        .fitted_parameters
-        .long_variance_parameters;
-
     let stationary_event_rates = long_variance_stationary_event_rates_for_hawkes_kernel(
         hawkes_stage_payload.fitted_parameters.kernel_parameters,
     )
@@ -399,11 +394,15 @@ fn build_long_variance_fitted_stage_payload(
         Some("estimate long variance parameters"),
     );
 
+    let variance_observations = observed_realized_variance(
+        &observed_intervals.five_minute_return_intervals,
+        coarse_data_records,
+    );
+
     let parameter_estimation = estimate_long_variance_parameters(
-        baseline_parameters,
         stationary_event_rates,
-        observed_intervals.hourly_return_intervals.as_slice(),
         observed_intervals.hourly_activity_intervals.as_slice(),
+        &variance_observations,
     );
 
     emit_long_variance_progress(
@@ -411,7 +410,11 @@ fn build_long_variance_fitted_stage_payload(
         LongVarianceStageProgressPhase::ParameterEstimation,
         1,
         1,
-        Some("parameters estimated"),
+        parameter_estimation
+            .diagnostics
+            .persistence_fit
+            .warning()
+            .or(Some("parameters estimated")),
     );
 
     let horizon_summaries = long_variance_horizon_summaries_with_progress(
@@ -420,7 +423,7 @@ fn build_long_variance_fitted_stage_payload(
                 .five_minute_return_intervals
                 .as_slice(),
             five_minute_activity_intervals: observed_intervals
-                .five_minute_activity_intervals
+                .five_minute_return_intervals
                 .as_slice(),
             hourly_return_intervals: observed_intervals.hourly_return_intervals.as_slice(),
             hourly_activity_intervals: observed_intervals.hourly_activity_intervals.as_slice(),
@@ -559,6 +562,12 @@ fn long_variance_stage_diagnostics(
     parameter_estimation_diagnostics: &LongVarianceParameterEstimationDiagnostics,
 ) -> LongVarianceStageDiagnostics {
     LongVarianceStageDiagnostics {
+        warnings: parameter_estimation_diagnostics
+            .persistence_fit
+            .warning()
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
         estimation_policy: LONG_VARIANCE_ESTIMATION_POLICY.to_string(),
         stationary_normalization_policy: LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY.to_string(),
         interval_source_selection_policy: LONG_VARIANCE_INTERVAL_SOURCE_SELECTION_POLICY
@@ -577,12 +586,16 @@ fn long_variance_stage_diagnostics(
             .iter()
             .map(|diagnostic| LongVarianceStagePersistenceLagDiagnostic {
                 lag_hours: diagnostic.lag_hours,
+                window_hours: diagnostic.window_hours,
+                sampling_count: diagnostic.sampling_count,
                 pair_count: diagnostic.pair_count,
-                correlation: diagnostic.correlation,
-                implied_mean_reversion_rate: diagnostic.implied_mean_reversion_rate,
+                covariance: diagnostic.value,
+                standard_error: diagnostic.standard_error,
             })
             .collect(),
         selected_mean_reversion_rate: parameter_estimation_diagnostics.selected_mean_reversion_rate,
+        // The report owns the small diagnostic independently of the estimation result.
+        persistence_fit: parameter_estimation_diagnostics.persistence_fit.clone(),
         event_loading_fit_candidate_pair_count: parameter_estimation_diagnostics
             .event_loading_fit_candidate_pair_count,
         event_loading_fit_pair_count: parameter_estimation_diagnostics.event_loading_fit_pair_count,
@@ -634,7 +647,6 @@ fn long_variance_stage_diagnostics(
 #[derive(Debug, Clone, PartialEq)]
 struct ObservedLongVarianceIntervals {
     five_minute_return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
-    five_minute_activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     hourly_return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     hourly_activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     return_interval_tick_count: usize,
@@ -720,12 +732,8 @@ fn observed_long_variance_intervals(
         Some("interval sources ready"),
     );
 
-    // Five-minute tick intervals back both streams, while hourly sources diverge by policy.
-    let five_minute_activity_intervals = five_minute_tick_intervals.clone();
-
     ObservedLongVarianceIntervals {
         five_minute_return_intervals: five_minute_tick_intervals,
-        five_minute_activity_intervals,
         hourly_return_intervals: observed_interval_selection.return_intervals,
         hourly_activity_intervals: observed_interval_selection.activity_intervals,
         return_interval_tick_count: observed_interval_selection.return_interval_tick_count,

@@ -18,39 +18,88 @@ pub(super) fn apply_long_variance_parameter_bounds(
     upper_bounds: &mut [f64],
     baseline_hawkes_kernel_parameters: HawkesKernelParameters,
     baseline_long_variance_parameters: LongVarianceParameters,
+    persistence_fit: Option<&janiform_calibration_artifacts::VariancePersistenceFit>,
+    refinement_enabled: bool,
 ) -> Result<(), String> {
     baseline_long_variance_parameters
         .validate()
         .map_err(|source| format!("invalid baseline long variance parameters: {source}"))?;
 
-    let log_mean_reversion_rate_upper_bound =
-        long_variance_log_mean_reversion_rate_upper_bound(baseline_long_variance_parameters)?;
+    if baseline_long_variance_parameters.is_neutral() || !refinement_enabled {
+        for (index, value) in active_parameter_layout
+            .long_variance_coordinate_values(baseline_long_variance_parameters)
+        {
+            lower_bounds[index] = value;
+            upper_bounds[index] = value;
+        }
+
+        return Ok(());
+    }
+
+    let baseline_rate = baseline_long_variance_parameters.mean_reversion_rate;
+
+    // Profile support extends the local box. The box also permits the full model to
+    // separate feedback persistence from the approximate CIR initializer.
+
+    let local_scale = JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND.exp();
+
+    let maximum_mean_reversion_rate = persistence_fit
+        .and_then(|fit| fit.supported_rate_upper)
+        .unwrap_or(baseline_rate * local_scale)
+        .max(baseline_rate * local_scale)
+        .min(long_variance_mean_reversion_rate_calibration_upper_bound());
+
+    let minimum_mean_reversion_rate = persistence_fit
+        .and_then(|fit| fit.supported_rate_lower)
+        .unwrap_or(baseline_rate / local_scale)
+        .min(baseline_rate / local_scale);
+
+    if !minimum_mean_reversion_rate.is_finite()
+        || minimum_mean_reversion_rate <= 0.0
+        || !maximum_mean_reversion_rate.is_finite()
+        || maximum_mean_reversion_rate < baseline_rate
+    {
+        return Err(
+            "long variance profile does not define finite positive rate bounds".to_string(),
+        );
+    }
 
     lower_bounds[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index] =
-        -JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND;
+        (minimum_mean_reversion_rate / baseline_rate).ln();
+
     upper_bounds[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index] =
-        log_mean_reversion_rate_upper_bound;
+        (maximum_mean_reversion_rate / baseline_rate).ln();
 
     lower_bounds[active_parameter_layout.long_variance_vol_of_vol_index] = 0.0;
+
     upper_bounds[active_parameter_layout.long_variance_vol_of_vol_index] =
-        long_variance_vol_of_vol_upper_bound(baseline_long_variance_parameters)?;
+        long_variance_vol_of_vol_upper_bound(
+            baseline_long_variance_parameters,
+            maximum_mean_reversion_rate,
+        )?;
 
     lower_bounds[active_parameter_layout.long_variance_return_energy_loading_index] = 0.0;
+
     upper_bounds[active_parameter_layout.long_variance_return_energy_loading_index] =
-        long_variance_return_energy_loading_upper_bound(baseline_long_variance_parameters)?
-            .max(baseline_long_variance_parameters.return_energy_loading);
+        long_variance_return_energy_loading_upper_bound(
+            baseline_long_variance_parameters,
+            maximum_mean_reversion_rate,
+        )?
+        .max(baseline_long_variance_parameters.return_energy_loading);
 
     let (buy_event_loading_upper_bound, sell_event_loading_upper_bound) =
         long_variance_event_loading_upper_bounds(
             baseline_hawkes_kernel_parameters,
-            baseline_long_variance_parameters,
+            maximum_mean_reversion_rate,
         )?;
 
     lower_bounds[active_parameter_layout.long_variance_buy_event_loading_index] = 0.0;
+
     upper_bounds[active_parameter_layout.long_variance_buy_event_loading_index] =
         buy_event_loading_upper_bound.max(baseline_long_variance_parameters.buy_event_loading);
 
     lower_bounds[active_parameter_layout.long_variance_sell_event_loading_index] = 0.0;
+
     upper_bounds[active_parameter_layout.long_variance_sell_event_loading_index] =
         sell_event_loading_upper_bound.max(baseline_long_variance_parameters.sell_event_loading);
 
@@ -59,10 +108,8 @@ pub(super) fn apply_long_variance_parameter_bounds(
 
 fn long_variance_return_energy_loading_upper_bound(
     baseline_long_variance_parameters: LongVarianceParameters,
+    maximum_mean_reversion_rate: f64,
 ) -> Result<f64, String> {
-    let maximum_mean_reversion_rate =
-        long_variance_maximum_calibration_mean_reversion_rate(baseline_long_variance_parameters)?;
-
     let feedback_drift_budget =
         long_variance_side_event_feedback_drift_budget(maximum_mean_reversion_rate).ok_or_else(
             || {
@@ -81,10 +128,8 @@ fn long_variance_return_energy_loading_upper_bound(
 
 fn long_variance_vol_of_vol_upper_bound(
     baseline_long_variance_parameters: LongVarianceParameters,
+    maximum_mean_reversion_rate: f64,
 ) -> Result<f64, String> {
-    let maximum_mean_reversion_rate =
-        long_variance_maximum_calibration_mean_reversion_rate(baseline_long_variance_parameters)?;
-
     let upper_bound =
         long_variance_vol_of_vol_upper_bound_for_mean_reversion_rate(maximum_mean_reversion_rate)
             .ok_or_else(|| {
@@ -103,56 +148,15 @@ fn long_variance_vol_of_vol_upper_bound(
     Ok(upper_bound)
 }
 
-fn long_variance_log_mean_reversion_rate_upper_bound(
-    baseline_long_variance_parameters: LongVarianceParameters,
-) -> Result<f64, String> {
-    let maximum_mean_reversion_rate =
-        long_variance_maximum_calibration_mean_reversion_rate(baseline_long_variance_parameters)?;
-
-    let upper_bound =
-        (maximum_mean_reversion_rate / baseline_long_variance_parameters.mean_reversion_rate).ln();
-    if !upper_bound.is_finite() || upper_bound < 0.0 {
-        return Err(format!(
-            "invalid long variance mean-reversion log bound upper_bound={upper_bound}"
-        ));
-    }
-
-    Ok(upper_bound)
-}
-
-fn long_variance_maximum_calibration_mean_reversion_rate(
-    baseline_long_variance_parameters: LongVarianceParameters,
-) -> Result<f64, String> {
-    let multiplicative_upper_bound = baseline_long_variance_parameters.mean_reversion_rate
-        * JOINT_REFINEMENT_MULTIPLICATIVE_SCALE_LOG_BOUND.exp();
-
-    let calibration_upper_bound = long_variance_mean_reversion_rate_calibration_upper_bound();
-    let maximum_mean_reversion_rate = multiplicative_upper_bound.min(calibration_upper_bound);
-
-    if !maximum_mean_reversion_rate.is_finite()
-        || maximum_mean_reversion_rate < baseline_long_variance_parameters.mean_reversion_rate
-    {
-        return Err(format!(
-            "invalid long variance mean-reversion calibration bound maximum_mean_reversion_rate={maximum_mean_reversion_rate} baseline_mean_reversion_rate={}",
-            baseline_long_variance_parameters.mean_reversion_rate
-        ));
-    }
-
-    Ok(maximum_mean_reversion_rate)
-}
-
 fn long_variance_event_loading_upper_bounds(
     baseline_hawkes_kernel_parameters: HawkesKernelParameters,
-    baseline_long_variance_parameters: LongVarianceParameters,
+    maximum_mean_reversion_rate: f64,
 ) -> Result<(f64, f64), String> {
     let stationary_event_rates =
         long_variance_stationary_event_rates_for_hawkes_kernel(baseline_hawkes_kernel_parameters)
             .ok_or_else(|| {
             "long variance bounds require finite stationary Hawkes event rates".to_string()
         })?;
-
-    let maximum_mean_reversion_rate =
-        long_variance_maximum_calibration_mean_reversion_rate(baseline_long_variance_parameters)?;
 
     let side_event_drift_budget = long_variance_side_event_feedback_drift_budget(
         maximum_mean_reversion_rate,
@@ -214,6 +218,14 @@ pub(super) fn joint_long_variance_candidate_seeds(
     lower_bounds: &[f64],
     upper_bounds: &[f64],
 ) -> Vec<(String, Vec<f64>)> {
+    if active_parameter_layout
+        .long_variance_block
+        .iter()
+        .all(|index| lower_bounds[*index] == upper_bounds[*index])
+    {
+        return Vec::new();
+    }
+
     let single_coordinate_seeds = [
         (
             "long_variance_mean_reversion_up",
@@ -387,9 +399,101 @@ mod tests {
     }
 
     #[test]
+    fn coarse_history_estimate_is_fixed_when_tick_refinement_is_unsupported() {
+        let layout = test_active_parameter_layout();
+        let parameters = LongVarianceParameters::try_new(0.02, 0.1, 0.01, 0.02, 0.0, 0.0).unwrap();
+
+        let mut lower = vec![0.0; layout.vector_length()];
+        let mut upper = vec![0.0; layout.vector_length()];
+
+        apply_long_variance_parameter_bounds(
+            &layout,
+            &mut lower,
+            &mut upper,
+            test_hawkes_kernel_parameters(),
+            parameters,
+            None,
+            false,
+        )
+        .unwrap();
+
+        let mut expected = vec![0.0; layout.vector_length()];
+
+        expected[layout.long_variance_vol_of_vol_index] = 0.1;
+        expected[layout.long_variance_return_energy_loading_index] = 0.02;
+
+        assert_eq!(
+            (lower.as_slice(), upper.as_slice()),
+            (expected.as_slice(), expected.as_slice())
+        );
+
+        assert!(joint_long_variance_candidate_seeds(&expected, &layout, &lower, &upper).is_empty());
+    }
+
+    #[test]
+    fn neutral_long_variance_has_fixed_coordinates_and_no_candidate_seeds() {
+        let layout = test_active_parameter_layout();
+
+        let mut lower = vec![0.0; layout.vector_length()];
+        let mut upper = vec![0.0; layout.vector_length()];
+
+        apply_long_variance_parameter_bounds(
+            &layout,
+            &mut lower,
+            &mut upper,
+            test_hawkes_kernel_parameters(),
+            LongVarianceParameters::neutral(),
+            None,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(lower, upper);
+        assert!(joint_long_variance_candidate_seeds(&lower, &layout, &lower, &upper).is_empty());
+    }
+
+    #[test]
+    fn long_variance_profile_support_extends_rate_and_diffusion_bounds() {
+        let layout = test_active_parameter_layout();
+        let baseline = LongVarianceParameters::try_new(1.0, 0.2, 0.01, 0.0, 0.0, 0.0).unwrap();
+
+        let mut profile =
+            crate::stages::long_variance::persistence::fit_variance_persistence(&[], &[]);
+
+        profile.supported_rate_lower = Some(baseline.mean_reversion_rate / 100.0);
+        profile.supported_rate_upper = Some(baseline.mean_reversion_rate * 8.0);
+
+        let mut lower = vec![0.0; layout.vector_length()];
+        let mut upper = vec![0.0; layout.vector_length()];
+
+        apply_long_variance_parameter_bounds(
+            &layout,
+            &mut lower,
+            &mut upper,
+            test_hawkes_kernel_parameters(),
+            baseline,
+            Some(&profile),
+            true,
+        )
+        .unwrap();
+
+        let position = layout.log_long_variance_mean_reversion_rate_scale_index;
+
+        assert_eq!(lower[position], (1.0_f64 / 100.0).ln());
+        assert_eq!(upper[position], 8.0_f64.ln());
+
+        assert_eq!(
+            upper[layout.long_variance_vol_of_vol_index],
+            (16.0 * baseline.mean_reversion_rate).sqrt()
+        );
+    }
+
+    #[test]
     fn long_variance_bounds_keep_symmetric_event_loading_corner_stationary() {
         let active_parameter_layout = test_active_parameter_layout();
-        let baseline_long_variance_parameters = LongVarianceParameters::neutral();
+
+        let baseline_long_variance_parameters =
+            LongVarianceParameters::try_new(1.0, 0.2, 0.01, 0.0, 0.0, 0.0).unwrap();
 
         let mut lower_bounds = vec![0.0; active_parameter_layout.vector_length()];
         let mut upper_bounds = vec![0.0; active_parameter_layout.vector_length()];
@@ -400,6 +504,8 @@ mod tests {
             upper_bounds.as_mut_slice(),
             test_hawkes_kernel_parameters(),
             baseline_long_variance_parameters,
+            None,
+            true,
         )
         .expect("long variance bounds should build");
 

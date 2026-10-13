@@ -15,10 +15,12 @@ use crate::stages::joint_metrics::{
     return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
     scale_normalized_returns, tick_count_series, zeroed_interval_observation_template,
 };
+use crate::stages::long_variance::covariance::{supports_persistence_fit, variance_covariances};
 use crate::stages::long_variance::metrics::{
     LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
     long_variance_horizon_summaries,
 };
+use crate::stages::long_variance::observations::hourly_realized_variance;
 use crate::stages::long_variance::source::select_long_variance_observed_intervals;
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateGenerationInput,
@@ -41,6 +43,8 @@ use super::{JointRefinementObservedData, build_exchange_calendar_registry_artifa
 const RETURN_SHAPE_EXTREME_TAIL_RANK_DENOMINATOR: usize = 100;
 
 pub(crate) struct JointRefinementObservedDataBuildInput<'a> {
+    pub(crate) long_variance_fit:
+        Option<&'a janiform_calibration_artifacts::VariancePersistenceFit>,
     pub(crate) calendar_registry: &'a ExchangeCalendarRegistry,
     pub(crate) exchange_code: &'a str,
     pub(crate) return_components_fitted_parameters: &'a ReturnComponentsStageFittedParameters,
@@ -56,6 +60,7 @@ pub(crate) fn build_observed_data(
     input: JointRefinementObservedDataBuildInput<'_>,
 ) -> Result<JointRefinementObservedData, String> {
     let JointRefinementObservedDataBuildInput {
+        long_variance_fit,
         calendar_registry,
         exchange_code,
         return_components_fitted_parameters,
@@ -102,6 +107,7 @@ pub(crate) fn build_observed_data(
 
     let observed_1d_intervals =
         aggregate_intervals_to_fixed_duration(tick_hourly_intervals.as_slice(), NANOS_PER_DAY);
+
     let observed_1w_intervals =
         aggregate_intervals_to_fixed_duration(tick_hourly_intervals.as_slice(), NANOS_PER_WEEK);
 
@@ -109,6 +115,24 @@ pub(crate) fn build_observed_data(
         tick_hourly_intervals.as_slice(),
         coarse_data_records,
     );
+
+    // Only active factors need simulated covariance targets. The decay profile is
+    // carried from the long-variance stage and does not require another history scan.
+    let mut observed_variance_covariances = if return_components_fitted_parameters
+        .long_variance_parameters
+        .is_neutral()
+    {
+        Vec::new()
+    } else {
+        variance_covariances(&hourly_realized_variance(&observed_5m_intervals), true)
+    };
+
+    if !supports_persistence_fit(&observed_variance_covariances) {
+        observed_variance_covariances.clear();
+    }
+
+    // Scalar evidence is copied so the observed-data context owns its lifetime.
+    let variance_persistence_fit = long_variance_fit.cloned();
 
     let observed_long_variance_horizon_summaries =
         long_variance_horizon_summaries(LongVarianceHorizonInputIntervals {
@@ -125,6 +149,7 @@ pub(crate) fn build_observed_data(
             "joint refinement source window start cannot be rounded down to an hourly boundary"
                 .to_string()
         })?;
+
     let hourly_simulation_end_utc_nanos =
         checked_ceil_to_hour_utc_nanos(source_window.window_end_utc_nanos).ok_or_else(|| {
             "joint refinement source window end cannot be rounded up to an hourly boundary"
@@ -264,6 +289,8 @@ pub(crate) fn build_observed_data(
         observed_15m_intraday_mean_absolute_returns,
         observed_hourly_tick_counts,
         observed_15m_rv_activity_metric,
+        observed_variance_covariances,
+        variance_persistence_fit,
         observed_long_variance_horizon_summaries,
         hourly_simulation_start_utc,
         hourly_simulation_end_utc,
@@ -330,6 +357,7 @@ pub(crate) fn build_summary_simulation_session_context(
     .ok_or_else(|| "failed to build exchange calendar registry artifact".to_string())?;
 
     Ok(JointRefinementSummarySimulationSessionContext {
+        variance_persistence_enabled: !context.observed_variance_covariances.is_empty(),
         calendar_registry_artifact,
         exchange_code: exchange_code.to_string(),
         known_scheduled_event_timestamps_utc_nanos: known_scheduled_event_timestamps_utc_nanos

@@ -215,6 +215,17 @@ fn build_test_observed_data() -> JointRefinementObservedData {
             correlation: 0.0,
             standardized_path_distance: 0.0,
         },
+        observed_variance_covariances: vec![
+            crate::stages::long_variance::covariance::VarianceCovariance {
+                lag_hours: 1.0,
+                window_hours: 1.0,
+                sampling_count: 12,
+                pair_count: 100,
+                value: Some(0.1),
+                standard_error: Some(0.01),
+            },
+        ],
+        variance_persistence_fit: None,
         observed_long_variance_horizon_summaries: long_variance_horizon_summaries(
             LongVarianceHorizonInputIntervals {
                 five_minute_return_intervals: &[
@@ -447,6 +458,13 @@ fn build_test_seed_summary(
         });
 
     JointRefinementSeedSummary {
+        simulated_variance_covariances:
+            crate::stages::long_variance::covariance::variance_covariances(
+                &crate::stages::long_variance::observations::hourly_realized_variance(
+                    &simulated_5m_intervals,
+                ),
+                false,
+            ),
         simulated_5m_intervals,
         simulated_15m_intervals,
         simulated_tick_shape_returns: vec![0.01, -0.01],
@@ -748,18 +766,27 @@ fn joint_refinement_baseline_parameter_vector_encodes_long_variance_parameters()
 
 #[test]
 fn joint_refinement_bounds_allow_long_variance_search_coordinates() {
+    let mut fitted = test_joint_fitted_parameters();
+    fitted
+        .return_components_fitted_parameters
+        .long_variance_parameters =
+        janiform_model_kernels::long_variance::LongVarianceParameters::try_new(
+            1.0, 0.2, 0.01, 0.0, 0.0, 0.0,
+        )
+        .unwrap();
+
     let active_parameter_layout = build_test_active_parameter_layout();
 
     let baseline_15m_calibration_sample = build_test_calibration_sample();
 
-    let selected_nig = test_joint_fitted_parameters()
+    let selected_nig = fitted
         .return_components_fitted_parameters
         .nig_shared_plus_shift_configuration;
 
     let baseline_parameter_vector = build_baseline_parameter_vector(
         &active_parameter_layout,
-        &test_joint_fitted_parameters().hawkes_fitted_parameters,
-        &test_joint_fitted_parameters().return_components_fitted_parameters,
+        &fitted.hawkes_fitted_parameters,
+        &fitted.return_components_fitted_parameters,
         &baseline_15m_calibration_sample,
     )
     .expect("baseline vector should build");
@@ -773,7 +800,7 @@ fn joint_refinement_bounds_allow_long_variance_search_coordinates() {
         baseline_hawkes_kernel_parameters: test_joint_fitted_parameters()
             .hawkes_fitted_parameters
             .kernel_parameters,
-        baseline_long_variance_parameters: test_joint_fitted_parameters()
+        baseline_long_variance_parameters: fitted
             .return_components_fitted_parameters
             .long_variance_parameters,
         observed_data: &build_test_observed_data(),

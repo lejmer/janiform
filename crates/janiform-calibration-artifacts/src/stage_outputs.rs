@@ -88,18 +88,24 @@ pub struct LongVarianceStageHorizonDiagnostic {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LongVarianceStagePersistenceLagDiagnostic {
-    /// Lag duration used for the persistence correlation.
+    /// Separation between the starts of the measured windows.
     pub lag_hours: f64,
-    /// Number of aligned deseasonalized squared-return pairs at this lag.
+    /// Duration of each observation window.
+    pub window_hours: f64,
+    /// Number of measured return squares in each window.
+    pub sampling_count: usize,
+    /// Number of aligned normalized return-energy pairs in this sampling group.
     pub pair_count: usize,
-    /// Pearson correlation between lagged and current deseasonalized squared returns.
-    pub correlation: Option<f64>,
-    /// Mean-reversion rate implied by the correlation under exponential decay.
-    pub implied_mean_reversion_rate: Option<f64>,
+    /// Autocovariance of normalized return energy, including negative estimates.
+    pub covariance: Option<f64>,
+    /// Conditional delete-block standard error of the autocovariance.
+    pub standard_error: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LongVarianceStageDiagnostics {
+    /// Nonfatal limitations of the fitted long-variance component.
+    pub warnings: Vec<String>,
     pub estimation_policy: String,
     pub stationary_normalization_policy: String,
     pub interval_source_selection_policy: String,
@@ -111,6 +117,7 @@ pub struct LongVarianceStageDiagnostics {
     pub activity_interval_count: usize,
     pub persistence_lag_diagnostics: Vec<LongVarianceStagePersistenceLagDiagnostic>,
     pub selected_mean_reversion_rate: f64,
+    pub persistence_fit: crate::VariancePersistenceFit,
     pub event_loading_fit_candidate_pair_count: usize,
     pub event_loading_fit_pair_count: usize,
     pub event_loading_fit_coverage_ratio: f64,

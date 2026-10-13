@@ -367,6 +367,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &memory_run_spec,
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
@@ -397,6 +398,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &disk_run_spec,
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: "artifact://hawkes/run-joint-stage-disk".to_string(),
@@ -439,6 +441,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
 
             let seasonality_payload = build_seasonality_stage_success_payload();
             let hawkes_payload = build_hawkes_stage_success_payload();
+
             let return_components_payload = run_return_components_calibration_stage(
                 &build_run_contract_with_mode_and_resume(
                     "run-joint-stage-cpu-memory",
@@ -464,6 +467,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
+                    long_variance_fit: None,
                     seasonality_factors_input: seasonality_factors_input_from_payload(
                         &seasonality_payload,
                     ),
@@ -497,6 +501,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 4),
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
+                    long_variance_fit: None,
                     seasonality_factors_input: seasonality_factors_input_from_payload(
                         &seasonality_payload,
                     ),
@@ -553,6 +558,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
 
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
+
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
             "run-joint-stage-missing-worker",
@@ -574,7 +580,9 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
     .expect("return-components fixture should produce fitted payload");
 
     let run_spec = joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1);
+
     let stage_input = JointRefinementStageExecutionInput {
+        long_variance_fit: None,
         seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
         hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
             payload: hawkes_payload,
@@ -612,6 +620,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
     assert!(matches!(
         report.failure,
         Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
@@ -625,6 +634,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
+
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
             "run-joint-stage-invalid-option-pricing",
@@ -646,12 +656,14 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     .expect("return-components fixture should produce fitted payload");
 
     let mut option_pricing_input = joint_refinement_stage_option_pricing_input_fixture();
+
     option_pricing_input.option_valuation_spot = 0.0;
 
     let report = run_joint_refinement_calibration_stage(
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
@@ -679,6 +691,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
     assert!(matches!(
         report.failure,
         Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -692,6 +705,7 @@ fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
+
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
             "run-joint-stage-zero-candidate-override",
@@ -716,6 +730,7 @@ fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
@@ -743,6 +758,7 @@ fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
     assert!(matches!(
         report.failure,
         Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {

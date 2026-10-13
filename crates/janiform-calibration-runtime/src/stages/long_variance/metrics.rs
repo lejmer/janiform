@@ -125,18 +125,6 @@ pub(crate) fn finite_long_variance_squared_returns(
         .collect()
 }
 
-pub(crate) fn mean_long_variance_squared_return(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> Option<f64> {
-    let squared_returns = finite_long_variance_squared_returns(intervals);
-    if squared_returns.is_empty() {
-        return None;
-    }
-
-    let mean_squared_return = arithmetic_mean_or_zero(squared_returns.as_slice());
-    (mean_squared_return.is_finite() && mean_squared_return > 0.0).then_some(mean_squared_return)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct IntervalAggregationAccumulator {
     interval_start_utc_nanos: i64,
@@ -877,7 +865,11 @@ mod tests {
                 interval(
                     interval_position * NANOS_PER_FIVE_MINUTES,
                     (interval_position + 1) * NANOS_PER_FIVE_MINUTES,
-                    if interval_position < 12 { 0.01 } else { -0.03 },
+                    if interval_position < 12 {
+                        0.01
+                    } else {
+                        -0.03
+                    },
                     10 + interval_position as usize,
                     0.50,
                 )
@@ -889,7 +881,11 @@ mod tests {
                 interval(
                     interval_position * NANOS_PER_HOUR,
                     (interval_position + 1) * NANOS_PER_HOUR,
-                    if interval_position < 24 { 0.02 } else { -0.04 },
+                    if interval_position < 24 {
+                        0.02
+                    } else {
+                        -0.04
+                    },
                     100 + interval_position as usize,
                     0.50,
                 )

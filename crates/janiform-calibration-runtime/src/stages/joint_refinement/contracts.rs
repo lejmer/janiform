@@ -63,6 +63,8 @@ pub struct JointRefinementStageOptionPricingInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageExecutionInput {
+    /// Persistence evidence produced by the long-variance stage, including resumed fits.
+    pub long_variance_fit: Option<janiform_calibration_artifacts::VariancePersistenceFit>,
     pub seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput,
     pub hawkes_input: CalibrationStagePayloadSource<HawkesStageFittedPayload>,
     pub return_components_input: CalibrationStagePayloadSource<ReturnComponentsStageFittedPayload>,

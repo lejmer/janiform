@@ -1,6 +1,7 @@
 //! Shared linear algebra helpers.
 
 mod least_squares;
+mod non_negative;
 mod psd;
 mod two_by_two;
 mod vector;
@@ -14,6 +15,7 @@ pub use least_squares::{
     rank_aware_unit_interval_gain_least_squares,
     weighted_ridge_least_squares_from_normal_equations,
 };
+pub use non_negative::non_negative_least_squares_3;
 pub use psd::{WhitenedQuadraticForm, symmetric_psd_whitened_quadratic_form};
 pub use two_by_two::solve_two_by_two_linear_source_system;
 pub use vector::{dot_product, scale_vector_to_euclidean_radius};

@@ -45,10 +45,12 @@ use crate::stages::joint_metrics::{
     return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
     scale_normalized_returns, tick_count_series,
 };
+use crate::stages::long_variance::covariance::variance_covariances;
 use crate::stages::long_variance::metrics::{
     LongVarianceHorizonInputIntervals, aggregate_intervals_to_fixed_duration,
     long_variance_horizon_summaries,
 };
+use crate::stages::long_variance::observations::hourly_realized_variance;
 use crate::stages::return_components::{
     ContinuousLikelihoodBlockScore, ContinuousLikelihoodEvaluatorCounts,
     ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjectiveEvaluation,
@@ -74,6 +76,7 @@ pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as ro
 
 mod long_variance;
 mod return_shape;
+mod variance_persistence;
 
 const ACTIVITY_PROFILE_SESSION_HOURS: usize = 24;
 const RETURN_SHAPE_WINSORIZED_VOLATILITY_LOWER_QUANTILE: f64 = 0.05;
@@ -636,6 +639,15 @@ fn build_coarse_search_seed_summary(
         coarse_search_tick_shape_proxy_returns(context, fitted_parameters, simulation_seed);
 
     Ok(JointRefinementSeedSummary {
+        simulated_variance_covariances: if context
+            .observed_data
+            .observed_variance_covariances
+            .is_empty()
+        {
+            Vec::new()
+        } else {
+            variance_covariances(&hourly_realized_variance(&simulated_5m_intervals), false)
+        },
         simulated_5m_intervals: simulated_5m_intervals.clone(),
         simulated_15m_intervals: simulated_15m_intervals.clone(),
         simulated_tick_shape_returns: scale_normalized_returns(simulated_tick_returns.as_slice()),

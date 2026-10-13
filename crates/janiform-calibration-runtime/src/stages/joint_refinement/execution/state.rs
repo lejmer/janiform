@@ -9,7 +9,7 @@ use janiform_calibration_artifacts::{
     JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionSearchSelectionAgreementDiagnostics,
     JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
-    SurpriseNewsDeterministicIntensityProfile,
+    SurpriseNewsDeterministicIntensityProfile, VariancePersistenceFit,
 };
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
@@ -29,6 +29,7 @@ use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTer
 use crate::stages::joint_refinement::option_surface_tiering::{
     JointRefinementOptionSurfaceTierKind, JointRefinementOptionSurfaceTierSet,
 };
+use crate::stages::long_variance::covariance::VarianceCovariance;
 use crate::stages::long_variance::metrics::LongVarianceHorizonMomentSummary;
 use crate::stages::return_components::{
     ContinuousLikelihoodEvaluatorCounts, ContinuousLikelihoodFidelityTier,
@@ -521,6 +522,8 @@ pub(crate) struct JointRefinementObservedData {
     pub(crate) observed_15m_intraday_mean_absolute_returns: Vec<f64>,
     pub(crate) observed_hourly_tick_counts: Vec<f64>,
     pub(crate) observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
+    pub(crate) observed_variance_covariances: Vec<VarianceCovariance>,
+    pub(crate) variance_persistence_fit: Option<VariancePersistenceFit>,
     pub(crate) observed_long_variance_horizon_summaries: Vec<LongVarianceHorizonMomentSummary>,
     pub(crate) hourly_simulation_start_utc: DateTime<Utc>,
     pub(crate) hourly_simulation_end_utc: DateTime<Utc>,
@@ -766,5 +769,6 @@ pub struct JointRefinementSeedSummary {
     pub simulated_15m_intraday_mean_absolute_returns: Vec<f64>,
     pub simulated_hourly_tick_counts: Vec<f64>,
     pub simulated_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
+    pub(crate) simulated_variance_covariances: Vec<VarianceCovariance>,
     pub(crate) simulated_long_variance_horizon_summaries: Vec<LongVarianceHorizonMomentSummary>,
 }

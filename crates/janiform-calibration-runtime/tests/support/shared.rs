@@ -1483,6 +1483,7 @@ pub(crate) fn build_stage_output_links(
             stage_output_schema_version: artifact.stage_output_schema_version.clone(),
         })
         .collect::<Vec<_>>();
+
     stage_output_links.sort_by_key(|link| link.stage);
 
     stage_output_links
@@ -2806,6 +2807,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
 
             let calendar_registry = calibration_stage_test_registry();
             let seasonality_payload = build_seasonality_stage_success_payload();
+
             run_joint_refinement_calibration_stage(
                 &build_run_contract_with_mode_and_resume(
                     "run-joint-stage-success",
@@ -2815,6 +2817,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                 .run_spec,
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
+                    long_variance_fit: None,
                     seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
                         exchange_code: seasonality_payload.exchange_code,
                         clock_model: seasonality_payload.clock_model,

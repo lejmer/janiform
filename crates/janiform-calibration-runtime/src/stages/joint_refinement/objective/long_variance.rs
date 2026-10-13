@@ -72,6 +72,14 @@ pub(super) fn add_long_variance_horizon_terms(
     seed_summaries: &[JointRefinementSeedSummary],
     observed_data: &JointRefinementObservedData,
 ) {
+    super::variance_persistence::add_variance_persistence_terms(
+        builder,
+        &observed_data.observed_variance_covariances,
+        seed_summaries
+            .iter()
+            .map(|seed| seed.simulated_variance_covariances.as_slice()),
+    );
+
     for (horizon_position, observed_summary) in observed_data
         .observed_long_variance_horizon_summaries
         .iter()
