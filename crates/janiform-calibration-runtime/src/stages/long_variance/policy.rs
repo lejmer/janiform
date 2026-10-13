@@ -1,8 +1,8 @@
 use janiform_foundations::time::{NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_model_kernels::hawkes::{HawkesKernelParameters, stationary_intensity_multipliers};
 
-// Unit-stationary CIR variance is sigma_z^2 / (2 kappa_z). The standard
-// finite-variance boundary uses variance proxy one.
+// Unit-stationary CIR variance is sigma_z^2 / (2 kappa_z). Calibration limits
+// this variance proxy to one as an explicit dispersion policy.
 pub(crate) const LONG_VARIANCE_STANDARD_CIR_VARIANCE_PROXY_BOUNDARY: f64 = 1.0;
 
 // The long-variance factor is identified from horizon diagnostics whose
@@ -76,12 +76,6 @@ pub(crate) fn long_variance_side_event_feedback_drift_budget(
 
 fn long_variance_stationary_component_count_as_f64() -> f64 {
     LONG_VARIANCE_STATIONARY_COMPONENT_COUNT as f64
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct LongVarianceSideEventLoadings {
-    pub(crate) buy_event_loading: f64,
-    pub(crate) sell_event_loading: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

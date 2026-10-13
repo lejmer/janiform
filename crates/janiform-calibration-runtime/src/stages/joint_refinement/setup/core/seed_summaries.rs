@@ -64,13 +64,12 @@ pub(in crate::stages::joint_refinement) fn cached_seed_summaries_for_candidate_s
         {
             context.profiling_state.record_seed_summary_cache_hit();
 
-            match cached_summary.clone() {
-                Ok(summary) => {
-                    resolved_seed_summaries.push((*simulation_seed, summary));
-                    continue;
-                }
-                Err(error_message) => return Err(error_message),
-            }
+            // The resolved result owns its reference independently of the cache lock.
+            let summary = cached_summary.clone()?;
+
+            resolved_seed_summaries.push((*simulation_seed, summary));
+
+            continue;
         }
 
         missing_seeds.push(*simulation_seed);

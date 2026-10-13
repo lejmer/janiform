@@ -1,473 +1,235 @@
-use janiform_foundations::linear_algebra::{
-    non_negative_least_squares_2, rank_aware_one_column_least_squares,
-};
-use janiform_foundations::numeric::arithmetic_mean_or_zero;
-use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_foundations::linear_algebra::non_negative_least_squares_3;
+use janiform_foundations::time::{NANOS_PER_HOUR, duration_nanos_to_hours};
 
+use super::metrics::long_variance_interval_side_event_counts;
+use super::observations::VarianceObservation;
+use super::policy::LongVarianceFeedbackLoadings;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
-use crate::stages::long_variance::metrics::{
-    long_variance_interval_side_event_counts, mean_long_variance_squared_return,
-};
-use crate::stages::long_variance::policy::LongVarianceSideEventLoadings;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct LongVarianceEventLoadingEstimation {
-    pub(crate) event_loadings: LongVarianceSideEventLoadings,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct VarianceFeedbackEstimate {
+    pub(crate) loadings: LongVarianceFeedbackLoadings,
     pub(crate) candidate_pair_count: usize,
-    pub(crate) fit_pair_count: usize,
+    pub(crate) energy_pair_count: usize,
+    pub(crate) activity_pair_count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct LongVarianceReturnEnergyLoadingEstimation {
-    pub(crate) stationary_return_energy_rate_per_hour: f64,
-    pub(crate) return_energy_loading: f64,
-    pub(crate) candidate_pair_count: usize,
-    pub(crate) fit_pair_count: usize,
-}
+/// Joint predictive initializer for event and return-energy feedback.
+/// Shocks are spread uniformly within each measured interval. Predictors precede the response
+/// window. Full-model refinement owns the endogenous feedback correction to the
+/// approximate covariance initializer.
+pub(crate) fn estimate_variance_feedback(
+    observations: &[VarianceObservation],
+    normalized: &[VarianceObservation],
+    activity: &[JointRefinementAggregatedIntervalObservation],
+    rate: f64,
+) -> VarianceFeedbackEstimate {
+    let (total_energy, total_hours) =
+        observations
+            .iter()
+            .fold((0.0, 0.0), |(energy, hours), row| {
+                (
+                    energy + row.energy,
+                    hours + duration_nanos_to_hours(row.end - row.start),
+                )
+            });
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct KernelCompressedIntervalSignal {
-    interval_start_utc_nanos: i64,
-    interval_end_utc_nanos: i64,
-    value: f64,
-}
-
-pub(crate) fn side_event_loading_estimate(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-    mean_reversion_rate: f64,
-) -> LongVarianceEventLoadingEstimation {
-    let candidate_pair_count = intervals.len().saturating_sub(1);
-    if !mean_reversion_rate.is_finite() || mean_reversion_rate <= 0.0 {
-        return empty_event_loading_estimation(candidate_pair_count);
-    }
-
-    let Some(mean_squared_return) = mean_long_variance_squared_return(intervals) else {
-        return empty_event_loading_estimation(candidate_pair_count);
+    let mean_energy = if total_hours > 0.0 {
+        total_energy / total_hours
+    } else {
+        0.0
     };
 
-    let side_signals = side_count_signals(intervals);
-    if side_signals.is_empty() {
-        return empty_event_loading_estimation(candidate_pair_count);
-    }
-
-    let compressed_buy_counts = kernel_compressed_signals(
-        side_signals
-            .iter()
-            .map(|signals| signals.buy_signal)
-            .collect::<Vec<_>>()
-            .as_slice(),
-        mean_reversion_rate,
-    );
-
-    let compressed_sell_counts = kernel_compressed_signals(
-        side_signals
-            .iter()
-            .map(|signals| signals.sell_signal)
-            .collect::<Vec<_>>()
-            .as_slice(),
-        mean_reversion_rate,
-    );
-
-    let mut rows = Vec::new();
-    let mut response = Vec::new();
-
-    for (pair_index, interval_pair) in intervals.windows(2).enumerate() {
-        let current_interval = interval_pair[0];
-        let next_interval = interval_pair[1];
-
-        if current_interval.interval_end_utc_nanos != next_interval.interval_start_utc_nanos
-            || !next_interval.log_return.is_finite()
-        {
-            continue;
-        }
-
-        let Some(buy_signal) = compressed_buy_counts.get(pair_index) else {
-            continue;
-        };
-
-        let Some(sell_signal) = compressed_sell_counts.get(pair_index) else {
-            continue;
-        };
-
-        let next_squared_return = next_interval.log_return * next_interval.log_return;
-        if !next_squared_return.is_finite() {
-            continue;
-        }
-
-        rows.push([buy_signal.value, sell_signal.value]);
-        response.push(next_squared_return / mean_squared_return - 1.0);
-    }
-
-    if response.is_empty() {
-        return empty_event_loading_estimation(candidate_pair_count);
-    }
-
-    let Some(coefficients) = non_negative_least_squares_2(rows.as_slice(), response.as_slice())
-    else {
-        return empty_event_loading_estimation(candidate_pair_count);
-    };
-
-    LongVarianceEventLoadingEstimation {
-        event_loadings: LongVarianceSideEventLoadings {
-            buy_event_loading: coefficients[0],
-            sell_event_loading: coefficients[1],
-        },
-        candidate_pair_count,
-        fit_pair_count: response.len(),
-    }
-}
-
-pub(crate) fn return_energy_loading_estimate(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-    mean_reversion_rate: f64,
-) -> LongVarianceReturnEnergyLoadingEstimation {
-    let candidate_pair_count = intervals.len().saturating_sub(1);
-
-    let Some(stationary_return_energy_rate_per_hour) =
-        stationary_return_energy_rate_per_hour(intervals)
-    else {
-        return empty_return_energy_loading_estimation(candidate_pair_count, 0.0);
-    };
-
-    if !mean_reversion_rate.is_finite() || mean_reversion_rate <= 0.0 {
-        return empty_return_energy_loading_estimation(
-            candidate_pair_count,
-            stationary_return_energy_rate_per_hour,
-        );
-    }
-
-    let energy_signals = return_energy_signals(intervals, stationary_return_energy_rate_per_hour);
-
-    let compressed_energy_residuals =
-        kernel_compressed_signals(energy_signals.as_slice(), mean_reversion_rate);
-
-    let mut current_energy_residuals = Vec::new();
-    let mut next_energy_responses = Vec::new();
-
-    for (pair_index, interval_pair) in intervals.windows(2).enumerate() {
-        let current_interval = interval_pair[0];
-        let next_interval = interval_pair[1];
-        if current_interval.interval_end_utc_nanos != next_interval.interval_start_utc_nanos {
-            continue;
-        }
-
-        let Some(compressed_energy_residual) = compressed_energy_residuals.get(pair_index) else {
-            continue;
-        };
-
-        let next_expected_energy =
-            expected_interval_return_energy(next_interval, stationary_return_energy_rate_per_hour);
-        if !next_expected_energy.is_finite()
-            || next_expected_energy <= 0.0
-            || !next_interval.log_return.is_finite()
-        {
-            continue;
-        }
-
-        let next_energy = next_interval.log_return * next_interval.log_return;
-        if !next_energy.is_finite() {
-            continue;
-        }
-
-        current_energy_residuals.push(compressed_energy_residual.value);
-        next_energy_responses.push(next_energy / next_expected_energy - 1.0);
-    }
-
-    if next_energy_responses.is_empty() {
-        return empty_return_energy_loading_estimation(
-            candidate_pair_count,
-            stationary_return_energy_rate_per_hour,
-        );
-    }
-
-    let Some(solution) = rank_aware_one_column_least_squares(
-        current_energy_residuals.as_slice(),
-        next_energy_responses.as_slice(),
-    ) else {
-        return empty_return_energy_loading_estimation(
-            candidate_pair_count,
-            stationary_return_energy_rate_per_hour,
-        );
-    };
-
-    let return_energy_loading = solution.first_coefficient.max(0.0);
-
-    LongVarianceReturnEnergyLoadingEstimation {
-        stationary_return_energy_rate_per_hour,
-        return_energy_loading,
-        candidate_pair_count,
-        fit_pair_count: next_energy_responses.len(),
-    }
-}
-
-pub(crate) fn event_loading_fit_coverage_ratio(
-    fit_pair_count: usize,
-    candidate_pair_count: usize,
-) -> f64 {
-    if candidate_pair_count == 0 {
-        return 0.0;
-    }
-
-    fit_pair_count as f64 / candidate_pair_count as f64
-}
-
-fn side_count_signals(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> Vec<SideCountSignals> {
-    let side_counts = intervals
-        .iter()
-        .map(|interval| {
-            let counts = long_variance_interval_side_event_counts(*interval);
-
-            (*interval, counts.buy_count, counts.sell_count)
-        })
-        .collect::<Vec<_>>();
-
-    if side_counts.is_empty() {
-        return Vec::new();
-    }
-
-    let mean_buy_count = arithmetic_mean_or_zero(
-        side_counts
-            .iter()
-            .map(|(_, buy_count, _)| *buy_count)
-            .collect::<Vec<_>>()
-            .as_slice(),
-    );
-
-    let mean_sell_count = arithmetic_mean_or_zero(
-        side_counts
-            .iter()
-            .map(|(_, _, sell_count)| *sell_count)
-            .collect::<Vec<_>>()
-            .as_slice(),
-    );
-
-    side_counts
-        .into_iter()
-        .map(|(interval, buy_count, sell_count)| SideCountSignals {
-            buy_signal: KernelCompressedIntervalSignal {
-                interval_start_utc_nanos: interval.interval_start_utc_nanos,
-                interval_end_utc_nanos: interval.interval_end_utc_nanos,
-                value: buy_count - mean_buy_count,
-            },
-            sell_signal: KernelCompressedIntervalSignal {
-                interval_start_utc_nanos: interval.interval_start_utc_nanos,
-                interval_end_utc_nanos: interval.interval_end_utc_nanos,
-                value: sell_count - mean_sell_count,
-            },
-        })
-        .collect()
-}
-
-fn return_energy_signals(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-    stationary_return_energy_rate_per_hour: f64,
-) -> Vec<KernelCompressedIntervalSignal> {
-    intervals
-        .iter()
-        .filter_map(|interval| {
-            if !interval.log_return.is_finite() {
-                return None;
-            }
-
-            let expected_energy =
-                expected_interval_return_energy(*interval, stationary_return_energy_rate_per_hour);
-            if !expected_energy.is_finite() || expected_energy < 0.0 {
-                return None;
-            }
-
-            let return_energy = interval.log_return * interval.log_return;
-            if !return_energy.is_finite() {
-                return None;
-            }
-
-            Some(KernelCompressedIntervalSignal {
-                interval_start_utc_nanos: interval.interval_start_utc_nanos,
-                interval_end_utc_nanos: interval.interval_end_utc_nanos,
-                value: return_energy - expected_energy,
-            })
-        })
-        .collect()
-}
-
-fn kernel_compressed_signals(
-    signals: &[KernelCompressedIntervalSignal],
-    mean_reversion_rate: f64,
-) -> Vec<KernelCompressedIntervalSignal> {
-    let mut compressed_signals = Vec::with_capacity(signals.len());
-    let mut current_state = 0.0;
-    let mut previous_interval_end_utc_nanos = None;
-
-    for signal in signals {
-        if let Some(previous_interval_end_utc_nanos) = previous_interval_end_utc_nanos {
-            let gap_hours = duration_nanos_to_hours(
-                signal.interval_start_utc_nanos - previous_interval_end_utc_nanos,
-            );
-            current_state = decay_kernel_state(current_state, mean_reversion_rate, gap_hours);
-        }
-
-        let interval_hours = duration_nanos_to_hours(
-            signal.interval_end_utc_nanos - signal.interval_start_utc_nanos,
-        );
-
-        current_state =
-            decay_kernel_state(current_state, mean_reversion_rate, interval_hours) + signal.value;
-
-        compressed_signals.push(KernelCompressedIntervalSignal {
-            interval_start_utc_nanos: signal.interval_start_utc_nanos,
-            interval_end_utc_nanos: signal.interval_end_utc_nanos,
-            value: current_state,
-        });
-
-        previous_interval_end_utc_nanos = Some(signal.interval_end_utc_nanos);
-    }
-
-    compressed_signals
-}
-
-fn decay_kernel_state(state: f64, mean_reversion_rate: f64, elapsed_hours: f64) -> f64 {
-    if !elapsed_hours.is_finite() || elapsed_hours <= 0.0 {
-        return state;
-    }
-
-    state * (-mean_reversion_rate * elapsed_hours).exp()
-}
-
-fn empty_event_loading_estimation(
-    candidate_pair_count: usize,
-) -> LongVarianceEventLoadingEstimation {
-    LongVarianceEventLoadingEstimation {
-        event_loadings: LongVarianceSideEventLoadings {
+    let mut estimate = VarianceFeedbackEstimate {
+        loadings: LongVarianceFeedbackLoadings {
+            stationary_return_energy_rate_per_hour: mean_energy,
+            return_energy_loading: 0.0,
             buy_event_loading: 0.0,
             sell_event_loading: 0.0,
         },
-        candidate_pair_count,
-        fit_pair_count: 0,
+        candidate_pair_count: observations.len().saturating_sub(1),
+        energy_pair_count: 0,
+        activity_pair_count: 0,
+    };
+
+    if !rate.is_finite() || rate <= 0.0 || !mean_energy.is_finite() || mean_energy <= 0.0 {
+        return estimate;
+    }
+
+    let (rows, response, activity_pair_count) =
+        feedback_predictors(normalized, activity, rate, mean_energy);
+
+    estimate.activity_pair_count = activity_pair_count;
+    estimate.energy_pair_count = rows.len();
+
+    if let Some([buy, sell, energy]) = non_negative_least_squares_3(&rows, &response) {
+        estimate.loadings.buy_event_loading = buy;
+        estimate.loadings.sell_event_loading = sell;
+        estimate.loadings.return_energy_loading = energy;
+    }
+
+    estimate
+}
+
+fn feedback_predictors(
+    normalized: &[VarianceObservation],
+    activity: &[JointRefinementAggregatedIntervalObservation],
+    rate: f64,
+    mean_energy: f64,
+) -> (Vec<[f64; 3]>, Vec<f64>, usize) {
+    let mut activity_pair_count = 0;
+
+    let side_means = mean_hourly_activity(activity);
+
+    let mut state = [0.0; 3];
+    let mut previous_end: Option<i64> = None;
+    let mut previous_activity = false;
+    let mut activity_position = 0;
+    let mut rows = Vec::new();
+    let mut response = Vec::new();
+
+    for observation in normalized {
+        let duration = duration_nanos_to_hours(observation.end - observation.start);
+        let decay = (-rate * duration).exp();
+        let average_decay = -(-rate * duration).exp_m1() / (rate * duration);
+        let counts = if observation.end - observation.start == NANOS_PER_HOUR {
+            aligned_activity(activity, &mut activity_position, observation.start)
+        } else {
+            None
+        };
+
+        let contiguous = previous_end == Some(observation.start);
+
+        if contiguous {
+            let mut row = state.map(|value| value * average_decay);
+
+            if !previous_activity {
+                row[0] = 0.0;
+                row[1] = 0.0;
+            } else {
+                activity_pair_count += 1;
+            }
+
+            rows.push(row);
+            response.push(observation.energy - 1.0);
+        } else {
+            state = [0.0; 3];
+        }
+
+        let centered_counts =
+            counts.map(|counts| [counts[0] - side_means[0], counts[1] - side_means[1]]);
+
+        let energy_signal = (observation.energy - 1.0) * mean_energy * duration;
+
+        state[2] = decay * state[2] + average_decay * energy_signal;
+
+        match centered_counts {
+            Some(counts) => {
+                state[0] = decay * state[0] + average_decay * counts[0];
+                state[1] = decay * state[1] + average_decay * counts[1];
+            }
+            None => {
+                state[0] = 0.0;
+                state[1] = 0.0;
+            }
+        }
+
+        previous_activity = counts.is_some();
+        previous_end = Some(observation.end);
+    }
+
+    (rows, response, activity_pair_count)
+}
+
+fn mean_hourly_activity(activity: &[JointRefinementAggregatedIntervalObservation]) -> [f64; 2] {
+    let mut totals = [0.0; 2];
+    let mut count = 0usize;
+
+    for interval in activity.iter().filter(|interval| {
+        interval
+            .interval_end_utc_nanos
+            .checked_sub(interval.interval_start_utc_nanos)
+            == Some(NANOS_PER_HOUR)
+    }) {
+        let counts = long_variance_interval_side_event_counts(*interval);
+
+        totals[0] += counts.buy_count;
+        totals[1] += counts.sell_count;
+
+        count += 1;
+    }
+
+    if count > 0 {
+        totals.map(|sum| sum / count as f64)
+    } else {
+        [0.0; 2]
     }
 }
 
-fn empty_return_energy_loading_estimation(
-    candidate_pair_count: usize,
-    stationary_return_energy_rate_per_hour: f64,
-) -> LongVarianceReturnEnergyLoadingEstimation {
-    LongVarianceReturnEnergyLoadingEstimation {
-        stationary_return_energy_rate_per_hour,
-        return_energy_loading: 0.0,
-        candidate_pair_count,
-        fit_pair_count: 0,
-    }
-}
-
-fn stationary_return_energy_rate_per_hour(
+fn aligned_activity(
     intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> Option<f64> {
-    let mut total_return_energy = 0.0;
-    let mut total_interval_hours = 0.0;
-
-    for interval in intervals {
-        if !interval.log_return.is_finite() {
-            continue;
-        }
-
-        let interval_hours = duration_nanos_to_hours(
-            interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
-        );
-        if !interval_hours.is_finite() || interval_hours <= 0.0 {
-            continue;
-        }
-
-        let return_energy = interval.log_return * interval.log_return;
-        if !return_energy.is_finite() {
-            continue;
-        }
-
-        total_return_energy += return_energy;
-        total_interval_hours += interval_hours;
+    position: &mut usize,
+    start: i64,
+) -> Option<[f64; 2]> {
+    while intervals
+        .get(*position)
+        .is_some_and(|interval| interval.interval_start_utc_nanos < start)
+    {
+        *position += 1;
     }
 
-    if total_interval_hours <= 0.0 {
+    let interval = intervals.get(*position)?;
+    if interval.interval_start_utc_nanos != start
+        || interval.interval_end_utc_nanos.checked_sub(start) != Some(NANOS_PER_HOUR)
+    {
         return None;
     }
 
-    let rate = total_return_energy / total_interval_hours;
+    let counts = long_variance_interval_side_event_counts(*interval);
 
-    (rate.is_finite() && rate >= 0.0).then_some(rate)
-}
-
-fn expected_interval_return_energy(
-    interval: JointRefinementAggregatedIntervalObservation,
-    stationary_return_energy_rate_per_hour: f64,
-) -> f64 {
-    let interval_hours = duration_nanos_to_hours(
-        interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
-    );
-
-    stationary_return_energy_rate_per_hour * interval_hours
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct SideCountSignals {
-    buy_signal: KernelCompressedIntervalSignal,
-    sell_signal: KernelCompressedIntervalSignal,
+    Some([counts.buy_count, counts.sell_count])
 }
 
 #[cfg(test)]
 mod tests {
     use janiform_foundations::time::NANOS_PER_HOUR;
 
-    use super::{kernel_compressed_signals, return_energy_loading_estimate};
-    use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
-    use crate::stages::long_variance::feedback::KernelCompressedIntervalSignal;
-
-    fn interval(
-        interval_start_utc_nanos: i64,
-        log_return: f64,
-    ) -> JointRefinementAggregatedIntervalObservation {
-        JointRefinementAggregatedIntervalObservation {
-            interval_start_utc_nanos,
-            interval_end_utc_nanos: interval_start_utc_nanos + NANOS_PER_HOUR,
-            log_return,
-            tick_count: 10,
-            sell_share_proxy: 0.50,
-        }
-    }
+    use super::estimate_variance_feedback;
+    use crate::stages::long_variance::observations::VarianceObservation;
 
     #[test]
-    fn kernel_compression_decays_previous_interval_signal() {
-        let signals = [
-            KernelCompressedIntervalSignal {
-                interval_start_utc_nanos: 0,
-                interval_end_utc_nanos: NANOS_PER_HOUR,
-                value: 2.0,
-            },
-            KernelCompressedIntervalSignal {
-                interval_start_utc_nanos: NANOS_PER_HOUR,
-                interval_end_utc_nanos: 2 * NANOS_PER_HOUR,
-                value: 3.0,
-            },
-        ];
+    fn feedback_keeps_coarse_activity_absent_and_resets_at_missing_hours() {
+        let observations = [0, 1, 3, 4].map(|hour| VarianceObservation {
+            start: hour * NANOS_PER_HOUR,
+            end: (hour + 1) * NANOS_PER_HOUR,
+            energy: 0.5,
+            sampling_count: 1,
+        });
 
-        let compressed = kernel_compressed_signals(signals.as_slice(), 1.0);
+        let result = estimate_variance_feedback(
+            &observations,
+            &super::super::covariance::normalized_variance(&observations),
+            &[],
+            0.2,
+        );
 
-        assert_eq!(compressed[0].value, 2.0);
-        assert_eq!(compressed[1].value, 2.0 * (-1.0_f64).exp() + 3.0);
-    }
+        assert_eq!(
+            (
+                result.candidate_pair_count,
+                result.energy_pair_count,
+                result.activity_pair_count
+            ),
+            (3, 2, 0),
+        );
 
-    #[test]
-    fn return_energy_loading_uses_compressed_persistent_energy_signal() {
-        let intervals = [
-            interval(0, 0.01),
-            interval(NANOS_PER_HOUR, 0.03),
-            interval(2 * NANOS_PER_HOUR, 0.01),
-            interval(3 * NANOS_PER_HOUR, 0.03),
-        ];
-
-        let estimation = return_energy_loading_estimate(intervals.as_slice(), 0.25);
-
-        assert_eq!(estimation.candidate_pair_count, 3);
-        assert_eq!(estimation.fit_pair_count, 3);
-        assert!(estimation.stationary_return_energy_rate_per_hour > 0.0);
-        assert!(estimation.return_energy_loading >= 0.0);
+        assert_eq!(
+            (
+                result.loadings.buy_event_loading,
+                result.loadings.sell_event_loading,
+                result.loadings.return_energy_loading,
+                result.loadings.stationary_return_energy_rate_per_hour
+            ),
+            (0.0, 0.0, 0.0, 0.5),
+        );
     }
 }

@@ -58,22 +58,12 @@ pub(crate) fn select_long_variance_observed_intervals(
     let mut tick_search_position = 0usize;
 
     for coarse_interval in coarse_intervals.iter().copied() {
-        while tick_intervals
-            .get(tick_search_position)
-            .is_some_and(|tick_interval| {
-                tick_interval.interval_end_utc_nanos <= coarse_interval.interval_start_utc_nanos
-            })
-        {
-            tick_search_position = tick_search_position.saturating_add(1);
-        }
-
-        let coarse_overlaps_tick = tick_intervals
-            .iter()
-            .skip(tick_search_position)
-            .take_while(|tick_interval| {
-                tick_interval.interval_start_utc_nanos < coarse_interval.interval_end_utc_nanos
-            })
-            .any(|tick_interval| intervals_overlap(coarse_interval, *tick_interval));
+        let coarse_overlaps_tick = overlaps_tick_intervals(
+            &tick_intervals,
+            &mut tick_search_position,
+            coarse_interval.interval_start_utc_nanos,
+            coarse_interval.interval_end_utc_nanos,
+        );
 
         if coarse_overlaps_tick {
             return_interval_tick_coarse_overlap_count =
@@ -99,12 +89,23 @@ pub(crate) fn select_long_variance_observed_intervals(
     }
 }
 
-fn intervals_overlap(
-    left: JointRefinementAggregatedIntervalObservation,
-    right: JointRefinementAggregatedIntervalObservation,
+/// Test a sorted candidate against sorted, nonoverlapping tick intervals with a moving cursor.
+pub(crate) fn overlaps_tick_intervals(
+    tick_intervals: &[JointRefinementAggregatedIntervalObservation],
+    position: &mut usize,
+    start: i64,
+    end: i64,
 ) -> bool {
-    left.interval_start_utc_nanos < right.interval_end_utc_nanos
-        && right.interval_start_utc_nanos < left.interval_end_utc_nanos
+    while tick_intervals
+        .get(*position)
+        .is_some_and(|interval| interval.interval_end_utc_nanos <= start)
+    {
+        *position += 1;
+    }
+
+    tick_intervals
+        .get(*position)
+        .is_some_and(|interval| interval.interval_start_utc_nanos < end)
 }
 
 fn sort_intervals_by_time(intervals: &mut [JointRefinementAggregatedIntervalObservation]) {
@@ -201,6 +202,7 @@ mod tests {
                 (3 * NANOS_PER_HOUR, 4 * NANOS_PER_HOUR, 0),
             ]
         );
+
         assert_eq!(selection.activity_intervals, tick_intervals);
         assert_eq!(selection.return_interval_tick_count, 2);
         assert_eq!(selection.return_interval_coarse_candidate_count, 3);
@@ -253,6 +255,7 @@ mod tests {
         assert_eq!(selection.return_interval_coarse_candidate_count, 1);
         assert_eq!(selection.return_interval_coarse_gap_fill_count, 1);
         assert!(selection.activity_intervals.is_empty());
+
         assert_eq!(
             selection.return_intervals,
             vec![JointRefinementAggregatedIntervalObservation {

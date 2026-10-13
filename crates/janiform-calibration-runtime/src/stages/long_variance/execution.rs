@@ -19,8 +19,8 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_model_kernels::long_variance::LongVarianceParameters;
 use janiform_work_scheduler::{DynamicWorkPoolStatus, StaticWorkPoolInput, run_static_work_pool};
 
+use super::observations::observed_realized_variance;
 use crate::market_data::loading::MarketDataNormalizedCoarseDataRecord;
-use crate::market_data::preparation::CalibrationTickObjectiveDataUsagePolicy;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::JointRefinementAggregatedIntervalObservation;
 use crate::stages::joint_metrics::build_observed_open_session_interval_observations;
@@ -46,14 +46,9 @@ use crate::stages::progress::{StageProgressUpdate, emit_stage_progress};
 use crate::stages::return_components::ReturnComponentsStageCandidateGenerationInput;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
-use crate::stages::tick_objective_data::{
-    retained_open_session_returns_for_tick_objectives, source_window_for_retained_tick_objectives,
-};
 
-const LONG_VARIANCE_ESTIMATION_POLICY: &str = concat!(
-    "fixed_lag_median_return_persistence_with_future_activity_and_energy_loading_",
-    "and_standard_cir_dispersion_projection.v1",
-);
+const LONG_VARIANCE_ESTIMATION_POLICY: &str =
+    "hourly_realized_variance_profiled_cir_covariance_with_observation_noise.v1";
 const LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY: &str =
     "unit_stationary_mean_with_mean_normalized_seasonal_baseline_and_uncompensated_feedback.v1";
 pub(crate) const LONG_VARIANCE_ACTIVE_PARAMETER_COUNT: usize = 5;
@@ -70,7 +65,6 @@ struct LongVarianceFittedStagePayloadBuildInput<'a> {
     return_components_stage_payload: &'a ReturnComponentsStageFittedPayload,
     candidate_generation_input: &'a ReturnComponentsStageCandidateGenerationInput,
     coarse_data_records: Option<&'a [MarketDataNormalizedCoarseDataRecord]>,
-    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     solver_settings: &'a CalibrationOptimizerSettings,
     progress_sender: Option<&'a Sender<LongVarianceStageProgressUpdate>>,
 }
@@ -80,9 +74,9 @@ pub struct LongVarianceStageExecutionInput {
     pub return_components_input: Option<CalibrationStageSelectedCandidateSource>,
     pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
+    /// Full observed return history used for persistence and feedback estimation.
     pub candidate_generation_input: Option<ReturnComponentsStageCandidateGenerationInput>,
     pub coarse_data_records: Option<Vec<MarketDataNormalizedCoarseDataRecord>>,
-    pub tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -309,7 +303,6 @@ fn run_long_variance_calibration_stage_internal(
             return_components_stage_payload: &return_components_stage_payload,
             candidate_generation_input: &candidate_generation_input,
             coarse_data_records: execution_input.coarse_data_records.as_deref(),
-            tick_objective_data_usage_policy: execution_input.tick_objective_data_usage_policy,
             solver_settings: &solver_settings,
             progress_sender: progress_sender.as_ref(),
         }) {
@@ -355,14 +348,9 @@ fn build_long_variance_fitted_stage_payload(
         return_components_stage_payload,
         candidate_generation_input,
         coarse_data_records,
-        tick_objective_data_usage_policy,
         solver_settings,
         progress_sender,
     } = input;
-
-    let baseline_parameters = return_components_stage_payload
-        .fitted_parameters
-        .long_variance_parameters;
 
     let stationary_event_rates = long_variance_stationary_event_rates_for_hawkes_kernel(
         hawkes_stage_payload.fitted_parameters.kernel_parameters,
@@ -379,7 +367,7 @@ fn build_long_variance_fitted_stage_payload(
         LongVarianceStageProgressPhase::IntervalSourcePreparation,
         0,
         5,
-        Some("prepare retained returns"),
+        Some("prepare full return history"),
     );
 
     let observed_intervals = observed_long_variance_intervals(
@@ -387,7 +375,6 @@ fn build_long_variance_fitted_stage_payload(
         run_spec.data_inputs.exchange_code.as_str(),
         candidate_generation_input,
         coarse_data_records,
-        tick_objective_data_usage_policy,
         progress_sender,
     );
 
@@ -399,11 +386,15 @@ fn build_long_variance_fitted_stage_payload(
         Some("estimate long variance parameters"),
     );
 
+    let variance_observations = observed_realized_variance(
+        &observed_intervals.five_minute_return_intervals,
+        coarse_data_records,
+    );
+
     let parameter_estimation = estimate_long_variance_parameters(
-        baseline_parameters,
         stationary_event_rates,
-        observed_intervals.hourly_return_intervals.as_slice(),
         observed_intervals.hourly_activity_intervals.as_slice(),
+        &variance_observations,
     );
 
     emit_long_variance_progress(
@@ -411,7 +402,11 @@ fn build_long_variance_fitted_stage_payload(
         LongVarianceStageProgressPhase::ParameterEstimation,
         1,
         1,
-        Some("parameters estimated"),
+        parameter_estimation
+            .diagnostics
+            .persistence_fit
+            .warning()
+            .or(Some("parameters estimated")),
     );
 
     let horizon_summaries = long_variance_horizon_summaries_with_progress(
@@ -420,7 +415,7 @@ fn build_long_variance_fitted_stage_payload(
                 .five_minute_return_intervals
                 .as_slice(),
             five_minute_activity_intervals: observed_intervals
-                .five_minute_activity_intervals
+                .five_minute_return_intervals
                 .as_slice(),
             hourly_return_intervals: observed_intervals.hourly_return_intervals.as_slice(),
             hourly_activity_intervals: observed_intervals.hourly_activity_intervals.as_slice(),
@@ -559,6 +554,12 @@ fn long_variance_stage_diagnostics(
     parameter_estimation_diagnostics: &LongVarianceParameterEstimationDiagnostics,
 ) -> LongVarianceStageDiagnostics {
     LongVarianceStageDiagnostics {
+        warnings: parameter_estimation_diagnostics
+            .persistence_fit
+            .warning()
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
         estimation_policy: LONG_VARIANCE_ESTIMATION_POLICY.to_string(),
         stationary_normalization_policy: LONG_VARIANCE_STATIONARY_NORMALIZATION_POLICY.to_string(),
         interval_source_selection_policy: LONG_VARIANCE_INTERVAL_SOURCE_SELECTION_POLICY
@@ -577,12 +578,16 @@ fn long_variance_stage_diagnostics(
             .iter()
             .map(|diagnostic| LongVarianceStagePersistenceLagDiagnostic {
                 lag_hours: diagnostic.lag_hours,
+                window_hours: diagnostic.window_hours,
+                sampling_count: diagnostic.sampling_count,
                 pair_count: diagnostic.pair_count,
-                correlation: diagnostic.correlation,
-                implied_mean_reversion_rate: diagnostic.implied_mean_reversion_rate,
+                covariance: diagnostic.value,
+                standard_error: diagnostic.standard_error,
             })
             .collect(),
         selected_mean_reversion_rate: parameter_estimation_diagnostics.selected_mean_reversion_rate,
+        // The report owns the small diagnostic independently of the estimation result.
+        persistence_fit: parameter_estimation_diagnostics.persistence_fit.clone(),
         event_loading_fit_candidate_pair_count: parameter_estimation_diagnostics
             .event_loading_fit_candidate_pair_count,
         event_loading_fit_pair_count: parameter_estimation_diagnostics.event_loading_fit_pair_count,
@@ -634,7 +639,6 @@ fn long_variance_stage_diagnostics(
 #[derive(Debug, Clone, PartialEq)]
 struct ObservedLongVarianceIntervals {
     five_minute_return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
-    five_minute_activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     hourly_return_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     hourly_activity_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     return_interval_tick_count: usize,
@@ -648,18 +652,12 @@ fn observed_long_variance_intervals(
     exchange_code: &str,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     coarse_data_records: Option<&[MarketDataNormalizedCoarseDataRecord]>,
-    tick_objective_data_usage_policy: CalibrationTickObjectiveDataUsagePolicy,
     progress_sender: Option<&Sender<LongVarianceStageProgressUpdate>>,
 ) -> ObservedLongVarianceIntervals {
-    let observed_returns = retained_open_session_returns_for_tick_objectives(
-        candidate_generation_input,
-        tick_objective_data_usage_policy,
-    );
-
-    let source_window = source_window_for_retained_tick_objectives(
-        candidate_generation_input,
-        observed_returns.as_slice(),
-    );
+    let observed_returns = candidate_generation_input
+        .observed_open_session_returns
+        .as_slice();
+    let source_window = candidate_generation_input.known_news_calendar.source_window;
 
     emit_long_variance_progress(
         progress_sender,
@@ -673,7 +671,7 @@ fn observed_long_variance_intervals(
         calendar_registry,
         exchange_code,
         source_window,
-        observed_returns.as_slice(),
+        observed_returns,
         NANOS_PER_FIVE_MINUTES,
     );
 
@@ -689,7 +687,7 @@ fn observed_long_variance_intervals(
         calendar_registry,
         exchange_code,
         source_window,
-        observed_returns.as_slice(),
+        observed_returns,
         NANOS_PER_HOUR,
     );
 
@@ -720,12 +718,8 @@ fn observed_long_variance_intervals(
         Some("interval sources ready"),
     );
 
-    // Five-minute tick intervals back both streams, while hourly sources diverge by policy.
-    let five_minute_activity_intervals = five_minute_tick_intervals.clone();
-
     ObservedLongVarianceIntervals {
         five_minute_return_intervals: five_minute_tick_intervals,
-        five_minute_activity_intervals,
         hourly_return_intervals: observed_interval_selection.return_intervals,
         hourly_activity_intervals: observed_interval_selection.activity_intervals,
         return_interval_tick_count: observed_interval_selection.return_interval_tick_count,

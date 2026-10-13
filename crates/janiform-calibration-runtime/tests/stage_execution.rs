@@ -2,6 +2,12 @@ mod support;
 
 use std::sync::{LazyLock, Mutex};
 
+use janiform_calibration_artifacts::CalibrationStageSelectedCandidateSource;
+use janiform_calibration_runtime::{
+    LongVarianceStageExecutionInput, ReturnComponentsObservedOpenSessionReturn,
+    run_long_variance_calibration_stage,
+};
+use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_market_time::business_time_clock::{
     FourierBusinessTimeClockAxis, FourierBusinessTimeClockHarmonicSeries,
 };
@@ -40,6 +46,80 @@ const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER: &str = "process_worker";
 
 static JOINT_REFINEMENT_WORKER_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+#[test]
+fn long_variance_stage_uses_all_three_weeks_of_tick_history() {
+    let calendar_registry = calibration_stage_test_registry();
+    let run_spec = build_run_contract_with_mode_and_resume(
+        "long-variance-full-history",
+        CalibrationExecutionMode::Memory,
+        None,
+    )
+    .run_spec;
+    let mut candidate_input = return_components_stage_candidate_generation_fixture();
+    let first_return = candidate_input.observed_open_session_returns[0];
+    let first_midnight = first_return.return_timestamp_utc_nanos
+        - first_return
+            .return_timestamp_utc_nanos
+            .rem_euclid(NANOS_PER_DAY);
+
+    candidate_input
+        .known_news_calendar
+        .source_window
+        .window_start_utc_nanos = first_midnight;
+    candidate_input
+        .known_news_calendar
+        .source_window
+        .window_end_utc_nanos = first_midnight + 21 * NANOS_PER_DAY;
+
+    // The fixture calendar opens Monday through Wednesday, 14:30 to 21:00 UTC.
+    candidate_input.observed_open_session_returns = (0..21)
+        .filter(|day| day % 7 < 3)
+        .flat_map(|day| {
+            (0..78).map(move |interval| ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: first_midnight
+                    + day * NANOS_PER_DAY
+                    + 14 * NANOS_PER_HOUR
+                    + (6 + interval) * NANOS_PER_FIVE_MINUTES,
+                elapsed_same_session_hours: 1.0 / 12.0,
+                log_return: 0.001 * (day + 1) as f64,
+                ..first_return
+            })
+        })
+        .collect();
+
+    let report = run_long_variance_calibration_stage(
+        &run_spec,
+        &calendar_registry,
+        LongVarianceStageExecutionInput {
+            return_components_input: Some(
+                CalibrationStageSelectedCandidateSource::InMemoryOutput {
+                    selected_candidate_id: "history-fixture".to_string(),
+                },
+            ),
+            hawkes_stage_payload: Some(build_hawkes_stage_success_payload()),
+            return_components_stage_payload: Some(
+                support::shared::build_return_components_stage_success_payload(),
+            ),
+            candidate_generation_input: Some(candidate_input),
+            coarse_data_records: None,
+        },
+    );
+    let payload = report
+        .fitted_stage_payload
+        .expect("long-variance fixture should fit");
+
+    // Interval preparation can truncate history independently of the stage input contract.
+    // Nine sessions contain six complete variance hours and seven activity buckets each.
+    assert_eq!(
+        (
+            payload.diagnostics.persistence_fit.observation_count,
+            payload.diagnostics.return_interval_tick_count,
+            payload.diagnostics.activity_interval_count,
+        ),
+        (54, 63, 63),
+    );
+}
 
 fn normalized_joint_refinement_payload_for_reproducibility(
     mut payload: JointRefinementStageFittedPayload,
@@ -367,6 +447,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &memory_run_spec,
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload.clone(),
@@ -397,6 +478,7 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         &disk_run_spec,
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::PersistedArtifactReference {
                 artifact_reference: "artifact://hawkes/run-joint-stage-disk".to_string(),
@@ -439,6 +521,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
 
             let seasonality_payload = build_seasonality_stage_success_payload();
             let hawkes_payload = build_hawkes_stage_success_payload();
+
             let return_components_payload = run_return_components_calibration_stage(
                 &build_run_contract_with_mode_and_resume(
                     "run-joint-stage-cpu-memory",
@@ -464,6 +547,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
+                    long_variance_fit: None,
                     seasonality_factors_input: seasonality_factors_input_from_payload(
                         &seasonality_payload,
                     ),
@@ -497,6 +581,7 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 4),
                 &calendar_registry,
                 JointRefinementStageExecutionInput {
+                    long_variance_fit: None,
                     seasonality_factors_input: seasonality_factors_input_from_payload(
                         &seasonality_payload,
                     ),
@@ -553,6 +638,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
 
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
+
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
             "run-joint-stage-missing-worker",
@@ -574,7 +660,9 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
     .expect("return-components fixture should produce fitted payload");
 
     let run_spec = joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1);
+
     let stage_input = JointRefinementStageExecutionInput {
+        long_variance_fit: None,
         seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
         hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
             payload: hawkes_payload,
@@ -612,6 +700,7 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
     assert!(matches!(
         report.failure,
         Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
@@ -625,6 +714,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
+
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
             "run-joint-stage-invalid-option-pricing",
@@ -646,12 +736,14 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     .expect("return-components fixture should produce fitted payload");
 
     let mut option_pricing_input = joint_refinement_stage_option_pricing_input_fixture();
+
     option_pricing_input.option_valuation_spot = 0.0;
 
     let report = run_joint_refinement_calibration_stage(
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
@@ -679,6 +771,7 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
     assert!(matches!(
         report.failure,
         Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -692,6 +785,7 @@ fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
+
     let return_components_payload = run_return_components_calibration_stage(
         &build_run_contract_with_mode_and_resume(
             "run-joint-stage-zero-candidate-override",
@@ -716,6 +810,7 @@ fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
         &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
         &calendar_registry,
         JointRefinementStageExecutionInput {
+            long_variance_fit: None,
             seasonality_factors_input: seasonality_factors_input_from_payload(&seasonality_payload),
             hawkes_input: CalibrationStagePayloadSource::InMemoryOutput {
                 payload: hawkes_payload,
@@ -743,6 +838,7 @@ fn joint_refinement_stage_execution_fails_when_candidate_override_is_zero() {
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
     assert!(matches!(
         report.failure,
         Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {

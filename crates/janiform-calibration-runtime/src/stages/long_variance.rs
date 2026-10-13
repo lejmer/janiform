@@ -1,8 +1,11 @@
+pub(crate) mod covariance;
 pub(crate) mod estimation;
 mod execution;
 pub(crate) mod feedback;
 pub(crate) mod generated_energy;
 pub(crate) mod metrics;
+pub(crate) mod observations;
+pub(crate) mod persistence;
 pub(crate) mod policy;
 mod progress;
 pub(crate) mod source;

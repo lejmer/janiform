@@ -161,6 +161,7 @@ fn prepare_observed_inputs(
             .ok_or(JointRefinementStageExecutionFailure::MissingHawkesPayload)?;
 
     let observed_data = build_observed_data(JointRefinementObservedDataBuildInput {
+        long_variance_fit: stage_input.long_variance_fit.as_ref(),
         calendar_registry,
         exchange_code: run_spec.data_inputs.exchange_code.as_str(),
         return_components_fitted_parameters: &resolved_stage_payloads

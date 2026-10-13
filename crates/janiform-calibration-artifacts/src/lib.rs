@@ -5,7 +5,9 @@
 mod artifact_registry;
 mod checkpointing;
 pub mod contracts;
+mod long_variance_diagnostics;
 mod stage_outputs;
+pub use long_variance_diagnostics::{VariancePersistenceFit, VariancePersistenceIdentification};
 
 pub use artifact_registry::{
     CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY, CALIBRATION_ARTIFACT_PARTIAL_WRITE_RECOVERY_POLICY,

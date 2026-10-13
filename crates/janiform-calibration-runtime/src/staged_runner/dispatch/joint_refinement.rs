@@ -168,6 +168,11 @@ pub(super) fn joint_refinement_like_stage_input(
         option_refinement_dispatch_settings(run_spec, consuming_stage, staged_run_inputs)?;
 
     Ok(JointRefinementStageExecutionInput {
+        // The compact diagnostic owns its scalar fields independently of the stage payload.
+        long_variance_fit: payload_state
+            .long_variance_stage_payload
+            .as_ref()
+            .map(|payload| payload.diagnostics.persistence_fit.clone()),
         seasonality_factors_input: joint_refinement_seasonality_factors_input(
             consuming_stage,
             payload_state,

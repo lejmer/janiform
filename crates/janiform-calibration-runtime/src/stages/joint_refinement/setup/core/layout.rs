@@ -63,22 +63,11 @@ pub(in crate::stages::joint_refinement) fn build_baseline_parameter_vector(
     parameter_vector[active_parameter_layout.log_buy_excitation_return_clock_scale_index] = 0.0;
     parameter_vector[active_parameter_layout.log_sell_excitation_return_clock_scale_index] = 0.0;
 
-    let long_variance_parameters = return_components_fitted_parameters.long_variance_parameters;
-
-    parameter_vector[active_parameter_layout.log_long_variance_mean_reversion_rate_scale_index] =
-        0.0;
-
-    parameter_vector[active_parameter_layout.long_variance_vol_of_vol_index] =
-        long_variance_parameters.vol_of_vol;
-
-    parameter_vector[active_parameter_layout.long_variance_return_energy_loading_index] =
-        long_variance_parameters.return_energy_loading;
-
-    parameter_vector[active_parameter_layout.long_variance_buy_event_loading_index] =
-        long_variance_parameters.buy_event_loading;
-
-    parameter_vector[active_parameter_layout.long_variance_sell_event_loading_index] =
-        long_variance_parameters.sell_event_loading;
+    for (index, value) in active_parameter_layout.long_variance_coordinate_values(
+        return_components_fitted_parameters.long_variance_parameters,
+    ) {
+        parameter_vector[index] = value;
+    }
 
     Ok(parameter_vector)
 }
@@ -242,6 +231,28 @@ pub(in crate::stages::joint_refinement) fn build_active_parameter_layout(
 }
 
 impl JointRefinementActiveParameterLayout {
+    pub(crate) fn long_variance_coordinate_values(
+        &self,
+        parameters: janiform_model_kernels::long_variance::LongVarianceParameters,
+    ) -> [(usize, f64); 5] {
+        [
+            (self.log_long_variance_mean_reversion_rate_scale_index, 0.0),
+            (self.long_variance_vol_of_vol_index, parameters.vol_of_vol),
+            (
+                self.long_variance_return_energy_loading_index,
+                parameters.return_energy_loading,
+            ),
+            (
+                self.long_variance_buy_event_loading_index,
+                parameters.buy_event_loading,
+            ),
+            (
+                self.long_variance_sell_event_loading_index,
+                parameters.sell_event_loading,
+            ),
+        ]
+    }
+
     pub(in crate::stages::joint_refinement) fn vector_length(&self) -> usize {
         self.coupling_block
             .iter()

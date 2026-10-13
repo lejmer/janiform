@@ -344,29 +344,41 @@ fn long_variance_parameters_from_parameter_vector(
         .baseline_return_components_fitted_parameters
         .long_variance_parameters;
 
-    let decoded_long_variance_parameters = LongVarianceParameters::try_new(
-        baseline_long_variance_parameters.mean_reversion_rate
-            * parameter_vector[context
+    if baseline_long_variance_parameters.is_neutral() {
+        return Ok(baseline_long_variance_parameters);
+    }
+
+    let decoded_long_variance_parameters = if context
+        .observed_data
+        .observed_variance_covariances
+        .is_empty()
+    {
+        baseline_long_variance_parameters
+    } else {
+        LongVarianceParameters::try_new(
+            baseline_long_variance_parameters.mean_reversion_rate
+                * parameter_vector[context
+                    .active_parameter_layout
+                    .log_long_variance_mean_reversion_rate_scale_index]
+                    .exp(),
+            parameter_vector[context
                 .active_parameter_layout
-                .log_long_variance_mean_reversion_rate_scale_index]
-                .exp(),
-        parameter_vector[context
-            .active_parameter_layout
-            .long_variance_vol_of_vol_index],
-        baseline_long_variance_parameters.stationary_return_energy_rate_per_hour,
-        parameter_vector[context
-            .active_parameter_layout
-            .long_variance_return_energy_loading_index],
-        parameter_vector[context
-            .active_parameter_layout
-            .long_variance_buy_event_loading_index],
-        parameter_vector[context
-            .active_parameter_layout
-            .long_variance_sell_event_loading_index],
-    )
-    .map_err(|source| {
-        parameter_decode_error(format!("long-variance parameters are invalid: {source}"))
-    })?;
+                .long_variance_vol_of_vol_index],
+            baseline_long_variance_parameters.stationary_return_energy_rate_per_hour,
+            parameter_vector[context
+                .active_parameter_layout
+                .long_variance_return_energy_loading_index],
+            parameter_vector[context
+                .active_parameter_layout
+                .long_variance_buy_event_loading_index],
+            parameter_vector[context
+                .active_parameter_layout
+                .long_variance_sell_event_loading_index],
+        )
+        .map_err(|source| {
+            parameter_decode_error(format!("long-variance parameters are invalid: {source}"))
+        })?
+    };
 
     let long_variance_parameters = project_generated_stationary_feedback_to_budget(
         decoded_long_variance_parameters,

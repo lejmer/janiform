@@ -479,7 +479,6 @@ fn run_long_variance_staged_execution_stage(
             CalibrationStage::LongVariance,
         )?),
         coarse_data_records: input.staged_run_inputs.coarse_data_records.clone(),
-        tick_objective_data_usage_policy: input.staged_run_inputs.tick_objective_data_usage_policy,
     };
 
     if input.observer.is_none() {
