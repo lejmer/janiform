@@ -304,11 +304,7 @@ mod tests {
                 let signal =
                     variance * integrated_cir_covariance_factor(rate, 1.0, lag as f64).unwrap();
 
-                let value = if lag == 0 {
-                    signal + noise
-                } else {
-                    signal
-                };
+                let value = if lag == 0 { signal + noise } else { signal };
 
                 VarianceCovariance {
                     lag_hours: lag as f64,
@@ -336,11 +332,7 @@ mod tests {
                 let signal = variance
                     * integrated_cir_covariance_factor(rate, window_hours, lag_hours).unwrap();
 
-                let value = if step == 0 {
-                    signal + noise
-                } else {
-                    signal
-                };
+                let value = if step == 0 { signal + noise } else { signal };
 
                 targets.push(VarianceCovariance {
                     lag_hours,

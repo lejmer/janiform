@@ -865,11 +865,7 @@ mod tests {
                 interval(
                     interval_position * NANOS_PER_FIVE_MINUTES,
                     (interval_position + 1) * NANOS_PER_FIVE_MINUTES,
-                    if interval_position < 12 {
-                        0.01
-                    } else {
-                        -0.03
-                    },
+                    if interval_position < 12 { 0.01 } else { -0.03 },
                     10 + interval_position as usize,
                     0.50,
                 )
@@ -881,11 +877,7 @@ mod tests {
                 interval(
                     interval_position * NANOS_PER_HOUR,
                     (interval_position + 1) * NANOS_PER_HOUR,
-                    if interval_position < 24 {
-                        0.02
-                    } else {
-                        -0.04
-                    },
+                    if interval_position < 24 { 0.02 } else { -0.04 },
                     100 + interval_position as usize,
                     0.50,
                 )

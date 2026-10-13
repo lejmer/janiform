@@ -254,12 +254,7 @@ mod tests {
             .map(|hour| VarianceObservation {
                 start: hour * NANOS_PER_HOUR,
                 end: (hour + 1) * NANOS_PER_HOUR,
-                energy: (hour % 24 + 1) as f64
-                    * if hour < 24 {
-                        1.0
-                    } else {
-                        3.0
-                    },
+                energy: (hour % 24 + 1) as f64 * if hour < 24 { 1.0 } else { 3.0 },
                 sampling_count: 12,
             })
             .collect::<Vec<_>>();

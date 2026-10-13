@@ -159,11 +159,7 @@ mod tests {
             .map(|position| ReturnInterval {
                 start: position * NANOS_PER_FIVE_MINUTES,
                 end: (position + 1) * NANOS_PER_FIVE_MINUTES,
-                value: if position % 2 == 0 {
-                    0.5
-                } else {
-                    -0.5
-                },
+                value: if position % 2 == 0 { 0.5 } else { -0.5 },
             })
             .collect::<Vec<_>>();
 
