@@ -2,6 +2,12 @@ mod support;
 
 use std::sync::{LazyLock, Mutex};
 
+use janiform_calibration_artifacts::CalibrationStageSelectedCandidateSource;
+use janiform_calibration_runtime::{
+    LongVarianceStageExecutionInput, ReturnComponentsObservedOpenSessionReturn,
+    run_long_variance_calibration_stage,
+};
+use janiform_foundations::time::{NANOS_PER_DAY, NANOS_PER_FIVE_MINUTES, NANOS_PER_HOUR};
 use janiform_market_time::business_time_clock::{
     FourierBusinessTimeClockAxis, FourierBusinessTimeClockHarmonicSeries,
 };
@@ -40,6 +46,80 @@ const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER: &str = "process_worker";
 
 static JOINT_REFINEMENT_WORKER_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+#[test]
+fn long_variance_stage_uses_all_three_weeks_of_tick_history() {
+    let calendar_registry = calibration_stage_test_registry();
+    let run_spec = build_run_contract_with_mode_and_resume(
+        "long-variance-full-history",
+        CalibrationExecutionMode::Memory,
+        None,
+    )
+    .run_spec;
+    let mut candidate_input = return_components_stage_candidate_generation_fixture();
+    let first_return = candidate_input.observed_open_session_returns[0];
+    let first_midnight = first_return.return_timestamp_utc_nanos
+        - first_return
+            .return_timestamp_utc_nanos
+            .rem_euclid(NANOS_PER_DAY);
+
+    candidate_input
+        .known_news_calendar
+        .source_window
+        .window_start_utc_nanos = first_midnight;
+    candidate_input
+        .known_news_calendar
+        .source_window
+        .window_end_utc_nanos = first_midnight + 21 * NANOS_PER_DAY;
+
+    // The fixture calendar opens Monday through Wednesday, 14:30 to 21:00 UTC.
+    candidate_input.observed_open_session_returns = (0..21)
+        .filter(|day| day % 7 < 3)
+        .flat_map(|day| {
+            (0..78).map(move |interval| ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: first_midnight
+                    + day * NANOS_PER_DAY
+                    + 14 * NANOS_PER_HOUR
+                    + (6 + interval) * NANOS_PER_FIVE_MINUTES,
+                elapsed_same_session_hours: 1.0 / 12.0,
+                log_return: 0.001 * (day + 1) as f64,
+                ..first_return
+            })
+        })
+        .collect();
+
+    let report = run_long_variance_calibration_stage(
+        &run_spec,
+        &calendar_registry,
+        LongVarianceStageExecutionInput {
+            return_components_input: Some(
+                CalibrationStageSelectedCandidateSource::InMemoryOutput {
+                    selected_candidate_id: "history-fixture".to_string(),
+                },
+            ),
+            hawkes_stage_payload: Some(build_hawkes_stage_success_payload()),
+            return_components_stage_payload: Some(
+                support::shared::build_return_components_stage_success_payload(),
+            ),
+            candidate_generation_input: Some(candidate_input),
+            coarse_data_records: None,
+        },
+    );
+    let payload = report
+        .fitted_stage_payload
+        .expect("long-variance fixture should fit");
+
+    // Interval preparation can truncate history independently of the stage input contract.
+    // Nine sessions contain six complete variance hours and seven activity buckets each.
+    assert_eq!(
+        (
+            payload.diagnostics.persistence_fit.observation_count,
+            payload.diagnostics.return_interval_tick_count,
+            payload.diagnostics.activity_interval_count,
+        ),
+        (54, 63, 63),
+    );
+}
 
 fn normalized_joint_refinement_payload_for_reproducibility(
     mut payload: JointRefinementStageFittedPayload,
